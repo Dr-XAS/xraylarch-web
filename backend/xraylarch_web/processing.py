@@ -223,19 +223,25 @@ def run_processing(
         autobk_kwargs["e0"] = group.e0
         autobk_kwargs["edge_step"] = group.edge_step
         autobk(group.energy, group.mu, group=group, **autobk_kwargs)
+        xftf_kwargs = {
+            "group": group,
+            "kmin": recipe.kmin,
+            "kweight": recipe.kweight,
+            "dk": recipe.ft_dk,
+            "dk2": recipe.ft_dk2,
+            "window": recipe.ft_window,
+            "rmax_out": recipe.rmax_out,
+            "nfft": recipe.nfft,
+            "kstep": recipe.kstep,
+        }
+        # In this Larch version, automatic xftf kmax is represented by omitting
+        # the argument; explicitly passing None raises inside xftf_prep().
+        if recipe.kmax is not None:
+            xftf_kwargs["kmax"] = recipe.kmax
         xftf(
             group.k,
             group.chi,
-            group=group,
-            kmin=recipe.kmin,
-            kmax=recipe.kmax if recipe.kmax is not None else float(group.k.max()),
-            kweight=recipe.kweight,
-            dk=recipe.ft_dk,
-            dk2=recipe.ft_dk2,
-            window=recipe.ft_window,
-            rmax_out=recipe.rmax_out,
-            nfft=recipe.nfft,
-            kstep=recipe.kstep,
+            **xftf_kwargs,
         )
     except WebInputError:
         raise

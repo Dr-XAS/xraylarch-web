@@ -68,23 +68,24 @@ class WorkspaceStore:
         return max((revision["revision_id"] for revision in metadata["revisions"]), default=0) + 1
 
     def save_upload(self, workspace_id: str, parsed: ParsedUpload) -> str:
-        metadata = self._metadata(workspace_id)
-        upload_id = self._id()
-        arrays_name = f"upload-{upload_id}.npz"
-        source_name = f"upload-{upload_id}.bin"
-        self.storage.write_arrays(workspace_id, arrays_name, parsed.arrays)
-        self.storage.write_bytes(workspace_id, source_name, parsed.source_bytes)
-        metadata["uploads"][upload_id] = {
-            "display_name": parsed.display_name,
-            "row_count": parsed.row_count,
-            "columns": [column.model_dump(mode="json") for column in parsed.columns],
-            "warnings": list(parsed.warnings),
-            "issues": [issue.model_dump(mode="json") for issue in parsed.issues],
-            "arrays_name": arrays_name,
-            "source_name": source_name,
-        }
-        self._write_metadata(workspace_id, metadata)
-        return upload_id
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id)
+            upload_id = self._id()
+            arrays_name = f"upload-{upload_id}.npz"
+            source_name = f"upload-{upload_id}.bin"
+            self.storage.write_arrays(workspace_id, arrays_name, parsed.arrays)
+            self.storage.write_bytes(workspace_id, source_name, parsed.source_bytes)
+            metadata["uploads"][upload_id] = {
+                "display_name": parsed.display_name,
+                "row_count": parsed.row_count,
+                "columns": [column.model_dump(mode="json") for column in parsed.columns],
+                "warnings": list(parsed.warnings),
+                "issues": [issue.model_dump(mode="json") for issue in parsed.issues],
+                "arrays_name": arrays_name,
+                "source_name": source_name,
+            }
+            self._write_metadata(workspace_id, metadata)
+            return upload_id
 
     def _parsed_upload(self, workspace_id: str, metadata: dict[str, Any], upload_id: str) -> ParsedUpload:
         try:
@@ -104,22 +105,23 @@ class WorkspaceStore:
     def confirm_mapping(
         self, workspace_id: str, upload_id: str, energy_column: str, signal_column: str
     ) -> RevisionSummary:
-        metadata = self._metadata(workspace_id)
-        parsed = self._parsed_upload(workspace_id, metadata, upload_id)
-        validate_mapping(parsed, energy_column, signal_column)
-        revision = {
-            "revision_id": self._next_revision_id(metadata),
-            "kind": "mapping",
-            "parent_revision_id": None,
-            "source_revision_id": None,
-            "restored_from_revision_id": None,
-            "upload_id": upload_id,
-            "energy_column": energy_column,
-            "signal_column": signal_column,
-        }
-        metadata["revisions"].append(revision)
-        self._write_metadata(workspace_id, metadata)
-        return RevisionSummary.model_validate(revision)
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id)
+            parsed = self._parsed_upload(workspace_id, metadata, upload_id)
+            validate_mapping(parsed, energy_column, signal_column)
+            revision = {
+                "revision_id": self._next_revision_id(metadata),
+                "kind": "mapping",
+                "parent_revision_id": None,
+                "source_revision_id": None,
+                "restored_from_revision_id": None,
+                "upload_id": upload_id,
+                "energy_column": energy_column,
+                "signal_column": signal_column,
+            }
+            metadata["revisions"].append(revision)
+            self._write_metadata(workspace_id, metadata)
+            return RevisionSummary.model_validate(revision)
 
     def _source_mapping(self, metadata: dict[str, Any], revision_id: int) -> dict[str, Any]:
         revision = self._revision(metadata, revision_id)
@@ -178,27 +180,28 @@ class WorkspaceStore:
         expected_parent_revision: int | None,
         recipe: RecipeDraft,
     ) -> RevisionSummary:
-        metadata = self._metadata(workspace_id)
-        self._check_parent(metadata, expected_parent_revision)
-        source = self._source_mapping(metadata, source_revision_id)
-        parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
-        energy, mu = validate_mapping(parsed, source["energy_column"], source["signal_column"])
-        result = run_processing(energy, mu, recipe)
-        revision_id = self._next_revision_id(metadata)
-        revision = {
-            "revision_id": revision_id,
-            "kind": "applied",
-            "parent_revision_id": expected_parent_revision,
-            "source_revision_id": source["revision_id"],
-            "restored_from_revision_id": None,
-            "recipe": recipe.model_dump(mode="json"),
-            "effective": result.effective.model_dump(mode="json"),
-            "result": self._save_result(workspace_id, revision_id, result),
-        }
-        metadata["revisions"].append(revision)
-        metadata["active_revision_id"] = revision_id
-        self._write_metadata(workspace_id, metadata)
-        return RevisionSummary.model_validate(revision)
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id)
+            self._check_parent(metadata, expected_parent_revision)
+            source = self._source_mapping(metadata, source_revision_id)
+            parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
+            energy, mu = validate_mapping(parsed, source["energy_column"], source["signal_column"])
+            result = run_processing(energy, mu, recipe)
+            revision_id = self._next_revision_id(metadata)
+            revision = {
+                "revision_id": revision_id,
+                "kind": "applied",
+                "parent_revision_id": expected_parent_revision,
+                "source_revision_id": source["revision_id"],
+                "restored_from_revision_id": None,
+                "recipe": recipe.model_dump(mode="json"),
+                "effective": result.effective.model_dump(mode="json"),
+                "result": self._save_result(workspace_id, revision_id, result),
+            }
+            metadata["revisions"].append(revision)
+            metadata["active_revision_id"] = revision_id
+            self._write_metadata(workspace_id, metadata)
+            return RevisionSummary.model_validate(revision)
 
     def restore_revision(
         self,
@@ -207,27 +210,28 @@ class WorkspaceStore:
         *,
         expected_parent_revision: int | None,
     ) -> RevisionSummary:
-        metadata = self._metadata(workspace_id)
-        self._check_parent(metadata, expected_parent_revision)
-        previous = self._revision(metadata, revision_id)
-        if previous["kind"] != "applied":
-            raise WorkspaceStateError("revision_not_restorable", "Only applied revisions can be restored.", recovery="Select an applied recipe revision and retry.")
-        result = self._load_result(workspace_id, previous["result"])
-        new_revision_id = self._next_revision_id(metadata)
-        revision = {
-            "revision_id": new_revision_id,
-            "kind": "applied",
-            "parent_revision_id": expected_parent_revision,
-            "source_revision_id": previous["source_revision_id"],
-            "restored_from_revision_id": revision_id,
-            "recipe": previous["recipe"],
-            "effective": previous["effective"],
-            "result": self._save_result(workspace_id, new_revision_id, result),
-        }
-        metadata["revisions"].append(revision)
-        metadata["active_revision_id"] = new_revision_id
-        self._write_metadata(workspace_id, metadata)
-        return RevisionSummary.model_validate(revision)
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id)
+            self._check_parent(metadata, expected_parent_revision)
+            previous = self._revision(metadata, revision_id)
+            if previous["kind"] != "applied":
+                raise WorkspaceStateError("revision_not_restorable", "Only applied revisions can be restored.", recovery="Select an applied recipe revision and retry.")
+            result = self._load_result(workspace_id, previous["result"])
+            new_revision_id = self._next_revision_id(metadata)
+            revision = {
+                "revision_id": new_revision_id,
+                "kind": "applied",
+                "parent_revision_id": expected_parent_revision,
+                "source_revision_id": previous["source_revision_id"],
+                "restored_from_revision_id": revision_id,
+                "recipe": previous["recipe"],
+                "effective": previous["effective"],
+                "result": self._save_result(workspace_id, new_revision_id, result),
+            }
+            metadata["revisions"].append(revision)
+            metadata["active_revision_id"] = new_revision_id
+            self._write_metadata(workspace_id, metadata)
+            return RevisionSummary.model_validate(revision)
 
     def load(self, workspace_id: str) -> WorkspaceSnapshot:
         metadata = self._metadata(workspace_id)

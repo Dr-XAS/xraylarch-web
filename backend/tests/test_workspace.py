@@ -1,18 +1,22 @@
+from concurrent.futures import ThreadPoolExecutor
+import threading
+
 import numpy as np
 import pytest
 
 from xraylarch_web.contracts import RecipeDraft
 from xraylarch_web.errors import WebInputError
 from xraylarch_web.parsing import parse_upload
+import xraylarch_web.workspace as workspace_module
 from xraylarch_web.workspace import WorkspaceStore
 
 
-def _mapped_workspace(data_root, sample_xmu_bytes):
+def _mapped_workspace(data_root, synthetic_xmu_bytes):
     store = WorkspaceStore(data_root)
     workspace = store.create()
     upload_id = store.save_upload(
         workspace.workspace_id,
-        parse_upload(sample_xmu_bytes, "cu_rt01.xmu"),
+        parse_upload(synthetic_xmu_bytes, "synthetic.xmu"),
     )
     source = store.confirm_mapping(
         workspace.workspace_id,
@@ -23,8 +27,8 @@ def _mapped_workspace(data_root, sample_xmu_bytes):
     return store, workspace.workspace_id, source
 
 
-def test_apply_creates_an_immutable_processed_revision(data_root, sample_xmu_bytes):
-    store, workspace_id, source = _mapped_workspace(data_root, sample_xmu_bytes)
+def test_apply_creates_an_immutable_processed_revision(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
 
     applied = store.apply_revision(
         workspace_id,
@@ -46,8 +50,8 @@ def test_apply_creates_an_immutable_processed_revision(data_root, sample_xmu_byt
     assert all(np.isfinite(trace.y).all() for trace in restored.active_result.plots)
 
 
-def test_restore_creates_new_revision_without_deleting_history(data_root, sample_xmu_bytes):
-    store, workspace_id, source = _mapped_workspace(data_root, sample_xmu_bytes)
+def test_restore_creates_new_revision_without_deleting_history(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
     first = store.apply_revision(
         workspace_id,
         source.revision_id,
@@ -72,8 +76,8 @@ def test_restore_creates_new_revision_without_deleting_history(data_root, sample
     ]
 
 
-def test_stale_apply_preserves_current_revision(data_root, sample_xmu_bytes):
-    store, workspace_id, source = _mapped_workspace(data_root, sample_xmu_bytes)
+def test_stale_apply_preserves_current_revision(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
     current = store.apply_revision(
         workspace_id,
         source.revision_id,
@@ -91,6 +95,93 @@ def test_stale_apply_preserves_current_revision(data_root, sample_xmu_bytes):
 
     assert error.value.code == "stale_revision"
     assert store.load(workspace_id).active_revision_id == current.revision_id
+
+
+def test_concurrent_apply_rejects_the_loser_as_stale(
+    data_root, synthetic_xmu_bytes, monkeypatch
+):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    original_run_processing = workspace_module.run_processing
+    first_processing_started = threading.Event()
+    second_processing_started = threading.Event()
+    release_processing = threading.Event()
+    started_count = 0
+    started_lock = threading.Lock()
+
+    def paused_run_processing(*args, **kwargs):
+        nonlocal started_count
+        with started_lock:
+            started_count += 1
+            if started_count == 1:
+                first_processing_started.set()
+            else:
+                second_processing_started.set()
+        assert release_processing.wait(timeout=5)
+        return original_run_processing(*args, **kwargs)
+
+    monkeypatch.setattr(workspace_module, "run_processing", paused_run_processing)
+
+    def apply():
+        return store.apply_revision(
+            workspace_id,
+            source.revision_id,
+            expected_parent_revision=None,
+            recipe=RecipeDraft(),
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(apply)
+        assert first_processing_started.wait(timeout=5)
+        second = executor.submit(apply)
+        second_processing_started.wait(timeout=0.25)
+        assert not second_processing_started.is_set()
+        release_processing.set()
+
+        outcomes = []
+        for future in (first, second):
+            try:
+                outcomes.append(future.result(timeout=10))
+            except WebInputError as error:
+                outcomes.append(error)
+
+    successful = [outcome for outcome in outcomes if not isinstance(outcome, WebInputError)]
+    failures = [outcome for outcome in outcomes if isinstance(outcome, WebInputError)]
+    snapshot = store.load(workspace_id)
+
+    assert len(successful) == 1
+    assert [failure.code for failure in failures] == ["stale_revision"]
+    assert snapshot.active_revision_id == successful[0].revision_id
+    assert [revision.revision_id for revision in snapshot.revisions] == [
+        source.revision_id,
+        successful[0].revision_id,
+    ]
+
+
+def test_failed_processing_after_apply_preserves_active_state(
+    data_root, synthetic_xmu_bytes
+):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    active = store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    before = store.load(workspace_id)
+
+    with pytest.raises(WebInputError) as error:
+        store.apply_revision(
+            workspace_id,
+            source.revision_id,
+            expected_parent_revision=active.revision_id,
+            recipe=RecipeDraft(ft_window="invalid-window"),
+        )
+
+    after = store.load(workspace_id)
+    assert error.value.code == "processing_failed"
+    assert after.active_revision_id == before.active_revision_id
+    assert after.active_result == before.active_result
+    assert after.revisions == before.revisions
 
 
 def test_storage_rejects_parent_directory_as_a_file_name(data_root):

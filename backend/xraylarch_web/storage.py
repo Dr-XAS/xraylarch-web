@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 import re
 import secrets
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterator, Mapping
 
 import numpy as np
 
@@ -65,6 +67,19 @@ class WorkspaceStorage:
                 recovery="Retry the request.",
             )
         return path
+
+    @contextmanager
+    def lock(self, workspace_id: str) -> Iterator[None]:
+        """Serialize workspace mutation across threads and local worker processes."""
+        path = self.path(workspace_id, "workspace.lock")
+        descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
+        try:
+            os.fchmod(descriptor, 0o600)
+            fcntl.flock(descriptor, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            os.close(descriptor)
 
     def _atomic_replace(self, path: Path, writer) -> None:
         temp = path.with_name(f".{path.name}.{secrets.token_urlsafe(8)}.tmp")
