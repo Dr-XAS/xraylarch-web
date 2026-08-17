@@ -36,6 +36,16 @@ class UploadInspection(BaseModel):
     issues: tuple[FieldIssue, ...] = ()
 
 
+class InspectionResponse(UploadInspection):
+    upload_id: str
+
+
+class MappingRequest(BaseModel):
+    upload_id: str
+    energy_column: str
+    signal_column: str
+
+
 class RecipeDraft(BaseModel):
     e0: float | None = None
     step: float | None = None
@@ -56,6 +66,20 @@ class RecipeDraft(BaseModel):
     nfft: int = 2048
     kstep: float = 0.05
     rmax_out: float = 10.0
+
+
+class PreviewRequest(BaseModel):
+    source_revision_id: int
+    recipe: RecipeDraft
+
+
+class ApplyRequest(PreviewRequest):
+    expected_parent_revision: int | None
+
+
+class RestoreRequest(BaseModel):
+    revision_id: int
+    expected_parent_revision: int | None
 
 
 class EffectiveRecipe(BaseModel):

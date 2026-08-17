@@ -203,6 +203,17 @@ class WorkspaceStore:
             self._write_metadata(workspace_id, metadata)
             return RevisionSummary.model_validate(revision)
 
+    def preview(
+        self, workspace_id: str, source_revision_id: int, recipe: RecipeDraft
+    ) -> ProcessingResult:
+        """Process a mapped source without changing workspace state."""
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id)
+            source = self._source_mapping(metadata, source_revision_id)
+            parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
+            energy, mu = validate_mapping(parsed, source["energy_column"], source["signal_column"])
+            return run_processing(energy, mu, recipe)
+
     def restore_revision(
         self,
         workspace_id: str,
@@ -246,3 +257,37 @@ class WorkspaceStore:
             revisions=summaries,
             active_result=active_result,
         )
+
+    def revision_result(
+        self, workspace_id: str, revision_id: int
+    ) -> ProcessingResult:
+        metadata = self._metadata(workspace_id)
+        revision = self._revision(metadata, revision_id)
+        if revision["kind"] != "applied":
+            raise WorkspaceStateError(
+                "revision_not_downloadable",
+                "Only applied revisions have processed data.",
+                recovery="Select an applied recipe revision and retry.",
+            )
+        return self._load_result(workspace_id, revision["result"])
+
+    def revision_provenance(self, workspace_id: str, revision_id: int) -> dict[str, Any]:
+        metadata = self._metadata(workspace_id)
+        revision = self._revision(metadata, revision_id)
+        if revision["kind"] != "applied":
+            raise WorkspaceStateError(
+                "revision_not_downloadable",
+                "Only applied revisions have recipes.",
+                recovery="Select an applied recipe revision and retry.",
+            )
+        return {
+            key: revision[key]
+            for key in (
+                "revision_id",
+                "parent_revision_id",
+                "source_revision_id",
+                "restored_from_revision_id",
+                "recipe",
+                "effective",
+            )
+        }
