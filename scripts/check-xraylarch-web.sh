@@ -33,6 +33,7 @@ check_release() {
   [[ -d "$DATA_ROOT" && ! -L "$DATA_ROOT" ]] || { fail "private mutable data root is absent or symlinked"; return 1; }
   read_current_release || { fail "current release symlink is absent or invalid"; return 1; }
   [[ "$CURRENT_SHA" == "$REQUESTED_SHA" ]] || { fail "current release is not the requested SHA"; return 1; }
+  assert_last_successful_state "$REQUESTED_SHA" "$CURRENT_RELEASE" || return 1
   capture_component_record CHECK_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend \
     "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
   capture_component_record CHECK_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend \

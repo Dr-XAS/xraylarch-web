@@ -11,6 +11,7 @@ RELEASES_ROOT="${APP_ROOT}/releases"
 CURRENT_LINK="${APP_ROOT}/current"
 DATA_ROOT="${APP_ROOT}/data"
 STATE_ROOT="${APP_ROOT}/state"
+PROCESS_RECORD_ROOT="${STATE_ROOT}/processes"
 LOCK_FILE="${STATE_ROOT}/deploy.lock"
 FINAL_BACKEND_HOST="127.0.0.1"
 FINAL_BACKEND_PORT="8006"
@@ -87,14 +88,14 @@ parse_arguments() {
 
 initialize_host_paths() {
   install -d -m 0755 "$APP_ROOT" "$RELEASES_ROOT" || return 1
-  install -d -m 0700 "$DATA_ROOT" "$STATE_ROOT" "${DATA_ROOT}/candidates" || return 1
+  install -d -m 0700 "$DATA_ROOT" "$STATE_ROOT" "$PROCESS_RECORD_ROOT" "${DATA_ROOT}/candidates" || return 1
   exec 9>"$LOCK_FILE"
   flock -n 9 || { fail "another ${APP_SLUG} deployment is already running"; return 1; }
 }
 
 initialize_commands() {
   local command
-  for command in conda curl flock git lsof readlink screen sha256sum ss awk grep install mv chmod cp ps tr; do
+  for command in base64 conda curl flock git lsof readlink screen sha256sum ss awk grep install mv chmod cp ps tr; do
     require_command "$command" || return 1
   done
   CONDA_BIN=$(type -P conda) || { fail "conda must resolve to an executable"; return 1; }
@@ -194,25 +195,53 @@ listener_pid() {
   printf '%s\n' "${pids[0]}"
 }
 
+assert_port_unbound() {
+  local port="$1" pids
+  pids=$(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  [[ -z "$pids" ]] || { fail "listener collision on port $port"; return 1; }
+  if ss -ltnH | awk -v suffix=":${port}" '$4 ~ (suffix "$" ) { found=1 } END { exit found ? 0 : 1 }'; then
+    fail "listener collision on port $port"
+    return 1
+  fi
+}
+
 assert_listener_address() {
   ss -ltnH | awk -v expected="$1" '$4 == expected { found=1 } END { exit !found }' || { fail "expected listener is absent: $1"; return 1; }
 }
 
-pid_cwd_matches() {
-  local pid="$1" expected="$2" cwd
-  [[ -d "/proc/${pid}" ]] || { fail "recorded process is absent: $pid"; return 1; }
-  cwd=$(readlink -f "/proc/${pid}/cwd") || return 1
-  [[ "$cwd" == "$expected" ]] || { fail "process $pid has cwd $cwd, expected $expected"; return 1; }
+process_cwd() {
+  [[ -d "/proc/$1" ]] || { fail "recorded process is absent: $1"; return 1; }
+  readlink -f "/proc/$1/cwd"
 }
 
-cmdline_has_tokens() {
-  local pid="$1"
-  shift
-  local token cmdline
-  cmdline=$(tr '\0' '\n' <"/proc/${pid}/cmdline") || return 1
-  for token in "$@"; do
-    printf '%s\n' "$cmdline" | grep -Fx -- "$token" >/dev/null || { fail "process $pid command lacks token: $token"; return 1; }
-  done
+process_executable() {
+  [[ -d "/proc/$1" ]] || { fail "recorded process is absent: $1"; return 1; }
+  readlink -f "/proc/$1/exe"
+}
+
+process_owner() {
+  local owner
+  owner=$(ps -o user= -p "$1" 2>/dev/null | tr -d '[:space:]') || return 1
+  [[ -n "$owner" ]] || { fail "process owner is unavailable: $1"; return 1; }
+  printf '%s\n' "$owner"
+}
+
+process_cmdline_b64() {
+  [[ -r "/proc/$1/cmdline" ]] || { fail "process command line is unavailable: $1"; return 1; }
+  base64 <"/proc/$1/cmdline" | tr -d '\n'
+}
+
+read_process_argv() {
+  local pid="$1" argument
+  PROCESS_ARGV=()
+  while IFS= read -r -d '' argument; do PROCESS_ARGV+=("$argument"); done <"/proc/${pid}/cmdline"
+  [[ ${#PROCESS_ARGV[@]} -gt 0 ]] || { fail "process command line is empty: $pid"; return 1; }
+}
+
+pid_cwd_matches() {
+  local pid="$1" expected="$2" cwd
+  cwd=$(process_cwd "$pid") || return 1
+  [[ "$cwd" == "$expected" ]] || { fail "process $pid has cwd $cwd, expected $expected"; return 1; }
 }
 
 pid_is_descendant_of() {
@@ -228,11 +257,36 @@ pid_is_descendant_of() {
 
 component_command_matches() {
   local pid="$1" release="$2" kind="$3" host="$4" port="$5"
+  local executable index frontend_title_pattern='^next-server \(v[0-9]+\.[0-9]+\.[0-9]+[^)]*\)$'
+  local -a expected=()
+  read_process_argv "$pid" || return 1
   case "$kind" in
-    backend) cmdline_has_tokens "$pid" "${release}/backend/.venv/bin/uvicorn" xraylarch_web.main:app --host "$host" --port "$port" ;;
-    frontend) cmdline_has_tokens "$pid" "${release}/frontend/node_modules/next/dist/bin/next" start -H "$host" -p "$port" ;;
+    backend)
+      expected=("${release}/backend/.venv/bin/python" -m uvicorn xraylarch_web.main:app --host "$host" --port "$port")
+      [[ ${#PROCESS_ARGV[@]} -eq ${#expected[@]} ]] || { fail "backend listener argv length is unexpected"; return 1; }
+      for index in "${!expected[@]}"; do
+        [[ "${PROCESS_ARGV[$index]}" == "${expected[$index]}" ]] || { fail "backend listener argv differs at position $index"; return 1; }
+      done
+      ;;
+    frontend)
+      executable=$(process_executable "$pid") || return 1
+      [[ "${executable##*/}" == node ]] || { fail "frontend listener executable is not node"; return 1; }
+      [[ ${#PROCESS_ARGV[@]} -eq 1 && "${PROCESS_ARGV[0]}" =~ $frontend_title_pattern ]] || { fail "frontend listener title is not the Next server title"; return 1; }
+      ;;
     *) fail "unknown component kind: $kind" ;;
   esac
+}
+
+component_record_path() {
+  [[ "$1" =~ ^[A-Za-z0-9._-]+$ ]] || { fail "invalid component record name"; return 1; }
+  printf '%s/%s.record\n' "$PROCESS_RECORD_ROOT" "$1"
+}
+
+assert_component_record_available() {
+  local record
+  [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
+  record=$(component_record_path "$1") || return 1
+  [[ ! -e "$record" && ! -L "$record" ]] || { fail "component process record collision: $record"; return 1; }
 }
 
 set_component_record() {
@@ -245,9 +299,84 @@ set_component_record() {
   printf -v "${prefix}_RELEASE" '%s' "$release"
   printf -v "${prefix}_KIND" '%s' "$kind"
   printf -v "${prefix}_HOST" '%s' "$host"
+  printf -v "${prefix}_RECORD_FILE" '%s' "$(component_record_path "$name")"
 }
 
-capture_component_record() {
+observe_component_record() {
+  local prefix="$1" listener_pid_value screen_pid release release_sha
+  listener_pid_value=$(component_field "$prefix" LISTENER_PID)
+  screen_pid=$(component_field "$prefix" SCREEN_PID)
+  release=$(component_field "$prefix" RELEASE)
+  release_sha=$(release_sha_from_path "$release") || return 1
+  printf -v "${prefix}_CWD" '%s' "$(process_cwd "$listener_pid_value")" || return 1
+  printf -v "${prefix}_EXE" '%s' "$(process_executable "$listener_pid_value")" || return 1
+  printf -v "${prefix}_CMDLINE_B64" '%s' "$(process_cmdline_b64 "$listener_pid_value")" || return 1
+  printf -v "${prefix}_SCREEN_OWNER" '%s' "$(process_owner "$screen_pid")" || return 1
+  printf -v "${prefix}_LISTENER_OWNER" '%s' "$(process_owner "$listener_pid_value")" || return 1
+  printf -v "${prefix}_RELEASE_SHA" '%s' "$release_sha"
+}
+
+write_component_record() {
+  local prefix="$1" record temporary pair field key value
+  record=$(component_field "$prefix" RECORD_FILE)
+  [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
+  assert_component_record_available "$(component_field "$prefix" NAME)" || return 1
+  temporary="${record}.$$.tmp"
+  : >"$temporary" || return 1
+  printf 'version=1\n' >>"$temporary"
+  for pair in NAME:name SESSION:session SCREEN_PID:screen_pid LISTENER_PID:listener_pid PORT:port RELEASE:release RELEASE_SHA:release_sha KIND:kind HOST:host CWD:cwd EXE:exe CMDLINE_B64:cmdline_b64 SCREEN_OWNER:screen_owner LISTENER_OWNER:listener_owner; do
+    field=${pair%%:*}
+    key=${pair#*:}
+    value=$(component_field "$prefix" "$field")
+    [[ -n "$value" && "$value" != *$'\n'* ]] || { rm -f -- "$temporary"; fail "component record field is invalid: $field"; return 1; }
+    printf '%s=%s\n' "$key" "$value" >>"$temporary"
+  done
+  chmod 0600 "$temporary" || return 1
+  mv -f "$temporary" "$record"
+}
+
+load_component_record() {
+  local prefix="$1" expected_name="$2" expected_release="$3" expected_kind="$4" expected_host="$5" expected_port="$6"
+  local record key value count=0 version="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
+  [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
+  record=$(component_record_path "$expected_name") || return 1
+  [[ -f "$record" && ! -L "$record" ]] || { fail "component process record is absent or symlinked: $expected_name"; return 1; }
+  while IFS='=' read -r key value; do
+    ((count += 1))
+    case "$key" in
+      version) version="$value" ;;
+      name) name="$value" ;;
+      session) session="$value" ;;
+      screen_pid) screen_pid="$value" ;;
+      listener_pid) listener_pid_value="$value" ;;
+      port) port="$value" ;;
+      release) release="$value" ;;
+      release_sha) release_sha="$value" ;;
+      kind) kind="$value" ;;
+      host) host="$value" ;;
+      cwd) cwd="$value" ;;
+      exe) exe="$value" ;;
+      cmdline_b64) cmdline_b64="$value" ;;
+      screen_owner) screen_owner="$value" ;;
+      listener_owner) listener_owner="$value" ;;
+      *) fail "component process record contains an unknown field"; return 1 ;;
+    esac
+  done <"$record"
+  [[ "$count" -eq 15 && "$version" == 1 ]] || { fail "component process record has the wrong shape"; return 1; }
+  [[ "$name" == "$expected_name" && "$release" == "$expected_release" && "$kind" == "$expected_kind" && "$host" == "$expected_host" && "$port" == "$expected_port" ]] || { fail "component process record does not match the requested component"; return 1; }
+  validate_sha "$release_sha" || return 1
+  [[ "$screen_pid" =~ ^[0-9]+$ && "$listener_pid_value" =~ ^[0-9]+$ ]] || { fail "component process record has invalid PIDs"; return 1; }
+  [[ "$session" == "${screen_pid}.${name}" && "$cwd" == "${release}/${kind}" && "$exe" == /* && -n "$cmdline_b64" && -n "$screen_owner" && -n "$listener_owner" ]] || { fail "component process record has invalid identity fields"; return 1; }
+  set_component_record "$prefix" "$name" "$session" "$screen_pid" "$listener_pid_value" "$port" "$release" "$kind" "$host"
+  printf -v "${prefix}_CWD" '%s' "$cwd"
+  printf -v "${prefix}_EXE" '%s' "$exe"
+  printf -v "${prefix}_CMDLINE_B64" '%s' "$cmdline_b64"
+  printf -v "${prefix}_SCREEN_OWNER" '%s' "$screen_owner"
+  printf -v "${prefix}_LISTENER_OWNER" '%s' "$listener_owner"
+  printf -v "${prefix}_RELEASE_SHA" '%s' "$release_sha"
+}
+
+discover_component_record() {
   local prefix="$1" name="$2" release="$3" kind="$4" host="$5" port="$6"
   local session screen_pid listener_pid_value
   session=$(exact_screen_session "$name") || return 1
@@ -257,6 +386,13 @@ capture_component_record() {
   pid_cwd_matches "$listener_pid_value" "${release}/${kind}" || return 1
   component_command_matches "$listener_pid_value" "$release" "$kind" "$host" "$port" || return 1
   set_component_record "$prefix" "$name" "$session" "$screen_pid" "$listener_pid_value" "$port" "$release" "$kind" "$host"
+  observe_component_record "$prefix"
+}
+
+capture_component_record() {
+  local prefix="$1" name="$2" release="$3" kind="$4" host="$5" port="$6"
+  load_component_record "$prefix" "$name" "$release" "$kind" "$host" "$port" || return 1
+  component_record_matches "$prefix"
 }
 
 capture_screen_record() {
@@ -269,6 +405,7 @@ capture_screen_record() {
 component_record_matches() {
   local prefix="$1"
   local name session screen_pid listener_pid_value port release kind host observed_session observed_listener
+  local cwd executable cmdline_b64 screen_owner listener_owner release_sha marker_sha
   name=$(component_field "$prefix" NAME)
   session=$(component_field "$prefix" SESSION)
   screen_pid=$(component_field "$prefix" SCREEN_PID)
@@ -277,15 +414,28 @@ component_record_matches() {
   release=$(component_field "$prefix" RELEASE)
   kind=$(component_field "$prefix" KIND)
   host=$(component_field "$prefix" HOST)
+  cwd=$(component_field "$prefix" CWD)
+  executable=$(component_field "$prefix" EXE)
+  cmdline_b64=$(component_field "$prefix" CMDLINE_B64)
+  screen_owner=$(component_field "$prefix" SCREEN_OWNER)
+  listener_owner=$(component_field "$prefix" LISTENER_OWNER)
+  release_sha=$(component_field "$prefix" RELEASE_SHA)
   [[ -n "$name" && -n "$session" && -n "$screen_pid" && -n "$listener_pid_value" ]] || { fail "component record is incomplete: $prefix"; return 1; }
+  assert_release_identity "$release_sha" || return 1
+  [[ "$release" == "$(canonical_release_for_sha "$release_sha")" ]] || { fail "component record release marker mismatch"; return 1; }
+  marker_sha=$(<"${release}/.xraylarch-release.sha")
+  [[ "$marker_sha" == "$release_sha" ]] || { fail "component release marker changed"; return 1; }
   observed_session=$(exact_screen_session "$name") || return 1
   [[ "$observed_session" == "$session" ]] || { fail "screen session changed for $name"; return 1; }
   [[ "$(screen_pid_from_session "$observed_session")" == "$screen_pid" ]] || { fail "screen PID changed for $name"; return 1; }
   observed_listener=$(listener_pid "$port") || return 1
   [[ "$observed_listener" == "$listener_pid_value" ]] || { fail "listener PID changed on port $port"; return 1; }
   pid_is_descendant_of "$observed_listener" "$screen_pid" || return 1
-  pid_cwd_matches "$observed_listener" "${release}/${kind}" || return 1
-  component_command_matches "$observed_listener" "$release" "$kind" "$host" "$port"
+  [[ "$(process_owner "$screen_pid")" == "$screen_owner" ]] || { fail "screen owner changed for $name"; return 1; }
+  [[ "$(process_owner "$observed_listener")" == "$listener_owner" ]] || { fail "listener owner changed on port $port"; return 1; }
+  [[ "$cwd" == "${release}/${kind}" && "$(process_cwd "$observed_listener")" == "$cwd" ]] || { fail "listener cwd changed on port $port"; return 1; }
+  [[ "$(process_executable "$observed_listener")" == "$executable" ]] || { fail "listener executable changed on port $port"; return 1; }
+  [[ "$(process_cmdline_b64 "$observed_listener")" == "$cmdline_b64" ]] || { fail "listener command line changed on port $port"; return 1; }
 }
 
 component_field() {
@@ -296,7 +446,11 @@ component_field() {
 wait_for_component_record() {
   local prefix="$1" name="$2" release="$3" kind="$4" host="$5" port="$6" attempt
   for attempt in {1..20}; do
-    if capture_component_record "$prefix" "$name" "$release" "$kind" "$host" "$port" >/dev/null 2>&1; then return 0; fi
+    if discover_component_record "$prefix" "$name" "$release" "$kind" "$host" "$port" >/dev/null 2>&1; then
+      write_component_record "$prefix" || return 1
+      component_record_matches "$prefix" || return 1
+      return 0
+    fi
     sleep 1
   done
   fail "component did not become an owned listener: $name"
@@ -327,17 +481,21 @@ wait_for_port_absent() {
   fail "port did not become unbound: $port"
 }
 
-recorded_listener_still_matches() {
-  local listener_pid_value="$1" port="$2" release="$3" kind="$4" host="$5" observed
+recorded_process_still_matches() {
+  local prefix="$1" listener_pid_value port observed
+  listener_pid_value=$(component_field "$prefix" LISTENER_PID)
+  port=$(component_field "$prefix" PORT)
   observed=$(listener_pid "$port") || return 1
   [[ "$observed" == "$listener_pid_value" ]] || return 1
-  pid_cwd_matches "$observed" "${release}/${kind}" || return 1
-  component_command_matches "$observed" "$release" "$kind" "$host" "$port"
+  [[ "$(process_cwd "$observed")" == "$(component_field "$prefix" CWD)" ]] || return 1
+  [[ "$(process_executable "$observed")" == "$(component_field "$prefix" EXE)" ]] || return 1
+  [[ "$(process_cmdline_b64 "$observed")" == "$(component_field "$prefix" CMDLINE_B64)" ]] || return 1
+  [[ "$(process_owner "$observed")" == "$(component_field "$prefix" LISTENER_OWNER)" ]]
 }
 
 stop_recorded_component() {
   local name="$1" screen_pid="$2" listener_pid_value="$3" port="$4" release="$5" kind="$6" host="$7"
-  local session observed_screen_pid
+  local prefix="${8:-}" session observed_screen_pid record_file=""
   [[ -n "$name" && -n "$screen_pid" ]] || return 0
   session=$(exact_screen_session "$name") || return 1
   observed_screen_pid=$(screen_pid_from_session "$session") || return 1
@@ -347,14 +505,16 @@ stop_recorded_component() {
     wait_for_port_absent "$port"
     return
   fi
-  recorded_listener_still_matches "$listener_pid_value" "$port" "$release" "$kind" "$host" || return 1
-  pid_is_descendant_of "$listener_pid_value" "$screen_pid" || return 1
+  [[ -n "$prefix" ]] || { fail "listener stop requires its launch record"; return 1; }
+  component_record_matches "$prefix" || return 1
+  record_file=$(component_field "$prefix" RECORD_FILE)
   "$SCREEN_BIN" -S "$session" -X quit || return 1
   if ! wait_for_listener_release "$port" "$listener_pid_value"; then
-    recorded_listener_still_matches "$listener_pid_value" "$port" "$release" "$kind" "$host" || return 1
+    recorded_process_still_matches "$prefix" || return 1
     kill -TERM "$listener_pid_value" || return 1
     wait_for_listener_release "$port" "$listener_pid_value" || return 1
   fi
+  [[ -z "$record_file" ]] || rm -f -- "$record_file"
 }
 
 launch_screen() {
@@ -374,8 +534,10 @@ launch_component() {
   local prefix="$1" name="$2" release="$3" kind="$4" host="$5" port="$6" backend_url="$7" sha
   sha=$(release_sha_from_path "$release") || return 1
   assert_release_identity "$sha" || return 1
+  assert_component_record_available "$name" || return 1
+  assert_port_unbound "$port" || return 1
   case "$kind" in
-    backend) launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/uvicorn" xraylarch_web.main:app --host "$host" --port "$port" || return 1 ;;
+    backend) launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/python" -m uvicorn xraylarch_web.main:app --host "$host" --port "$port" || return 1 ;;
     frontend) launch_screen "$name" "${release}/frontend" "$backend_url" "$CONDA_BIN" run --no-capture-output -n drxas-node20 "${release}/frontend/node_modules/.bin/next" start -H "$host" -p "$port" || return 1 ;;
     *) fail "unknown component kind: $kind" ;;
   esac
@@ -422,13 +584,13 @@ verify_component_pair() {
 
 reset_activation_records() {
   local variable
-  for variable in $(compgen -A variable | grep -E '^ACTIVATION_(TARGET|STAGE)_(FRONTEND|BACKEND)_(NAME|SESSION|SCREEN_PID|LISTENER_PID|PORT|RELEASE|KIND|HOST)$' || true); do printf -v "$variable" '%s' ""; done
+  for variable in $(compgen -A variable | grep -E '^ACTIVATION_(TARGET|STAGE)_(FRONTEND|BACKEND)_(NAME|SESSION|SCREEN_PID|LISTENER_PID|PORT|RELEASE|RELEASE_SHA|KIND|HOST|CWD|EXE|CMDLINE_B64|SCREEN_OWNER|LISTENER_OWNER|RECORD_FILE)$' || true); do printf -v "$variable" '%s' ""; done
 }
 
 snapshot_prior_state() {
   ACTIVATION_STATE_SNAPSHOT=""
   ACTIVATION_STATE_WAS_PRESENT=0
-  if [[ -e "${STATE_ROOT}/last-successful" ]]; then
+  if [[ -e "${STATE_ROOT}/last-successful" || -L "${STATE_ROOT}/last-successful" ]]; then
     [[ -f "${STATE_ROOT}/last-successful" && ! -L "${STATE_ROOT}/last-successful" ]] || { fail "last-successful is not a regular file"; return 1; }
     ACTIVATION_STATE_SNAPSHOT=$(mktemp "${STATE_ROOT}/.last-successful.before.${REQUESTED_SHA}.XXXXXX") || return 1
     cp --preserve=mode "${STATE_ROOT}/last-successful" "$ACTIVATION_STATE_SNAPSHOT" || return 1
@@ -446,6 +608,24 @@ write_last_successful() {
   local release="$1" temporary="${STATE_ROOT}/.last-successful.${REQUESTED_SHA}.$$"
   printf 'sha=%s\nrelease=%s\nactivated_at_utc=%s\n' "$REQUESTED_SHA" "$release" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$temporary" || return 1
   mv -f "$temporary" "${STATE_ROOT}/last-successful"
+}
+
+assert_last_successful_state() {
+  local expected_sha="$1" expected_release="$2" state_file="${STATE_ROOT}/last-successful"
+  local line1="" line2="" line3="" extra="" canonical timestamp_pattern='^activated_at_utc=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$'
+  validate_sha "$expected_sha" || return 1
+  canonical=$(canonical_release_for_sha "$expected_sha") || return 1
+  [[ "$expected_release" == "$canonical" ]] || { fail "last-successful expected release is not canonical"; return 1; }
+  [[ -f "$state_file" && ! -L "$state_file" ]] || { fail "last-successful is absent, non-regular, or symlinked"; return 1; }
+  {
+    IFS= read -r line1 || return 1
+    IFS= read -r line2 || return 1
+    IFS= read -r line3 || return 1
+    if IFS= read -r extra; then fail "last-successful contains extra fields"; return 1; fi
+  } <"$state_file"
+  [[ "$line1" == "sha=${expected_sha}" ]] || { fail "last-successful SHA mismatch"; return 1; }
+  [[ "$line2" == "release=${canonical}" ]] || { fail "last-successful release mismatch"; return 1; }
+  [[ "$line3" =~ $timestamp_pattern ]] || { fail "last-successful activation timestamp is malformed"; return 1; }
 }
 
 restore_prior_link_and_state() {
@@ -472,7 +652,10 @@ stop_recorded_prefix() {
   release=$(component_field "$prefix" RELEASE)
   kind=$(component_field "$prefix" KIND)
   host=$(component_field "$prefix" HOST)
-  stop_recorded_component "$name" "$screen_pid" "$listener_pid_value" "$port" "$release" "$kind" "$host"
+  stop_recorded_component "$name" "$screen_pid" "$listener_pid_value" "$port" "$release" "$kind" "$host" "$prefix" || return 1
+  printf -v "${prefix}_NAME" '%s' ""
+  printf -v "${prefix}_SCREEN_PID" '%s' ""
+  printf -v "${prefix}_LISTENER_PID" '%s' ""
 }
 
 restart_previous_release() {
@@ -530,6 +713,7 @@ begin_activation() {
   if [[ -e "$CURRENT_LINK" || -L "$CURRENT_LINK" ]]; then
     [[ -L "$CURRENT_LINK" ]] || { fail "current path exists but is not a symlink"; return 1; }
     read_current_release || return 1
+    assert_last_successful_state "$CURRENT_SHA" "$CURRENT_RELEASE" || return 1
     ACTIVATION_PREVIOUS_RELEASE="$CURRENT_RELEASE"
     ACTIVATION_PREVIOUS_SHA="$CURRENT_SHA"
     capture_component_record ACTIVATION_PREVIOUS_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
@@ -572,6 +756,7 @@ activate_release() {
   write_current_link "$ACTIVATION_TARGET_RELEASE" || { recover_activation || true; return 1; }
   write_last_successful "$ACTIVATION_TARGET_RELEASE" || { recover_activation || true; return 1; }
   ACTIVATION_STATE_WRITTEN=1
+  assert_last_successful_state "$target_sha" "$ACTIVATION_TARGET_RELEASE" || { recover_activation || true; return 1; }
   verify_component_pair ACTIVATION_TARGET_FRONTEND ACTIVATION_TARGET_BACKEND "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" "$FINAL_BACKEND_URL" 1 || { recover_activation || true; return 1; }
   [[ "$(readlink -f -- "$CURRENT_LINK")" == "$ACTIVATION_TARGET_RELEASE" ]] || { recover_activation || true; return 1; }
   [[ -z "$ACTIVATION_STATE_SNAPSHOT" ]] || rm -f -- "$ACTIVATION_STATE_SNAPSHOT"
@@ -582,6 +767,12 @@ verify_remote_branch_tip() {
   local remote_ref
   remote_ref=$(run_clean git ls-remote --refs "$REPOSITORY" "refs/heads/${APPROVED_BRANCH}") || return 1
   [[ "$remote_ref" == "${REQUESTED_SHA}"$'\t'"refs/heads/${APPROVED_BRANCH}" ]] || { fail "remote approved branch is not the requested SHA"; return 1; }
+}
+
+assert_frontend_runtime_supported() {
+  run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 node -e \
+    'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 20 || (major === 20 && minor >= 9) ? 0 : 1)' \
+    || { fail "drxas-node20 must provide Node.js 20.9 or newer"; return 1; }
 }
 
 build_release() {
@@ -597,6 +788,7 @@ build_release() {
   run_clean git -C "$temporary" checkout --quiet --detach "$REQUESTED_SHA" || return 1
   run_clean "$CONDA_BIN" run --no-capture-output -n drxas-deploy python -m venv "${temporary}/backend/.venv" || return 1
   ( cd "${temporary}/backend" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --requirement requirements.txt && run_clean "${temporary}/backend/.venv/bin/python" -m pip check && run_clean "${temporary}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt ) || return 1
+  assert_frontend_runtime_supported || return 1
   ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"
   printf 'repository=%s\nbranch=%s\nsha=%s\nbuilt_at_utc=%s\n' "$REPOSITORY" "$APPROVED_BRANCH" "$REQUESTED_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${temporary}/.xraylarch-release.manifest"
@@ -612,6 +804,7 @@ perform_rollback() { assert_release_identity "$REQUESTED_SHA" && activate_releas
 perform_health() {
   read_current_release || { fail "current release symlink is absent"; return 1; }
   [[ "$CURRENT_SHA" == "$REQUESTED_SHA" ]] || { fail "current release is not the requested SHA"; return 1; }
+  assert_last_successful_state "$REQUESTED_SHA" "$CURRENT_RELEASE" || return 1
   capture_component_record CHECK_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
   capture_component_record CHECK_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend "$FINAL_BACKEND_HOST" "$FINAL_BACKEND_PORT" || return 1
   verify_component_pair CHECK_FRONTEND CHECK_BACKEND "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" "$FINAL_BACKEND_URL" 1 || return 1

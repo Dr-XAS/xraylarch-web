@@ -16,6 +16,7 @@
 | Release root | `/local/apps/xraylarch-web/releases` |
 | Active release link | `/local/apps/xraylarch-web/current` |
 | Mutable data root | `/local/apps/xraylarch-web/data` |
+| Process identity records | `/local/apps/xraylarch-web/state/processes` |
 | Frontend screen | `xraylarch-web-frontend` |
 | Backend screen | `xraylarch-web-backend` |
 | Candidate frontend screen | `xraylarch-web-candidate-frontend` |
@@ -53,9 +54,11 @@ provider, email, Slack, or Dr.XAS database secrets.
 The active release stays on `3004` and `8006`. Before any cutover, the
 deployer runs the target release in the two candidate screens on private
 loopback `13004` and `18006`. It records each exact screen session PID and
-listener child PID, then requires exact process ancestry, command, working
-directory, listener, frontend/backend/proxy health, and candidate release
-identity. The active release remains untouched through this staging check.
+listener child PID together with the observed command line, executable,
+working directory, owners, port, and release SHA. It then requires exact
+process ancestry, recorded identity, listener, frontend/backend/proxy health,
+and candidate release identity. The active release remains untouched through
+this staging check.
 
 Only then does a brief, app-only handoff stop the two verified active
 processes, wait for their exact listener PIDs and ports to disappear, and
@@ -74,7 +77,7 @@ ownership mismatch is a fail-closed collision and is never stopped.
 The backend runs from the release `backend/` directory:
 
 ```bash
-backend/.venv/bin/uvicorn xraylarch_web.main:app --host 127.0.0.1 --port 8006
+backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --host 127.0.0.1 --port 8006
 ```
 
 The frontend runs from the release `frontend/` directory using the
@@ -97,10 +100,13 @@ An active release is healthy only when all of the following hold:
 - same-origin `/api/backend/health` returns HTTP 200;
 - `current`, detached release `HEAD`, and release metadata equal the requested
   SHA;
+- `state/last-successful` is a regular, non-symlink file whose SHA and
+  canonical release path match the requested active release;
 - exactly one final screen session exists for each name; listeners are exactly
   `0.0.0.0:3004` and `127.0.0.1:8006`; each listener PID is a recorded
-  descendant of its screen PID and has the approved command plus the active
-  release `frontend/` or `backend/` working directory; and
+  descendant of its screen PID and still matches the launch-time executable,
+  command line, owners, release marker, and active release `frontend/` or
+  `backend/` working directory; and
 - existing Dr.XAS services remain healthy on `3000`, `3001`, `8000`, `8001`,
   `8002`, and `8003` with their established expected HTTP responses.
 

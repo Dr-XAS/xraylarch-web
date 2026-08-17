@@ -14,6 +14,75 @@ if validate_sha not-a-sha >/dev/null 2>&1; then
 fi
 validate_sha 0123456789abcdef0123456789abcdef01234567
 
+state_test_root=$(mktemp -d)
+state_test_root=$(cd "$state_test_root" && pwd -P)
+trap 'rm -rf -- "$state_test_root"' EXIT
+RELEASES_ROOT="${state_test_root}/releases"
+STATE_ROOT="${state_test_root}/state"
+PROCESS_RECORD_ROOT="${STATE_ROOT}/processes"
+CURRENT_LINK="${state_test_root}/current"
+state_sha=0123456789abcdef0123456789abcdef01234567
+state_release="${RELEASES_ROOT}/${state_sha}"
+mkdir -p "$state_release" "$PROCESS_RECORD_ROOT"
+printf '%s\n' "$state_sha" >"${state_release}/.xraylarch-release.sha"
+printf 'sha=%s\nrelease=%s\nactivated_at_utc=2026-08-17T12:00:00Z\n' "$state_sha" "$state_release" >"${STATE_ROOT}/last-successful"
+assert_last_successful_state "$state_sha" "$state_release" || test_fail "matching last-successful state must pass"
+
+printf 'sha=%s\nrelease=%s\nactivated_at_utc=2026-08-17T12:00:00Z\n' 1111111111111111111111111111111111111111 "$state_release" >"${STATE_ROOT}/last-successful"
+if assert_last_successful_state "$state_sha" "$state_release" >/dev/null 2>&1; then
+  test_fail "stale last-successful SHA must fail"
+fi
+rm -f "${STATE_ROOT}/last-successful"
+ln -s "${STATE_ROOT}/missing-state-target" "${STATE_ROOT}/last-successful"
+REQUESTED_SHA="$state_sha"
+if snapshot_prior_state >/dev/null 2>&1; then
+  test_fail "broken-symlink last-successful state must fail before activation"
+fi
+rm -f "${STATE_ROOT}/last-successful"
+if assert_last_successful_state "$state_sha" "$state_release" >/dev/null 2>&1; then
+  test_fail "missing last-successful state must fail"
+fi
+printf 'sha=%s\nrelease=%s\nactivated_at_utc=2026-08-17T12:00:00Z\n' "$state_sha" "$state_release" >"${STATE_ROOT}/state-target"
+ln -s "${STATE_ROOT}/state-target" "${STATE_ROOT}/last-successful"
+if assert_last_successful_state "$state_sha" "$state_release" >/dev/null 2>&1; then
+  test_fail "symlinked last-successful state must fail"
+fi
+rm -f "${STATE_ROOT}/last-successful"
+
+read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)"); }
+process_executable() { printf '/opt/drxas-node20/bin/node\n'; }
+component_command_matches 501 /release frontend 127.0.0.1 13004 || test_fail "Next listener title must be accepted without a node_modules argv path"
+read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "unexpected"); }
+if component_command_matches 501 /release frontend 127.0.0.1 13004 >/dev/null 2>&1; then
+  test_fail "changed Next listener argv must fail exact identity"
+fi
+
+set_component_record RECORD xraylarch-web-candidate-frontend 501.xraylarch-web-candidate-frontend 501 502 13004 "$state_release" frontend 127.0.0.1
+RECORD_RELEASE_SHA="$state_sha"
+RECORD_CWD="${state_release}/frontend"
+RECORD_EXE=/opt/drxas-node20/bin/node
+RECORD_CMDLINE_B64=bmV4dC1zZXJ2ZXIA
+RECORD_SCREEN_OWNER=drxas
+RECORD_LISTENER_OWNER=drxas
+write_component_record RECORD || test_fail "candidate process record must be written atomically"
+if assert_component_record_available xraylarch-web-candidate-frontend >/dev/null 2>&1; then
+  test_fail "candidate launch must refuse an existing process record"
+fi
+load_component_record LOADED xraylarch-web-candidate-frontend "$state_release" frontend 127.0.0.1 13004 || test_fail "candidate process record must be loadable"
+[[ "$LOADED_LISTENER_PID" == 502 ]] || test_fail "listener PID must round-trip through the process record"
+[[ "$LOADED_CMDLINE_B64" == "$RECORD_CMDLINE_B64" ]] || test_fail "exact listener command line must round-trip through the process record"
+[[ "$LOADED_CWD" == "${state_release}/frontend" ]] || test_fail "release cwd must round-trip through the process record"
+rm -f "$RECORD_RECORD_FILE"
+assert_component_record_available xraylarch-web-candidate-frontend || test_fail "candidate launch may use an unused process record name"
+
+lsof() { printf '999\n'; }
+ss() { return 0; }
+if assert_port_unbound 13004 >/dev/null 2>&1; then
+  test_fail "candidate launch must refuse an occupied staging port"
+fi
+lsof() { return 0; }
+assert_port_unbound 13004 || test_fail "candidate launch may use an unbound staging port"
+
 screen_mock() {
   if [[ "$1" == -ls ]]; then
     printf '401.xraylarch-web-frontend\t(Detached)\n'

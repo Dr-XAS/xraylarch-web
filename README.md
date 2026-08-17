@@ -110,12 +110,16 @@ The active application remains on `3004`/`8006` while a release candidate is
 started in `xraylarch-web-candidate-frontend` and
 `xraylarch-web-candidate-backend` on app-private loopback `13004`/`18006`.
 The deployer records and validates exact screen and listener PIDs, ancestry,
-commands, working directories, and candidate health before it begins the
-brief final-port handoff. It then waits for the old recorded listeners to
-release `3004` and `8006`, starts the target under the final screen names,
-revalidates its identity, and atomically activates it. This is not zero
-downtime. A failure stops only recorded target/candidate processes and restores
-the prior release's symlink, state, processes, and health.
+the observed command line, executable, owners, release marker, working
+directory, and candidate health before it begins the brief final-port handoff.
+Those private launch records live under `/local/apps/xraylarch-web/state/processes`.
+It then waits for the old recorded listeners to release `3004` and `8006`,
+starts the target under the final screen names, revalidates its identity, and
+atomically activates it. Health checks also require a regular, non-symlink
+`state/last-successful` whose SHA and canonical release path match `current`.
+This is not zero downtime. A failure stops only recorded target/candidate
+processes and restores the prior release's symlink, state, processes, and
+health.
 
 ## Larch Applications
 
