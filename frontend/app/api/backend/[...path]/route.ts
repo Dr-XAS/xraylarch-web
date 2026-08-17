@@ -25,12 +25,16 @@ async function proxy(request: Request, { params }: { params: { path: string[] } 
     if (value) headers.set(header, value)
   }
 
-  const backendResponse = await fetch(upstream, {
+  const body = request.method === "GET" || request.method === "HEAD" ? undefined : request.body
+  const init: RequestInit & { duplex?: "half" } = {
     method: request.method,
     headers,
-    body: request.method === "GET" || request.method === "HEAD" ? undefined : request.body,
+    body,
     cache: "no-store",
-  })
+  }
+  if (body) init.duplex = "half"
+
+  const backendResponse = await fetch(upstream, init)
   const outputHeaders = new Headers()
   for (const header of responseHeaders) {
     const value = backendResponse.headers.get(header)
