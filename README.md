@@ -83,6 +83,34 @@ chat, public deployment, authentication, and sharing remain outside V1. The
 planned Dr.XAS address is [http://drxas.xray.aps.anl.gov:3004](http://drxas.xray.aps.anl.gov:3004);
 this README does not imply that it has been deployed.
 
+### Guarded Dr.XAS release package
+
+The checked-in deployment contract is
+[`deploy/xraylarch-web.manifest.md`](deploy/xraylarch-web.manifest.md). It
+reserves an isolated `/local/apps/xraylarch-web` namespace, immutable
+SHA-addressed releases, private mutable data only under
+`/local/apps/xraylarch-web/data`, the namespaced frontend/backend screens, and
+the planned `3004`/`8006` listeners. The host scripts are
+[`scripts/deploy-xraylarch-web.sh`](scripts/deploy-xraylarch-web.sh) and
+[`scripts/check-xraylarch-web.sh`](scripts/check-xraylarch-web.sh).
+
+The scripts are a release package, not permission to write to Dr.XAS. A first
+host install, any GitHub push, and every host deployment require an explicit
+gate after a fresh host preflight. When that gate exists, the future operator
+uses only a full SHA from `codex/xraylarch-web-v1`:
+
+```bash
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh deploy <full-sha>
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh health <full-sha>
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh rollback <full-sha>
+/local/apps/xraylarch-web/ops/check-xraylarch-web.sh check <full-sha>
+```
+
+Because those exact screens must bind the fixed ports, a later release uses a
+brief, app-only handoff after its immutable build finishes. If the candidate
+does not pass HTTP, listener, screen, and process-working-directory checks,
+only its two screens are stopped and the preceding release is restored.
+
 ## Larch Applications
 
 These applications installed with Larch, in addition to a basic Python
