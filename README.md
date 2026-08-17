@@ -106,10 +106,16 @@ uses only a full SHA from `codex/xraylarch-web-v1`:
 /local/apps/xraylarch-web/ops/check-xraylarch-web.sh check <full-sha>
 ```
 
-Because those exact screens must bind the fixed ports, a later release uses a
-brief, app-only handoff after its immutable build finishes. If the candidate
-does not pass HTTP, listener, screen, and process-working-directory checks,
-only its two screens are stopped and the preceding release is restored.
+The active application remains on `3004`/`8006` while a release candidate is
+started in `xraylarch-web-candidate-frontend` and
+`xraylarch-web-candidate-backend` on app-private loopback `13004`/`18006`.
+The deployer records and validates exact screen and listener PIDs, ancestry,
+commands, working directories, and candidate health before it begins the
+brief final-port handoff. It then waits for the old recorded listeners to
+release `3004` and `8006`, starts the target under the final screen names,
+revalidates its identity, and atomically activates it. This is not zero
+downtime. A failure stops only recorded target/candidate processes and restores
+the prior release's symlink, state, processes, and health.
 
 ## Larch Applications
 
