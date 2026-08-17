@@ -41,6 +41,11 @@ Thumbs.db
 *iframe_figures
 .vscode/
 .empty/
+
+backend/.venv/
+backend/data/
+backend/.pytest_cache/
+backend/*.egg-info/
 .eggs/
 .coverage
 *code-workspace
