@@ -141,7 +141,7 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
             _csv_result(store.revision_result(workspace_id, revision_id)),
             media_type="text/csv",
             headers={
-                "Content-Disposition": 'attachment; filename="xraylarch-data.csv"'
+                "Content-Disposition": 'attachment; filename="data.csv"'
             },
         )
 
@@ -150,7 +150,7 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         return JSONResponse(
             store.revision_provenance(workspace_id, revision_id),
             headers={
-                "Content-Disposition": 'attachment; filename="xraylarch-recipe.json"'
+                "Content-Disposition": 'attachment; filename="recipe.json"'
             },
         )
 

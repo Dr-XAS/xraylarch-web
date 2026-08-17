@@ -5,6 +5,7 @@ import httpx
 
 from xraylarch_web.config import Settings
 from xraylarch_web.main import create_app
+import xraylarch_web.routes as routes_module
 
 
 def _app(data_root: Path):
@@ -15,6 +16,51 @@ def _client(app):
     return httpx.AsyncClient(
         transport=httpx.ASGITransport(app=app), base_url="http://testserver"
     )
+
+
+async def _asgi_request(app, *, headers, body_chunks):
+    """Run a request with an intentionally absent or misleading Content-Length."""
+    chunks = iter(body_chunks)
+    received = 0
+    sent = []
+
+    async def receive():
+        nonlocal received
+        received += 1
+        try:
+            body = next(chunks)
+        except StopIteration:
+            return {"type": "http.disconnect"}
+        return {"type": "http.request", "body": body, "more_body": True}
+
+    async def send(message):
+        sent.append(message)
+
+    await app(
+        {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "http",
+            "path": "/api/workspaces/ignored/uploads/inspect",
+            "raw_path": b"/api/workspaces/ignored/uploads/inspect",
+            "query_string": b"",
+            "root_path": "",
+            "headers": headers,
+            "client": ("127.0.0.1", 12345),
+            "server": ("testserver", 80),
+        },
+        receive,
+        send,
+    )
+    status = next(message["status"] for message in sent if message["type"] == "http.response.start")
+    body = b"".join(
+        message.get("body", b"")
+        for message in sent
+        if message["type"] == "http.response.body"
+    )
+    return status, body, received
 
 
 def test_health_reports_backend_metadata(tmp_path):
@@ -29,7 +75,7 @@ def test_health_reports_backend_metadata(tmp_path):
 
 
 def test_workspace_api_processes_upload_without_preview_mutation(
-    tmp_path, sample_xmu_bytes
+    tmp_path, synthetic_xmu_bytes
 ):
     async def exercise() -> None:
         async with _client(_app(tmp_path)) as client:
@@ -39,7 +85,7 @@ def test_workspace_api_processes_upload_without_preview_mutation(
 
             inspected = await client.post(
                 f"/api/workspaces/{workspace_id}/uploads/inspect",
-                files={"file": ("cu_rt01.xmu", sample_xmu_bytes, "text/plain")},
+                files={"file": ("synthetic.xmu", synthetic_xmu_bytes, "text/plain")},
             )
             assert inspected.status_code == 200
             inspection = inspected.json()
@@ -91,7 +137,7 @@ def test_workspace_api_processes_upload_without_preview_mutation(
             assert download.status_code == 200
             assert "energy" in download.text.lower()
             assert download.headers["content-disposition"] == (
-                'attachment; filename="xraylarch-data.csv"'
+                'attachment; filename="data.csv"'
             )
 
             recipe = await client.get(
@@ -100,7 +146,7 @@ def test_workspace_api_processes_upload_without_preview_mutation(
             assert recipe.status_code == 200
             assert recipe.json()["revision_id"] == revision_id
             assert recipe.headers["content-disposition"] == (
-                'attachment; filename="xraylarch-recipe.json"'
+                'attachment; filename="recipe.json"'
             )
 
             missing_revision = await client.get(
@@ -113,7 +159,7 @@ def test_workspace_api_processes_upload_without_preview_mutation(
 
 
 def test_workspace_api_isolates_uploads_and_serializes_safe_errors(
-    tmp_path, sample_xmu_bytes
+    tmp_path, synthetic_xmu_bytes
 ):
     async def exercise() -> None:
         async with _client(_app(tmp_path)) as client:
@@ -124,7 +170,7 @@ def test_workspace_api_isolates_uploads_and_serializes_safe_errors(
 
             inspected = await client.post(
                 f"/api/workspaces/{first_id}/uploads/inspect",
-                files={"file": ("private.xmu", sample_xmu_bytes, "text/plain")},
+                files={"file": ("private.xmu", synthetic_xmu_bytes, "text/plain")},
             )
             upload_id = inspected.json()["upload_id"]
 
@@ -169,7 +215,7 @@ def test_workspace_api_isolates_uploads_and_serializes_safe_errors(
 
 
 def test_stale_apply_returns_conflict_without_changing_applied_revision(
-    tmp_path, sample_xmu_bytes
+    tmp_path, synthetic_xmu_bytes
 ):
     async def exercise() -> None:
         async with _client(_app(tmp_path)) as client:
@@ -177,7 +223,7 @@ def test_stale_apply_returns_conflict_without_changing_applied_revision(
             workspace_id = workspace.json()["workspace_id"]
             inspected = await client.post(
                 f"/api/workspaces/{workspace_id}/uploads/inspect",
-                files={"file": ("cu_rt01.xmu", sample_xmu_bytes, "text/plain")},
+                files={"file": ("synthetic.xmu", synthetic_xmu_bytes, "text/plain")},
             )
             mapped = await client.post(
                 f"/api/workspaces/{workspace_id}/mapping",
@@ -215,14 +261,14 @@ def test_stale_apply_returns_conflict_without_changing_applied_revision(
     asyncio.run(exercise())
 
 
-def test_restore_creates_a_new_applied_revision(tmp_path, sample_xmu_bytes):
+def test_restore_creates_a_new_applied_revision(tmp_path, synthetic_xmu_bytes):
     async def exercise() -> None:
         async with _client(_app(tmp_path)) as client:
             workspace = await client.post("/api/workspaces")
             workspace_id = workspace.json()["workspace_id"]
             inspected = await client.post(
                 f"/api/workspaces/{workspace_id}/uploads/inspect",
-                files={"file": ("cu_rt01.xmu", sample_xmu_bytes, "text/plain")},
+                files={"file": ("synthetic.xmu", synthetic_xmu_bytes, "text/plain")},
             )
             mapped = await client.post(
                 f"/api/workspaces/{workspace_id}/mapping",
@@ -254,5 +300,80 @@ def test_restore_creates_a_new_applied_revision(tmp_path, sample_xmu_bytes):
             snapshot = restored.json()
             assert snapshot["active_revision_id"] > first_revision_id
             assert snapshot["revisions"][-1]["restored_from_revision_id"] == first_revision_id
+
+    asyncio.run(exercise())
+
+
+def test_upload_cap_rejects_an_oversized_declared_content_length_before_receive(
+    tmp_path, monkeypatch
+):
+    parsed = False
+
+    def fail_if_parsed(*args, **kwargs):
+        nonlocal parsed
+        parsed = True
+        raise AssertionError("multipart parsing reached the upload route")
+
+    monkeypatch.setattr(routes_module, "parse_upload", fail_if_parsed)
+
+    async def exercise() -> None:
+        app = create_app(Settings(data_root=tmp_path, max_upload_bytes=10))
+        status, body, received = await _asgi_request(
+            app,
+            headers=[
+                (b"content-type", b"multipart/form-data; boundary=boundary"),
+                (b"content-length", b"11"),
+            ],
+            body_chunks=(),
+        )
+
+        assert status == 400
+        assert body == (
+            b'{"error":{"code":"upload_too_large",'
+            b'"message":"Upload exceeds the 10 byte limit.",'
+            b'"fields":["file"],'
+            b'"recovery":"Choose a smaller text upload."}}'
+        )
+        assert received == 0
+        assert not parsed
+
+    asyncio.run(exercise())
+
+
+def test_upload_cap_rejects_streamed_body_without_trusting_content_length(
+    tmp_path, monkeypatch
+):
+    parsed = False
+
+    def fail_if_parsed(*args, **kwargs):
+        nonlocal parsed
+        parsed = True
+        raise AssertionError("multipart parsing reached the upload route")
+
+    monkeypatch.setattr(routes_module, "parse_upload", fail_if_parsed)
+
+    async def exercise() -> None:
+        app = create_app(Settings(data_root=tmp_path, max_upload_bytes=300))
+        multipart_body = (
+            b"--boundary\r\n"
+            b'Content-Disposition: form-data; name="file"; filename="oversized.xmu"\r\n'
+            b"Content-Type: text/plain\r\n\r\n"
+            + b"1" * 300
+            + b"\r\n--boundary--\r\n"
+        )
+        for content_length in (None, b"1"):
+            headers = [(b"content-type", b"multipart/form-data; boundary=boundary")]
+            if content_length is not None:
+                headers.append((b"content-length", content_length))
+            status, body, received = await _asgi_request(
+                app,
+                headers=headers,
+                body_chunks=(multipart_body[:200], multipart_body[200:]),
+            )
+
+            assert status == 400
+            assert b'"code":"upload_too_large"' in body
+            assert received == 2
+            assert not parsed
 
     asyncio.run(exercise())
