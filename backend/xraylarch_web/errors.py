@@ -27,3 +27,7 @@ class WebInputError(ValueError):
             fields=self.fields,
             recovery=self.recovery,
         )
+
+
+class WorkspaceStateError(WebInputError):
+    """Stable error for an invalid or unavailable private workspace state."""

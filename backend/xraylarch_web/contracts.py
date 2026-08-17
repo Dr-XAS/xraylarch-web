@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Literal, Mapping
 
 import numpy as np
 from pydantic import BaseModel, Field
@@ -34,6 +34,81 @@ class UploadInspection(BaseModel):
     columns: tuple[ColumnInfo, ...]
     warnings: tuple[str, ...] = ()
     issues: tuple[FieldIssue, ...] = ()
+
+
+class RecipeDraft(BaseModel):
+    e0: float | None = None
+    step: float | None = None
+    nnorm: int | None = None
+    pre1: float | None = None
+    pre2: float | None = None
+    norm1: float | None = None
+    norm2: float | None = None
+    rbkg: float = 1.0
+    kmin: float = 0.0
+    kmax: float | None = None
+    kweight: int = 2
+    autobk_dk: float | None = None
+    autobk_window: str | None = None
+    ft_dk: float = 1.0
+    ft_dk2: float | None = None
+    ft_window: str = "kaiser"
+    nfft: int = 2048
+    kstep: float = 0.05
+    rmax_out: float = 10.0
+
+
+class EffectiveRecipe(BaseModel):
+    e0: float
+    edge_step: float
+    rbkg: float
+    kmin: float
+    kmax: float
+    kweight: int
+    autobk_dk: float
+    autobk_window: str
+    ft_dk: float
+    ft_dk2: float | None = None
+    ft_window: str
+    nfft: int
+    kstep: float
+    rmax_out: float
+
+
+class PlotTrace(BaseModel):
+    id: Literal["raw_mu", "norm_mu", "chi_k", "chi_r"]
+    label: str
+    x_label: str
+    y_label: str
+    x_unit: str
+    y_unit: str
+    x: tuple[float, ...]
+    y: tuple[float, ...]
+
+
+class PlotBundle(BaseModel):
+    plots: tuple[PlotTrace, ...]
+
+
+class ProcessingResult(PlotBundle):
+    effective: EffectiveRecipe
+
+
+class RevisionSummary(BaseModel):
+    revision_id: int
+    kind: Literal["mapping", "applied"]
+    parent_revision_id: int | None = None
+    source_revision_id: int | None = None
+    restored_from_revision_id: int | None = None
+    recipe: RecipeDraft | None = None
+    effective: EffectiveRecipe | None = None
+
+
+class WorkspaceSnapshot(BaseModel):
+    workspace_id: str
+    active_revision_id: int | None = None
+    revisions: tuple[RevisionSummary, ...] = ()
+    active_result: ProcessingResult | None = None
 
 
 @dataclass(frozen=True)
