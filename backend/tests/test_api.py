@@ -1,4 +1,5 @@
 import asyncio
+import gc
 from pathlib import Path
 
 import httpx
@@ -377,3 +378,4 @@ def test_upload_cap_rejects_streamed_body_without_trusting_content_length(
             assert not parsed
 
     asyncio.run(exercise())
+    gc.collect()

@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import json
 
+from starlette.formparsers import MultiPartException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .errors import WebInputError
 
 
-class _UploadBodyTooLarge(Exception):
-    pass
+class _UploadBodyTooLarge(MultiPartException):
+    """Abort multipart parsing through Starlette's temporary-file cleanup path."""
+
+    def __init__(self) -> None:
+        super().__init__("Upload body exceeds the configured limit.")
 
 
 class UploadBodyLimitMiddleware:
@@ -87,7 +91,7 @@ class UploadBodyLimitMiddleware:
                 received_bytes += len(message.get("body", b""))
                 if received_bytes > self.max_body_bytes:
                     exceeded = True
-                    raise _UploadBodyTooLarge
+                    raise _UploadBodyTooLarge()
             return message
 
         async def limited_send(message: Message) -> None:
