@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest"
 import React from "react"
-import { fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import { ApiRequestError, BackendClient } from "@/lib/backend-client"
@@ -77,6 +77,12 @@ const inspection: InspectionResponse = {
   issues: [],
 }
 
+const secondInspection: InspectionResponse = {
+  ...inspection,
+  upload_id: "upload-2",
+  display_name: "Cu foil repeat.xmu",
+}
+
 const emptySnapshot: WorkspaceSnapshot = {
   workspace_id: "workspace-1",
   active_revision_id: null,
@@ -89,6 +95,13 @@ const mappedSnapshot: WorkspaceSnapshot = {
   active_revision_id: null,
   active_result: null,
   revisions: [{ revision_id: 1, kind: "mapping" }],
+}
+
+const secondMappedSnapshot: WorkspaceSnapshot = {
+  workspace_id: "workspace-1",
+  active_revision_id: null,
+  active_result: null,
+  revisions: [{ revision_id: 1, kind: "mapping" }, { revision_id: 2, kind: "mapping" }],
 }
 
 const appliedSnapshot: WorkspaceSnapshot = {
@@ -140,6 +153,51 @@ describe("WorkbenchShell", () => {
     fireEvent.click(screen.getByRole("button", { name: /confirm mapping/i }))
 
     await waitFor(() => expect(screen.getByTestId("preview-button")).toBeEnabled())
+  })
+
+  it("invalidates the prior mapping when a second upload is inspected", async () => {
+    const client = fakeClient({
+      inspectUpload: vi.fn().mockResolvedValueOnce(inspection).mockResolvedValueOnce(secondInspection),
+      confirmMapping: vi.fn().mockResolvedValueOnce(mappedSnapshot).mockResolvedValueOnce(secondMappedSnapshot),
+    })
+    render(<WorkbenchShell client={client} />)
+    const upload = await screen.findByLabelText(/upload spectrum/i)
+
+    fireEvent.change(upload, { target: { files: [new File(["8970 0.1"], "first.xmu", { type: "text/plain" })] } })
+    await screen.findByTestId("column-mapping")
+    fireEvent.change(screen.getByLabelText(/energy column/i), { target: { value: "energy" } })
+    fireEvent.change(screen.getByLabelText(/signal column/i), { target: { value: "mu" } })
+    fireEvent.click(screen.getByRole("button", { name: /confirm mapping/i }))
+    await waitFor(() => expect(screen.getByTestId("preview-button")).toBeEnabled())
+
+    fireEvent.change(upload, { target: { files: [new File(["8980 1.2"], "second.xmu", { type: "text/plain" })] } })
+
+    await waitFor(() => expect(screen.getByTestId("preview-button")).toBeDisabled())
+    fireEvent.change(screen.getByLabelText(/energy column/i), { target: { value: "energy" } })
+    fireEvent.change(screen.getByLabelText(/signal column/i), { target: { value: "mu" } })
+    fireEvent.click(screen.getByRole("button", { name: /confirm mapping/i }))
+    await waitFor(() => expect(screen.getByTestId("preview-button")).toBeEnabled())
+  })
+
+  it("rejects a preview response when its recipe changes in flight", async () => {
+    let resolvePreview: ((value: ProcessingResult) => void) | undefined
+    const pendingPreview = new Promise<ProcessingResult>((resolve) => { resolvePreview = resolve })
+    const client = fakeClient({
+      createWorkspace: vi.fn().mockResolvedValue(appliedSnapshot),
+      preview: vi.fn().mockReturnValue(pendingPreview),
+    })
+    render(<WorkbenchShell client={client} />)
+
+    fireEvent.click(await screen.findByTestId("preview-button"))
+    await waitFor(() => expect(client.preview).toHaveBeenCalledTimes(1))
+    fireEvent.change(screen.getByLabelText(/rbkg/i), { target: { value: "1.5" } })
+    await act(async () => {
+      resolvePreview?.(result)
+      await pendingPreview
+    })
+
+    expect(screen.getByTestId("apply-button")).toBeDisabled()
+    expect(screen.getByText("Ready")).toBeVisible()
   })
 
   it("keeps the last applied plot visible after an invalid preview", async () => {

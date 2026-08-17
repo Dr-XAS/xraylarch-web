@@ -47,7 +47,7 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
     return () => { current = false }
   }, [client])
 
-  const sourceRevisionId = state.history.filter((revision) => revision.kind === "mapping").at(-1)?.revision_id
+  const sourceRevisionId = state.sourceRevisionId
   const displayResult = state.preview?.result ?? state.applied?.result ?? null
   const canPreview = Boolean(state.workspaceId && sourceRevisionId)
   const canApply = Boolean(state.workspaceId && sourceRevisionId && state.preview && state.status === "preview-ready")
@@ -77,10 +77,11 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
   async function preview() {
     if (!state.workspaceId || !sourceRevisionId) return
     const requestId = state.nextPreviewRequestId
-    dispatch({ type: "preview/started", recipe: state.draft })
+    const recipe = { ...state.draft }
+    dispatch({ type: "preview/started", recipe })
     try {
-      const result = await client.preview(state.workspaceId, { source_revision_id: sourceRevisionId, recipe: state.draft })
-      dispatch({ type: "preview/succeeded", requestId, result })
+      const result = await client.preview(state.workspaceId, { source_revision_id: sourceRevisionId, recipe })
+      dispatch({ type: "preview/succeeded", requestId, recipe, result })
     } catch (error) {
       dispatch({ type: "preview/failed", requestId, error: asApiError(error) })
     }
@@ -91,7 +92,7 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
     try {
       dispatch({ type: "apply/succeeded", snapshot: await client.apply(state.workspaceId, {
         source_revision_id: sourceRevisionId,
-        recipe: state.draft,
+        recipe: state.preview.recipe,
         expected_parent_revision: state.applied?.id ?? null,
       }) })
     } catch (error) {

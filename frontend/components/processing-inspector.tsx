@@ -6,6 +6,7 @@ import type { ApiRequestError } from "@/lib/backend-client"
 import type { RecipeDraft } from "@/lib/contracts"
 
 type NumericKey = "e0" | "step" | "nnorm" | "pre1" | "pre2" | "norm1" | "norm2" | "rbkg" | "kmin" | "kmax" | "kweight"
+type AdvancedFieldKey = "autobk_dk" | "autobk_window" | "ft_dk" | "ft_dk2" | "ft_window" | "nfft" | "kstep" | "rmax_out"
 
 interface ProcessingInspectorProps {
   recipe: RecipeDraft
@@ -32,8 +33,38 @@ const fields: Array<{ key: NumericKey; label: string; unit: string; help: string
   { key: "kweight", label: "Shared k-weight", unit: "", help: "Applied consistently to background removal and Fourier transform.", step: "1" },
 ]
 
+function fieldBinding(error: ApiRequestError | null, field: AdvancedFieldKey, helpId: string) {
+  const invalid = Boolean(error?.fields.includes(field))
+  return {
+    invalid,
+    describedBy: invalid ? `${helpId} ${field}-recovery` : helpId,
+  }
+}
+
+function AdvancedFieldHelp({ field, helpId, help, error, invalid }: {
+  field: AdvancedFieldKey
+  helpId: string
+  help: string
+  error: ApiRequestError | null
+  invalid: boolean
+}) {
+  return <>
+    <small id={helpId}>{help}</small>
+    {invalid && <small className="field-recovery" id={`${field}-recovery`}>{error?.recovery}</small>}
+  </>
+}
+
 export function ProcessingInspector({ recipe, canPreview, canApply, statusText, error, onChange, onPreview, onApply }: ProcessingInspectorProps) {
   const [busy, setBusy] = useState(false)
+  const autobkDk = fieldBinding(error, "autobk_dk", "autobk-dk-help")
+  const autobkWindow = fieldBinding(error, "autobk_window", "autobk-window-help")
+  const ftDk = fieldBinding(error, "ft_dk", "ft-dk-help")
+  const ftDk2 = fieldBinding(error, "ft_dk2", "ft-dk2-help")
+  const ftWindow = fieldBinding(error, "ft_window", "ft-window-help")
+  const nfft = fieldBinding(error, "nfft", "nfft-help")
+  const kstep = fieldBinding(error, "kstep", "kstep-help")
+  const rmaxOut = fieldBinding(error, "rmax_out", "rmax-out-help")
+  const hasAdvancedError = [autobkDk, autobkWindow, ftDk, ftDk2, ftWindow, nfft, kstep, rmaxOut].some((field) => field.invalid)
   async function run(action: () => Promise<void>) {
     setBusy(true)
     try {
@@ -76,45 +107,55 @@ export function ProcessingInspector({ recipe, canPreview, canApply, statusText, 
           )
         })}
       </div>
-      <details className="advanced-controls">
+      <details className="advanced-controls" open={hasAdvancedError}>
         <summary>Advanced Larch controls</summary>
         <div className="field-grid">
           <label className="recipe-field">
             <span>Autobk taper<em>Å⁻¹</em></span>
-            <input type="number" step="0.1" value={recipe.autobk_dk ?? ""} aria-describedby="autobk-dk-help" onChange={(event) => onChange({ autobk_dk: event.currentTarget.value === "" ? null : Number(event.currentTarget.value) })} />
-            <small id="autobk-dk-help">Leave blank to retain the stage-specific Larch default.</small>
+            <input type="number" step="0.1" value={recipe.autobk_dk ?? ""} aria-describedby={autobkDk.describedBy} aria-invalid={autobkDk.invalid || undefined} onChange={(event) => onChange({ autobk_dk: event.currentTarget.value === "" ? null : Number(event.currentTarget.value) })} />
+            <AdvancedFieldHelp field="autobk_dk" helpId="autobk-dk-help" help="Leave blank to retain the stage-specific Larch default." error={error} invalid={autobkDk.invalid} />
           </label>
           <label className="recipe-field">
             <span>Autobk window</span>
-            <select value={recipe.autobk_window ?? ""} aria-describedby="autobk-window-help" onChange={(event) => onChange({ autobk_window: event.currentTarget.value || null })}>
+            <select value={recipe.autobk_window ?? ""} aria-describedby={autobkWindow.describedBy} aria-invalid={autobkWindow.invalid || undefined} onChange={(event) => onChange({ autobk_window: event.currentTarget.value || null })}>
               <option value="">Automatic</option>
               <option value="kaiser">Kaiser</option>
               <option value="hanning">Hanning</option>
             </select>
-            <small id="autobk-window-help">Background-removal window override.</small>
+            <AdvancedFieldHelp field="autobk_window" helpId="autobk-window-help" help="Background-removal window override." error={error} invalid={autobkWindow.invalid} />
           </label>
           <label className="recipe-field">
             <span>Fourier taper<em>Å⁻¹</em></span>
-            <input type="number" step="0.1" value={recipe.ft_dk} aria-describedby="ft-dk-help" onChange={(event) => onChange({ ft_dk: Number(event.currentTarget.value) })} />
-            <small id="ft-dk-help">Fourier transform window taper.</small>
+            <input type="number" step="0.1" value={recipe.ft_dk} aria-describedby={ftDk.describedBy} aria-invalid={ftDk.invalid || undefined} onChange={(event) => onChange({ ft_dk: Number(event.currentTarget.value) })} />
+            <AdvancedFieldHelp field="ft_dk" helpId="ft-dk-help" help="Fourier transform window taper." error={error} invalid={ftDk.invalid} />
           </label>
           <label className="recipe-field">
             <span>Fourier taper 2<em>Å⁻¹</em></span>
-            <input type="number" step="0.1" value={recipe.ft_dk2 ?? ""} aria-describedby="ft-dk2-help" onChange={(event) => onChange({ ft_dk2: event.currentTarget.value === "" ? null : Number(event.currentTarget.value) })} />
-            <small id="ft-dk2-help">Optional second Fourier taper bound.</small>
+            <input type="number" step="0.1" value={recipe.ft_dk2 ?? ""} aria-describedby={ftDk2.describedBy} aria-invalid={ftDk2.invalid || undefined} onChange={(event) => onChange({ ft_dk2: event.currentTarget.value === "" ? null : Number(event.currentTarget.value) })} />
+            <AdvancedFieldHelp field="ft_dk2" helpId="ft-dk2-help" help="Optional second Fourier taper bound." error={error} invalid={ftDk2.invalid} />
           </label>
           <label className="recipe-field">
             <span>Fourier window</span>
-            <select value={recipe.ft_window} aria-describedby="ft-window-help" onChange={(event) => onChange({ ft_window: event.currentTarget.value })}>
+            <select value={recipe.ft_window} aria-describedby={ftWindow.describedBy} aria-invalid={ftWindow.invalid || undefined} onChange={(event) => onChange({ ft_window: event.currentTarget.value })}>
               <option value="kaiser">Kaiser</option>
               <option value="hanning">Hanning</option>
             </select>
-            <small id="ft-window-help">Fourier transform window function.</small>
+            <AdvancedFieldHelp field="ft_window" helpId="ft-window-help" help="Fourier transform window function." error={error} invalid={ftWindow.invalid} />
+          </label>
+          <label className="recipe-field">
+            <span>FFT points</span>
+            <input type="number" step="1" value={recipe.nfft} aria-describedby={nfft.describedBy} aria-invalid={nfft.invalid || undefined} onChange={(event) => onChange({ nfft: Number(event.currentTarget.value) })} />
+            <AdvancedFieldHelp field="nfft" helpId="nfft-help" help="Number of Fourier transform points." error={error} invalid={nfft.invalid} />
+          </label>
+          <label className="recipe-field">
+            <span>k step<em>Å⁻¹</em></span>
+            <input type="number" step="0.01" value={recipe.kstep} aria-describedby={kstep.describedBy} aria-invalid={kstep.invalid || undefined} onChange={(event) => onChange({ kstep: Number(event.currentTarget.value) })} />
+            <AdvancedFieldHelp field="kstep" helpId="kstep-help" help="Sampling step for the Fourier transform." error={error} invalid={kstep.invalid} />
           </label>
           <label className="recipe-field">
             <span>Output range<em>Å</em></span>
-            <input type="number" step="0.1" value={recipe.rmax_out} aria-describedby="rmax-out-help" onChange={(event) => onChange({ rmax_out: Number(event.currentTarget.value) })} />
-            <small id="rmax-out-help">Maximum R written to the server-produced trace.</small>
+            <input type="number" step="0.1" value={recipe.rmax_out} aria-describedby={rmaxOut.describedBy} aria-invalid={rmaxOut.invalid || undefined} onChange={(event) => onChange({ rmax_out: Number(event.currentTarget.value) })} />
+            <AdvancedFieldHelp field="rmax_out" helpId="rmax-out-help" help="Maximum R written to the server-produced trace." error={error} invalid={rmaxOut.invalid} />
           </label>
         </div>
       </details>

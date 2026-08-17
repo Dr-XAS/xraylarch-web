@@ -17,12 +17,14 @@ export interface AppliedRevision {
 
 export interface PreviewState {
   requestId: number
+  recipe: RecipeDraft
   result: ProcessingResult
 }
 
 export interface WorkbenchState {
   workspaceId: string | null
   inspection: InspectionResponse | null
+  sourceRevisionId: number | null
   applied: AppliedRevision | null
   draft: RecipeDraft
   preview: PreviewState | null
@@ -41,7 +43,7 @@ export type WorkbenchAction =
   | { type: "mapping/succeeded"; snapshot: WorkspaceSnapshot }
   | { type: "draft/updated"; changes: Partial<RecipeDraft> }
   | { type: "preview/started"; recipe: RecipeDraft }
-  | { type: "preview/succeeded"; requestId: number; result: ProcessingResult }
+  | { type: "preview/succeeded"; requestId: number; recipe: RecipeDraft; result: ProcessingResult }
   | { type: "preview/failed"; requestId: number; error: ApiRequestError }
   | { type: "preview/cancelled" }
   | { type: "apply/succeeded"; snapshot: WorkspaceSnapshot }
@@ -54,6 +56,7 @@ export function createInitialState(recipe: RecipeDraft): WorkbenchState {
   return {
     workspaceId: null,
     inspection: null,
+    sourceRevisionId: null,
     applied: null,
     draft: { ...recipe },
     preview: null,
@@ -81,9 +84,11 @@ function activeRevision(snapshot: WorkspaceSnapshot): AppliedRevision | null {
 
 function hydrate(state: WorkbenchState, snapshot: WorkspaceSnapshot): WorkbenchState {
   const applied = activeRevision(snapshot)
+  const sourceRevisionId = snapshot.revisions.filter((revision) => revision.kind === "mapping").at(-1)?.revision_id ?? null
   return {
     ...state,
     workspaceId: snapshot.workspace_id,
+    sourceRevisionId,
     applied,
     draft: applied ? { ...applied.recipe } : state.draft,
     preview: null,
@@ -112,12 +117,21 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "restore/succeeded":
       return hydrate(state, action.snapshot)
     case "inspection/succeeded":
-      return { ...state, inspection: action.inspection, status: "ready", error: null }
+      return {
+        ...state,
+        inspection: action.inspection,
+        sourceRevisionId: null,
+        preview: null,
+        previewRequestId: null,
+        status: "ready",
+        error: null,
+      }
     case "draft/updated":
       return {
         ...state,
         draft: { ...state.draft, ...action.changes },
         preview: null,
+        previewRequestId: null,
         status: "ready",
         error: null,
       }
@@ -139,7 +153,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       }
       return {
         ...state,
-        preview: { requestId: action.requestId, result: action.result },
+        preview: { requestId: action.requestId, recipe: { ...action.recipe }, result: action.result },
         previewRequestId: null,
         status: "preview-ready",
         error: null,

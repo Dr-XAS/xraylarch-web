@@ -97,11 +97,50 @@ describe("workbench state", () => {
     const stale = workbenchReducer(newer, {
       type: "preview/succeeded",
       requestId: state.previewRequestId!,
+      recipe: defaultRecipe,
       result,
     })
 
     expect(stale.preview).toBeNull()
     expect(stale.status).toBe("previewing")
+  })
+
+  it("invalidates an in-flight preview when the recipe is edited", () => {
+    const previewRecipe = { ...defaultRecipe, rbkg: 1.2 }
+    const previewing = workbenchReducer(createInitialState(defaultRecipe), {
+      type: "preview/started",
+      recipe: previewRecipe,
+    })
+    const edited = workbenchReducer(previewing, {
+      type: "draft/updated",
+      changes: { rbkg: 1.5 },
+    })
+    const stale = workbenchReducer(edited, {
+      type: "preview/succeeded",
+      requestId: previewing.previewRequestId!,
+      recipe: previewRecipe,
+      result,
+    })
+
+    expect(stale.preview).toBeNull()
+    expect(stale.previewRequestId).toBeNull()
+    expect(stale.draft.rbkg).toBe(1.5)
+  })
+
+  it("retains the exact recipe that produced an accepted preview", () => {
+    const previewRecipe = { ...defaultRecipe, rbkg: 1.2 }
+    const previewing = workbenchReducer(createInitialState(defaultRecipe), {
+      type: "preview/started",
+      recipe: previewRecipe,
+    })
+    const accepted = workbenchReducer(previewing, {
+      type: "preview/succeeded",
+      requestId: previewing.previewRequestId!,
+      recipe: previewRecipe,
+      result,
+    })
+
+    expect(accepted.preview?.recipe).toEqual(previewRecipe)
   })
 
   it("clears only transient preview state when a preview is cancelled", () => {
