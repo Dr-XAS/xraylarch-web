@@ -1,10 +1,12 @@
 import { mkdtempSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { defineConfig, devices } from "@playwright/test"
 
-const repositoryRoot = path.resolve(__dirname, "..")
+const frontendRoot = fileURLToPath(new URL(".", import.meta.url))
+const repositoryRoot = path.resolve(frontendRoot, "..")
 const dataRoot = mkdtempSync(path.join(os.tmpdir(), "xraylarch-web-playwright-"))
 
 export default defineConfig({
@@ -28,7 +30,7 @@ export default defineConfig({
     },
     {
       command: "npm run dev -- --hostname 127.0.0.1 --port 13004",
-      cwd: __dirname,
+      cwd: frontendRoot,
       env: { BACKEND_URL: "http://127.0.0.1:18006" },
       url: "http://127.0.0.1:13004",
       reuseExistingServer: false,

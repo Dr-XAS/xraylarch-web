@@ -67,8 +67,8 @@ export function UploadInspector({ inspection, disabled, onUpload, onConfirmMappi
           {inspection.issues.map((issue) => <p className="warning" key={issue.code}>{issue.message}</p>)}
           <div className="column-list" aria-label="Available numeric columns">
             {numericColumns.map((column) => (
-              <span key={column.name} className="column-chip">
-                {column.name}{column.unit ? ` (${column.unit})` : ""}{column.role_hint ? ` · suggested ${column.role_hint}` : ""}
+              <span key={column.column_id} className="column-chip">
+                {column.name} · column {column.index + 1}{column.unit ? ` (${column.unit})` : ""}{column.role_hint ? ` · suggested ${column.role_hint}` : ""}
               </span>
             ))}
           </div>
@@ -77,14 +77,14 @@ export function UploadInspector({ inspection, disabled, onUpload, onConfirmMappi
               Energy column
               <select value={energyColumn} onChange={(event) => setEnergyColumn(event.target.value)}>
                 <option value="">Choose energy</option>
-                {numericColumns.map((column) => <option key={column.name} value={column.name}>{column.name}{column.unit ? ` (${column.unit})` : ""}</option>)}
+                {numericColumns.map((column) => <option key={column.column_id} value={column.column_id}>{column.name} · column {column.index + 1}{column.unit ? ` (${column.unit})` : ""}</option>)}
               </select>
             </label>
             <label>
               Signal column
               <select value={signalColumn} onChange={(event) => setSignalColumn(event.target.value)}>
                 <option value="">Choose signal</option>
-                {numericColumns.map((column) => <option key={column.name} value={column.name}>{column.name}</option>)}
+                {numericColumns.map((column) => <option key={column.column_id} value={column.column_id}>{column.name} · column {column.index + 1}</option>)}
               </select>
             </label>
           </div>

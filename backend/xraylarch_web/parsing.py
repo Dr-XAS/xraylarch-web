@@ -22,6 +22,10 @@ _ROLE_NAMES = {
 }
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _NAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
+_SUPPORTED_SUFFIXES = {".xmu", ".xdi", ".dat", ".csv", ".txt"}
+_COMMENT_PREFIXES = ("#", ";", "!")
+_DEFAULT_MAX_POINTS = 250_000
+_DEFAULT_MAX_COLUMNS = 64
 
 
 def _safe_display_name(filename: str) -> str:
@@ -72,6 +76,92 @@ def _can_be_float(value: str) -> bool:
     return True
 
 
+def _tabular_rows(text: str, suffix: str) -> tuple[tuple[str, ...], ...]:
+    lines = [
+        line
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith(_COMMENT_PREFIXES)
+    ]
+    if suffix != ".csv":
+        return tuple(tuple(line.split()) for line in lines)
+
+    sample = "\n".join(lines[:20])
+    try:
+        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    return tuple(
+        tuple(value.strip() for value in next(csv.reader([line], dialect)))
+        for line in lines
+    )
+
+
+def _validate_tabular_text(
+    data: bytes,
+    suffix: str,
+    *,
+    max_points: int,
+    max_columns: int,
+) -> None:
+    try:
+        text = data.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise WebInputError(
+            "upload_unreadable",
+            "The upload could not be read as XAS text data.",
+            ("file",),
+            "Save the file as UTF-8 text and upload it again.",
+        ) from exc
+
+    expected_fields: int | None = None
+    point_count = 0
+    for fields in _tabular_rows(text, suffix):
+        values: list[float] = []
+        numeric = bool(fields)
+        for field in fields:
+            try:
+                value = float(field)
+            except ValueError:
+                numeric = False
+                break
+            if not np.isfinite(value):
+                raise WebInputError(
+                    "upload_nonfinite",
+                    "The upload contains non-finite numeric values.",
+                    ("file",),
+                    "Remove non-finite rows and upload the data again.",
+                )
+            values.append(value)
+
+        if expected_fields is None:
+            if not numeric:
+                continue
+            expected_fields = len(values)
+            if expected_fields > max_columns:
+                raise WebInputError(
+                    "upload_too_many_columns",
+                    f"Upload exceeds the {max_columns} column limit.",
+                    ("file",),
+                    "Choose a table with fewer columns.",
+                )
+        elif not numeric or len(values) != expected_fields:
+            raise WebInputError(
+                "upload_malformed_rows",
+                "The upload contains a malformed or inconsistent data row.",
+                ("file",),
+                "Repair the tabular rows and upload the data again.",
+            )
+
+        point_count += 1
+        if point_count > max_points:
+            raise WebInputError(
+                "upload_too_many_points",
+                f"Upload exceeds the {max_points} point limit.",
+                ("file",),
+                "Choose a spectrum with fewer data points.",
+            )
+
+
 def _has_data_lines(data: bytes) -> bool:
     text = data.decode("utf-8", errors="replace")
     return any(
@@ -119,7 +209,11 @@ def _numeric_arrays(group) -> tuple[tuple[str, str | None, np.ndarray], ...]:
 
 
 def parse_upload(
-    data: bytes, filename: str, max_bytes: int = 50_000_000
+    data: bytes,
+    filename: str,
+    max_bytes: int = 50_000_000,
+    max_points: int = _DEFAULT_MAX_POINTS,
+    max_columns: int = _DEFAULT_MAX_COLUMNS,
 ) -> ParsedUpload:
     """Parse a bounded XAS upload without executing or persisting user paths."""
     if len(data) > max_bytes:
@@ -139,6 +233,19 @@ def parse_upload(
 
     display_name = _safe_display_name(filename)
     suffix = Path(display_name).suffix.lower()
+    if suffix not in _SUPPORTED_SUFFIXES:
+        raise WebInputError(
+            "upload_extension",
+            "Upload a file with a supported XAS text extension.",
+            ("file",),
+            "Choose an .xmu, .xdi, .dat, .csv, or .txt file.",
+        )
+    _validate_tabular_text(
+        data,
+        suffix,
+        max_points=max_points,
+        max_columns=max_columns,
+    )
     try:
         with tempfile.TemporaryDirectory(prefix="xraylarch-upload-") as temp_dir:
             temp_path = Path(temp_dir) / display_name
@@ -169,6 +276,13 @@ def parse_upload(
             ("file",),
             "Upload a table with at least one numeric column.",
         )
+    if len(numeric_arrays) > max_columns:
+        raise WebInputError(
+            "upload_too_many_columns",
+            f"Upload exceeds the {max_columns} column limit.",
+            ("file",),
+            "Choose a table with fewer columns.",
+        )
 
     row_count = max((array.size for _, _, array in numeric_arrays), default=0)
     if row_count == 0:
@@ -178,12 +292,16 @@ def parse_upload(
             ("file",),
             "Upload a non-empty XAS data table.",
         )
+    if row_count > max_points:
+        raise WebInputError(
+            "upload_too_many_points",
+            f"Upload exceeds the {max_points} point limit.",
+            ("file",),
+            "Choose a spectrum with fewer data points.",
+        )
 
     columns: list[ColumnInfo] = []
     arrays: dict[str, np.ndarray] = {}
-    column_keys: list[str] = []
-    seen_names: dict[str, int] = {}
-    used_array_keys: set[str] = set()
     issues: list[FieldIssue] = []
     for index, (name, unit, array) in enumerate(numeric_arrays):
         if not np.isfinite(array).all():
@@ -193,8 +311,10 @@ def parse_upload(
                 (name,),
                 "Remove non-finite rows and upload the data again.",
             )
+        column_id = f"column_{index + 1:04d}"
         columns.append(
             ColumnInfo(
+                column_id=column_id,
                 name=name,
                 index=index,
                 numeric=True,
@@ -203,19 +323,12 @@ def parse_upload(
                 preview=tuple(float(value) for value in array[:5]),
             )
         )
-        occurrence = seen_names.get(name, 0) + 1
-        seen_names[name] = occurrence
-        array_key = name if occurrence == 1 else f"{name}__{occurrence}"
-        while array_key in used_array_keys:
-            array_key = f"{array_key}__2"
-        column_keys.append(array_key)
-        arrays[array_key] = array
-        used_array_keys.add(array_key)
+        arrays[column_id] = array
 
     energy_key = next(
         (
-            array_key
-            for column, array_key in zip(columns, column_keys)
+            column.column_id
+            for column in columns
             if column.role_hint == "energy"
         ),
         None,

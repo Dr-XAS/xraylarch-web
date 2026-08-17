@@ -3,6 +3,7 @@ import type { WorkbenchStatus } from "@/lib/workbench-state"
 const labels: Record<WorkbenchStatus, string> = {
   idle: "Review",
   ready: "Ready",
+  blocked: "Blocked",
   previewing: "Review",
   "preview-ready": "Preview available",
   error: "Not current",

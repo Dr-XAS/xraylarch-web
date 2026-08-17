@@ -3,6 +3,7 @@ import gc
 from pathlib import Path
 
 import httpx
+import pytest
 
 from xraylarch_web.config import Settings
 from xraylarch_web.main import create_app
@@ -146,6 +147,15 @@ def test_workspace_api_processes_upload_without_preview_mutation(
             )
             assert recipe.status_code == 200
             assert recipe.json()["revision_id"] == revision_id
+            effective = recipe.json()["effective"]
+            assert effective["pre1"] == pytest.approx(-230.0)
+            assert effective["nnorm"] == 2
+            assert effective["autobk_kmax"] == pytest.approx(9.85)
+            assert effective["autobk_kmax_automatic"] is True
+            assert effective["xftf_kmax"] == 20.0
+            assert effective["xftf_kmax_automatic"] is True
+            assert effective["xftf_dk2"] == 1.0
+            assert effective["xftf_dk2_automatic"] is True
             assert recipe.headers["content-disposition"] == (
                 'attachment; filename="recipe.json"'
             )
@@ -155,6 +165,119 @@ def test_workspace_api_processes_upload_without_preview_mutation(
             )
             assert missing_revision.status_code == 404
             assert missing_revision.json()["error"]["code"] == "revision_not_found"
+
+    asyncio.run(exercise())
+
+
+def test_inspection_accepts_browser_mime_fallbacks_for_supported_suffixes(tmp_path):
+    async def exercise() -> None:
+        xdi_fixture = (
+            Path(__file__).parents[2] / "dylibs" / "XDI" / "cu_metal_rt.xdi"
+        ).read_bytes()
+        async with _client(_app(tmp_path)) as client:
+            workspace_id = (await client.post("/api/workspaces")).json()["workspace_id"]
+            xmu = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={"file": ("browser.xmu", b"# energy mu\n1 2\n2 3\n", "")},
+            )
+            xdi = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={
+                    "file": (
+                        "browser.xdi",
+                        xdi_fixture,
+                        "application/octet-stream",
+                    )
+                },
+            )
+            unsupported = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={"file": ("browser.exe", b"1 2\n2 3\n", "text/plain")},
+            )
+
+        assert xmu.status_code == 200
+        assert xdi.status_code == 200
+        assert unsupported.status_code == 400
+        assert unsupported.json()["error"]["code"] == "upload_extension"
+
+    asyncio.run(exercise())
+
+
+def test_inspection_enforces_configured_table_limits(tmp_path):
+    async def exercise() -> None:
+        app = create_app(
+            Settings(
+                data_root=tmp_path,
+                max_upload_bytes=1_000_000,
+                max_points=2,
+                max_columns=2,
+            )
+        )
+        async with _client(app) as client:
+            workspace_id = (await client.post("/api/workspaces")).json()["workspace_id"]
+            too_many_points = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={"file": ("points.dat", b"1 2\n2 3\n3 4\n", "text/plain")},
+            )
+            too_many_columns = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={"file": ("columns.dat", b"1 2 3\n2 3 4\n", "text/plain")},
+            )
+
+        assert too_many_points.status_code == 400
+        assert too_many_points.json()["error"]["code"] == "upload_too_many_points"
+        assert too_many_columns.status_code == 400
+        assert too_many_columns.json()["error"]["code"] == "upload_too_many_columns"
+
+    asyncio.run(exercise())
+
+
+def test_api_maps_the_second_duplicate_column_independently(tmp_path, xas_arrays):
+    energy, mu = xas_arrays
+    rows = (
+        f"{x:.8f},{y:.12f},{y + 0.5:.12f}"
+        for x, y in zip(energy, mu, strict=True)
+    )
+    duplicate_csv = ("energy,mu,mu\n" + "\n".join(rows) + "\n").encode()
+
+    async def exercise() -> None:
+        async with _client(_app(tmp_path)) as client:
+            workspace_id = (await client.post("/api/workspaces")).json()["workspace_id"]
+            inspected = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={"file": ("duplicates.csv", duplicate_csv, "text/csv")},
+            )
+            assert inspected.status_code == 200
+            inspection = inspected.json()
+            assert [column["name"] for column in inspection["columns"]] == [
+                "energy",
+                "mu",
+                "mu",
+            ]
+            assert [column["column_id"] for column in inspection["columns"]] == [
+                "column_0001",
+                "column_0002",
+                "column_0003",
+            ]
+
+            mapped = await client.post(
+                f"/api/workspaces/{workspace_id}/mapping",
+                json={
+                    "upload_id": inspection["upload_id"],
+                    "energy_column": "column_0001",
+                    "signal_column": "column_0003",
+                },
+            )
+            assert mapped.status_code == 200
+            source = mapped.json()["draft_source"]
+            assert source["signal_column_id"] == "column_0003"
+
+            preview = await client.post(
+                f"/api/workspaces/{workspace_id}/preview",
+                json={"source_revision_id": source["source_revision_id"], "recipe": {}},
+            )
+            assert preview.status_code == 200
+            assert preview.json()["plots"][0]["y"] == pytest.approx((mu + 0.5).tolist())
 
     asyncio.run(exercise())
 
@@ -301,6 +424,74 @@ def test_restore_creates_a_new_applied_revision(tmp_path, synthetic_xmu_bytes):
             snapshot = restored.json()
             assert snapshot["active_revision_id"] > first_revision_id
             assert snapshot["revisions"][-1]["restored_from_revision_id"] == first_revision_id
+
+    asyncio.run(exercise())
+
+
+def test_cross_source_restore_hydrates_and_previews_the_active_source(
+    tmp_path, xas_arrays
+):
+    energy, mu = xas_arrays
+
+    def upload_bytes(offset: float) -> bytes:
+        rows = (f"{x:.8f} {y + offset:.12f}" for x, y in zip(energy, mu, strict=True))
+        return ("# energy mu\n" + "\n".join(rows) + "\n").encode()
+
+    async def inspect_map_apply(
+        client, workspace_id, filename, source_bytes, expected_parent
+    ):
+        inspected = await client.post(
+            f"/api/workspaces/{workspace_id}/uploads/inspect",
+            files={"file": (filename, source_bytes, "application/octet-stream")},
+        )
+        mapped = await client.post(
+            f"/api/workspaces/{workspace_id}/mapping",
+            json={
+                "upload_id": inspected.json()["upload_id"],
+                "energy_column": "column_0001",
+                "signal_column": "column_0002",
+            },
+        )
+        source_id = mapped.json()["draft_source"]["source_revision_id"]
+        applied = await client.post(
+            f"/api/workspaces/{workspace_id}/apply",
+            json={
+                "source_revision_id": source_id,
+                "expected_parent_revision": expected_parent,
+                "recipe": {},
+            },
+        )
+        return source_id, applied.json()["active_revision_id"]
+
+    async def exercise() -> None:
+        async with _client(_app(tmp_path)) as client:
+            workspace_id = (await client.post("/api/workspaces")).json()["workspace_id"]
+            source_a, revision_a = await inspect_map_apply(
+                client, workspace_id, "source-a.xmu", upload_bytes(0), None
+            )
+            source_b, revision_b = await inspect_map_apply(
+                client, workspace_id, "source-b.xmu", upload_bytes(0.25), revision_a
+            )
+            restored = await client.post(
+                f"/api/workspaces/{workspace_id}/restore",
+                json={
+                    "revision_id": revision_a,
+                    "expected_parent_revision": revision_b,
+                },
+            )
+            hydrated = await client.get(f"/api/workspaces/{workspace_id}")
+            active_source = hydrated.json()["active_source"]
+            preview = await client.post(
+                f"/api/workspaces/{workspace_id}/preview",
+                json={"source_revision_id": active_source["source_revision_id"], "recipe": {}},
+            )
+
+        assert restored.status_code == 200
+        assert source_a != source_b
+        assert active_source["source_revision_id"] == source_a
+        assert active_source["display_name"] == "source-a.xmu"
+        assert hydrated.json()["draft_source"]["source_revision_id"] == source_b
+        assert preview.json()["plots"][0]["y"] == pytest.approx(mu.tolist())
 
     asyncio.run(exercise())
 

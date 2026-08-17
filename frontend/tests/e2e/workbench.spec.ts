@@ -1,10 +1,21 @@
-import { readFileSync } from "node:fs"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 import { expect, test, type Page } from "@playwright/test"
 
-const fixturePath = path.resolve(__dirname, "../fixtures/cu_rt01.xmu")
-const fixtureBytes = readFileSync(fixturePath)
+const testDirectory = fileURLToPath(new URL(".", import.meta.url))
+const fixturePath = path.resolve(testDirectory, "../fixtures/cu_rt01.xmu")
+const secondFixturePath = path.resolve(testDirectory, "../../../examples/xafsdata/cu_50k.xmu")
+const xdiFixturePath = path.resolve(testDirectory, "../../../dylibs/XDI/cu_metal_rt.xdi")
+
+async function mapUploadedSpectrum(page: Page) {
+  const mapping = page.getByTestId("column-mapping")
+  await expect(mapping).toBeVisible()
+  await page.getByLabel("Energy column").selectOption("column_0001")
+  await page.getByLabel("Signal column").selectOption("column_0002")
+  await page.getByRole("button", { name: "Confirm mapping" }).click()
+  await expect(page.getByTestId("preview-button")).toBeEnabled()
+}
 
 async function createMappedWorkspace(page: Page) {
   await page.goto("/", { waitUntil: "domcontentloaded" })
@@ -12,17 +23,12 @@ async function createMappedWorkspace(page: Page) {
 
   const upload = page.getByLabel("Upload spectrum")
   await expect(upload).toBeEnabled()
-  await upload.setInputFiles({ name: "cu_rt01.xmu", mimeType: "text/plain", buffer: fixtureBytes })
-
-  const mapping = page.getByTestId("column-mapping")
-  await expect(mapping).toBeVisible()
-  await page.getByLabel("Energy column").selectOption("energy")
-  await page.getByLabel("Signal column").selectOption("mu")
-  await page.getByRole("button", { name: "Confirm mapping" }).click()
-  await expect(page.getByTestId("preview-button")).toBeEnabled()
+  await upload.setInputFiles(fixturePath)
+  await mapUploadedSpectrum(page)
 }
 
-test("creates a revision, restores its predecessor, and downloads the active CSV", async ({ page }) => {
+test("restores source A across refresh and downloads both active revision attachments", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await createMappedWorkspace(page)
 
   await page.getByTestId("preview-button").click()
@@ -30,19 +36,48 @@ test("creates a revision, restores its predecessor, and downloads the active CSV
   await page.getByTestId("apply-button").click()
   await expect(page.getByText("Revision 2 · active")).toBeVisible()
 
-  await page.getByLabel("Rbkg").fill("1.2")
+  await page.getByLabel("Upload spectrum").setInputFiles(secondFixturePath)
+  await mapUploadedSpectrum(page)
   await page.getByTestId("preview-button").click()
   await expect(page.getByTestId("apply-button")).toBeEnabled()
   await page.getByTestId("apply-button").click()
-  await expect(page.getByText("Revision 3 · active")).toBeVisible()
-
-  await page.getByRole("listitem").filter({ hasText: "Revision 2" }).getByRole("button", { name: "Restore as new" }).click()
   await expect(page.getByText("Revision 4 · active")).toBeVisible()
 
-  const downloadPromise = page.waitForEvent("download")
-  await page.getByRole("link", { name: "CSV" }).first().click()
-  const download = await downloadPromise
-  expect(download.suggestedFilename()).toBe("data.csv")
+  await page.getByRole("listitem").filter({ hasText: "Revision 2" }).getByRole("button", { name: "Restore as new" }).click()
+  await expect(page.getByText("Revision 5 · active")).toBeVisible()
+
+  await page.reload({ waitUntil: "domcontentloaded" })
+  await expect(page.getByTestId("workbench-ready")).toBeVisible()
+  await expect(page.getByRole("heading", { name: "cu_rt01.xmu" })).toBeVisible()
+  const previewRequestPromise = page.waitForRequest((request) => request.url().endsWith("/preview"))
+  await page.getByTestId("preview-button").click()
+  const previewRequest = await previewRequestPromise
+  expect(previewRequest.postDataJSON().source_revision_id).toBe(1)
+
+  const activeRevision = page.getByRole("listitem").filter({ hasText: "Revision 5 · active" })
+
+  const csvDownloadPromise = page.waitForEvent("download")
+  await activeRevision.getByRole("link", { name: "CSV" }).click()
+  expect((await csvDownloadPromise).suggestedFilename()).toBe("data.csv")
+
+  const recipeDownloadPromise = page.waitForEvent("download")
+  await activeRevision.getByRole("link", { name: "Recipe JSON" }).click()
+  expect((await recipeDownloadPromise).suggestedFilename()).toBe("recipe.json")
+})
+
+test("accepts a real path-selected XDI browser upload", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await expect(page.getByTestId("workbench-ready")).toBeVisible()
+
+  const upload = page.getByLabel("Upload spectrum")
+  await expect(upload).toBeEnabled()
+  await upload.setInputFiles(xdiFixturePath)
+  await expect(page.getByTestId("column-mapping")).toBeVisible()
+  await page.getByLabel("Energy column").selectOption("column_0001")
+  await page.getByLabel("Signal column").selectOption("column_0004")
+  await page.getByRole("button", { name: "Confirm mapping" }).click()
+
+  await expect(page.getByTestId("preview-button")).toBeEnabled()
 })
 
 test("has no document overflow and keeps the processing inspector reachable at 390 by 844", async ({ page }) => {

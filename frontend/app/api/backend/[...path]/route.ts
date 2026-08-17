@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 const allowedHeaders = ["content-type", "accept", "content-length"] as const
-const responseHeaders = ["content-type", "content-length"] as const
+const responseHeaders = ["content-type", "content-length", "content-disposition"] as const
 
 function isAllowedPath(path: string[]): boolean {
   if (path.some((segment) => !segment || segment === "." || segment === "..")) {
@@ -11,13 +11,14 @@ function isAllowedPath(path: string[]): boolean {
     (path[0] === "api" && path[1] === "workspaces")
 }
 
-async function proxy(request: Request, { params }: { params: { path: string[] } }) {
-  if (!isAllowedPath(params.path)) {
+async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
+  const { path: routePath } = await params
+  if (!isAllowedPath(routePath)) {
     return NextResponse.json({ error: "Not found" }, { status: 404 })
   }
 
   const upstreamBase = process.env.BACKEND_URL ?? "http://127.0.0.1:8006"
-  const path = `/${params.path.map(encodeURIComponent).join("/")}`
+  const path = `/${routePath.map(encodeURIComponent).join("/")}`
   const upstream = new URL(path, upstreamBase.endsWith("/") ? upstreamBase : `${upstreamBase}/`)
   const headers = new Headers()
   for (const header of allowedHeaders) {

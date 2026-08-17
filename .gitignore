@@ -48,6 +48,7 @@ backend/.pytest_cache/
 backend/*.egg-info/
 frontend/node_modules/
 frontend/.next/
+frontend/next-env.d.ts
 frontend/*.tsbuildinfo
 frontend/playwright-report/
 frontend/test-results/

@@ -13,10 +13,11 @@ from .contracts import (
     ProcessingResult,
     RecipeDraft,
     RevisionSummary,
+    SourceMetadata,
     WorkspaceSnapshot,
 )
 from .errors import WorkspaceStateError
-from .processing import run_processing, validate_mapping
+from .processing import resolve_column_id, run_processing, validate_mapping
 from .storage import WorkspaceStorage
 
 _WORKSPACE_FILE = "workspace.json"
@@ -25,8 +26,9 @@ _WORKSPACE_FILE = "workspace.json"
 class WorkspaceStore:
     """Immutable workspace revision service backed by private local storage."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, max_nfft: int = 262_144) -> None:
         self.storage = WorkspaceStorage(root)
+        self.max_nfft = max_nfft
 
     @staticmethod
     def _id() -> str:
@@ -108,7 +110,9 @@ class WorkspaceStore:
         with self.storage.lock(workspace_id):
             metadata = self._metadata(workspace_id)
             parsed = self._parsed_upload(workspace_id, metadata, upload_id)
-            validate_mapping(parsed, energy_column, signal_column)
+            energy_column_id = resolve_column_id(parsed, energy_column)
+            signal_column_id = resolve_column_id(parsed, signal_column)
+            validate_mapping(parsed, energy_column_id, signal_column_id)
             revision = {
                 "revision_id": self._next_revision_id(metadata),
                 "kind": "mapping",
@@ -116,8 +120,8 @@ class WorkspaceStore:
                 "source_revision_id": None,
                 "restored_from_revision_id": None,
                 "upload_id": upload_id,
-                "energy_column": energy_column,
-                "signal_column": signal_column,
+                "energy_column": energy_column_id,
+                "signal_column": signal_column_id,
             }
             metadata["revisions"].append(revision)
             self._write_metadata(workspace_id, metadata)
@@ -132,6 +136,25 @@ class WorkspaceStore:
         if source["kind"] != "mapping":
             raise WorkspaceStateError("revision_not_found", "Revision has no source mapping.", recovery="Choose a source mapping revision and retry.")
         return source
+
+    @staticmethod
+    def _source_metadata(
+        metadata: dict[str, Any], source: dict[str, Any]
+    ) -> SourceMetadata:
+        upload = metadata["uploads"][source["upload_id"]]
+        return SourceMetadata.model_validate(
+            {
+                "upload_id": source["upload_id"],
+                "source_revision_id": source["revision_id"],
+                "energy_column_id": source["energy_column"],
+                "signal_column_id": source["signal_column"],
+                "display_name": upload["display_name"],
+                "row_count": upload["row_count"],
+                "columns": upload["columns"],
+                "warnings": upload["warnings"],
+                "issues": upload["issues"],
+            }
+        )
 
     @staticmethod
     def _check_parent(metadata: dict[str, Any], expected_parent_revision: int | None) -> None:
@@ -186,7 +209,7 @@ class WorkspaceStore:
             source = self._source_mapping(metadata, source_revision_id)
             parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
             energy, mu = validate_mapping(parsed, source["energy_column"], source["signal_column"])
-            result = run_processing(energy, mu, recipe)
+            result = run_processing(energy, mu, recipe, max_nfft=self.max_nfft)
             revision_id = self._next_revision_id(metadata)
             revision = {
                 "revision_id": revision_id,
@@ -212,7 +235,7 @@ class WorkspaceStore:
             source = self._source_mapping(metadata, source_revision_id)
             parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
             energy, mu = validate_mapping(parsed, source["energy_column"], source["signal_column"])
-            return run_processing(energy, mu, recipe)
+            return run_processing(energy, mu, recipe, max_nfft=self.max_nfft)
 
     def restore_revision(
         self,
@@ -248,14 +271,28 @@ class WorkspaceStore:
         metadata = self._metadata(workspace_id)
         summaries = tuple(RevisionSummary.model_validate(revision) for revision in metadata["revisions"])
         active_result = None
+        active_source = None
         if metadata["active_revision_id"] is not None:
             active = self._revision(metadata, metadata["active_revision_id"])
             active_result = self._load_result(workspace_id, active["result"])
+            active_source = self._source_metadata(
+                metadata, self._source_mapping(metadata, active["revision_id"])
+            )
+        mapping_revisions = [
+            revision for revision in metadata["revisions"] if revision["kind"] == "mapping"
+        ]
+        draft_source = (
+            self._source_metadata(metadata, mapping_revisions[-1])
+            if mapping_revisions
+            else None
+        )
         return WorkspaceSnapshot(
             workspace_id=metadata["workspace_id"],
             active_revision_id=metadata["active_revision_id"],
             revisions=summaries,
             active_result=active_result,
+            active_source=active_source,
+            draft_source=draft_source,
         )
 
     def revision_result(

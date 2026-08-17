@@ -1,4 +1,5 @@
 export interface ColumnInfo {
+  column_id: string
   name: string
   index: number
   numeric: boolean
@@ -28,6 +29,12 @@ export interface InspectionResponse {
   columns: ColumnInfo[]
   warnings: string[]
   issues: FieldIssue[]
+}
+
+export interface SourceMetadata extends InspectionResponse {
+  source_revision_id: number
+  energy_column_id: string
+  signal_column_id: string
 }
 
 export interface RecipeDraft {
@@ -76,16 +83,35 @@ export const DEFAULT_RECIPE: RecipeDraft = {
 
 export interface EffectiveRecipe {
   e0: number
+  e0_automatic: boolean
   edge_step: number
+  edge_step_automatic: boolean
+  pre1: number
+  pre1_automatic: boolean
+  pre2: number
+  pre2_automatic: boolean
+  norm1: number
+  norm1_automatic: boolean
+  norm2: number
+  norm2_automatic: boolean
+  nnorm: number
+  nnorm_automatic: boolean
   rbkg: number
-  kmin: number
-  kmax: number
   kweight: number
+  autobk_kmin: number
+  autobk_kmax: number
+  autobk_kmax_automatic: boolean
   autobk_dk: number
+  autobk_dk_automatic: boolean
   autobk_window: string
-  ft_dk: number
-  ft_dk2: number | null
-  ft_window: string
+  autobk_window_automatic: boolean
+  xftf_kmin: number
+  xftf_kmax: number
+  xftf_kmax_automatic: boolean
+  xftf_dk: number
+  xftf_dk2: number
+  xftf_dk2_automatic: boolean
+  xftf_window: string
   nfft: number
   kstep: number
   rmax_out: number
@@ -124,6 +150,8 @@ export interface WorkspaceSnapshot {
   active_revision_id: number | null
   revisions: RevisionSummary[]
   active_result: ProcessingResult | null
+  active_source: SourceMetadata | null
+  draft_source: SourceMetadata | null
 }
 
 export interface MappingRequest {

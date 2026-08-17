@@ -2,12 +2,13 @@ import type {
   InspectionResponse,
   ProcessingResult,
   RecipeDraft,
+  SourceMetadata,
   WorkspaceSnapshot,
 } from "@/lib/contracts"
 import type { ApiRequestError } from "@/lib/backend-client"
 
 export type SelectedView = "raw_mu" | "norm_mu" | "chi_k" | "chi_r"
-export type WorkbenchStatus = "idle" | "ready" | "previewing" | "preview-ready" | "error"
+export type WorkbenchStatus = "idle" | "ready" | "blocked" | "previewing" | "preview-ready" | "error"
 
 export interface AppliedRevision {
   id: number
@@ -82,13 +83,29 @@ function activeRevision(snapshot: WorkspaceSnapshot): AppliedRevision | null {
   return { id: revision.revision_id, recipe: { ...revision.recipe }, result: snapshot.active_result }
 }
 
-function hydrate(state: WorkbenchState, snapshot: WorkspaceSnapshot): WorkbenchState {
+function asInspection(source: SourceMetadata | null): InspectionResponse | null {
+  if (!source) return null
+  return {
+    upload_id: source.upload_id,
+    display_name: source.display_name,
+    row_count: source.row_count,
+    columns: source.columns,
+    warnings: source.warnings,
+    issues: source.issues,
+  }
+}
+
+function hydrate(
+  state: WorkbenchState,
+  snapshot: WorkspaceSnapshot,
+  source: SourceMetadata | null = snapshot.active_source ?? snapshot.draft_source,
+): WorkbenchState {
   const applied = activeRevision(snapshot)
-  const sourceRevisionId = snapshot.revisions.filter((revision) => revision.kind === "mapping").at(-1)?.revision_id ?? null
   return {
     ...state,
     workspaceId: snapshot.workspace_id,
-    sourceRevisionId,
+    inspection: asInspection(source),
+    sourceRevisionId: source?.source_revision_id ?? null,
     applied,
     draft: applied ? { ...applied.recipe } : state.draft,
     preview: null,
@@ -112,10 +129,11 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
   switch (action.type) {
     case "workspace/created":
     case "workspace/hydrated":
-    case "mapping/succeeded":
     case "apply/succeeded":
     case "restore/succeeded":
       return hydrate(state, action.snapshot)
+    case "mapping/succeeded":
+      return hydrate(state, action.snapshot, action.snapshot.draft_source)
     case "inspection/succeeded":
       return {
         ...state,
@@ -123,7 +141,7 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
         sourceRevisionId: null,
         preview: null,
         previewRequestId: null,
-        status: "ready",
+        status: action.inspection.issues.length > 0 ? "blocked" : "ready",
         error: null,
       }
     case "draft/updated":
@@ -180,7 +198,11 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
     case "view/selected":
       return { ...state, selectedView: action.view }
     case "error/received":
-      return { ...state, status: "error", error: action.error }
+      return {
+        ...state,
+        status: action.error.code === "invalid_mapping" ? "blocked" : "error",
+        error: action.error,
+      }
     case "error/cleared":
       return { ...state, status: "ready", error: null }
   }

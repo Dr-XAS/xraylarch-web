@@ -19,6 +19,33 @@ def test_run_processing_preserves_raw_arrays_and_effective_values(xas_arrays):
     assert np.array_equal(mu, raw_mu)
     assert result.effective.e0 > energy.min()
     assert result.effective.edge_step > 0
+    assert result.effective.e0_automatic is True
+    assert result.effective.edge_step_automatic is True
+    assert result.effective.pre1 == pytest.approx(-230.0)
+    assert result.effective.pre2 == pytest.approx(-115.0)
+    assert result.effective.norm1 == pytest.approx(25.0)
+    assert result.effective.norm2 == pytest.approx(370.0)
+    assert result.effective.nnorm == 2
+    assert result.effective.pre1_automatic is True
+    assert result.effective.pre2_automatic is True
+    assert result.effective.norm1_automatic is True
+    assert result.effective.norm2_automatic is True
+    assert result.effective.nnorm_automatic is True
+    assert result.effective.kweight == 2
+    assert result.effective.autobk_kmin == 0
+    assert result.effective.autobk_kmax == pytest.approx(9.85)
+    assert result.effective.autobk_kmax_automatic is True
+    assert result.effective.autobk_dk == pytest.approx(0.1)
+    assert result.effective.autobk_dk_automatic is True
+    assert result.effective.autobk_window == "hanning"
+    assert result.effective.autobk_window_automatic is True
+    assert result.effective.xftf_kmin == 0
+    assert result.effective.xftf_kmax == 20
+    assert result.effective.xftf_kmax_automatic is True
+    assert result.effective.xftf_dk == 1
+    assert result.effective.xftf_dk2 == 1
+    assert result.effective.xftf_dk2_automatic is True
+    assert result.effective.xftf_window == "kaiser"
     assert {trace.id for trace in result.plots} == {
         "raw_mu",
         "norm_mu",
@@ -43,7 +70,8 @@ def test_default_fourier_range_uses_larch_automatic_value(xas_arrays, monkeypatc
     result = run_processing(energy, mu, RecipeDraft())
 
     assert "kmax" not in captured_arguments
-    assert result.effective.kmax == 20.0
+    assert result.effective.xftf_kmax == 20.0
+    assert result.effective.autobk_kmax == pytest.approx(9.85)
 
 
 def test_validate_recipe_reports_all_invalid_ranges_without_running_larch(xas_arrays):
@@ -54,10 +82,53 @@ def test_validate_recipe_reports_all_invalid_ranges_without_running_larch(xas_ar
     assert {issue.code for issue in issues} >= {"k_range_invalid", "rbkg_invalid"}
 
 
+def test_validate_recipe_rejects_unsafe_fft_resource_requests(xas_arrays):
+    energy, _ = xas_arrays
+
+    issues = validate_recipe(
+        RecipeDraft(nfft=524_288, kstep=0.0001, rmax_out=20_000),
+        energy,
+        max_nfft=262_144,
+    )
+
+    assert {issue.code for issue in issues} >= {
+        "nfft_too_large",
+        "kstep_too_small",
+        "rmax_out_invalid",
+    }
+
+
 def test_validate_mapping_rejects_non_monotonic_energy():
     parsed = parse_upload(b"# energy mu\n3 1\n2 2\n4 3\n", "bad.dat")
 
     with pytest.raises(WebInputError, match="strictly increasing") as error:
         validate_mapping(parsed, "energy", "mu")
+
+    assert error.value.code == "invalid_mapping"
+
+
+def test_validate_mapping_selects_the_second_duplicate_by_column_id():
+    parsed = parse_upload(
+        b"energy,mu,mu\n1,2,20\n2,3,30\n3,4,40\n",
+        "duplicates.csv",
+    )
+
+    energy, signal = validate_mapping(parsed, "column_0001", "column_0003")
+
+    assert energy.tolist() == [1.0, 2.0, 3.0]
+    assert signal.tolist() == [20.0, 30.0, 40.0]
+
+
+def test_validate_mapping_accepts_only_unique_legacy_names():
+    parsed = parse_upload(
+        b"energy,mu,mu\n1,2,20\n2,3,30\n3,4,40\n",
+        "duplicates.csv",
+    )
+
+    energy, _ = validate_mapping(parsed, "energy", "column_0003")
+    assert energy.tolist() == [1.0, 2.0, 3.0]
+
+    with pytest.raises(WebInputError) as error:
+        validate_mapping(parsed, "column_0001", "mu")
 
     assert error.value.code == "invalid_mapping"

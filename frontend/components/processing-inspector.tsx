@@ -12,10 +12,12 @@ interface ProcessingInspectorProps {
   recipe: RecipeDraft
   canPreview: boolean
   canApply: boolean
+  isPreviewing: boolean
   statusText: string
   error: ApiRequestError | null
   onChange: (changes: Partial<RecipeDraft>) => void
   onPreview: () => Promise<void>
+  onCancelPreview: () => void
   onApply: () => Promise<void>
 }
 
@@ -54,7 +56,7 @@ function AdvancedFieldHelp({ field, helpId, help, error, invalid }: {
   </>
 }
 
-export function ProcessingInspector({ recipe, canPreview, canApply, statusText, error, onChange, onPreview, onApply }: ProcessingInspectorProps) {
+export function ProcessingInspector({ recipe, canPreview, canApply, isPreviewing, statusText, error, onChange, onPreview, onCancelPreview, onApply }: ProcessingInspectorProps) {
   const [busy, setBusy] = useState(false)
   const autobkDk = fieldBinding(error, "autobk_dk", "autobk-dk-help")
   const autobkWindow = fieldBinding(error, "autobk_window", "autobk-window-help")
@@ -160,7 +162,11 @@ export function ProcessingInspector({ recipe, canPreview, canApply, statusText, 
         </div>
       </details>
       <div className="processing-actions">
-        <button data-testid="preview-button" type="button" disabled={!canPreview || busy} onClick={() => void run(onPreview)}>Preview changes</button>
+        {isPreviewing ? (
+          <button type="button" onClick={() => { setBusy(false); onCancelPreview() }}>Cancel preview</button>
+        ) : (
+          <button data-testid="preview-button" type="button" disabled={!canPreview || busy} onClick={() => void run(onPreview)}>Preview changes</button>
+        )}
         <button data-testid="apply-button" className="primary-action" type="button" disabled={!canApply || busy} onClick={() => void run(onApply)}>Apply revision</button>
       </div>
     </section>

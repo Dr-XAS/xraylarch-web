@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class ColumnInfo(BaseModel):
+    column_id: str
     name: str
     index: int
     numeric: bool
@@ -38,6 +39,13 @@ class UploadInspection(BaseModel):
 
 class InspectionResponse(UploadInspection):
     upload_id: str
+
+
+class SourceMetadata(UploadInspection):
+    upload_id: str
+    source_revision_id: int
+    energy_column_id: str
+    signal_column_id: str
 
 
 class MappingRequest(BaseModel):
@@ -84,16 +92,35 @@ class RestoreRequest(BaseModel):
 
 class EffectiveRecipe(BaseModel):
     e0: float
+    e0_automatic: bool
     edge_step: float
+    edge_step_automatic: bool
+    pre1: float
+    pre1_automatic: bool
+    pre2: float
+    pre2_automatic: bool
+    norm1: float
+    norm1_automatic: bool
+    norm2: float
+    norm2_automatic: bool
+    nnorm: int
+    nnorm_automatic: bool
     rbkg: float
-    kmin: float
-    kmax: float
     kweight: int
+    autobk_kmin: float
+    autobk_kmax: float
+    autobk_kmax_automatic: bool
     autobk_dk: float
+    autobk_dk_automatic: bool
     autobk_window: str
-    ft_dk: float
-    ft_dk2: float | None = None
-    ft_window: str
+    autobk_window_automatic: bool
+    xftf_kmin: float
+    xftf_kmax: float
+    xftf_kmax_automatic: bool
+    xftf_dk: float
+    xftf_dk2: float
+    xftf_dk2_automatic: bool
+    xftf_window: str
     nfft: int
     kstep: float
     rmax_out: float
@@ -133,6 +160,8 @@ class WorkspaceSnapshot(BaseModel):
     active_revision_id: int | None = None
     revisions: tuple[RevisionSummary, ...] = ()
     active_result: ProcessingResult | None = None
+    active_source: SourceMetadata | None = None
+    draft_source: SourceMetadata | None = None
 
 
 @dataclass(frozen=True)

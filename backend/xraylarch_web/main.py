@@ -30,7 +30,7 @@ def _domain_status(error: WebInputError) -> int:
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_environment()
     app = FastAPI(title="XrayLarch Web", version=__version__)
-    store = WorkspaceStore(active_settings.data_root)
+    store = WorkspaceStore(active_settings.data_root, max_nfft=active_settings.max_nfft)
     app.add_middleware(
         UploadBodyLimitMiddleware,
         max_body_bytes=active_settings.max_upload_bytes,

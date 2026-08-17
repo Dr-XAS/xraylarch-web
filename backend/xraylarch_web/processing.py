@@ -5,6 +5,7 @@ from collections.abc import Iterable
 import numpy as np
 from larch import Group
 from larch.xafs import autobk, pre_edge, xftf
+from larch.xafs.xafsutils import ETOK
 
 from .contracts import (
     EffectiveRecipe,
@@ -56,11 +57,28 @@ def _validate_arrays(energy: np.ndarray, mu: np.ndarray) -> None:
         )
 
 
+def resolve_column_id(parsed: ParsedUpload, value: str) -> str:
+    """Resolve a current column ID or an unambiguous legacy display name."""
+    if value in parsed.arrays:
+        return value
+    matches = [column.column_id for column in parsed.columns if column.name == value]
+    if len(matches) == 1:
+        return matches[0]
+    raise WebInputError(
+        "invalid_mapping",
+        "Choose a unique column from this upload.",
+        ("energy_column", "signal_column"),
+        "Select the columns in the import panel and retry.",
+    )
+
+
 def validate_mapping(
     parsed: ParsedUpload, energy_column: str, signal_column: str
 ) -> tuple[np.ndarray, np.ndarray]:
     """Return safe copies of one validated energy/signal column pair."""
-    if energy_column == signal_column:
+    energy_column_id = resolve_column_id(parsed, energy_column)
+    signal_column_id = resolve_column_id(parsed, signal_column)
+    if energy_column_id == signal_column_id:
         raise WebInputError(
             "invalid_mapping",
             "Choose different energy and signal columns.",
@@ -68,8 +86,8 @@ def validate_mapping(
             "Select one energy column and one signal column.",
         )
     try:
-        energy = _as_array(parsed.arrays[energy_column])
-        mu = _as_array(parsed.arrays[signal_column])
+        energy = _as_array(parsed.arrays[energy_column_id])
+        mu = _as_array(parsed.arrays[signal_column_id])
     except KeyError as exc:
         raise WebInputError(
             "invalid_mapping",
@@ -85,7 +103,12 @@ def _finite(value: float | int | None) -> bool:
     return value is None or bool(np.isfinite(value))
 
 
-def validate_recipe(recipe: RecipeDraft, energy: np.ndarray) -> tuple[FieldIssue, ...]:
+def validate_recipe(
+    recipe: RecipeDraft,
+    energy: np.ndarray,
+    *,
+    max_nfft: int = 262_144,
+) -> tuple[FieldIssue, ...]:
     """Report every invalid recipe field before invoking Larch."""
     issues: list[FieldIssue] = []
     numeric_fields = (
@@ -138,6 +161,34 @@ def validate_recipe(recipe: RecipeDraft, energy: np.ndarray) -> tuple[FieldIssue
         issues.append(_issue("nnorm_invalid", "nnorm must be an integer from 0 to 3.", "nnorm", recovery="Choose a supported normalization degree."))
     if recipe.nfft < 128 or recipe.nfft & (recipe.nfft - 1):
         issues.append(_issue("nfft_invalid", "nfft must be a power of two of at least 128.", "nfft", recovery="Use a supported FFT size."))
+    elif recipe.nfft > max_nfft:
+        issues.append(
+            _issue(
+                "nfft_too_large",
+                f"nfft must not exceed {max_nfft}.",
+                "nfft",
+                recovery="Use a smaller supported FFT size.",
+            )
+        )
+    if recipe.kstep < 0.001:
+        issues.append(
+            _issue(
+                "kstep_too_small",
+                "kstep must be at least 0.001 Å⁻¹.",
+                "kstep",
+                recovery="Use a k step of 0.001 Å⁻¹ or greater.",
+            )
+        )
+    if recipe.kstep > 0 and recipe.rmax_out > np.pi / (2 * recipe.kstep):
+        issues.append(
+            _issue(
+                "rmax_out_invalid",
+                "rmax_out exceeds the FFT range for the selected kstep.",
+                "rmax_out",
+                "kstep",
+                recovery="Lower the R output limit or use a smaller k step.",
+            )
+        )
     for field in ("autobk_dk", "ft_dk", "ft_dk2", "kstep", "rmax_out"):
         value = getattr(recipe, field)
         if value is not None and value <= 0:
@@ -174,13 +225,17 @@ def _trace(
 
 
 def run_processing(
-    energy: np.ndarray, mu: np.ndarray, recipe: RecipeDraft
+    energy: np.ndarray,
+    mu: np.ndarray,
+    recipe: RecipeDraft,
+    *,
+    max_nfft: int = 262_144,
 ) -> ProcessingResult:
     """Run the established Larch pipeline in a request-local Group."""
     energy_array = _as_array(energy).copy()
     mu_array = _as_array(mu).copy()
     _validate_arrays(energy_array, mu_array)
-    issues = validate_recipe(recipe, energy_array)
+    issues = validate_recipe(recipe, energy_array, max_nfft=max_nfft)
     if issues:
         raise WebInputError(
             "invalid_recipe",
@@ -220,6 +275,35 @@ def run_processing(
 
     try:
         pre_edge(group.energy, group.mu, group=group, **pre_edge_kwargs)
+        available_kmax = float(
+            np.sqrt(max(0.0, ETOK * (float(group.energy.max()) - float(group.e0))))
+        )
+        if recipe.kmin >= available_kmax or (
+            recipe.kmax is not None and recipe.kmax > available_kmax
+        ):
+            raise WebInputError(
+                "invalid_recipe",
+                "The selected k range exceeds the uploaded spectrum.",
+                ("kmin", "kmax"),
+                "Choose k bounds within the available data range.",
+            )
+        requested_autobk_kmax = (
+            recipe.kmax if recipe.kmax is not None else available_kmax
+        )
+        requested_ft_kmax = recipe.kmax if recipe.kmax is not None else 20.0
+        requested_ft_dk2 = recipe.ft_dk2 if recipe.ft_dk2 is not None else recipe.ft_dk
+        grid_points = int(
+            1.01
+            + max(requested_autobk_kmax, requested_ft_kmax + requested_ft_dk2)
+            / recipe.kstep
+        )
+        if grid_points > recipe.nfft:
+            raise WebInputError(
+                "invalid_recipe",
+                "The k range and kstep require more points than nfft permits.",
+                ("kmax", "kstep", "nfft"),
+                "Increase nfft, increase kstep, or lower kmax.",
+            )
         autobk_kwargs["e0"] = group.e0
         autobk_kwargs["edge_step"] = group.edge_step
         autobk(group.energy, group.mu, group=group, **autobk_kwargs)
@@ -263,23 +347,43 @@ def run_processing(
         raise WebInputError("processing_nonfinite", "Larch returned non-finite derived values.", recovery="Adjust the recipe or inspect the source data.")
     autobk_effective = group.callargs.autobk
     ft_effective = group.callargs.xftf
+    pre_effective = group.pre_edge_details
     return ProcessingResult(
         effective=EffectiveRecipe(
             e0=float(group.e0),
+            e0_automatic=recipe.e0 is None,
             edge_step=float(group.edge_step),
+            edge_step_automatic=recipe.step is None,
+            pre1=float(pre_effective.pre1),
+            pre1_automatic=recipe.pre1 is None,
+            pre2=float(pre_effective.pre2),
+            pre2_automatic=recipe.pre2 is None,
+            norm1=float(pre_effective.norm1),
+            norm1_automatic=recipe.norm1 is None,
+            norm2=float(pre_effective.norm2),
+            norm2_automatic=recipe.norm2 is None,
+            nnorm=int(pre_effective.nnorm),
+            nnorm_automatic=recipe.nnorm is None,
             rbkg=float(autobk_effective["rbkg"]),
-            kmin=float(ft_effective["kmin"]),
-            kmax=float(ft_effective["kmax"]),
             kweight=int(ft_effective["kweight"]),
+            autobk_kmin=float(autobk_effective["kmin"]),
+            autobk_kmax=float(group.k.max()),
+            autobk_kmax_automatic=recipe.kmax is None,
             autobk_dk=float(autobk_effective["dk"]),
+            autobk_dk_automatic=recipe.autobk_dk is None,
             autobk_window=str(autobk_effective["win"]),
-            ft_dk=float(ft_effective["dk"]),
-            ft_dk2=(
-                float(ft_effective["dk2"])
+            autobk_window_automatic=recipe.autobk_window is None,
+            xftf_kmin=float(ft_effective["kmin"]),
+            xftf_kmax=float(ft_effective["kmax"]),
+            xftf_kmax_automatic=recipe.kmax is None,
+            xftf_dk=float(ft_effective["dk"]),
+            xftf_dk2=float(
+                ft_effective["dk2"]
                 if ft_effective["dk2"] is not None
-                else None
+                else ft_effective["dk"]
             ),
-            ft_window=str(ft_effective["window"]),
+            xftf_dk2_automatic=recipe.ft_dk2 is None,
+            xftf_window=str(ft_effective["window"]),
             nfft=int(ft_effective["nfft"]),
             kstep=float(ft_effective["kstep"]),
             rmax_out=float(ft_effective["rmax_out"]),

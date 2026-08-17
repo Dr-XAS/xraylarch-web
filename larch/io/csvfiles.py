@@ -138,25 +138,25 @@ def str2float(word, allow_times=True):
 
 def read_csv(filename):
     """read CSV file, return group with data as columns"""
-    csvfile = open(filename, "r")
-    dialect = csv.Sniffer().sniff(csvfile.read(), [",", ";", "\t"])
-    csvfile.seek(0)
+    with open(filename, "r", encoding=sys.getdefaultencoding()) as csvfile:
+        dialect = csv.Sniffer().sniff(csvfile.read(), [",", ";", "\t"])
+        csvfile.seek(0)
 
-    data = None
-    isfloat = None
-    for row in csv.reader(csvfile, dialect):
-        if data is None:
-            ncols = len(row)
-            data = [[] for i in range(ncols)]
-            isfloat = [None] * ncols
-        for i, word in enumerate(row):
-            data[i].append(str2float(word))
-            if isfloat[i] is None:
-                try:
-                    _ = float(word)
-                    isfloat[i] = True
-                except ValueError:
-                    isfloat[i] = False
+        data = None
+        isfloat = None
+        for row in csv.reader(csvfile, dialect):
+            if data is None:
+                ncols = len(row)
+                data = [[] for i in range(ncols)]
+                isfloat = [None] * ncols
+            for i, word in enumerate(row):
+                data[i].append(str2float(word))
+                if isfloat[i] is None:
+                    try:
+                        _ = float(word)
+                        isfloat[i] = True
+                    except ValueError:
+                        isfloat[i] = False
 
     out = Group(filename=filename, data=data)
     for icol in range(ncols):

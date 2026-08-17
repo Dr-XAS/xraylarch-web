@@ -19,10 +19,12 @@ describe("ProcessingInspector", () => {
         recipe={DEFAULT_RECIPE}
         canPreview
         canApply={false}
+        isPreviewing={false}
         statusText="Review controls"
         error={error}
         onChange={vi.fn()}
         onPreview={vi.fn().mockResolvedValue(undefined)}
+        onCancelPreview={vi.fn()}
         onApply={vi.fn().mockResolvedValue(undefined)}
       />,
     )
@@ -34,5 +36,27 @@ describe("ProcessingInspector", () => {
       expect(control).toHaveAttribute("aria-invalid", "true")
       expect(control).toHaveAccessibleDescription(/use a permitted advanced value and preview again/i)
     }
+  })
+
+  it("offers a visible cancel action while preview is in flight", () => {
+    const onCancelPreview = vi.fn()
+    render(
+      <ProcessingInspector
+        recipe={DEFAULT_RECIPE}
+        canPreview={false}
+        canApply={false}
+        isPreviewing
+        statusText="Previewing"
+        error={null}
+        onChange={vi.fn()}
+        onPreview={vi.fn().mockResolvedValue(undefined)}
+        onCancelPreview={onCancelPreview}
+        onApply={vi.fn().mockResolvedValue(undefined)}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel preview/i }))
+
+    expect(onCancelPreview).toHaveBeenCalledOnce()
   })
 })

@@ -76,6 +76,71 @@ def test_restore_creates_new_revision_without_deleting_history(data_root, synthe
     ]
 
 
+def test_restore_snapshot_rehydrates_the_restored_source_not_latest_mapping(
+    data_root, xas_arrays
+):
+    energy, mu = xas_arrays
+    first_bytes = b"# energy mu\n" + b"\n".join(
+        f"{x:.8f} {y:.12f}".encode() for x, y in zip(energy, mu, strict=True)
+    )
+    second_bytes = b"# energy mu\n" + b"\n".join(
+        f"{x:.8f} {y + 0.25:.12f}".encode()
+        for x, y in zip(energy, mu, strict=True)
+    )
+    store = WorkspaceStore(data_root)
+    workspace_id = store.create().workspace_id
+
+    first_upload = store.save_upload(
+        workspace_id, parse_upload(first_bytes, "source-a.xmu")
+    )
+    first_source = store.confirm_mapping(
+        workspace_id, first_upload, "column_0001", "column_0002"
+    )
+    first_applied = store.apply_revision(
+        workspace_id,
+        first_source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+
+    second_upload = store.save_upload(
+        workspace_id, parse_upload(second_bytes, "source-b.xmu")
+    )
+    second_source = store.confirm_mapping(
+        workspace_id, second_upload, "column_0001", "column_0002"
+    )
+    second_applied = store.apply_revision(
+        workspace_id,
+        second_source.revision_id,
+        expected_parent_revision=first_applied.revision_id,
+        recipe=RecipeDraft(),
+    )
+    restored = store.restore_revision(
+        workspace_id,
+        first_applied.revision_id,
+        expected_parent_revision=second_applied.revision_id,
+    )
+
+    snapshot = store.load(workspace_id)
+    preview = store.preview(workspace_id, snapshot.active_source.source_revision_id, RecipeDraft())
+
+    assert restored.source_revision_id == first_source.revision_id
+    assert snapshot.active_source is not None
+    assert snapshot.active_source.source_revision_id == first_source.revision_id
+    assert snapshot.active_source.upload_id == first_upload
+    assert snapshot.active_source.display_name == "source-a.xmu"
+    assert snapshot.active_source.row_count == len(energy)
+    assert snapshot.active_source.energy_column_id == "column_0001"
+    assert snapshot.active_source.signal_column_id == "column_0002"
+    assert [column.column_id for column in snapshot.active_source.columns] == [
+        "column_0001",
+        "column_0002",
+    ]
+    assert snapshot.draft_source is not None
+    assert snapshot.draft_source.source_revision_id == second_source.revision_id
+    assert np.asarray(preview.plots[0].y) == pytest.approx(mu)
+
+
 def test_stale_apply_preserves_current_revision(data_root, synthetic_xmu_bytes):
     store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
     current = store.apply_revision(

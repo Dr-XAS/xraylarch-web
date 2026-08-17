@@ -33,16 +33,35 @@ const defaultRecipe: RecipeDraft = {
 const result: ProcessingResult = {
   effective: {
     e0: 8979,
+    e0_automatic: true,
     edge_step: 1,
+    edge_step_automatic: true,
+    pre1: -200,
+    pre1_automatic: true,
+    pre2: -30,
+    pre2_automatic: true,
+    norm1: 100,
+    norm1_automatic: true,
+    norm2: 300,
+    norm2_automatic: true,
+    nnorm: 2,
+    nnorm_automatic: true,
     rbkg: 1,
-    kmin: 0,
-    kmax: 12,
     kweight: 2,
-    autobk_dk: 1,
-    autobk_window: "kaiser",
-    ft_dk: 1,
-    ft_dk2: null,
-    ft_window: "kaiser",
+    autobk_kmin: 0,
+    autobk_kmax: 12,
+    autobk_kmax_automatic: true,
+    autobk_dk: 0.1,
+    autobk_dk_automatic: true,
+    autobk_window: "hanning",
+    autobk_window_automatic: true,
+    xftf_kmin: 0,
+    xftf_kmax: 20,
+    xftf_kmax_automatic: true,
+    xftf_dk: 1,
+    xftf_dk2: 1,
+    xftf_dk2_automatic: true,
+    xftf_window: "kaiser",
     nfft: 2048,
     kstep: 0.05,
     rmax_out: 10,
@@ -50,10 +69,34 @@ const result: ProcessingResult = {
   plots: [],
 }
 
+const sourceA = {
+  upload_id: "upload-a",
+  source_revision_id: 1,
+  energy_column_id: "column_0001",
+  signal_column_id: "column_0002",
+  display_name: "source-a.xmu",
+  row_count: 1201,
+  columns: [
+    { column_id: "column_0001", name: "energy", index: 0, numeric: true, unit: "eV", role_hint: "energy", preview: [8750] },
+    { column_id: "column_0002", name: "mu", index: 1, numeric: true, unit: null, role_hint: "mu", preview: [0.18] },
+  ],
+  warnings: [],
+  issues: [],
+}
+
+const sourceB = {
+  ...sourceA,
+  upload_id: "upload-b",
+  source_revision_id: 3,
+  display_name: "source-b.xmu",
+}
+
 const snapshot: WorkspaceSnapshot = {
   workspace_id: "workspace-1",
   active_revision_id: 2,
   active_result: result,
+  active_source: sourceA,
+  draft_source: sourceA,
   revisions: [
     { revision_id: 1, kind: "mapping" },
     {
@@ -69,6 +112,26 @@ const snapshot: WorkspaceSnapshot = {
 }
 
 describe("workbench state", () => {
+  it("hydrates the active revision source instead of the latest mapping", () => {
+    const hydrated = workbenchReducer(createInitialState(defaultRecipe), {
+      type: "workspace/hydrated",
+      snapshot: { ...snapshot, draft_source: sourceB },
+    })
+
+    expect(hydrated.sourceRevisionId).toBe(sourceA.source_revision_id)
+    expect(hydrated.inspection?.display_name).toBe("source-a.xmu")
+  })
+
+  it("uses a newly confirmed mapping as the deliberate draft source", () => {
+    const mapped = workbenchReducer(createInitialState(defaultRecipe), {
+      type: "mapping/succeeded",
+      snapshot: { ...snapshot, draft_source: sourceB },
+    })
+
+    expect(mapped.sourceRevisionId).toBe(sourceB.source_revision_id)
+    expect(mapped.inspection?.display_name).toBe("source-b.xmu")
+  })
+
   it("keeps the applied revision visible while a preview is pending", () => {
     const hydrated = workbenchReducer(createInitialState(defaultRecipe), {
       type: "mapping/succeeded",
@@ -159,6 +222,34 @@ describe("workbench state", () => {
     expect(cancelled.previewRequestId).toBeNull()
     expect(cancelled.status).toBe("ready")
     expect(hasUnappliedChanges(cancelled)).toBe(true)
+  })
+
+  it("marks inspection and mapping blockers as blocked", () => {
+    const inspected = workbenchReducer(createInitialState(defaultRecipe), {
+      type: "inspection/succeeded",
+      inspection: {
+        ...sourceA,
+        issues: [{
+          code: "energy_not_monotonic",
+          message: "Energy values are not strictly increasing.",
+          fields: ["column_0001"],
+          recovery: "Repair the energy order before processing.",
+        }],
+      },
+    })
+    const mappingError = new ApiRequestError({
+      code: "invalid_mapping",
+      message: "Choose valid columns.",
+      fields: ["energy_column"],
+      recovery: "Choose another energy column.",
+    }, 400)
+    const blocked = workbenchReducer(inspected, {
+      type: "error/received",
+      error: mappingError,
+    })
+
+    expect(inspected.status).toBe("blocked")
+    expect(blocked.status).toBe("blocked")
   })
 })
 

@@ -21,24 +21,7 @@ from .parsing import parse_upload
 from .workspace import WorkspaceStore
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
-_DATA_MEDIA_TYPES = {
-    "application/csv",
-    "application/x-xdi",
-    "text/csv",
-    "text/plain",
-    "text/x-xdi",
-}
-
-
 async def _read_bounded_upload(file: UploadFile, max_bytes: int) -> bytes:
-    if file.content_type not in _DATA_MEDIA_TYPES:
-        raise WebInputError(
-            "upload_media_type",
-            "Upload a text, CSV, or XDI data file.",
-            ("file",),
-            "Choose a text, CSV, or XDI data file and retry.",
-        )
-
     chunks: list[bytes] = []
     size = 0
     try:
@@ -94,6 +77,8 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
             source_bytes,
             file.filename or "upload.dat",
             max_bytes=settings.max_upload_bytes,
+            max_points=settings.max_points,
+            max_columns=settings.max_columns,
         )
         upload_id = store.save_upload(workspace_id, parsed)
         return InspectionResponse(upload_id=upload_id, **parsed.inspection().model_dump())

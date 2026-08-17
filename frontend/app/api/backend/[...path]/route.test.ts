@@ -2,13 +2,26 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { GET, POST } from "./route"
 
-const validParams = { params: { path: ["api", "workspaces", "workspace-1", "mapping"] } }
+const validParams = { params: Promise.resolve({ path: ["api", "workspaces", "workspace-1", "mapping"] }) }
 
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
 describe("backend proxy", () => {
+  it("accepts Next 16 promised route parameters", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}"))
+    vi.stubGlobal("fetch", fetcher)
+
+    const response = await GET(
+      new Request("http://localhost/api/backend/api/workspaces"),
+      { params: Promise.resolve({ path: ["api", "workspaces"] }) },
+    )
+
+    expect(response.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
   it("forwards a POST body with the Node duplex requirement", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("{}", {
       headers: { "content-type": "application/json" },
@@ -39,7 +52,7 @@ describe("backend proxy", () => {
       },
     })
 
-    await GET(request, { params: { path: ["api", "workspaces"] } })
+    await GET(request, { params: Promise.resolve({ path: ["api", "workspaces"] }) })
 
     const headers = fetcher.mock.calls[0][1]?.headers as Headers
     expect(headers.get("accept")).toBe("application/json")
@@ -53,10 +66,29 @@ describe("backend proxy", () => {
     vi.stubGlobal("fetch", fetcher)
 
     const response = await GET(new Request("http://localhost/api/backend/other"), {
-      params: { path: ["other"] },
+      params: Promise.resolve({ path: ["other"] }),
     })
 
     expect(response.status).toBe(404)
     expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ["data.csv", 'attachment; filename="data.csv"'],
+    ["recipe.json", 'attachment; filename="recipe.json"'],
+  ])("forwards the exact %s attachment name", async (filename, disposition) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("download", {
+      headers: {
+        "content-disposition": disposition,
+        "content-type": filename.endsWith(".csv") ? "text/csv" : "application/json",
+      },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const response = await GET(
+      new Request(`http://localhost/api/backend/api/workspaces/workspace-1/revisions/2/${filename}`),
+      { params: Promise.resolve({ path: ["api", "workspaces", "workspace-1", "revisions", "2", filename] }) },
+    )
+
+    expect(response.headers.get("content-disposition")).toBe(disposition)
   })
 })

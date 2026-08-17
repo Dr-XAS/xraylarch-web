@@ -100,6 +100,10 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
     }
   }
 
+  function cancelPreview() {
+    dispatch({ type: "preview/cancelled" })
+  }
+
   async function restore(revisionId: number) {
     if (!state.workspaceId) return
     try {
@@ -126,10 +130,12 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
             recipe={state.draft}
             canPreview={canPreview}
             canApply={canApply}
+            isPreviewing={state.status === "previewing"}
             statusText={state.preview ? "Preview is not yet applied." : "Applied results stay visible while you review changes."}
             error={state.error}
             onChange={(changes) => dispatch({ type: "draft/updated", changes })}
             onPreview={preview}
+            onCancelPreview={cancelPreview}
             onApply={apply}
           />
         </aside>
