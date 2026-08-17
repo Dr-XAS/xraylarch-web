@@ -213,15 +213,17 @@ Add RecipeDraft with these fields and defaults:
     rbkg: float = 1.0
     kmin: float = 0.0
     kmax: float | None = None
-    kweight: int = 1
-    dk: float = 0.1
-    dk2: float | None = None
-    window: str = "hanning"
+    kweight: int = 2
+    autobk_dk: float | None = None
+    autobk_window: str | None = None
+    ft_dk: float = 1.0
+    ft_dk2: float | None = None
+    ft_window: str = "kaiser"
     nfft: int = 2048
     kstep: float = 0.05
     rmax_out: float = 10.0
 
-Pass the recipe overrides to pre_edge, pass its effective e0/edge_step plus rbkg, k bounds, k-weight, taper, window, nfft, and kstep to autobk, then pass χ(k) and the transform settings to xftf. Preserve None as automatic for Larch. Return Plotly-compatible traces with explicit id, label, x_label, y_label, x_unit, and y_unit for raw_mu, norm_mu, chi_k, and chi_r. Convert NumPy scalars to Python floats and reject non-finite results with processing_nonfinite.
+Pass the recipe overrides to pre_edge, pass its effective e0/edge_step plus rbkg, k bounds, shared k-weight, optional Autobk taper/window overrides, nfft, and kstep to autobk, then pass χ(k) and the Fourier taper/window settings to xftf. Preserve None as automatic for Larch. Return Plotly-compatible traces with explicit id, label, x_label, y_label, x_unit, and y_unit for raw_mu, norm_mu, chi_k, and chi_r. Convert NumPy scalars to Python floats and reject non-finite results with processing_nonfinite.
 
 - [ ] Step 4: Implement safe workspace storage and revision semantics.
 

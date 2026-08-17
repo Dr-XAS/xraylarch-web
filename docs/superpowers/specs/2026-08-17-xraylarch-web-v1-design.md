@@ -39,7 +39,8 @@ apply a recipe revision, and inspect the resulting normalized spectrum, χ(k), a
   revisions retained for that workspace.
 - Deterministic processing through Larch `pre_edge`, `autobk`, and `xftf`.
 - Draft controls for E0, pre-edge/post-edge regions, normalization degree,
-  `rbkg`, k-range, k-weight, FFT taper, window, and output range.
+  `rbkg`, k-range, shared k-weight, stage-specific FFT taper/window settings,
+  and output range.
 - Linked raw/normalized μ(E), χ(k), and χ(R) Plotly views with derived values such
   as E0 and edge step.
 - Preview, cancel, apply, and restore-as-new-revision behavior.
@@ -130,14 +131,19 @@ The processing sequence is:
 2. Run `pre_edge` with the recipe's explicit overrides and preserve Larch's
    automatic values when a field is `null`.
 3. Run `autobk` using the same E0/edge-step result and the recipe's `rbkg`, k
-   bounds, k-weight, taper, window, and FFT settings.
-4. Run `xftf` on the resulting χ(k) using the recipe's transform settings.
+   bounds, shared k-weight, and optional Autobk taper/window overrides.
+4. Run `xftf` on the resulting χ(k) using the recipe's Fourier taper/window
+   settings and shared k-weight.
 5. Serialize only finite, JSON-safe numeric arrays and derived scalar values.
 
-The web defaults are the current Larch defaults unless the UI labels a value as a
-product-specific display choice. The backend records the exact effective values
-returned by Larch, including automatic E0 and edge step. No web-only duplicate of
-the XAS algorithm is permitted.
+The web defaults preserve the function-specific Larch behavior: shared k-weight 2
+matches the established XAS processing pipeline, Autobk taper/window remain
+automatic unless explicitly overridden, and Fourier taper/window default to the
+Larch XAS transform defaults (`dk=1.0`, `window="kaiser"`). The UI labels the
+shared k-weight and any unified display choice as product-level controls. The
+backend records the exact effective values returned by Larch, including automatic
+E0, edge step, and stage-specific settings. No web-only duplicate of the XAS
+algorithm is permitted.
 
 ## HTTP API
 
@@ -182,8 +188,9 @@ The main page has four persistent regions:
    χ(R). Plotly JSON from the backend is rendered directly; the frontend never
    reconstructs scientific arrays from display labels.
 3. **Processing inspector:** Import and Normalize/EXAFS sections with Recommended
-   controls first and Advanced controls expandable. Every field shows units and a
-   short explanation.
+   controls first and Advanced controls expandable. Stage-specific Autobk and
+   Fourier taper/window overrides remain in Advanced. Every field shows units and
+   a short explanation.
 4. **Recipe history:** applied revisions with parameter diffs, effective values,
    restore action, and download actions.
 
