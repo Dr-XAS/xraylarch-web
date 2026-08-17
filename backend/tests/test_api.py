@@ -203,6 +203,40 @@ def test_inspection_accepts_browser_mime_fallbacks_for_supported_suffixes(tmp_pa
     asyncio.run(exercise())
 
 
+def test_inspection_rejects_malformed_middle_row_without_reinterpreting_table(
+    tmp_path,
+):
+    malformed_xmu = (
+        b"# energy mu\n"
+        b"8979.0 0.102\n"
+        b"8980.0 0.103\n"
+        b"energy replacement_header\n"
+        b"8981.0 0.104\n"
+    )
+
+    async def exercise() -> None:
+        async with _client(_app(tmp_path)) as client:
+            workspace_id = (await client.post("/api/workspaces")).json()["workspace_id"]
+            response = await client.post(
+                f"/api/workspaces/{workspace_id}/uploads/inspect",
+                files={"file": ("malformed-middle.xmu", malformed_xmu, "text/plain")},
+            )
+
+        assert response.status_code == 400
+        assert response.json() == {
+            "error": {
+                "code": "upload_malformed_rows",
+                "message": "The upload contains a malformed or inconsistent data row.",
+                "fields": ["file"],
+                "recovery": "Repair the tabular rows and upload the data again.",
+            }
+        }
+        assert "upload_id" not in response.text
+        assert "columns" not in response.text
+
+    asyncio.run(exercise())
+
+
 def test_inspection_enforces_configured_table_limits(tmp_path):
     async def exercise() -> None:
         app = create_app(

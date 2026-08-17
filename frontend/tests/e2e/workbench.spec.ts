@@ -5,6 +5,7 @@ import { expect, test, type Page } from "@playwright/test"
 
 const testDirectory = fileURLToPath(new URL(".", import.meta.url))
 const fixturePath = path.resolve(testDirectory, "../fixtures/cu_rt01.xmu")
+const duplicateFixturePath = path.resolve(testDirectory, "../fixtures/cu_rt01-duplicate-signals.csv")
 const secondFixturePath = path.resolve(testDirectory, "../../../examples/xafsdata/cu_50k.xmu")
 const xdiFixturePath = path.resolve(testDirectory, "../../../dylibs/XDI/cu_metal_rt.xdi")
 
@@ -78,6 +79,37 @@ test("accepts a real path-selected XDI browser upload", async ({ page }) => {
   await page.getByRole("button", { name: "Confirm mapping" }).click()
 
   await expect(page.getByTestId("preview-button")).toBeEnabled()
+})
+
+test("maps the second duplicate-labeled signal through the real browser path", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await expect(page.getByTestId("workbench-ready")).toBeVisible()
+
+  const upload = page.getByLabel("Upload spectrum")
+  await expect(upload).toBeEnabled()
+  await upload.setInputFiles(duplicateFixturePath)
+  await expect(page.getByTestId("column-mapping")).toBeVisible()
+  await page.getByLabel("Energy column").selectOption("column_0001")
+  await page.getByLabel("Signal column").selectOption("column_0003")
+
+  const mappingRequestPromise = page.waitForRequest((request) => request.url().endsWith("/mapping"))
+  await page.getByRole("button", { name: "Confirm mapping" }).click()
+  const mappingRequest = await mappingRequestPromise
+  expect(mappingRequest.postDataJSON()).toMatchObject({
+    energy_column: "column_0001",
+    signal_column: "column_0003",
+  })
+
+  await expect(page.getByTestId("preview-button")).toBeEnabled()
+  const previewResponsePromise = page.waitForResponse((response) => response.url().endsWith("/preview"))
+  await page.getByTestId("preview-button").click()
+  const previewResponse = await previewResponsePromise
+  expect(previewResponse.status()).toBe(200)
+  const preview = await previewResponse.json()
+  const rawTrace = preview.plots.find((trace: { id: string }) => trace.id === "raw_mu")
+  expect(rawTrace.y[0]).toBe(1.102)
+  expect(rawTrace.y[0]).not.toBe(0.102)
+  await expect(page.getByTestId("plot-raw_mu")).toBeVisible()
 })
 
 test("has no document overflow and keeps the processing inspector reachable at 390 by 844", async ({ page }) => {
