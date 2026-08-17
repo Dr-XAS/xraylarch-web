@@ -25,6 +25,66 @@ if exact_screen_session xraylarch-web-frontend >/dev/null 2>&1; then
   test_fail "multiple same-named screen sessions must be a collision"
 fi
 
+raw_stop_events=()
+mock_sessions=""
+screen_control() {
+  case "$1" in
+    -ls) printf '%s\n' "$mock_sessions" ;;
+    -S)
+      [[ "$3" == -X && "$4" == quit ]] || test_fail "screen stop must target one exact session"
+      raw_stop_events+=("$2")
+      mock_sessions=""
+      ;;
+    *) test_fail "unexpected screen invocation: $*" ;;
+  esac
+}
+lsof() { return 0; }
+ss() { return 0; }
+SCREEN_BIN=screen_control
+
+mock_sessions="405.xraylarch-web-candidate-frontend"
+stop_recorded_component xraylarch-web-candidate-frontend 405 "" 13004 /release frontend 127.0.0.1 || test_fail "staged startup cleanup must stop its recorded screen"
+[[ "${raw_stop_events[*]-}" == *"405.xraylarch-web-candidate-frontend"* ]] || test_fail "staged startup failure must leave no candidate screen"
+
+mock_sessions="401.xraylarch-web-frontend"
+stop_recorded_component xraylarch-web-frontend 401 "" 3004 /release frontend 0.0.0.0 || test_fail "final startup cleanup must stop its recorded screen"
+[[ "${raw_stop_events[*]-}" == *"401.xraylarch-web-frontend"* ]] || test_fail "final startup failure must release the final screen name"
+
+recovery_events=()
+restore_prior_link_and_state() { recovery_events+=(restore-state); }
+restart_previous_release() { recovery_events+=(restart-prior-healthy); }
+
+raw_stop_events=()
+mock_sessions="405.xraylarch-web-candidate-frontend"
+ACTIVATION_IN_PROGRESS=1
+ACTIVATION_PREVIOUS_STOPPED=1
+ACTIVATION_TARGET_FRONTEND_NAME=""
+ACTIVATION_TARGET_BACKEND_NAME=""
+ACTIVATION_STAGE_FRONTEND_NAME=xraylarch-web-candidate-frontend
+ACTIVATION_STAGE_FRONTEND_SCREEN_PID=405
+ACTIVATION_STAGE_FRONTEND_LISTENER_PID=""
+ACTIVATION_STAGE_FRONTEND_PORT=13004
+ACTIVATION_STAGE_BACKEND_NAME=""
+recover_activation || test_fail "staged startup failure recovery must complete"
+[[ "${raw_stop_events[*]-}" == *"405.xraylarch-web-candidate-frontend"* ]] || test_fail "staged startup failure must leave no candidate screen/process"
+[[ "${recovery_events[*]}" == *"restore-state restart-prior-healthy"* ]] || test_fail "staged startup failure must restore the healthy prior release"
+
+raw_stop_events=()
+recovery_events=()
+mock_sessions="401.xraylarch-web-frontend"
+ACTIVATION_IN_PROGRESS=1
+ACTIVATION_PREVIOUS_STOPPED=1
+ACTIVATION_TARGET_FRONTEND_NAME=xraylarch-web-frontend
+ACTIVATION_TARGET_FRONTEND_SCREEN_PID=401
+ACTIVATION_TARGET_FRONTEND_LISTENER_PID=""
+ACTIVATION_TARGET_FRONTEND_PORT=3004
+ACTIVATION_TARGET_BACKEND_NAME=""
+ACTIVATION_STAGE_FRONTEND_NAME=""
+ACTIVATION_STAGE_BACKEND_NAME=""
+recover_activation || test_fail "final startup failure recovery must complete"
+[[ "${raw_stop_events[*]-}" == *"401.xraylarch-web-frontend"* ]] || test_fail "final startup failure must leave no final candidate screen/process"
+[[ "${recovery_events[*]}" == *"restore-state restart-prior-healthy"* ]] || test_fail "final startup failure must restore the healthy prior release"
+
 events=()
 stop_recorded_component() {
   events+=("stop:$1:$2:$3:$4:$5")

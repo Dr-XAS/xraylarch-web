@@ -174,7 +174,8 @@ screen_sessions_for_name() {
 exact_screen_session() {
   local name="$1"
   local -a sessions=()
-  mapfile -t sessions < <(screen_sessions_for_name "$name")
+  local session
+  while IFS= read -r session; do [[ -z "$session" ]] || sessions+=("$session"); done < <(screen_sessions_for_name "$name")
   [[ ${#sessions[@]} -eq 1 ]] || { fail "expected exactly one screen session named $name, found ${#sessions[@]}"; return 1; }
   printf '%s\n' "${sessions[0]}"
 }
@@ -187,7 +188,8 @@ screen_pid_from_session() {
 listener_pid() {
   local port="$1"
   local -a pids=()
-  mapfile -t pids < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  local pid
+  while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
   [[ ${#pids[@]} -eq 1 ]] || { fail "expected exactly one listener on port $port, found ${#pids[@]}"; return 1; }
   printf '%s\n' "${pids[0]}"
 }
@@ -304,7 +306,8 @@ wait_for_listener_release() {
   local port="$1" expected_pid="$2" attempt
   local -a pids=()
   for attempt in {1..20}; do
-    mapfile -t pids < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    pids=()
+    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
     if [[ ${#pids[@]} -eq 0 ]] && ! ss -ltnH | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit found ? 0 : 1 }'; then return 0; fi
     if [[ ${#pids[@]} -ne 1 || "${pids[0]}" != "$expected_pid" ]]; then fail "listener ownership changed before port $port was released"; fi
     sleep 1
@@ -316,7 +319,8 @@ wait_for_port_absent() {
   local port="$1" attempt
   local -a pids=()
   for attempt in {1..20}; do
-    mapfile -t pids < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    pids=()
+    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
     if [[ ${#pids[@]} -eq 0 ]] && ! ss -ltnH | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit found ? 0 : 1 }'; then return 0; fi
     sleep 1
   done
@@ -334,7 +338,7 @@ recorded_listener_still_matches() {
 stop_recorded_component() {
   local name="$1" screen_pid="$2" listener_pid_value="$3" port="$4" release="$5" kind="$6" host="$7"
   local session observed_screen_pid
-  [[ -n "$name" && -n "$screen_pid" && -n "$listener_pid_value" ]] || return 0
+  [[ -n "$name" && -n "$screen_pid" ]] || return 0
   session=$(exact_screen_session "$name") || return 1
   observed_screen_pid=$(screen_pid_from_session "$session") || return 1
   [[ "$observed_screen_pid" == "$screen_pid" ]] || { fail "refusing to stop changed screen PID for $name"; return 1; }
@@ -357,7 +361,8 @@ launch_screen() {
   local name="$1" working_directory="$2" backend_url="$3"
   shift 3
   local -a existing=()
-  mapfile -t existing < <(screen_sessions_for_name "$name")
+  local session
+  while IFS= read -r session; do [[ -z "$session" ]] || existing+=("$session"); done < <(screen_sessions_for_name "$name")
   [[ ${#existing[@]} -eq 0 ]] || { fail "screen name collision: $name"; return 1; }
   (
     cd "$working_directory" || exit 1
