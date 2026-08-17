@@ -52,6 +52,28 @@ export interface RecipeDraft {
   rmax_out: number
 }
 
+export const DEFAULT_RECIPE: RecipeDraft = {
+  e0: null,
+  step: null,
+  nnorm: null,
+  pre1: null,
+  pre2: null,
+  norm1: null,
+  norm2: null,
+  rbkg: 1,
+  kmin: 0,
+  kmax: null,
+  kweight: 2,
+  autobk_dk: null,
+  autobk_window: null,
+  ft_dk: 1,
+  ft_dk2: null,
+  ft_window: "kaiser",
+  nfft: 2048,
+  kstep: 0.05,
+  rmax_out: 10,
+}
+
 export interface EffectiveRecipe {
   e0: number
   edge_step: number

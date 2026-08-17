@@ -39,6 +39,7 @@ export type WorkbenchAction =
   | { type: "workspace/hydrated"; snapshot: WorkspaceSnapshot }
   | { type: "inspection/succeeded"; inspection: InspectionResponse }
   | { type: "mapping/succeeded"; snapshot: WorkspaceSnapshot }
+  | { type: "draft/updated"; changes: Partial<RecipeDraft> }
   | { type: "preview/started"; recipe: RecipeDraft }
   | { type: "preview/succeeded"; requestId: number; result: ProcessingResult }
   | { type: "preview/failed"; requestId: number; error: ApiRequestError }
@@ -112,6 +113,14 @@ export function workbenchReducer(state: WorkbenchState, action: WorkbenchAction)
       return hydrate(state, action.snapshot)
     case "inspection/succeeded":
       return { ...state, inspection: action.inspection, status: "ready", error: null }
+    case "draft/updated":
+      return {
+        ...state,
+        draft: { ...state.draft, ...action.changes },
+        preview: null,
+        status: "ready",
+        error: null,
+      }
     case "preview/started": {
       const requestId = state.nextPreviewRequestId
       return {
