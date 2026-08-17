@@ -27,3 +27,42 @@ def test_parse_upload_reports_non_monotonic_energy():
     parsed = parse_upload(b"# energy mu\n3 1\n2 2\n4 3\n", "bad.dat")
 
     assert any(issue.code == "energy_not_monotonic" for issue in parsed.issues)
+
+
+def test_parse_upload_rejects_nul_bytes():
+    with pytest.raises(WebInputError) as exc:
+        parse_upload(b"1 2\n\x00\n", "binary.dat")
+
+    assert exc.value.code == "upload_binary"
+
+
+def test_parse_upload_rejects_empty_table():
+    with pytest.raises(WebInputError) as exc:
+        parse_upload(b"# metadata only\n\n", "empty.dat")
+
+    assert exc.value.code == "upload_empty"
+
+
+def test_parse_upload_rejects_missing_numeric_array():
+    with pytest.raises(WebInputError) as exc:
+        parse_upload(b"not numeric\nstill text\n", "text.dat")
+
+    assert exc.value.code == "upload_no_numeric_data"
+
+
+def test_parse_upload_rejects_nonfinite_value():
+    with pytest.raises(WebInputError) as exc:
+        parse_upload(b"# energy mu\n1 nan\n2 3\n", "nonfinite.dat")
+
+    assert exc.value.code == "upload_nonfinite"
+
+
+def test_parse_upload_preserves_duplicate_source_labels():
+    parsed = parse_upload(
+        b"energy,mu,mu\n1,2,3\n2,4,5\n", "duplicate.csv"
+    )
+
+    assert [column.name for column in parsed.columns] == ["energy", "mu", "mu"]
+    assert list(parsed.arrays) == ["energy", "mu", "mu__2"]
+    assert parsed.arrays["mu"].tolist() == [2.0, 4.0]
+    assert parsed.arrays["mu__2"].tolist() == [3.0, 5.0]

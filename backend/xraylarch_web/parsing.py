@@ -72,6 +72,14 @@ def _can_be_float(value: str) -> bool:
     return True
 
 
+def _has_data_lines(data: bytes) -> bool:
+    text = data.decode("utf-8", errors="replace")
+    return any(
+        line.strip() and line.lstrip()[0] not in "#;!"
+        for line in text.splitlines()
+    )
+
+
 def _numeric_arrays(group) -> tuple[tuple[str, str | None, np.ndarray], ...]:
     labels = list(getattr(group, "array_labels", ()) or ())
     if not labels:
@@ -86,8 +94,8 @@ def _numeric_arrays(group) -> tuple[tuple[str, str | None, np.ndarray], ...]:
     units = list(getattr(group, "array_units", ()) or ())
     arrays: list[tuple[str, str | None, np.ndarray]] = []
     for index, label in enumerate(labels):
-        value = getattr(group, label, None)
-        if value is None and hasattr(group, "data"):
+        value = None
+        if hasattr(group, "data"):
             data = group.data
             if isinstance(data, (list, tuple)) and index < len(data):
                 value = data[index]
@@ -95,6 +103,8 @@ def _numeric_arrays(group) -> tuple[tuple[str, str | None, np.ndarray], ...]:
                 data_array = np.asarray(data)
                 if data_array.ndim == 2 and index < data_array.shape[0]:
                     value = data_array[index]
+        if value is None:
+            value = getattr(group, label, None)
         if value is None:
             continue
         try:
@@ -146,8 +156,7 @@ def parse_upload(
         ) from exc
 
     if not numeric_arrays:
-        raw_data = getattr(group, "data", ())
-        if np.asarray(raw_data).size == 0:
+        if not _has_data_lines(data):
             raise WebInputError(
                 "upload_empty",
                 "The upload contains no data rows.",
@@ -172,6 +181,8 @@ def parse_upload(
 
     columns: list[ColumnInfo] = []
     arrays: dict[str, np.ndarray] = {}
+    column_keys: list[str] = []
+    seen_names: dict[str, int] = {}
     issues: list[FieldIssue] = []
     for index, (name, unit, array) in enumerate(numeric_arrays):
         if not np.isfinite(array).all():
@@ -191,19 +202,28 @@ def parse_upload(
                 preview=tuple(float(value) for value in array[:5]),
             )
         )
-        arrays[name] = array
+        occurrence = seen_names.get(name, 0) + 1
+        seen_names[name] = occurrence
+        array_key = name if occurrence == 1 else f"{name}__{occurrence}"
+        column_keys.append(array_key)
+        arrays[array_key] = array
 
-    energy_name = next(
-        (column.name for column in columns if column.role_hint == "energy"), None
+    energy_key = next(
+        (
+            array_key
+            for column, array_key in zip(columns, column_keys)
+            if column.role_hint == "energy"
+        ),
+        None,
     )
-    if energy_name is not None:
-        energy = arrays[energy_name]
+    if energy_key is not None:
+        energy = arrays[energy_key]
         if energy.size > 1 and np.any(np.diff(energy) <= 0):
             issues.append(
                 _issue(
                     "energy_not_monotonic",
                     "Energy values are not strictly increasing.",
-                    energy_name,
+                    energy_key,
                     recovery="Repair the energy order before processing.",
                 )
             )
