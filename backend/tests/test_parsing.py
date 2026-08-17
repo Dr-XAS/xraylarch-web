@@ -66,3 +66,22 @@ def test_parse_upload_preserves_duplicate_source_labels():
     assert list(parsed.arrays) == ["energy", "mu", "mu__2"]
     assert parsed.arrays["mu"].tolist() == [2.0, 4.0]
     assert parsed.arrays["mu__2"].tolist() == [3.0, 5.0]
+
+
+def test_parse_upload_makes_generated_keys_collision_safe():
+    parsed = parse_upload(
+        b"energy,mu,mu,mu__2\n1,2,3,4\n2,5,6,7\n", "collision.csv"
+    )
+
+    assert [column.name for column in parsed.columns] == [
+        "energy",
+        "mu",
+        "mu",
+        "mu__2",
+    ]
+    assert [column.index for column in parsed.columns] == [0, 1, 2, 3]
+    assert len(parsed.arrays) == 4
+    assert parsed.arrays["energy"].tolist() == [1.0, 2.0]
+    assert parsed.arrays["mu"].tolist() == [2.0, 5.0]
+    assert parsed.arrays["mu__2"].tolist() == [3.0, 6.0]
+    assert parsed.arrays["mu__2__2"].tolist() == [4.0, 7.0]

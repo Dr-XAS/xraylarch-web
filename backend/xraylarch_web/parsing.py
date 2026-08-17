@@ -183,6 +183,7 @@ def parse_upload(
     arrays: dict[str, np.ndarray] = {}
     column_keys: list[str] = []
     seen_names: dict[str, int] = {}
+    used_array_keys: set[str] = set()
     issues: list[FieldIssue] = []
     for index, (name, unit, array) in enumerate(numeric_arrays):
         if not np.isfinite(array).all():
@@ -205,8 +206,11 @@ def parse_upload(
         occurrence = seen_names.get(name, 0) + 1
         seen_names[name] = occurrence
         array_key = name if occurrence == 1 else f"{name}__{occurrence}"
+        while array_key in used_array_keys:
+            array_key = f"{array_key}__2"
         column_keys.append(array_key)
         arrays[array_key] = array
+        used_array_keys.add(array_key)
 
     energy_key = next(
         (
