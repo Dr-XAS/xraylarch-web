@@ -29,6 +29,60 @@ National Science Foundation, and the US Departmen of Energy.
 
 The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/012007
 
+## XrayLarch Web V1
+
+XrayLarch Web is a local browser workbench for one XAS spectrum at a time. It
+keeps parsing, processing, revisions, and stored arrays in the FastAPI backend;
+the frontend only sends validated choices and renders server-produced traces.
+
+### Run locally
+
+Create the backend environment from `backend/requirements.txt` before starting
+the services. From the repository root, start the backend in one terminal:
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --reload --port 8006
+```
+
+`PYTHONPATH=backend` is required for the current source-tree layout because the
+web backend package lives beneath `backend/`. Start the frontend in a second
+terminal:
+
+```bash
+cd frontend && npm run dev -- --port 3004
+```
+
+Open [http://localhost:3004](http://localhost:3004). The frontend proxies API
+requests to `http://127.0.0.1:8006` unless `BACKEND_URL` supplies another local
+backend address.
+
+### Check before sharing a local build
+
+Run these commands from the repository root. The browser test starts its own
+backend on `127.0.0.1:18006`, frontend on `127.0.0.1:13004`, and a fresh
+temporary `XRAYLARCH_DATA_ROOT`; it does not use the normal development data
+directory.
+
+```bash
+backend/.venv/bin/python -m pytest backend/tests -q
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run build
+cd frontend && npm run test:e2e
+```
+
+### Operating boundary and deferred work
+
+V1 is for a trusted network and one user. It has no Dr.XAS authentication, no
+user accounts, and no access to Dr.XAS shared data, databases, secrets, or
+provider credentials. Do not expose it to the public internet or treat it as a
+multi-user service.
+
+XRF and XRD tools, fitting and FEFF work, multi-file alignment or batch flows,
+chat, public deployment, authentication, and sharing remain outside V1. The
+planned Dr.XAS address is [http://drxas.xray.aps.anl.gov:3004](http://drxas.xray.aps.anl.gov:3004);
+this README does not imply that it has been deployed.
+
 ## Larch Applications
 
 These applications installed with Larch, in addition to a basic Python

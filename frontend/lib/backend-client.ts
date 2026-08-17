@@ -63,7 +63,7 @@ export function decodeApiError(status: number, body: unknown): ApiRequestError {
 }
 
 export class BackendClient {
-  constructor(private readonly fetcher: Fetcher = fetch) {}
+  constructor(private readonly fetcher: Fetcher = (...args) => fetch(...args)) {}
 
   createWorkspace(): Promise<WorkspaceSnapshot> {
     return this.request("/api/workspaces", { method: "POST" })
