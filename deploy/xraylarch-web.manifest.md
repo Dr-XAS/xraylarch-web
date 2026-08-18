@@ -21,6 +21,10 @@
 | Backend screen | `xraylarch-web-backend` |
 | Candidate frontend screen | `xraylarch-web-candidate-frontend` |
 | Candidate backend screen | `xraylarch-web-candidate-backend` |
+| Watcher screen | `xraylarch-web-watch` |
+| Watcher poll interval | 60 seconds |
+| Watcher state | `/local/apps/xraylarch-web/state/watcher` |
+| Watcher log | `/tmp/xraylarch-web-watch.log` |
 
 V1 is a trusted-network, single-user application. It has no authentication.
 
@@ -132,9 +136,35 @@ An active release is healthy only when all of the following hold:
 The checker only reads process, listener, filesystem, Git, and HTTP state. It
 never stops processes or changes host state.
 
+## Deployment watcher
+
+The approved watcher is installed as
+`/local/apps/xraylarch-web/ops/start-watcher.sh` and runs in the detached GNU
+`screen` session `xraylarch-web-watch`. It polls `origin/codex/xraylarch-web-v1`
+every 60 seconds, resolves the branch to an exact full SHA, and invokes the
+existing deployer with that SHA. The deployer remains the sole authority for
+candidate staging, process identity, cutover, rollback, health validation, and
+`state/last-successful`; the watcher never performs port or process control
+itself. A failed SHA is retried on a later poll and is not recorded as a
+watcher success.
+
+Watcher bookkeeping is private and separate from the deployer's canonical
+activation state:
+
+- `/local/apps/xraylarch-web/state/watcher/last-observed-remote-sha`
+- `/local/apps/xraylarch-web/state/watcher/last-observed-remote-at`
+- `/local/apps/xraylarch-web/state/watcher/last-successful-sha`
+- `/local/apps/xraylarch-web/state/watcher/last-successful-at`
+- `/tmp/xraylarch-web-watch.log`
+
+The read-only status command is
+`/local/apps/xraylarch-web/ops/check-xraylarch-web-watcher.sh status`.
+
 ## Explicitly out of scope
 
-No watcher, cron job, boot entry, firewall, reverse proxy, database, Dr.XAS
-shared data root, provider secret, global process restart, or service change
-is authorized. Do not add any of them as part of this deployment. A push of
-the exact branch revision and every host write remain explicit approval gates.
+This authorization covers only the xraylarch-web watcher and its existing
+port-3004/8006 deployment. No firewall, reverse proxy, database, Dr.XAS shared
+data root, provider secret, global process restart, or change to Dr.XAS or
+xray-sample-db services is authorized. Do not add unrelated cron jobs, boot
+entries, or service changes. A push of the exact branch revision and every
+host write remain explicit approval gates.
