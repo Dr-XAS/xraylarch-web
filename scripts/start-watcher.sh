@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 umask 077
 
-REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/xraylarch-web}"
+REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/apps/xraylarch-web/control}"
 DEPLOY_SCRIPT="${XRAYLARCH_WEB_DEPLOY_SCRIPT:-/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh}"
 BRANCH="${XRAYLARCH_WEB_BRANCH:-codex/xraylarch-web-v1}"
 STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-/local/apps/xraylarch-web/state/watcher}"
