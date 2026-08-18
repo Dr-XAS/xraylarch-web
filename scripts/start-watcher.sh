@@ -40,7 +40,7 @@ read_successful_sha() {
   exit 2
 }
 install -d -m 0700 "$STATE_ROOT"
-install -d -m 0700 "$(dirname "$LOG")"
+install -d -m 0700 "$(dirname "$LOG")" 2>/dev/null || true
 log "started; polling origin/${BRANCH} every ${POLL_INTERVAL}s"
 
 while true; do
