@@ -295,7 +295,13 @@ component_command_matches() {
     frontend)
       executable=$(process_executable "$pid") || return 1
       [[ "${executable##*/}" == node ]] || { fail "frontend listener executable is not node"; return 1; }
-      [[ ${#PROCESS_ARGV[@]} -eq 1 && "${PROCESS_ARGV[0]}" =~ $frontend_title_pattern ]] || { fail "frontend listener title is not the Next server title"; return 1; }
+      [[ ${#PROCESS_ARGV[@]} -ge 1 && "${PROCESS_ARGV[0]}" =~ $frontend_title_pattern ]] || { fail "frontend listener title is not the Next server title"; return 1; }
+      for index in "${!PROCESS_ARGV[@]}"; do
+        if [[ "$index" -gt 0 && -n "${PROCESS_ARGV[$index]}" ]]; then
+          fail "frontend listener has an unexpected non-empty argument"
+          return 1
+        fi
+      done
       ;;
     *) fail "unknown component kind: $kind" ;;
   esac

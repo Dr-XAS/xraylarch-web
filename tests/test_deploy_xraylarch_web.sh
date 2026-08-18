@@ -52,7 +52,9 @@ rm -f "${STATE_ROOT}/last-successful"
 read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)"); }
 process_executable() { printf '/opt/drxas-node20/bin/node\n'; }
 component_command_matches 501 /release frontend 127.0.0.1 13004 || test_fail "Next listener title must be accepted without a node_modules argv path"
-read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "unexpected"); }
+read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "" "" ""); }
+component_command_matches 501 /release frontend 127.0.0.1 13004 || test_fail "Next listener title must allow trailing empty argv entries"
+read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "" "unexpected"); }
 if component_command_matches 501 /release frontend 127.0.0.1 13004 >/dev/null 2>&1; then
   test_fail "changed Next listener argv must fail exact identity"
 fi
