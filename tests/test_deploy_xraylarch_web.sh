@@ -93,6 +93,16 @@ fi
 lsof() { return 0; }
 assert_port_unbound 13004 || test_fail "candidate launch may use an unbound staging port"
 
+ss() {
+  if [[ "${1:-}" == -ltnpH ]]; then
+    printf 'LISTEN 0 511 127.0.0.1:13004 0.0.0.0:* users:(("next-server (v16.3.1)",pid=777,fd=21))\n'
+    return 0
+  fi
+  return 0
+}
+lsof() { return 0; }
+listener_pid 13004 | grep -Fx 777 || test_fail "listener PID must fall back to ss when lsof is empty"
+
 screen_mock() {
   if [[ "$1" == -ls ]]; then
     printf '401.xraylarch-web-frontend\t(Detached)\n'

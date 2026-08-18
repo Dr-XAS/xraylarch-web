@@ -192,6 +192,19 @@ listener_pid() {
   local -a pids=()
   local pid
   while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  if [[ ${#pids[@]} -eq 0 ]]; then
+    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(
+      ss -ltnpH 2>/dev/null | awk -v suffix=":${port}" '
+        $4 ~ (suffix "$") {
+          line = $0
+          while (match(line, /pid=[0-9]+/)) {
+            print substr(line, RSTART + 4, RLENGTH - 4)
+            line = substr(line, RSTART + RLENGTH)
+          }
+        }
+      ' | awk '!seen[$0]++'
+    )
+  fi
   [[ ${#pids[@]} -eq 1 ]] || { fail "expected exactly one listener on port $port, found ${#pids[@]}"; return 1; }
   printf '%s\n' "${pids[0]}"
 }
