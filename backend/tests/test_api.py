@@ -190,15 +190,15 @@ def test_inspection_accepts_browser_mime_fallbacks_for_supported_suffixes(tmp_pa
                     )
                 },
             )
-            unsupported = await client.post(
+            arbitrary_suffix = await client.post(
                 f"/api/workspaces/{workspace_id}/uploads/inspect",
-                files={"file": ("browser.exe", b"1 2\n2 3\n", "text/plain")},
+                files={"file": ("browser.exe", b"1 2\n2 3\n", "application/octet-stream")},
             )
 
         assert xmu.status_code == 200
         assert xdi.status_code == 200
-        assert unsupported.status_code == 400
-        assert unsupported.json()["error"]["code"] == "upload_extension"
+        assert arbitrary_suffix.status_code == 200
+        assert arbitrary_suffix.json()["display_name"] == "browser.exe"
 
     asyncio.run(exercise())
 

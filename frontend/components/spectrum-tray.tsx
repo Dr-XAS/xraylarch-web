@@ -16,7 +16,7 @@ export function SpectrumTray({ inspection, activeRevisionId, status }: SpectrumT
         <p className="eyebrow">Active spectrum</p>
         <h2 title={inspection?.display_name ?? undefined}>{inspection?.display_name ?? "No spectrum uploaded"}</h2>
         <p className="muted">
-          {inspection ? `${inspection.row_count.toLocaleString()} data points` : "Upload a text, CSV, or XDI spectrum to begin."}
+          {inspection ? `${inspection.row_count.toLocaleString()} data points` : "Upload a spectrum file to begin."}
           {activeRevisionId !== null ? ` · Revision ${activeRevisionId}` : ""}
         </p>
       </div>

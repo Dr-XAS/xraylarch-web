@@ -194,8 +194,9 @@ def test_parse_upload_enforces_point_and_column_limits_before_larch():
     assert columns_error.value.code == "upload_too_many_columns"
 
 
-def test_parse_upload_rejects_unsupported_suffix():
-    with pytest.raises(WebInputError) as error:
-        parse_upload(b"1 2\n2 3\n", "spectrum.exe")
+def test_parse_upload_accepts_arbitrary_suffix():
+    parsed = parse_upload(b"1 2\n2 3\n", "spectrum.exe")
 
-    assert error.value.code == "upload_extension"
+    assert parsed.display_name == "spectrum.exe"
+    assert parsed.row_count == 2
+    assert [column.name for column in parsed.columns] == ["col1", "col2"]

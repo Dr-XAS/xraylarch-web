@@ -22,7 +22,6 @@ _ROLE_NAMES = {
 }
 _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _NAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
-_SUPPORTED_SUFFIXES = {".xmu", ".xdi", ".dat", ".csv", ".txt"}
 _COMMENT_PREFIXES = ("#", ";", "!")
 _DEFAULT_MAX_POINTS = 250_000
 _DEFAULT_MAX_COLUMNS = 64
@@ -273,21 +272,15 @@ def parse_upload(
             "upload_binary",
             "The upload contains binary NUL bytes.",
             ("file",),
-            "Upload a text, CSV, or XDI data file.",
+            "Upload a readable text, CSV, or XDI data file.",
         )
 
     display_name = _safe_display_name(filename)
     suffix = Path(display_name).suffix.lower()
-    if suffix not in _SUPPORTED_SUFFIXES:
-        raise WebInputError(
-            "upload_extension",
-            "Upload a file with a supported XAS text extension.",
-            ("file",),
-            "Choose an .xmu, .xdi, .dat, .csv, or .txt file.",
-        )
+    parser_suffix = suffix if suffix in {".xdi", ".csv"} else ".dat"
     _validate_tabular_text(
         data,
-        suffix,
+        parser_suffix,
         max_points=max_points,
         max_columns=max_columns,
     )
@@ -295,7 +288,7 @@ def parse_upload(
         with tempfile.TemporaryDirectory(prefix="xraylarch-upload-") as temp_dir:
             temp_path = Path(temp_dir) / display_name
             temp_path.write_bytes(data)
-            group = _read_group(temp_path, suffix)
+            group = _read_group(temp_path, parser_suffix)
             numeric_arrays = _numeric_arrays(group)
     except WebInputError:
         raise

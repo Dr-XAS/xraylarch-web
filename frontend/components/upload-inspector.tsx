@@ -54,11 +54,10 @@ export function UploadInspector({ inspection, disabled, onUpload, onConfirmMappi
         id="spectrum-upload"
         aria-describedby={uploadHelpId}
         type="file"
-        accept=".csv,.dat,.xmu,.xdi,text/plain,text/csv,application/csv,application/x-xdi"
         disabled={disabled || busy}
         onChange={(event) => void upload(event.currentTarget.files?.[0])}
       />
-      <p className="field-help" id={uploadHelpId}>Text, CSV, and XDI data only. The original file remains unchanged.</p>
+      <p className="field-help" id={uploadHelpId}>Any file type is accepted. Text, CSV, and XDI data can be inspected; the original file remains unchanged.</p>
 
       {inspection && (
         <div className="mapping-panel" data-testid="column-mapping" aria-live="polite">

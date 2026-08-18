@@ -175,6 +175,20 @@ function fakeClient(overrides: Partial<BackendClient> = {}): BackendClient {
 describe("WorkbenchShell", () => {
   beforeEach(() => localStorage.clear())
 
+  it("accepts files with arbitrary extensions", async () => {
+    const client = fakeClient()
+    render(<WorkbenchShell client={client} />)
+
+    const upload = await screen.findByLabelText(/upload spectrum/i)
+    expect(upload).not.toHaveAttribute("accept")
+    fireEvent.change(upload, {
+      target: { files: [new File(["8970 0.1\n8980 1.1"], "measurement.unknown", { type: "application/octet-stream" })] },
+    })
+
+    expect(await screen.findByTestId("column-mapping")).toBeVisible()
+    expect(client.inspectUpload).toHaveBeenCalledWith("workspace-1", expect.objectContaining({ name: "measurement.unknown" }))
+  })
+
   it("requires an explicit energy and signal mapping before processing", async () => {
     const client = fakeClient()
     render(<WorkbenchShell client={client} />)
