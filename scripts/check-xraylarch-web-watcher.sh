@@ -8,7 +8,7 @@ STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-${APP_ROOT}/state/watcher}"
 DEPLOY_STATE="${XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE:-${APP_ROOT}/state/last-successful}"
 LOG="${XRAYLARCH_WEB_WATCH_LOG:-/tmp/xraylarch-web-watch.log}"
 SCREEN_NAME="${XRAYLARCH_WEB_WATCH_SCREEN:-xraylarch-web-watch}"
-REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/xraylarch-web}"
+REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/apps/xraylarch-web/control}"
 BRANCH="${XRAYLARCH_WEB_BRANCH:-codex/xraylarch-web-v1}"
 
 usage() {
