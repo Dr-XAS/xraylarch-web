@@ -368,13 +368,15 @@ write_component_record() {
 
 load_component_record() {
   local prefix="$1" expected_name="$2" expected_release="$3" expected_kind="$4" expected_host="$5" expected_port="$6"
-  local record key value count=0 version="" migration="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
+  local record line key value count=0 version="" migration="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
   local seen_version=0 seen_migration=0 seen_name=0 seen_session=0 seen_screen_pid=0 seen_listener_pid=0 seen_port=0 seen_release=0 seen_release_sha=0 seen_kind=0 seen_host=0 seen_cwd=0 seen_exe=0 seen_cmdline_b64=0 seen_screen_owner=0 seen_listener_owner=0
   [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
   record=$(component_record_path "$expected_name") || return 1
   [[ -f "$record" && ! -L "$record" ]] || { fail "component process record is absent or symlinked: $expected_name"; return 1; }
-  while IFS='=' read -r key value; do
+  while IFS= read -r line; do
     ((count += 1))
+    key=${line%%=*}
+    value=${line#*=}
     case "$key" in
       version) ((seen_version += 1)); version="$value" ;;
       migration) ((seen_migration += 1)); migration="$value" ;;
