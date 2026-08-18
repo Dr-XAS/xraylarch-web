@@ -793,7 +793,7 @@ build_release() {
   [[ "$(run_clean git -C "$temporary" rev-parse "refs/remotes/origin/${APPROVED_BRANCH}")" == "$REQUESTED_SHA" ]] || { fail "fetched remote branch changed during build"; return 1; }
   run_clean git -C "$temporary" checkout --quiet --detach "$REQUESTED_SHA" || return 1
   run_clean "$CONDA_BIN" run --no-capture-output -n drxas-deploy python -m venv "${temporary}/backend/.venv" || return 1
-  ( cd "${temporary}/backend" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --requirement requirements.txt && run_clean "${temporary}/backend/.venv/bin/python" -m pip check && run_clean "${temporary}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt ) || return 1
+  ( cd "${temporary}/backend" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --requirement requirements.txt && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --force-reinstall --no-deps . && run_clean "${temporary}/backend/.venv/bin/python" -m pip check && run_clean "${temporary}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt ) || return 1
   assert_frontend_runtime_supported || return 1
   ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"
