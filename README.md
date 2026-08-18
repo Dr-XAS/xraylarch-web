@@ -29,6 +29,112 @@ National Science Foundation, and the US Departmen of Energy.
 
 The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/012007
 
+## XrayLarch Web V1
+
+XrayLarch Web is a local browser workbench for one XAS spectrum at a time. It
+keeps parsing, processing, revisions, and stored arrays in the FastAPI backend;
+the frontend only sends validated choices and renders server-produced traces.
+
+### Run locally
+
+Create the backend environment from `backend/requirements.txt` before starting
+the services. From the repository root, start the backend in one terminal:
+
+```bash
+PYTHONPATH=backend backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --reload --port 8006
+```
+
+`PYTHONPATH=backend` is required for the current source-tree layout because the
+web backend package lives beneath `backend/`. Start the frontend in a second
+terminal:
+
+```bash
+cd frontend && npm run dev -- --port 3004
+```
+
+Open [http://localhost:3004](http://localhost:3004). The frontend proxies API
+requests to `http://127.0.0.1:8006` unless `BACKEND_URL` supplies another local
+backend address.
+
+### Check before sharing a local build
+
+Run these commands from the repository root. The browser test starts its own
+backend on `127.0.0.1:18006`, frontend on `127.0.0.1:13004`, and a fresh
+temporary `XRAYLARCH_DATA_ROOT`; it does not use the normal development data
+directory.
+
+```bash
+backend/.venv/bin/python -m pytest backend/tests -q
+cd frontend && npm test
+cd frontend && npx tsc --noEmit
+cd frontend && npm run build
+cd frontend && npm run test:e2e
+```
+
+### Operating boundary and deferred work
+
+V1 is for a trusted network and one user. It has no Dr.XAS authentication, no
+user accounts, and no access to Dr.XAS shared data, databases, secrets, or
+provider credentials. Do not expose it to the public internet or treat it as a
+multi-user service.
+
+XRF and XRD tools, fitting and FEFF work, multi-file alignment or batch flows,
+chat, public deployment, authentication, and sharing remain outside V1. The
+planned Dr.XAS address is [http://drxas.xray.aps.anl.gov:3004](http://drxas.xray.aps.anl.gov:3004);
+this README does not imply that it has been deployed.
+
+### Guarded Dr.XAS release package
+
+The checked-in deployment contract is
+[`deploy/xraylarch-web.manifest.md`](deploy/xraylarch-web.manifest.md). It
+reserves an isolated `/local/apps/xraylarch-web` namespace, immutable
+SHA-addressed releases, private mutable data only under
+`/local/apps/xraylarch-web/data`, the namespaced frontend/backend screens, and
+the planned `3004`/`8006` listeners. The host scripts are
+[`scripts/deploy-xraylarch-web.sh`](scripts/deploy-xraylarch-web.sh) and
+[`scripts/check-xraylarch-web.sh`](scripts/check-xraylarch-web.sh).
+
+The scripts are a release package, not permission to write to Dr.XAS. A first
+host install, any GitHub push, and every host deployment require an explicit
+gate after a fresh host preflight. When that gate exists, the future operator
+uses only a full SHA from `codex/xraylarch-web-v1`:
+
+```bash
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh deploy <full-sha>
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh health <full-sha>
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh rollback <full-sha>
+/local/apps/xraylarch-web/ops/check-xraylarch-web.sh check <full-sha>
+```
+
+For an installation created by the pre-record deployer, bootstrap the exact
+active process records first; this is an explicit, locked, fail-closed migration
+that does not stop processes or change links, state, data, or sibling services:
+
+```bash
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh migrate <full-sha>
+```
+
+Migration discovers and validates both final screens/listeners, writes both
+private records atomically, and removes only records created by the attempt if
+verification fails. Matching records make the command idempotent. Deploy and
+health refuse legacy processes without records; the read-only checker never
+performs migration.
+
+The active application remains on `3004`/`8006` while a release candidate is
+started in `xraylarch-web-candidate-frontend` and
+`xraylarch-web-candidate-backend` on app-private loopback `13004`/`18006`.
+The deployer records and validates exact screen and listener PIDs, ancestry,
+the observed command line, executable, owners, release marker, working
+directory, and candidate health before it begins the brief final-port handoff.
+Those private launch records live under `/local/apps/xraylarch-web/state/processes`.
+It then waits for the old recorded listeners to release `3004` and `8006`,
+starts the target under the final screen names, revalidates its identity, and
+atomically activates it. Health checks also require a regular, non-symlink
+`state/last-successful` whose SHA and canonical release path match `current`.
+This is not zero downtime. A failure stops only recorded target/candidate
+processes and restores the prior release's symlink, state, processes, and
+health.
+
 ## Larch Applications
 
 These applications installed with Larch, in addition to a basic Python
