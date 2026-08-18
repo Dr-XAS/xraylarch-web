@@ -49,11 +49,30 @@ def _issue(code: str, message: str, *fields: str, recovery: str) -> FieldIssue:
 
 
 def _noncomment_lines(text: str) -> list[str]:
-    return [
-        line
-        for line in text.splitlines()
-        if line.strip() and not line.lstrip().startswith(_COMMENT_PREFIXES)
-    ]
+    lines: list[str] = []
+    record: list[str] = []
+    quote_open = False
+    for line in text.splitlines():
+        if not record and line.strip() and line.lstrip().startswith(_COMMENT_PREFIXES):
+            continue
+        record.append(line)
+        index = 0
+        while index < len(line):
+            if line[index] != '"':
+                index += 1
+                continue
+            if quote_open and index + 1 < len(line) and line[index + 1] == '"':
+                index += 2
+                continue
+            quote_open = not quote_open
+            index += 1
+        if not quote_open:
+            if any(part.strip() for part in record):
+                lines.append("\n".join(record))
+            record = []
+    if record and any(part.strip() for part in record):
+        lines.append("\n".join(record))
+    return lines
 
 
 def _csv_dialect(text: str) -> csv.Dialect:
@@ -71,18 +90,19 @@ def _read_group(path: Path, suffix: str):
     if suffix == ".csv":
         text = path.read_text(encoding="utf-8-sig")
         dialect = _csv_dialect(text)
+        lines = _noncomment_lines(text)
         rows = [
             tuple(value.strip() for value in next(csv.reader([line], dialect)))
-            for line in _noncomment_lines(text)
+            for line in lines
         ]
-        group = read_csv(str(path))
+        normalized_path = path.with_name("_normalized.csv")
+        normalized_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        group = read_csv(str(normalized_path))
         if rows and all(not _can_be_float(value) for value in rows[0]):
-            data_lines = rows[1:]
             data_path = path.with_name("_numeric.csv")
-            data_path.write_text(
-                "\n".join(dialect.delimiter.join(row) for row in data_lines),
-                encoding="utf-8",
-            )
+            with data_path.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle, dialect=dialect, lineterminator="\n")
+                writer.writerows(rows[1:])
             group = read_csv(str(data_path))
             group.array_labels = [
                 value or f"col_{i + 1:02d}" for i, value in enumerate(rows[0])

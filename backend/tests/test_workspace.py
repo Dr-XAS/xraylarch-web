@@ -386,12 +386,15 @@ def test_legacy_fourier_bounds_preserve_xftf_provenance(data_root, synthetic_xmu
     metadata["revisions"][1]["result"]["effective"] = legacy_effective.copy()
     store.storage.write_json(workspace_id, "workspace.json", metadata)
 
-    store.load(workspace_id)
+    snapshot = store.load(workspace_id)
     migrated = store.storage.read_json(workspace_id, "workspace.json")["revisions"][1]["effective"]
 
+    assert snapshot.revisions[1].effective is not None
+    assert snapshot.revisions[1].effective.autobk_kmin is None
     assert migrated["xftf_kmin"] == 2.0
     assert migrated["xftf_kmax"] == 10.0
-    assert migrated["autobk_kmin"] == 0.0
+    assert "autobk_kmin" not in migrated
+    assert migrated["xftf_dk2"] == 1.0
     assert applied.revision_id == 2
 
 

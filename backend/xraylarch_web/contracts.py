@@ -106,25 +106,25 @@ class EffectiveRecipe(BaseModel):
     nnorm: int | None = None
     nnorm_automatic: bool | None = None
     rbkg: float
-    rbkg_automatic: bool = False
-    kweight: int = 2
-    autobk_kmin: float = 0.0
-    autobk_kmax: float = 0.0
-    autobk_kmax_automatic: bool = False
-    autobk_dk: float = 0.0
-    autobk_dk_automatic: bool = False
-    autobk_window: str = "hanning"
-    autobk_window_automatic: bool = False
-    xftf_kmin: float = 0.0
-    xftf_kmax: float = 0.0
-    xftf_kmax_automatic: bool = False
-    xftf_dk: float = 1.0
-    xftf_dk2: float = 1.0
-    xftf_dk2_automatic: bool = False
-    xftf_window: str = "kaiser"
-    nfft: int = 2048
-    kstep: float = 0.05
-    rmax_out: float = 10.0
+    rbkg_automatic: bool | None = None
+    kweight: int | None = None
+    autobk_kmin: float | None = None
+    autobk_kmax: float | None = None
+    autobk_kmax_automatic: bool | None = None
+    autobk_dk: float | None = None
+    autobk_dk_automatic: bool | None = None
+    autobk_window: str | None = None
+    autobk_window_automatic: bool | None = None
+    xftf_kmin: float | None = None
+    xftf_kmax: float | None = None
+    xftf_kmax_automatic: bool | None = None
+    xftf_dk: float | None = None
+    xftf_dk2: float | None = None
+    xftf_dk2_automatic: bool | None = None
+    xftf_window: str | None = None
+    nfft: int | None = None
+    kstep: float | None = None
+    rmax_out: float | None = None
 
 
 class PlotTrace(BaseModel):

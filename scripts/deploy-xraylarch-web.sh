@@ -782,7 +782,7 @@ assert_frontend_runtime_supported() {
 }
 
 build_release() {
-  local release temporary
+  local release temporary release_version
   release=$(release_path "$REQUESTED_SHA") || return 1
   [[ ! -e "$release" ]] || { fail "immutable release path already exists: $release"; return 1; }
   temporary=$(mktemp -d "${RELEASES_ROOT}/.${REQUESTED_SHA}.build.XXXXXX") || return 1
@@ -790,10 +790,13 @@ build_release() {
   run_clean git init --quiet "$temporary" || return 1
   run_clean git -C "$temporary" remote add origin "$REPOSITORY" || return 1
   run_clean git -C "$temporary" fetch --depth=1 origin "refs/heads/${APPROVED_BRANCH}:refs/remotes/origin/${APPROVED_BRANCH}" || return 1
+  run_clean git -C "$temporary" fetch --unshallow origin || return 1
   [[ "$(run_clean git -C "$temporary" rev-parse "refs/remotes/origin/${APPROVED_BRANCH}")" == "$REQUESTED_SHA" ]] || { fail "fetched remote branch changed during build"; return 1; }
   run_clean git -C "$temporary" checkout --quiet --detach "$REQUESTED_SHA" || return 1
+  release_version=$(run_clean git -C "$temporary" describe --tags --match '[0-9]*' --always "$REQUESTED_SHA") || { fail "release SHA has no version tag"; return 1; }
+  [[ "$release_version" != "$REQUESTED_SHA" ]] || { fail "release SHA has no reachable version tag"; return 1; }
   run_clean "$CONDA_BIN" run --no-capture-output -n drxas-deploy python -m venv "${temporary}/backend/.venv" || return 1
-  ( cd "${temporary}/backend" && grep -vE '^-e[[:space:]]+\.\.$' requirements.txt > .release-requirements.txt && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --requirement .release-requirements.txt && run_clean "${temporary}/backend/.venv/bin/python" -m pip install 'setuptools>=64' wheel setuptools-scm urllib3 numpy pyshortcuts pyyaml asteval && run_clean "${temporary}/backend/.venv/bin/python" -m pip wheel --no-deps --no-build-isolation --wheel-dir "${temporary}/.release-wheel" "${temporary}" && wheel=$(find "${temporary}/.release-wheel" -maxdepth 1 -type f -name 'xraylarch-*.whl' -print -quit) && [[ -n "$wheel" ]] && run_clean "${temporary}/backend/.venv/bin/python" -m pip install "$wheel" && run_clean "${temporary}/backend/.venv/bin/python" -c 'import larch, xraylarch_web' && rm -rf .release-requirements.txt "${temporary}/.release-wheel" && run_clean "${temporary}/backend/.venv/bin/python" -m pip check && run_clean "${temporary}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt ) || return 1
+  ( cd "${temporary}/backend" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --requirement "${temporary}/deploy/python-release-constraints.txt" --constraint "${temporary}/deploy/python-release-constraints.txt" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --no-deps --no-build-isolation --upgrade 'setuptools==79.0.1' 'wheel==0.47.0' 'setuptools-scm==9.2.2' && run_clean "${temporary}/backend/.venv/bin/python" -m pip wheel --no-deps --no-build-isolation --wheel-dir "${temporary}/.release-wheel" "${temporary}" && wheel=$(find "${temporary}/.release-wheel" -maxdepth 1 -type f -name 'xraylarch-*.whl' -print -quit) && [[ -n "$wheel" ]] && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --no-deps "$wheel" && run_clean "${temporary}/backend/.venv/bin/python" -c 'import larch, xraylarch_web' && rm -rf "${temporary}/.release-wheel" && run_clean "${temporary}/backend/.venv/bin/python" -m pip check && run_clean "${temporary}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt ) || return 1
   assert_frontend_runtime_supported || return 1
   ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"

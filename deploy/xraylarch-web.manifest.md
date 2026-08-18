@@ -39,10 +39,11 @@ full 40-character SHA:
 `deploy` first requires `refs/heads/codex/xraylarch-web-v1` at the remote to
 equal the requested SHA. It builds a new detached checkout under
 `releases/<sha>`, creates a release-local backend virtual environment from
-`drxas-deploy`, records `pip freeze`, runs `pip check`, and runs `npm ci` plus
-the production frontend build through `drxas-node20`. Release inputs and
-artifacts are made read-only after integrity metadata is written. The
-repository checkout is never used as a shared host clone.
+`drxas-deploy`, installs the complete pinned set in
+`deploy/python-release-constraints.txt`, records `pip freeze`, runs `pip check`,
+and runs `npm ci` plus the production frontend build through `drxas-node20`.
+Release inputs and artifacts are made read-only after integrity metadata is
+written. The repository checkout is never used as a shared host clone.
 
 The only mutable application state is below
 `/local/apps/xraylarch-web/data`, including private candidate cache, runtime,

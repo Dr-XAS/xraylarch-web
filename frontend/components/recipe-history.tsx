@@ -38,30 +38,30 @@ export function RecipeHistory({ workspaceId, revisions, activeRevisionId, client
                   <p>
                     E0 {effective.e0.toFixed(2)} eV{effective.e0_automatic ? " (automatic)" : ""}
                     {` · edge step ${effective.edge_step.toPrecision(4)}${effective.edge_step_automatic ? " (automatic)" : ""}`}
-                    {` · normalization degree ${effective.nnorm}${effective.nnorm_automatic ? " (automatic)" : ""}`}
+                    {` · normalization degree ${effective.nnorm ?? "unknown"}${effective.nnorm_automatic ? " (automatic)" : ""}`}
                   </p>
                   <p>
-                    Pre-edge start {effective.pre1} eV{effective.pre1_automatic ? " (automatic)" : ""}
-                    {` · pre-edge end ${effective.pre2} eV${effective.pre2_automatic ? " (automatic)" : ""}`}
-                    {` · post-edge start ${effective.norm1} eV${effective.norm1_automatic ? " (automatic)" : ""}`}
-                    {` · post-edge end ${effective.norm2} eV${effective.norm2_automatic ? " (automatic)" : ""}`}
-                    {` · rbkg ${effective.rbkg} Å · shared k-weight ${effective.kweight}`}
+                    Pre-edge start {effective.pre1 ?? "unknown"} eV{effective.pre1_automatic ? " (automatic)" : ""}
+                    {` · pre-edge end ${effective.pre2 ?? "unknown"} eV${effective.pre2_automatic ? " (automatic)" : ""}`}
+                    {` · post-edge start ${effective.norm1 ?? "unknown"} eV${effective.norm1_automatic ? " (automatic)" : ""}`}
+                    {` · post-edge end ${effective.norm2 ?? "unknown"} eV${effective.norm2_automatic ? " (automatic)" : ""}`}
+                    {` · rbkg ${effective.rbkg} Å · shared k-weight ${effective.kweight ?? "unknown"}`}
                   </p>
                   <p>
-                    Autobk k {effective.autobk_kmin}–{effective.autobk_kmax} Å⁻¹
+                    Autobk k {effective.autobk_kmin ?? "unknown"}–{effective.autobk_kmax ?? "unknown"} Å⁻¹
                     {effective.autobk_kmax_automatic ? " (automatic max)" : ""}
-                    {` · taper ${effective.autobk_dk} Å⁻¹${effective.autobk_dk_automatic ? " (automatic)" : ""}`}
-                    {` · ${effective.autobk_window}${effective.autobk_window_automatic ? " (automatic)" : ""}`}
+                    {` · taper ${effective.autobk_dk ?? "unknown"} Å⁻¹${effective.autobk_dk_automatic ? " (automatic)" : ""}`}
+                    {` · ${effective.autobk_window ?? "unknown"}${effective.autobk_window_automatic ? " (automatic)" : ""}`}
                   </p>
                   <p>
-                    XFTF k {effective.xftf_kmin}–{effective.xftf_kmax} Å⁻¹
+                    XFTF k {effective.xftf_kmin ?? "unknown"}–{effective.xftf_kmax ?? "unknown"} Å⁻¹
                     {effective.xftf_kmax_automatic ? " (automatic max)" : ""}
-                    {` · tapers ${effective.xftf_dk}/${effective.xftf_dk2} Å⁻¹${effective.xftf_dk2_automatic ? " (second automatic)" : ""}`}
-                    {` · ${effective.xftf_window}`}
+                    {` · tapers ${effective.xftf_dk ?? "unknown"}/${effective.xftf_dk2 ?? "unknown"} Å⁻¹${effective.xftf_dk2_automatic ? " (second automatic)" : ""}`}
+                    {` · ${effective.xftf_window ?? "unknown"}`}
                   </p>
                   <p>
-                    FFT {effective.nfft} points
-                    {` · k step ${effective.kstep} Å⁻¹ · R output ${effective.rmax_out} Å`}
+                    FFT {effective.nfft ?? "unknown"} points
+                    {` · k step ${effective.kstep ?? "unknown"} Å⁻¹ · R output ${effective.rmax_out ?? "unknown"} Å`}
                   </p>
                 </>}
                 {changed.length > 0 && <p>Changes: {changed.join(", ")}</p>}

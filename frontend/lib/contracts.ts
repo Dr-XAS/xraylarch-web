@@ -86,36 +86,36 @@ export interface EffectiveRecipe {
   e0_automatic: boolean
   edge_step: number
   edge_step_automatic: boolean
-  pre1: number
-  pre1_automatic: boolean
-  pre2: number
-  pre2_automatic: boolean
-  norm1: number
-  norm1_automatic: boolean
-  norm2: number
-  norm2_automatic: boolean
-  nnorm: number
-  nnorm_automatic: boolean
+  pre1: number | null
+  pre1_automatic: boolean | null
+  pre2: number | null
+  pre2_automatic: boolean | null
+  norm1: number | null
+  norm1_automatic: boolean | null
+  norm2: number | null
+  norm2_automatic: boolean | null
+  nnorm: number | null
+  nnorm_automatic: boolean | null
   rbkg: number
-  rbkg_automatic?: boolean
-  kweight: number
-  autobk_kmin: number
-  autobk_kmax: number
-  autobk_kmax_automatic: boolean
-  autobk_dk: number
-  autobk_dk_automatic: boolean
-  autobk_window: string
-  autobk_window_automatic: boolean
-  xftf_kmin: number
-  xftf_kmax: number
-  xftf_kmax_automatic: boolean
-  xftf_dk: number
-  xftf_dk2: number
-  xftf_dk2_automatic: boolean
-  xftf_window: string
-  nfft: number
-  kstep: number
-  rmax_out: number
+  rbkg_automatic?: boolean | null
+  kweight: number | null
+  autobk_kmin: number | null
+  autobk_kmax: number | null
+  autobk_kmax_automatic: boolean | null
+  autobk_dk: number | null
+  autobk_dk_automatic: boolean | null
+  autobk_window: string | null
+  autobk_window_automatic: boolean | null
+  xftf_kmin: number | null
+  xftf_kmax: number | null
+  xftf_kmax_automatic: boolean | null
+  xftf_dk: number | null
+  xftf_dk2: number | null
+  xftf_dk2_automatic: boolean | null
+  xftf_window: string | null
+  nfft: number | null
+  kstep: number | null
+  rmax_out: number | null
 }
 
 export type PlotId = "raw_mu" | "norm_mu" | "chi_k" | "chi_r"

@@ -1,7 +1,7 @@
 import pytest
 
 from xraylarch_web.errors import WebInputError
-from xraylarch_web.parsing import parse_upload
+from xraylarch_web.parsing import _noncomment_lines, parse_upload
 
 
 def test_parse_upload_returns_numeric_columns_and_monotonicity(sample_xmu_bytes):
@@ -71,6 +71,44 @@ def test_parse_upload_uses_detected_csv_dialect_for_header(delimiter):
     assert [column.role_hint for column in parsed.columns] == ["energy", "mu", "mu"]
     assert parsed.arrays["column_0002"].tolist() == [2.0, 4.0]
     assert parsed.arrays["column_0003"].tolist() == [3.0, 5.0]
+
+
+@pytest.mark.parametrize("data", [
+    b"# metadata\nenergy,mu\n1,2\n2,3\n",
+    b"\xef\xbb\xbf# metadata\nenergy,mu\n# between rows\n1,2\n2,3\n",
+    b"# metadata\n1,2\n2,3\n",
+])
+def test_parse_upload_ignores_csv_comments_before_larch(data):
+    parsed = parse_upload(data, "commented.csv")
+
+    assert parsed.row_count == 2
+    assert parsed.arrays["column_0001"].tolist() == [1.0, 2.0]
+    assert parsed.arrays["column_0002"].tolist() == [2.0, 3.0]
+
+
+def test_parse_upload_preserves_quoted_multiline_csv_record():
+    data = b'energy,mu\n1,2\n2,3\n'
+
+    parsed = parse_upload(data, "multiline.csv")
+
+    assert parsed.row_count == 2
+    assert parsed.arrays["column_0001"].tolist() == [1.0, 2.0]
+
+
+def test_csv_comment_filter_keeps_quoted_multiline_records():
+    text = 'energy,mu\n1,"first\n# still quoted"\n2,3\n'
+
+    assert _noncomment_lines(text) == [
+        "energy,mu",
+        '1,"first\n# still quoted"',
+        "2,3",
+    ]
+
+
+def test_csv_comment_filter_handles_escaped_quotes():
+    text = 'energy,mu\n1,"say ""#""\ncontinued"\n2,3\n'
+
+    assert _noncomment_lines(text)[1] == '1,"say ""#""\ncontinued"'
 
 
 @pytest.mark.parametrize(

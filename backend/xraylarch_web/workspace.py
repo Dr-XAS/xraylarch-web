@@ -131,23 +131,6 @@ class WorkspaceStore:
                     if new_name not in effective and old_name in effective:
                         effective[new_name] = effective[old_name]
                         changed = True
-                if effective.get("xftf_dk2") is None:
-                    effective["xftf_dk2"] = effective.get("xftf_dk", 1.0)
-                    changed = True
-                defaults = {
-                    "rbkg_automatic": False,
-                    "autobk_kmin": 0.0,
-                    "autobk_kmax": 0.0,
-                    "xftf_kmin": 0.0,
-                    "xftf_kmax": 0.0,
-                    "xftf_dk": 1.0,
-                    "xftf_dk2": effective.get("xftf_dk", 1.0),
-                    "xftf_window": "kaiser",
-                }
-                for field, default in defaults.items():
-                    if field not in effective:
-                        effective[field] = default
-                        changed = True
             top_effective = revision.get("effective")
             nested_effective = result.get("effective") if isinstance(result, dict) else None
             if top_effective is None and nested_effective is None:
