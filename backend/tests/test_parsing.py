@@ -61,6 +61,33 @@ def test_parse_upload_rejects_nonfinite_value():
     assert exc.value.code == "upload_nonfinite"
 
 
+@pytest.mark.parametrize("delimiter", [";", "\t"])
+def test_parse_upload_uses_detected_csv_dialect_for_header(delimiter):
+    data = f"energy{delimiter}mu{delimiter}mu\n1{delimiter}2{delimiter}3\n2{delimiter}4{delimiter}5\n".encode()
+
+    parsed = parse_upload(data, "dialect.csv")
+
+    assert [column.name for column in parsed.columns] == ["energy", "mu", "mu"]
+    assert [column.role_hint for column in parsed.columns] == ["energy", "mu", "mu"]
+    assert parsed.arrays["column_0002"].tolist() == [2.0, 4.0]
+    assert parsed.arrays["column_0003"].tolist() == [3.0, 5.0]
+
+
+@pytest.mark.parametrize(
+    ("filename", "data"),
+    [
+        ("leading.dat", b"# energy mu\n1 nope\n2 3\n"),
+        ("leading.csv", b"energy,mu\n1,nope\n2,3\n"),
+        ("leading.xdi", b"# XDI/1.0 GSE/1.0\n# Column.1: energy eV\n# Column.2: mu\n1 nope\n2 3\n"),
+    ],
+)
+def test_parse_upload_rejects_a_malformed_leading_observation(filename, data):
+    with pytest.raises(WebInputError) as error:
+        parse_upload(data, filename)
+
+    assert error.value.code == "upload_malformed_rows"
+
+
 def test_parse_upload_preserves_duplicate_source_labels():
     parsed = parse_upload(
         b"energy,mu,mu\n1,2,3\n2,4,5\n", "duplicate.csv"

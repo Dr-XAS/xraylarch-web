@@ -54,6 +54,7 @@ Usage:
   deploy-xraylarch-web.sh deploy <full-sha>
   deploy-xraylarch-web.sh rollback <full-sha>
   deploy-xraylarch-web.sh health <full-sha>
+  deploy-xraylarch-web.sh migrate <full-sha>
 
 Host-only release control for XrayLarch Web. A full SHA is exactly 40 lowercase
 hexadecimal characters. --help performs no host write.
@@ -76,7 +77,7 @@ validate_sha() {
 parse_arguments() {
   case "${1:-}" in
     --help|-h) usage; exit 0 ;;
-    deploy|rollback|health)
+    deploy|rollback|health|migrate)
       ACTION="$1"
       REQUESTED_SHA="${2:-}"
       [[ $# -eq 2 ]] || { fail "${ACTION} requires exactly one full SHA"; return 1; }
@@ -324,6 +325,7 @@ write_component_record() {
   temporary="${record}.$$.tmp"
   : >"$temporary" || return 1
   printf 'version=1\n' >>"$temporary"
+  [[ "${MIGRATION_RECORD:-0}" == 1 ]] && printf 'migration=1\n' >>"$temporary"
   for pair in NAME:name SESSION:session SCREEN_PID:screen_pid LISTENER_PID:listener_pid PORT:port RELEASE:release RELEASE_SHA:release_sha KIND:kind HOST:host CWD:cwd EXE:exe CMDLINE_B64:cmdline_b64 SCREEN_OWNER:screen_owner LISTENER_OWNER:listener_owner; do
     field=${pair%%:*}
     key=${pair#*:}
@@ -337,32 +339,36 @@ write_component_record() {
 
 load_component_record() {
   local prefix="$1" expected_name="$2" expected_release="$3" expected_kind="$4" expected_host="$5" expected_port="$6"
-  local record key value count=0 version="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
+  local record key value count=0 version="" migration="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
+  local seen_version=0 seen_migration=0 seen_name=0 seen_session=0 seen_screen_pid=0 seen_listener_pid=0 seen_port=0 seen_release=0 seen_release_sha=0 seen_kind=0 seen_host=0 seen_cwd=0 seen_exe=0 seen_cmdline_b64=0 seen_screen_owner=0 seen_listener_owner=0
   [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
   record=$(component_record_path "$expected_name") || return 1
   [[ -f "$record" && ! -L "$record" ]] || { fail "component process record is absent or symlinked: $expected_name"; return 1; }
   while IFS='=' read -r key value; do
     ((count += 1))
     case "$key" in
-      version) version="$value" ;;
-      name) name="$value" ;;
-      session) session="$value" ;;
-      screen_pid) screen_pid="$value" ;;
-      listener_pid) listener_pid_value="$value" ;;
-      port) port="$value" ;;
-      release) release="$value" ;;
-      release_sha) release_sha="$value" ;;
-      kind) kind="$value" ;;
-      host) host="$value" ;;
-      cwd) cwd="$value" ;;
-      exe) exe="$value" ;;
-      cmdline_b64) cmdline_b64="$value" ;;
-      screen_owner) screen_owner="$value" ;;
-      listener_owner) listener_owner="$value" ;;
+      version) ((seen_version += 1)); version="$value" ;;
+      migration) ((seen_migration += 1)); migration="$value" ;;
+      name) ((seen_name += 1)); name="$value" ;;
+      session) ((seen_session += 1)); session="$value" ;;
+      screen_pid) ((seen_screen_pid += 1)); screen_pid="$value" ;;
+      listener_pid) ((seen_listener_pid += 1)); listener_pid_value="$value" ;;
+      port) ((seen_port += 1)); port="$value" ;;
+      release) ((seen_release += 1)); release="$value" ;;
+      release_sha) ((seen_release_sha += 1)); release_sha="$value" ;;
+      kind) ((seen_kind += 1)); kind="$value" ;;
+      host) ((seen_host += 1)); host="$value" ;;
+      cwd) ((seen_cwd += 1)); cwd="$value" ;;
+      exe) ((seen_exe += 1)); exe="$value" ;;
+      cmdline_b64) ((seen_cmdline_b64 += 1)); cmdline_b64="$value" ;;
+      screen_owner) ((seen_screen_owner += 1)); screen_owner="$value" ;;
+      listener_owner) ((seen_listener_owner += 1)); listener_owner="$value" ;;
       *) fail "component process record contains an unknown field"; return 1 ;;
     esac
   done <"$record"
-  [[ "$count" -eq 15 && "$version" == 1 ]] || { fail "component process record has the wrong shape"; return 1; }
+  [[ "$count" -eq 15 || "$count" -eq 16 ]] || { fail "component process record has the wrong field count"; return 1; }
+  [[ "$seen_version" -eq 1 && "$seen_name" -eq 1 && "$seen_session" -eq 1 && "$seen_screen_pid" -eq 1 && "$seen_listener_pid" -eq 1 && "$seen_port" -eq 1 && "$seen_release" -eq 1 && "$seen_release_sha" -eq 1 && "$seen_kind" -eq 1 && "$seen_host" -eq 1 && "$seen_cwd" -eq 1 && "$seen_exe" -eq 1 && "$seen_cmdline_b64" -eq 1 && "$seen_screen_owner" -eq 1 && "$seen_listener_owner" -eq 1 && "$seen_migration" -le 1 ]] || { fail "component process record has duplicate or missing fields"; return 1; }
+  [[ "$version" == 1 && ( -z "$migration" || "$migration" == 1 ) && ( "$count" -eq 15 || "$seen_migration" -eq 1 ) ]] || { fail "component process record has the wrong shape"; return 1; }
   [[ "$name" == "$expected_name" && "$release" == "$expected_release" && "$kind" == "$expected_kind" && "$host" == "$expected_host" && "$port" == "$expected_port" ]] || { fail "component process record does not match the requested component"; return 1; }
   validate_sha "$release_sha" || return 1
   [[ "$screen_pid" =~ ^[0-9]+$ && "$listener_pid_value" =~ ^[0-9]+$ ]] || { fail "component process record has invalid PIDs"; return 1; }
@@ -801,6 +807,50 @@ build_release() {
 perform_deploy() { verify_remote_branch_tip && build_release && activate_release "$REQUESTED_SHA"; }
 perform_rollback() { assert_release_identity "$REQUESTED_SHA" && activate_release "$REQUESTED_SHA"; }
 
+perform_migrate() {
+  local frontend_record backend_record
+  read_current_release || { fail "current release symlink is absent"; return 1; }
+  [[ "$CURRENT_SHA" == "$REQUESTED_SHA" ]] || { fail "current release is not the requested SHA"; return 1; }
+  assert_release_identity "$REQUESTED_SHA" || return 1
+  assert_last_successful_state "$REQUESTED_SHA" "$CURRENT_RELEASE" || return 1
+  [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
+  frontend_record=$(component_record_path "$FRONTEND_SCREEN") || return 1
+  backend_record=$(component_record_path "$BACKEND_SCREEN") || return 1
+  if [[ -e "$frontend_record" || -L "$frontend_record" || -e "$backend_record" || -L "$backend_record" ]]; then
+    if [[ -f "$frontend_record" && ! -L "$frontend_record" && -f "$backend_record" && ! -L "$backend_record" ]]; then
+      capture_component_record MIGRATE_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
+      capture_component_record MIGRATE_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend "$FINAL_BACKEND_HOST" "$FINAL_BACKEND_PORT" || return 1
+      printf 'process records already valid sha=%s\n' "$REQUESTED_SHA"
+      return 0
+    fi
+    # A partial pair is recoverable only when both files carry this migration's
+    # marker. Never remove arbitrary or legacy state.
+    migration_records=1
+    for record in "$frontend_record" "$backend_record"; do
+      if [[ -e "$record" || -L "$record" ]]; then
+        [[ -f "$record" && ! -L "$record" ]] || { migration_records=0; break; }
+        grep -Fx 'migration=1' "$record" >/dev/null 2>&1 || { migration_records=0; break; }
+      fi
+    done
+    if (( migration_records == 1 )); then
+      rm -f -- "$frontend_record" "$backend_record"
+    else
+      fail "partial or colliding process records require manual repair"
+      return 1
+    fi
+  fi
+  discover_component_record MIGRATE_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
+  discover_component_record MIGRATE_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend "$FINAL_BACKEND_HOST" "$FINAL_BACKEND_PORT" || return 1
+  MIGRATION_RECORD=1 write_component_record MIGRATE_FRONTEND || return 1
+  if ! MIGRATION_RECORD=1 write_component_record MIGRATE_BACKEND; then
+    rm -f -- "$MIGRATE_FRONTEND_RECORD_FILE"
+    return 1
+  fi
+  capture_component_record CHECK_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || { rm -f -- "$MIGRATE_FRONTEND_RECORD_FILE" "$MIGRATE_BACKEND_RECORD_FILE"; return 1; }
+  capture_component_record CHECK_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend "$FINAL_BACKEND_HOST" "$FINAL_BACKEND_PORT" || { rm -f -- "$MIGRATE_FRONTEND_RECORD_FILE" "$MIGRATE_BACKEND_RECORD_FILE"; return 1; }
+  printf 'process records migrated sha=%s\n' "$REQUESTED_SHA"
+}
+
 perform_health() {
   read_current_release || { fail "current release symlink is absent"; return 1; }
   [[ "$CURRENT_SHA" == "$REQUESTED_SHA" ]] || { fail "current release is not the requested SHA"; return 1; }
@@ -816,6 +866,10 @@ main() {
   initialize_commands || return 1
   case "$ACTION" in
     health) perform_health ;;
+    migrate)
+      initialize_host_paths || return 1
+      perform_migrate
+      ;;
     deploy|rollback)
       initialize_host_paths || return 1
       prepare_candidate_data || return 1

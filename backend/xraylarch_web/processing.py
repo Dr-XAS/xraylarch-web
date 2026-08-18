@@ -364,7 +364,7 @@ def run_processing(
             norm2_automatic=recipe.norm2 is None,
             nnorm=int(pre_effective.nnorm),
             nnorm_automatic=recipe.nnorm is None,
-            rbkg=float(autobk_effective["rbkg"]),
+            rbkg=float(group.rbkg),
             kweight=int(ft_effective["kweight"]),
             autobk_kmin=float(autobk_effective["kmin"]),
             autobk_kmax=float(group.k.max()),

@@ -72,6 +72,24 @@ symlink/state, and restarts plus health-checks the prior release. A same-named
 screen, changed PID, unexpected command, non-canonical release, or listener
 ownership mismatch is a fail-closed collision and is never stopped.
 
+## Legacy process-record migration
+
+Installations created before launch-time process records require an explicit
+bootstrap before deploy or health:
+
+```bash
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh migrate <full-sha>
+```
+
+The command takes the deployment lock, verifies `current`,
+`state/last-successful`, the requested release, both final listeners and their
+exact GNU screen/process identities, then atomically writes both private
+records. It never stops processes or changes `current`, state, application data,
+or sibling services. A write or verification failure removes only records
+created by that invocation. Existing matching records are accepted; partial,
+symlinked, mismatched, duplicate, or colliding state fails closed. Deploy and
+health do not silently migrate; the checker remains read-only.
+
 ## Runtime commands
 
 The backend runs from the release `backend/` directory:

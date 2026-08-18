@@ -21,6 +21,7 @@ from .processing import resolve_column_id, run_processing, validate_mapping
 from .storage import WorkspaceStorage
 
 _WORKSPACE_FILE = "workspace.json"
+_WORKSPACE_SCHEMA_VERSION = 2
 
 
 class WorkspaceStore:
@@ -42,6 +43,7 @@ class WorkspaceStore:
             _WORKSPACE_FILE,
             {
                 "workspace_id": workspace_id,
+                "schema_version": _WORKSPACE_SCHEMA_VERSION,
                 "active_revision_id": None,
                 "uploads": {},
                 "revisions": [],
@@ -49,11 +51,164 @@ class WorkspaceStore:
         )
         return self.load(workspace_id)
 
-    def _metadata(self, workspace_id: str) -> dict[str, Any]:
+    def _normalize_metadata(self, workspace_id: str, metadata: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        version = metadata.get("schema_version", 1)
+        if version not in (1, _WORKSPACE_SCHEMA_VERSION):
+            raise WorkspaceStateError(
+                "workspace_schema_unsupported",
+                "This workspace was written by an unsupported schema version.",
+                recovery="Export the workspace with its original application or create a new workspace.",
+            )
+        changed = version != _WORKSPACE_SCHEMA_VERSION
+        metadata.setdefault("uploads", {})
+        metadata.setdefault("revisions", [])
+        for upload in metadata["uploads"].values():
+            columns = upload.get("columns", [])
+            seen_names: dict[str, int] = {}
+            legacy_keys: list[str] = []
+            ids_backfilled = bool(upload.get("_legacy_ids_backfilled", False))
+            for index, column in enumerate(columns):
+                name = str(column.get("name", ""))
+                occurrence = seen_names.get(name, 0) + 1
+                seen_names[name] = occurrence
+                legacy_key = name if occurrence == 1 else f"{name}__{occurrence}"
+                while legacy_key in legacy_keys:
+                    legacy_key = f"{legacy_key}__2"
+                legacy_keys.append(legacy_key)
+                if "column_id" not in column:
+                    column["column_id"] = f"column_{index + 1:04d}"
+                    changed = True
+                    ids_backfilled = True
+            if upload.get("_legacy_column_keys") != legacy_keys:
+                upload["_legacy_column_keys"] = legacy_keys
+                changed = True
+            if upload.get("_legacy_ids_backfilled") != ids_backfilled:
+                upload["_legacy_ids_backfilled"] = ids_backfilled
+                changed = True
+        for revision in metadata["revisions"]:
+            revision.setdefault("parent_revision_id", None)
+            revision.setdefault("source_revision_id", None)
+            revision.setdefault("restored_from_revision_id", None)
+            if revision.get("kind") == "mapping":
+                upload = metadata["uploads"].get(revision.get("upload_id"))
+                if isinstance(upload, dict):
+                    columns = upload.get("columns", [])
+                    legacy_keys = upload.get("_legacy_column_keys", [])
+                    upload_ids_backfilled = bool(upload.get("_legacy_ids_backfilled", False))
+                    for field in ("energy_column", "signal_column"):
+                        value = revision.get(field)
+                        if upload_ids_backfilled and isinstance(value, str):
+                            try:
+                                index = legacy_keys.index(value)
+                            except ValueError:
+                                matches = [
+                                    item_index
+                                    for item_index, column in enumerate(columns)
+                                    if column.get("name") == value
+                                ]
+                                if len(matches) != 1:
+                                    continue
+                                index = matches[0]
+                            revision[field] = columns[index]["column_id"]
+                            changed = True
+                continue
+            if revision.get("kind") != "applied":
+                continue
+            result = revision.get("result")
+            top_effective = revision.get("effective")
+            nested_effective = result.get("effective") if isinstance(result, dict) else None
+            for effective in (top_effective, nested_effective):
+                if not isinstance(effective, dict):
+                    continue
+                legacy_fields = {
+                    "kmin": "xftf_kmin",
+                    "kmax": "xftf_kmax",
+                    "ft_dk": "xftf_dk",
+                    "ft_dk2": "xftf_dk2",
+                    "ft_window": "xftf_window",
+                }
+                for old_name, new_name in legacy_fields.items():
+                    if new_name not in effective and old_name in effective:
+                        effective[new_name] = effective[old_name]
+                        changed = True
+                if effective.get("xftf_dk2") is None:
+                    effective["xftf_dk2"] = effective.get("xftf_dk", 1.0)
+                    changed = True
+                defaults = {
+                    "rbkg_automatic": False,
+                    "autobk_kmin": 0.0,
+                    "autobk_kmax": 0.0,
+                    "xftf_kmin": 0.0,
+                    "xftf_kmax": 0.0,
+                    "xftf_dk": 1.0,
+                    "xftf_dk2": effective.get("xftf_dk", 1.0),
+                    "xftf_window": "kaiser",
+                }
+                for field, default in defaults.items():
+                    if field not in effective:
+                        effective[field] = default
+                        changed = True
+            top_effective = revision.get("effective")
+            nested_effective = result.get("effective") if isinstance(result, dict) else None
+            if top_effective is None and nested_effective is None:
+                raise WorkspaceStateError(
+                    "workspace_schema_invalid",
+                    "This applied revision has no effective recipe provenance.",
+                    recovery="Restore the workspace with its original application or create a new workspace.",
+                )
+            if top_effective is not None and nested_effective is not None and top_effective != nested_effective:
+                raise WorkspaceStateError(
+                    "workspace_schema_invalid",
+                    "This applied revision has conflicting effective recipe provenance.",
+                    recovery="Restore the workspace from a consistent backup or create a new workspace.",
+                )
+            if top_effective is None:
+                revision["effective"] = nested_effective
+                changed = True
+            elif nested_effective is None:
+                if not isinstance(result, dict):
+                    raise WorkspaceStateError(
+                        "workspace_schema_invalid",
+                        "This applied revision has an invalid result record.",
+                        recovery="Restore the workspace from a consistent backup or create a new workspace.",
+                    )
+                result["effective"] = top_effective
+                changed = True
+            if not isinstance(result, dict) or not result.get("arrays_name") or not isinstance(result.get("plots"), list):
+                raise WorkspaceStateError(
+                    "workspace_schema_invalid",
+                    "This applied revision has an invalid result record.",
+                    recovery="Restore the workspace from a consistent backup or create a new workspace.",
+                )
+            try:
+                self.storage.read_arrays(workspace_id, result["arrays_name"])
+            except (FileNotFoundError, ValueError, OSError) as exc:
+                raise WorkspaceStateError(
+                    "workspace_schema_invalid",
+                    "This applied revision has an unavailable result artifact.",
+                    recovery="Restore the workspace from a consistent backup or create a new workspace.",
+                ) from exc
+        if changed:
+            metadata["schema_version"] = _WORKSPACE_SCHEMA_VERSION
+        return metadata, changed
+
+    def _metadata(self, workspace_id: str, *, persist: bool = False) -> dict[str, Any]:
         try:
-            return self.storage.read_json(workspace_id, _WORKSPACE_FILE)
+            metadata = self.storage.read_json(workspace_id, _WORKSPACE_FILE)
+            normalized, changed = self._normalize_metadata(workspace_id, metadata)
+            if persist and changed:
+                self._write_metadata(workspace_id, normalized)
+            return normalized
         except FileNotFoundError as exc:
             raise WorkspaceStateError("workspace_not_found", "Workspace was not found.", recovery="Create a new workspace and retry.") from exc
+        except WorkspaceStateError:
+            raise
+        except (TypeError, ValueError, KeyError) as exc:
+            raise WorkspaceStateError(
+                "workspace_schema_invalid",
+                "The workspace metadata is invalid.",
+                recovery="Restore the workspace from a consistent backup or create a new workspace.",
+            ) from exc
 
     def _write_metadata(self, workspace_id: str, metadata: dict[str, Any]) -> None:
         self.storage.write_json(workspace_id, _WORKSPACE_FILE, metadata)
@@ -71,7 +226,7 @@ class WorkspaceStore:
 
     def save_upload(self, workspace_id: str, parsed: ParsedUpload) -> str:
         with self.storage.lock(workspace_id):
-            metadata = self._metadata(workspace_id)
+            metadata = self._metadata(workspace_id, persist=True)
             upload_id = self._id()
             arrays_name = f"upload-{upload_id}.npz"
             source_name = f"upload-{upload_id}.bin"
@@ -94,11 +249,27 @@ class WorkspaceStore:
             upload = metadata["uploads"][upload_id]
         except KeyError as exc:
             raise WorkspaceStateError("upload_not_found", "Upload was not found.", recovery="Upload the source data again.") from exc
+        columns = tuple(ColumnInfo.model_validate(column) for column in upload["columns"])
+        stored_arrays = self.storage.read_arrays(workspace_id, upload["arrays_name"])
+        legacy_keys = upload.get("_legacy_column_keys", [])
+        legacy_ids_backfilled = bool(upload.get("_legacy_ids_backfilled", False))
+        arrays = {}
+        for index, column in enumerate(columns):
+            legacy_key = legacy_keys[index] if index < len(legacy_keys) else column.name
+            keys = (
+                (legacy_key, column.column_id)
+                if legacy_ids_backfilled
+                else (column.column_id, legacy_key)
+            )
+            value = next((stored_arrays[key] for key in keys if key in stored_arrays), None)
+            if value is None and legacy_key == column.name:
+                value = stored_arrays.get(column.name)
+            arrays[column.column_id] = np.array(() if value is None else value, copy=True)
         return ParsedUpload(
             display_name=upload["display_name"],
             row_count=upload["row_count"],
-            columns=tuple(ColumnInfo.model_validate(column) for column in upload["columns"]),
-            arrays=self.storage.read_arrays(workspace_id, upload["arrays_name"]),
+            columns=columns,
+            arrays=arrays,
             warnings=tuple(upload["warnings"]),
             issues=tuple(),
             source_bytes=b"",
@@ -108,7 +279,7 @@ class WorkspaceStore:
         self, workspace_id: str, upload_id: str, energy_column: str, signal_column: str
     ) -> RevisionSummary:
         with self.storage.lock(workspace_id):
-            metadata = self._metadata(workspace_id)
+            metadata = self._metadata(workspace_id, persist=True)
             parsed = self._parsed_upload(workspace_id, metadata, upload_id)
             energy_column_id = resolve_column_id(parsed, energy_column)
             signal_column_id = resolve_column_id(parsed, signal_column)
@@ -204,7 +375,7 @@ class WorkspaceStore:
         recipe: RecipeDraft,
     ) -> RevisionSummary:
         with self.storage.lock(workspace_id):
-            metadata = self._metadata(workspace_id)
+            metadata = self._metadata(workspace_id, persist=True)
             self._check_parent(metadata, expected_parent_revision)
             source = self._source_mapping(metadata, source_revision_id)
             parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
@@ -231,7 +402,7 @@ class WorkspaceStore:
     ) -> ProcessingResult:
         """Process a mapped source without changing workspace state."""
         with self.storage.lock(workspace_id):
-            metadata = self._metadata(workspace_id)
+            metadata = self._metadata(workspace_id, persist=True)
             source = self._source_mapping(metadata, source_revision_id)
             parsed = self._parsed_upload(workspace_id, metadata, source["upload_id"])
             energy, mu = validate_mapping(parsed, source["energy_column"], source["signal_column"])
@@ -245,7 +416,7 @@ class WorkspaceStore:
         expected_parent_revision: int | None,
     ) -> RevisionSummary:
         with self.storage.lock(workspace_id):
-            metadata = self._metadata(workspace_id)
+            metadata = self._metadata(workspace_id, persist=True)
             self._check_parent(metadata, expected_parent_revision)
             previous = self._revision(metadata, revision_id)
             if previous["kind"] != "applied":
@@ -259,7 +430,7 @@ class WorkspaceStore:
                 "source_revision_id": previous["source_revision_id"],
                 "restored_from_revision_id": revision_id,
                 "recipe": previous["recipe"],
-                "effective": previous["effective"],
+                "effective": result.effective.model_dump(mode="json"),
                 "result": self._save_result(workspace_id, new_revision_id, result),
             }
             metadata["revisions"].append(revision)
@@ -268,63 +439,72 @@ class WorkspaceStore:
             return RevisionSummary.model_validate(revision)
 
     def load(self, workspace_id: str) -> WorkspaceSnapshot:
-        metadata = self._metadata(workspace_id)
-        summaries = tuple(RevisionSummary.model_validate(revision) for revision in metadata["revisions"])
-        active_result = None
-        active_source = None
-        if metadata["active_revision_id"] is not None:
-            active = self._revision(metadata, metadata["active_revision_id"])
-            active_result = self._load_result(workspace_id, active["result"])
-            active_source = self._source_metadata(
-                metadata, self._source_mapping(metadata, active["revision_id"])
+        with self.storage.lock(workspace_id):
+            try:
+                raw_metadata = self.storage.read_json(workspace_id, _WORKSPACE_FILE)
+            except FileNotFoundError as exc:
+                raise WorkspaceStateError("workspace_not_found", "Workspace was not found.", recovery="Create a new workspace and retry.") from exc
+            metadata, changed = self._normalize_metadata(workspace_id, raw_metadata)
+            if changed:
+                self._write_metadata(workspace_id, metadata)
+            summaries = tuple(RevisionSummary.model_validate(revision) for revision in metadata["revisions"])
+            active_result = None
+            active_source = None
+            if metadata["active_revision_id"] is not None:
+                active = self._revision(metadata, metadata["active_revision_id"])
+                active_result = self._load_result(workspace_id, active["result"])
+                active_source = self._source_metadata(
+                    metadata, self._source_mapping(metadata, active["revision_id"])
+                )
+            mapping_revisions = [
+                revision for revision in metadata["revisions"] if revision["kind"] == "mapping"
+            ]
+            draft_source = (
+                self._source_metadata(metadata, mapping_revisions[-1])
+                if mapping_revisions
+                else None
             )
-        mapping_revisions = [
-            revision for revision in metadata["revisions"] if revision["kind"] == "mapping"
-        ]
-        draft_source = (
-            self._source_metadata(metadata, mapping_revisions[-1])
-            if mapping_revisions
-            else None
-        )
-        return WorkspaceSnapshot(
-            workspace_id=metadata["workspace_id"],
-            active_revision_id=metadata["active_revision_id"],
-            revisions=summaries,
-            active_result=active_result,
-            active_source=active_source,
-            draft_source=draft_source,
-        )
+            return WorkspaceSnapshot(
+                workspace_id=metadata["workspace_id"],
+                active_revision_id=metadata["active_revision_id"],
+                revisions=summaries,
+                active_result=active_result,
+                active_source=active_source,
+                draft_source=draft_source,
+            )
 
     def revision_result(
         self, workspace_id: str, revision_id: int
     ) -> ProcessingResult:
-        metadata = self._metadata(workspace_id)
-        revision = self._revision(metadata, revision_id)
-        if revision["kind"] != "applied":
-            raise WorkspaceStateError(
-                "revision_not_downloadable",
-                "Only applied revisions have processed data.",
-                recovery="Select an applied recipe revision and retry.",
-            )
-        return self._load_result(workspace_id, revision["result"])
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id, persist=True)
+            revision = self._revision(metadata, revision_id)
+            if revision["kind"] != "applied":
+                raise WorkspaceStateError(
+                    "revision_not_downloadable",
+                    "Only applied revisions have processed data.",
+                    recovery="Select an applied recipe revision and retry.",
+                )
+            return self._load_result(workspace_id, revision["result"])
 
     def revision_provenance(self, workspace_id: str, revision_id: int) -> dict[str, Any]:
-        metadata = self._metadata(workspace_id)
-        revision = self._revision(metadata, revision_id)
-        if revision["kind"] != "applied":
-            raise WorkspaceStateError(
-                "revision_not_downloadable",
-                "Only applied revisions have recipes.",
-                recovery="Select an applied recipe revision and retry.",
-            )
-        return {
-            key: revision[key]
-            for key in (
-                "revision_id",
-                "parent_revision_id",
-                "source_revision_id",
-                "restored_from_revision_id",
-                "recipe",
-                "effective",
-            )
-        }
+        with self.storage.lock(workspace_id):
+            metadata = self._metadata(workspace_id, persist=True)
+            revision = self._revision(metadata, revision_id)
+            if revision["kind"] != "applied":
+                raise WorkspaceStateError(
+                    "revision_not_downloadable",
+                    "Only applied revisions have recipes.",
+                    recovery="Select an applied recipe revision and retry.",
+                )
+            return {
+                key: revision[key]
+                for key in (
+                    "revision_id",
+                    "parent_revision_id",
+                    "source_revision_id",
+                    "restored_from_revision_id",
+                    "recipe",
+                    "effective",
+                )
+            }

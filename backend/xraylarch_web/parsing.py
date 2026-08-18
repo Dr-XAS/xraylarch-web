@@ -48,22 +48,45 @@ def _issue(code: str, message: str, *fields: str, recovery: str) -> FieldIssue:
     return FieldIssue(code=code, message=message, fields=fields, recovery=recovery)
 
 
+def _noncomment_lines(text: str) -> list[str]:
+    return [
+        line
+        for line in text.splitlines()
+        if line.strip() and not line.lstrip().startswith(_COMMENT_PREFIXES)
+    ]
+
+
+def _csv_dialect(text: str) -> csv.Dialect:
+    lines = _noncomment_lines(text)
+    sample = "\n".join(lines[:20])
+    try:
+        return csv.Sniffer().sniff(sample, delimiters=",;\t")
+    except csv.Error:
+        return csv.excel
+
+
 def _read_group(path: Path, suffix: str):
     if suffix == ".xdi":
         return read_xdi(str(path), use_pyxdi=True)
     if suffix == ".csv":
+        text = path.read_text(encoding="utf-8-sig")
+        dialect = _csv_dialect(text)
+        rows = [
+            tuple(value.strip() for value in next(csv.reader([line], dialect)))
+            for line in _noncomment_lines(text)
+        ]
         group = read_csv(str(path))
-        if getattr(group, "data", None):
-            first_row = next(csv.reader([path.read_text(encoding="utf-8").splitlines()[0]]), [])
-            has_header = bool(first_row) and all(
-                not _can_be_float(value) for value in first_row
+        if rows and all(not _can_be_float(value) for value in rows[0]):
+            data_lines = rows[1:]
+            data_path = path.with_name("_numeric.csv")
+            data_path.write_text(
+                "\n".join(dialect.delimiter.join(row) for row in data_lines),
+                encoding="utf-8",
             )
-            if has_header:
-                data_lines = path.read_text(encoding="utf-8").splitlines()[1:]
-                data_path = path.with_name("_numeric.csv")
-                data_path.write_text("\n".join(data_lines), encoding="utf-8")
-                group = read_csv(str(data_path))
-                group.array_labels = [value.strip() or f"col_{i + 1:02d}" for i, value in enumerate(first_row)]
+            group = read_csv(str(data_path))
+            group.array_labels = [
+                value or f"col_{i + 1:02d}" for i, value in enumerate(rows[0])
+            ]
         return group
     return read_ascii(str(path))
 
@@ -77,19 +100,11 @@ def _can_be_float(value: str) -> bool:
 
 
 def _tabular_rows(text: str, suffix: str) -> tuple[tuple[str, ...], ...]:
-    lines = [
-        line
-        for line in text.splitlines()
-        if line.strip() and not line.lstrip().startswith(_COMMENT_PREFIXES)
-    ]
+    lines = _noncomment_lines(text)
     if suffix != ".csv":
         return tuple(tuple(line.split()) for line in lines)
 
-    sample = "\n".join(lines[:20])
-    try:
-        dialect = csv.Sniffer().sniff(sample, delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
+    dialect = _csv_dialect(text)
     return tuple(
         tuple(value.strip() for value in next(csv.reader([line], dialect)))
         for line in lines
@@ -118,12 +133,14 @@ def _validate_tabular_text(
     for fields in _tabular_rows(text, suffix):
         values: list[float] = []
         numeric = bool(fields)
+        numeric_fields = 0
         for field in fields:
             try:
                 value = float(field)
             except ValueError:
                 numeric = False
-                break
+                continue
+            numeric_fields += 1
             if not np.isfinite(value):
                 raise WebInputError(
                     "upload_nonfinite",
@@ -132,9 +149,17 @@ def _validate_tabular_text(
                     "Remove non-finite rows and upload the data again.",
                 )
             values.append(value)
+        numeric = bool(fields) and numeric_fields == len(fields)
 
         if expected_fields is None:
             if not numeric:
+                if 0 < numeric_fields < len(fields):
+                    raise WebInputError(
+                        "upload_malformed_rows",
+                        "The upload contains a malformed or inconsistent data row.",
+                        ("file",),
+                        "Repair the tabular rows and upload the data again.",
+                    )
                 continue
             expected_fields = len(values)
             if expected_fields > max_columns:

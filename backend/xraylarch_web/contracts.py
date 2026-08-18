@@ -92,38 +92,39 @@ class RestoreRequest(BaseModel):
 
 class EffectiveRecipe(BaseModel):
     e0: float
-    e0_automatic: bool
+    e0_automatic: bool = False
     edge_step: float
-    edge_step_automatic: bool
-    pre1: float
-    pre1_automatic: bool
-    pre2: float
-    pre2_automatic: bool
-    norm1: float
-    norm1_automatic: bool
-    norm2: float
-    norm2_automatic: bool
-    nnorm: int
-    nnorm_automatic: bool
+    edge_step_automatic: bool = False
+    pre1: float | None = None
+    pre1_automatic: bool | None = None
+    pre2: float | None = None
+    pre2_automatic: bool | None = None
+    norm1: float | None = None
+    norm1_automatic: bool | None = None
+    norm2: float | None = None
+    norm2_automatic: bool | None = None
+    nnorm: int | None = None
+    nnorm_automatic: bool | None = None
     rbkg: float
-    kweight: int
-    autobk_kmin: float
-    autobk_kmax: float
-    autobk_kmax_automatic: bool
-    autobk_dk: float
-    autobk_dk_automatic: bool
-    autobk_window: str
-    autobk_window_automatic: bool
-    xftf_kmin: float
-    xftf_kmax: float
-    xftf_kmax_automatic: bool
-    xftf_dk: float
-    xftf_dk2: float
-    xftf_dk2_automatic: bool
-    xftf_window: str
-    nfft: int
-    kstep: float
-    rmax_out: float
+    rbkg_automatic: bool = False
+    kweight: int = 2
+    autobk_kmin: float = 0.0
+    autobk_kmax: float = 0.0
+    autobk_kmax_automatic: bool = False
+    autobk_dk: float = 0.0
+    autobk_dk_automatic: bool = False
+    autobk_window: str = "hanning"
+    autobk_window_automatic: bool = False
+    xftf_kmin: float = 0.0
+    xftf_kmax: float = 0.0
+    xftf_kmax_automatic: bool = False
+    xftf_dk: float = 1.0
+    xftf_dk2: float = 1.0
+    xftf_dk2_automatic: bool = False
+    xftf_window: str = "kaiser"
+    nfft: int = 2048
+    kstep: float = 0.05
+    rmax_out: float = 10.0
 
 
 class PlotTrace(BaseModel):

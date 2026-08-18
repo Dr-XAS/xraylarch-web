@@ -271,3 +271,275 @@ def test_storage_never_serializes_object_arrays(data_root):
         )
 
     assert error.value.code == "storage_invalid_array"
+
+
+def test_legacy_workspace_is_migrated_and_persisted_on_load(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    applied = store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    metadata["uploads"][next(iter(metadata["uploads"]))]["columns"] = [
+        {key: value for key, value in column.items() if key != "column_id"}
+        for column in metadata["uploads"][next(iter(metadata["uploads"]))]["columns"]
+    ]
+    metadata["revisions"][1].pop("effective")
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    snapshot = store.load(workspace_id)
+    migrated = store.storage.read_json(workspace_id, "workspace.json")
+    migrated_revision = migrated["revisions"][1]
+
+    assert snapshot.active_revision_id == applied.revision_id
+    assert migrated["schema_version"] == 2
+    assert [column["column_id"] for column in migrated["uploads"][next(iter(migrated["uploads"]))]["columns"]] == [
+        "column_0001",
+        "column_0002",
+    ]
+    assert migrated_revision["effective"] == migrated_revision["result"]["effective"]
+    assert migrated_revision["effective"] == applied.effective.model_dump(mode="json")
+
+
+def test_legacy_workspace_rejects_conflicting_effective_provenance(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata["schema_version"] = 1
+    metadata["revisions"][1]["result"]["effective"]["rbkg"] = 99.0
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    with pytest.raises(WebInputError) as error:
+        store.load(workspace_id)
+
+    assert error.value.code == "workspace_schema_invalid"
+
+
+def test_legacy_workspace_migration_is_idempotent(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    store.load(workspace_id)
+    first = store.storage.path(workspace_id, "workspace.json").read_bytes()
+    store.load(workspace_id)
+    second = store.storage.path(workspace_id, "workspace.json").read_bytes()
+
+    assert first == second
+
+
+def test_future_workspace_schema_is_rejected(data_root):
+    store = WorkspaceStore(data_root)
+    workspace = store.create()
+    metadata = store.storage.read_json(workspace.workspace_id, "workspace.json")
+    metadata["schema_version"] = 999
+    store.storage.write_json(workspace.workspace_id, "workspace.json", metadata)
+
+    with pytest.raises(WebInputError) as error:
+        store.load(workspace.workspace_id)
+
+    assert error.value.code == "workspace_schema_unsupported"
+
+
+def test_legacy_fourier_bounds_preserve_xftf_provenance(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    applied = store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    legacy_effective = {
+        "e0": 7112.0,
+        "edge_step": 1.0,
+        "rbkg": 1.0,
+        "kmin": 2.0,
+        "kmax": 10.0,
+        "kweight": 2,
+        "autobk_dk": 1.0,
+        "autobk_window": "hanning",
+        "ft_dk": 1.0,
+        "ft_dk2": 1.0,
+        "ft_window": "kaiser",
+        "nfft": 2048,
+        "kstep": 0.05,
+        "rmax_out": 10.0,
+    }
+    metadata["revisions"][1]["effective"] = legacy_effective.copy()
+    metadata["revisions"][1]["result"]["effective"] = legacy_effective.copy()
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    store.load(workspace_id)
+    migrated = store.storage.read_json(workspace_id, "workspace.json")["revisions"][1]["effective"]
+
+    assert migrated["xftf_kmin"] == 2.0
+    assert migrated["xftf_kmax"] == 10.0
+    assert migrated["autobk_kmin"] == 0.0
+    assert applied.revision_id == 2
+
+
+def test_restoring_legacy_revision_keeps_provenance_consistent(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    applied = store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    legacy_effective = metadata["revisions"][1]["effective"]
+    for key in ("xftf_kmin", "xftf_kmax", "xftf_dk", "xftf_dk2", "xftf_window"):
+        legacy_effective[key.replace("xftf_", "") if key != "xftf_window" else "ft_window"] = legacy_effective.pop(key)
+    metadata["revisions"][1]["result"]["effective"] = legacy_effective.copy()
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    store.load(workspace_id)
+    restored = store.restore_revision(
+        workspace_id,
+        applied.revision_id,
+        expected_parent_revision=applied.revision_id,
+    )
+    snapshot = store.load(workspace_id)
+
+    assert restored.revision_id == 3
+    assert snapshot.active_revision_id == restored.revision_id
+    assert snapshot.active_result is not None
+
+
+def test_legacy_workspace_column_id_collision_preserves_source_array(data_root):
+    store = WorkspaceStore(data_root)
+    workspace_id = store.create().workspace_id
+    data = b"energy,mu,column_0002\n" + b"7000,1,10\n7001,2,20\n"
+    upload_id = store.save_upload(workspace_id, parse_upload(data, "collision.csv"))
+    source = store.confirm_mapping(workspace_id, upload_id, "energy", "mu")
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    upload = metadata["uploads"][upload_id]
+    upload["columns"] = [
+        {key: value for key, value in column.items() if key != "column_id"}
+        for column in upload["columns"]
+    ]
+    metadata["revisions"][0]["energy_column"] = "energy"
+    metadata["revisions"][0]["signal_column"] = "mu"
+    arrays_name = upload["arrays_name"]
+    store.storage.write_arrays(
+        workspace_id,
+        arrays_name,
+        {"energy": np.array([7000.0, 7001.0]), "mu": np.array([1.0, 2.0]), "column_0002": np.array([10.0, 20.0])},
+    )
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    store.load(workspace_id)
+    migrated = store.storage.read_json(workspace_id, "workspace.json")
+    assert migrated["revisions"][0]["signal_column"] == "column_0002"
+    parsed = store._parsed_upload(workspace_id, migrated, upload_id)
+    assert parsed.arrays["column_0002"].tolist() == [1.0, 2.0]
+    assert source.revision_id == 1
+
+
+def test_legacy_workspace_label_matching_generated_id_preserves_selection(data_root):
+    store = WorkspaceStore(data_root)
+    workspace_id = store.create().workspace_id
+    data = b"energy,mu,column_0002\n7000,1,10\n7001,2,20\n"
+    upload_id = store.save_upload(workspace_id, parse_upload(data, "label.csv"))
+    source = store.confirm_mapping(workspace_id, upload_id, "energy", "column_0002")
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    upload = metadata["uploads"][upload_id]
+    upload["columns"] = [
+        {key: value for key, value in column.items() if key != "column_id"}
+        for column in upload["columns"]
+    ]
+    metadata["revisions"][0]["energy_column"] = "energy"
+    metadata["revisions"][0]["signal_column"] = "column_0002"
+    store.storage.write_arrays(
+        workspace_id,
+        upload["arrays_name"],
+        {"energy": np.array([7000.0, 7001.0]), "mu": np.array([1.0, 2.0]), "column_0002": np.array([10.0, 20.0])},
+    )
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    store.load(workspace_id)
+    migrated = store.storage.read_json(workspace_id, "workspace.json")
+    assert migrated["revisions"][0]["signal_column"] == "column_0003"
+    assert source.revision_id == 1
+
+
+def test_legacy_workspace_mixed_upload_generations_use_mapping_upload_marker(data_root):
+    store = WorkspaceStore(data_root)
+    workspace_id = store.create().workspace_id
+    data = b"energy,mu,column_0002\n7000,1,10\n7001,2,20\n"
+    upload_id = store.save_upload(workspace_id, parse_upload(data, "legacy.csv"))
+    source = store.confirm_mapping(workspace_id, upload_id, "energy", "column_0002")
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    upload = metadata["uploads"][upload_id]
+    upload["columns"] = [
+        {key: value for key, value in column.items() if key != "column_id"}
+        for column in upload["columns"]
+    ]
+    upload.pop("_legacy_column_keys", None)
+    upload.pop("_legacy_ids_backfilled", None)
+    metadata["revisions"][0]["energy_column"] = "energy"
+    metadata["revisions"][0]["signal_column"] = "column_0002"
+    later_id = "ABCDEFGHIJKLMNOP"
+    metadata["uploads"][later_id] = {
+        **upload,
+        "display_name": "current.csv",
+        "columns": [column.model_dump(mode="json") for column in parse_upload(data, "current.csv").columns],
+        "arrays_name": "later.npz",
+    }
+    store.storage.write_arrays(
+        workspace_id,
+        upload["arrays_name"],
+        {"energy": np.array([7000.0, 7001.0]), "mu": np.array([1.0, 2.0]), "column_0002": np.array([10.0, 20.0])},
+    )
+    store.storage.write_arrays(
+        workspace_id,
+        "later.npz",
+        {"column_0001": np.array([7000.0, 7001.0]), "column_0002": np.array([1.0, 2.0]), "column_0003": np.array([10.0, 20.0])},
+    )
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    store.load(workspace_id)
+    migrated = store.storage.read_json(workspace_id, "workspace.json")
+    assert migrated["revisions"][0]["signal_column"] == "column_0003"
+    assert source.revision_id == 1
+
+
+def test_legacy_workspace_rejects_missing_result_artifact(data_root, synthetic_xmu_bytes):
+    store, workspace_id, source = _mapped_workspace(data_root, synthetic_xmu_bytes)
+    store.apply_revision(
+        workspace_id,
+        source.revision_id,
+        expected_parent_revision=None,
+        recipe=RecipeDraft(),
+    )
+    metadata = store.storage.read_json(workspace_id, "workspace.json")
+    metadata.pop("schema_version")
+    result_name = metadata["revisions"][1]["result"]["arrays_name"]
+    store.storage.path(workspace_id, result_name).unlink()
+    store.storage.write_json(workspace_id, "workspace.json", metadata)
+
+    with pytest.raises(WebInputError) as error:
+        store.load(workspace_id)
+
+    assert error.value.code == "workspace_schema_invalid"

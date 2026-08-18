@@ -106,6 +106,20 @@ uses only a full SHA from `codex/xraylarch-web-v1`:
 /local/apps/xraylarch-web/ops/check-xraylarch-web.sh check <full-sha>
 ```
 
+For an installation created by the pre-record deployer, bootstrap the exact
+active process records first; this is an explicit, locked, fail-closed migration
+that does not stop processes or change links, state, data, or sibling services:
+
+```bash
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh migrate <full-sha>
+```
+
+Migration discovers and validates both final screens/listeners, writes both
+private records atomically, and removes only records created by the attempt if
+verification fails. Matching records make the command idempotent. Deploy and
+health refuse legacy processes without records; the read-only checker never
+performs migration.
+
 The active application remains on `3004`/`8006` while a release candidate is
 started in `xraylarch-web-candidate-frontend` and
 `xraylarch-web-candidate-backend` on app-private loopback `13004`/`18006`.

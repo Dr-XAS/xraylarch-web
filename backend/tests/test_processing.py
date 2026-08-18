@@ -31,6 +31,7 @@ def test_run_processing_preserves_raw_arrays_and_effective_values(xas_arrays):
     assert result.effective.norm1_automatic is True
     assert result.effective.norm2_automatic is True
     assert result.effective.nnorm_automatic is True
+    assert result.effective.rbkg == pytest.approx(1.0)
     assert result.effective.kweight == 2
     assert result.effective.autobk_kmin == 0
     assert result.effective.autobk_kmax == pytest.approx(9.85)
@@ -54,6 +55,16 @@ def test_run_processing_preserves_raw_arrays_and_effective_values(xas_arrays):
     }
     assert all(np.isfinite(trace.x).all() for trace in result.plots)
     assert all(np.isfinite(trace.y).all() for trace in result.plots)
+
+
+def test_effective_rbkg_records_larch_clamp(xas_arrays):
+    energy, mu = xas_arrays
+    recipe = RecipeDraft(rbkg=0.01)
+
+    result = run_processing(energy, mu, recipe)
+
+    assert result.effective.rbkg == pytest.approx(2 * np.pi / (recipe.kstep * recipe.nfft))
+    assert result.effective.rbkg > recipe.rbkg
 
 
 def test_default_fourier_range_uses_larch_automatic_value(xas_arrays, monkeypatch):

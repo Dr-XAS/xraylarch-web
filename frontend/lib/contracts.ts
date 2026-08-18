@@ -97,6 +97,7 @@ export interface EffectiveRecipe {
   nnorm: number
   nnorm_automatic: boolean
   rbkg: number
+  rbkg_automatic?: boolean
   kweight: number
   autobk_kmin: number
   autobk_kmax: number

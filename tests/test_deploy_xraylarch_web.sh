@@ -75,6 +75,16 @@ load_component_record LOADED xraylarch-web-candidate-frontend "$state_release" f
 rm -f "$RECORD_RECORD_FILE"
 assert_component_record_available xraylarch-web-candidate-frontend || test_fail "candidate launch may use an unused process record name"
 
+set_component_record RECORD xraylarch-web-candidate-frontend 501.xraylarch-web-candidate-frontend 501 502 13004 "$state_release" frontend 127.0.0.1
+RECORD_RELEASE_SHA="$state_sha"; RECORD_CWD="${state_release}/frontend"; RECORD_EXE=/opt/drxas-node20/bin/node
+RECORD_CMDLINE_B64=bmV4dC1zZXJ2ZXIA; RECORD_SCREEN_OWNER=drxas; RECORD_LISTENER_OWNER=drxas
+write_component_record RECORD || test_fail "record fixture must be rewritable"
+printf 'version=1\n' >>"$RECORD_RECORD_FILE"
+if load_component_record LOADED xraylarch-web-candidate-frontend "$state_release" frontend 127.0.0.1 13004 >/dev/null 2>&1; then
+  test_fail "duplicate process-record fields must fail closed"
+fi
+rm -f "$RECORD_RECORD_FILE"
+
 lsof() { printf '999\n'; }
 ss() { return 0; }
 if assert_port_unbound 13004 >/dev/null 2>&1; then
