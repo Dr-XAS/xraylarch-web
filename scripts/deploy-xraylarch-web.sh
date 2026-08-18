@@ -187,7 +187,7 @@ screen_pid_from_session() {
   printf '%s\n' "${BASH_REMATCH[1]}"
 }
 
-listener_pid() {
+listener_pids() {
   local port="$1"
   local -a pids=()
   local pid
@@ -205,6 +205,16 @@ listener_pid() {
       ' | awk '!seen[$0]++'
     )
   fi
+  if [[ ${#pids[@]} -gt 0 ]]; then
+    printf '%s\n' "${pids[@]}"
+  fi
+}
+
+listener_pid() {
+  local port="$1"
+  local -a pids=()
+  local pid
+  while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(listener_pids "$port")
   [[ ${#pids[@]} -eq 1 ]] || { fail "expected exactly one listener on port $port, found ${#pids[@]}"; return 1; }
   printf '%s\n' "${pids[0]}"
 }
@@ -480,7 +490,7 @@ wait_for_listener_release() {
   local -a pids=()
   for attempt in {1..20}; do
     pids=()
-    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(listener_pids "$port")
     if [[ ${#pids[@]} -eq 0 ]] && ! ss -ltnH | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit found ? 0 : 1 }'; then return 0; fi
     if [[ ${#pids[@]} -ne 1 || "${pids[0]}" != "$expected_pid" ]]; then fail "listener ownership changed before port $port was released"; fi
     sleep 1
@@ -493,7 +503,7 @@ wait_for_port_absent() {
   local -a pids=()
   for attempt in {1..20}; do
     pids=()
-    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+    while IFS= read -r pid; do [[ -z "$pid" ]] || pids+=("$pid"); done < <(listener_pids "$port")
     if [[ ${#pids[@]} -eq 0 ]] && ! ss -ltnH | awk -v suffix=":${port}" '$4 ~ (suffix "$") { found=1 } END { exit found ? 0 : 1 }'; then return 0; fi
     sleep 1
   done
