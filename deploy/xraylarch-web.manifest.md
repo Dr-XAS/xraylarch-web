@@ -136,6 +136,15 @@ An active release is healthy only when all of the following hold:
 The checker only reads process, listener, filesystem, Git, and HTTP state. It
 never stops processes or changes host state.
 
+The default sibling-service profile is `drxas` and validates the established
+Dr.XAS production, development, and bot endpoints listed above. Goldendale is
+an approved alternate host profile because its production pair is intentionally
+absent while the dev pair remains active. On Goldendale, set
+`XRAYLARCH_WEB_SIBLING_PROFILE=goldendale` for deploy, health, and checker
+commands; that profile validates only the existing `3001` frontend and `8001`
+backend. It changes no XrayLarch listener, release, data, or process-identity
+contract.
+
 ## Deployment watcher
 
 The approved watcher is installed as

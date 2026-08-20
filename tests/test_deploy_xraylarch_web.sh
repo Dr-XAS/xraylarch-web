@@ -14,6 +14,32 @@ if validate_sha not-a-sha >/dev/null 2>&1; then
 fi
 validate_sha 0123456789abcdef0123456789abcdef01234567
 
+sibling_http_events=()
+http_200() {
+  sibling_http_events+=("$1")
+}
+curl() {
+  sibling_http_events+=("${@: -1}")
+  printf '404'
+}
+
+unset XRAYLARCH_WEB_SIBLING_PROFILE
+assert_sibling_services_healthy || test_fail "default Dr.XAS sibling profile must pass with healthy responses"
+[[ ${#sibling_http_events[@]} -eq 4 ]] || test_fail "default sibling profile must check the established HTTP services"
+[[ "${sibling_http_events[*]}" == "http://127.0.0.1:3000/ http://127.0.0.1:3001/ http://127.0.0.1:8000/docs http://127.0.0.1:8001/docs" ]] || test_fail "default sibling profile must preserve the Dr.XAS HTTP checks"
+
+sibling_http_events=()
+XRAYLARCH_WEB_SIBLING_PROFILE=goldendale
+assert_sibling_services_healthy || test_fail "Goldendale sibling profile must pass with healthy dev responses"
+[[ ${#sibling_http_events[@]} -eq 2 ]] || test_fail "Goldendale sibling profile must check only its established dev services"
+[[ "${sibling_http_events[*]}" == "http://127.0.0.1:3001/ http://127.0.0.1:8001/docs" ]] || test_fail "Goldendale sibling profile must target 3001 and 8001"
+
+XRAYLARCH_WEB_SIBLING_PROFILE=unknown
+if assert_sibling_services_healthy >/dev/null 2>&1; then
+  test_fail "unknown sibling profile must fail closed"
+fi
+unset XRAYLARCH_WEB_SIBLING_PROFILE
+
 state_test_root=$(mktemp -d)
 state_test_root=$(cd "$state_test_root" && pwd -P)
 trap 'rm -rf -- "$state_test_root"' EXIT

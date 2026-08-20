@@ -6,6 +6,7 @@ umask 077
 REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/apps/xraylarch-web/control}"
 DEPLOY_SCRIPT="${XRAYLARCH_WEB_DEPLOY_SCRIPT:-/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh}"
 BRANCH="${XRAYLARCH_WEB_BRANCH:-codex/xraylarch-web-v1}"
+SIBLING_PROFILE="${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}"
 STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-/local/apps/xraylarch-web/state/watcher}"
 LAST_SUCCESSFUL_STATE="${XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE:-/local/apps/xraylarch-web/state/last-successful}"
 LOG="${XRAYLARCH_WEB_WATCH_LOG:-/tmp/xraylarch-web-watch.log}"
@@ -43,7 +44,7 @@ install -d -m 0700 "$STATE_ROOT"
 if [[ ! -d "$(dirname "$LOG")" ]]; then
   install -d -m 0700 "$(dirname "$LOG")"
 fi
-log "started; polling origin/${BRANCH} every ${POLL_INTERVAL}s"
+log "started; polling origin/${BRANCH} every ${POLL_INTERVAL}s; sibling_profile=${SIBLING_PROFILE}"
 
 while true; do
   if git -C "$REPO_DIR" fetch origin "$BRANCH" -q 2>>"$LOG"; then
@@ -62,7 +63,7 @@ while true; do
     else
       previous="${successful_sha:-none}"
       log "deploying ${remote_sha:0:12} (last success: ${previous:0:12})"
-      if bash "$DEPLOY_SCRIPT" deploy "$remote_sha" >>"$LOG" 2>&1; then
+      if XRAYLARCH_WEB_SIBLING_PROFILE="$SIBLING_PROFILE" bash "$DEPLOY_SCRIPT" deploy "$remote_sha" >>"$LOG" 2>&1; then
         write_atomic "$STATE_ROOT/last-successful-sha" "$remote_sha"
         write_atomic "$STATE_ROOT/last-successful-at" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         log "deployment succeeded for ${remote_sha:0:12}"

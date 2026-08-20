@@ -106,6 +106,12 @@ uses only a full SHA from `codex/xraylarch-web-v1`:
 /local/apps/xraylarch-web/ops/check-xraylarch-web.sh check <full-sha>
 ```
 
+When using the prepared alternate host profile on Goldendale, prefix deploy,
+health, and checker commands with
+`XRAYLARCH_WEB_SIBLING_PROFILE=goldendale`. This keeps XrayLarch on frontend
+`3004` and backend `8006` while validating Goldendale's existing Dr.XAS dev
+services on `3001` and `8001`; the default `drxas` profile remains unchanged.
+
 For an installation created by the pre-record deployer, bootstrap the exact
 active process records first; this is an explicit, locked, fail-closed migration
 that does not stop processes or change links, state, data, or sibling services:

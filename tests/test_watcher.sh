@@ -90,7 +90,7 @@ EOF
 cat >"$test_root/deploy.sh" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-printf '%s\n' "$*" >>"${TEST_DEPLOY_LOG:?}"
+printf 'profile=%s args=%s\n' "${XRAYLARCH_WEB_SIBLING_PROFILE:-unset}" "$*" >>"${TEST_DEPLOY_LOG:?}"
 exit "${TEST_DEPLOY_EXIT:-0}"
 EOF
 for utility in install mktemp chmod mv date tee sleep timeout; do
@@ -124,6 +124,17 @@ XRAYLARCH_WEB_WATCH_INTERVAL=1 XRAYLARCH_WEB_WATCH_ONCE=1 "$watcher" >/dev/null 
 [[ ! -e "$test_root/state/watcher/last-successful-sha" ]] || fail "failed deploy must not advance success state"
 [[ "$(wc -l <"$test_root/deploy.log")" -ge 1 ]] || fail "new SHA must invoke deployer"
 
+# A host-specific sibling profile must be passed explicitly to the deployer.
+TEST_REMOTE_SHA="$sha" TEST_DEPLOY_EXIT=1 TEST_DEPLOY_LOG="$test_root/deploy.log" \
+PATH="$test_root/bin:$PATH" XRAYLARCH_WEB_REPO_DIR="$test_root/repo" \
+XRAYLARCH_WEB_DEPLOY_SCRIPT="$test_root/deploy.sh" \
+XRAYLARCH_WEB_SIBLING_PROFILE=goldendale \
+XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
+XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
+XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
+XRAYLARCH_WEB_WATCH_INTERVAL=1 XRAYLARCH_WEB_WATCH_ONCE=1 "$watcher" >/dev/null 2>&1 || true
+grep -F 'profile=goldendale args=deploy ' "$test_root/deploy.log" >/dev/null || fail "watcher must pass the sibling profile to the deployer"
+
 # The status command is read-only and reports configured state.
 status_output=$(XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
   XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
@@ -132,4 +143,10 @@ status_output=$(XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
   "$status_script" status)
 [[ "$status_output" == *"branch=codex/xraylarch-web-v1"* ]] || fail "status must report branch"
 [[ "$status_output" == *"observed_sha=$sha"* ]] || fail "status must report observed SHA"
+goldendale_status=$(XRAYLARCH_WEB_SIBLING_PROFILE=goldendale XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
+  XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
+  XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
+  XRAYLARCH_WEB_REPO_DIR="$test_root/repo" \
+  "$status_script" status)
+[[ "$goldendale_status" == *"sibling_profile=goldendale"* ]] || fail "status must report the configured sibling profile"
 printf 'watcher tests passed\n'

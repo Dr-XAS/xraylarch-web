@@ -594,16 +594,32 @@ backend_health_ok() {
   printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' || { fail "backend health body does not report status ok"; return 1; }
 }
 
+sibling_profile() {
+  case "${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}" in
+    drxas|goldendale) printf '%s\n' "${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}" ;;
+    *) fail "unsupported sibling service profile: ${XRAYLARCH_WEB_SIBLING_PROFILE}"; return 1 ;;
+  esac
+}
+
 assert_sibling_services_healthy() {
-  http_200 "http://127.0.0.1:3000/" || return 1
-  http_200 "http://127.0.0.1:3001/" || return 1
-  http_200 "http://127.0.0.1:8000/docs" || return 1
-  http_200 "http://127.0.0.1:8001/docs" || return 1
-  local port code
-  for port in 8002 8003; do
-    code=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/") || return 1
-    [[ "$code" == "404" ]] || { fail "expected existing Dr.XAS sibling on ${port} to return 404, received $code"; return 1; }
-  done
+  local profile port code
+  profile=$(sibling_profile) || return 1
+  case "$profile" in
+    drxas)
+      http_200 "http://127.0.0.1:3000/" || return 1
+      http_200 "http://127.0.0.1:3001/" || return 1
+      http_200 "http://127.0.0.1:8000/docs" || return 1
+      http_200 "http://127.0.0.1:8001/docs" || return 1
+      for port in 8002 8003; do
+        code=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/") || return 1
+        [[ "$code" == "404" ]] || { fail "expected existing Dr.XAS sibling on ${port} to return 404, received $code"; return 1; }
+      done
+      ;;
+    goldendale)
+      http_200 "http://127.0.0.1:3001/" || return 1
+      http_200 "http://127.0.0.1:8001/docs" || return 1
+      ;;
+  esac
 }
 
 verify_component_pair() {

@@ -39,7 +39,7 @@ case "${1:-}" in
   --help|-h) usage; exit 0 ;;
   status)
     screen_status
-    printf 'repo=%s\nbranch=%s\n' "$REPO_DIR" "$BRANCH"
+    printf 'repo=%s\nbranch=%s\nsibling_profile=%s\n' "$REPO_DIR" "$BRANCH" "${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}"
     printf 'observed_sha='; state_value "$STATE_ROOT/last-observed-remote-sha"
     printf 'observed_at='; state_value "$STATE_ROOT/last-observed-remote-at"
     printf 'watcher_success_sha='; state_value "$STATE_ROOT/last-successful-sha"
