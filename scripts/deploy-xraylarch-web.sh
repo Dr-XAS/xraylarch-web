@@ -54,6 +54,7 @@ Usage:
   deploy-xraylarch-web.sh deploy <full-sha>
   deploy-xraylarch-web.sh rollback <full-sha>
   deploy-xraylarch-web.sh health <full-sha>
+  deploy-xraylarch-web.sh recover <full-sha>
   deploy-xraylarch-web.sh migrate <full-sha>
 
 Host-only release control for XrayLarch Web. A full SHA is exactly 40 lowercase
@@ -77,7 +78,7 @@ validate_sha() {
 parse_arguments() {
   case "${1:-}" in
     --help|-h) usage; exit 0 ;;
-    deploy|rollback|health|migrate)
+    deploy|rollback|health|recover|migrate)
       ACTION="$1"
       REQUESTED_SHA="${2:-}"
       [[ $# -eq 2 ]] || { fail "${ACTION} requires exactly one full SHA"; return 1; }
@@ -295,7 +296,13 @@ component_command_matches() {
     frontend)
       executable=$(process_executable "$pid") || return 1
       [[ "${executable##*/}" == node ]] || { fail "frontend listener executable is not node"; return 1; }
-      [[ ${#PROCESS_ARGV[@]} -eq 1 && "${PROCESS_ARGV[0]}" =~ $frontend_title_pattern ]] || { fail "frontend listener title is not the Next server title"; return 1; }
+      [[ ${#PROCESS_ARGV[@]} -ge 1 && "${PROCESS_ARGV[0]}" =~ $frontend_title_pattern ]] || { fail "frontend listener title is not the Next server title"; return 1; }
+      for index in "${!PROCESS_ARGV[@]}"; do
+        if [[ "$index" -gt 0 && -n "${PROCESS_ARGV[$index]}" ]]; then
+          fail "frontend listener has an unexpected non-empty argument"
+          return 1
+        fi
+      done
       ;;
     *) fail "unknown component kind: $kind" ;;
   esac
@@ -362,13 +369,15 @@ write_component_record() {
 
 load_component_record() {
   local prefix="$1" expected_name="$2" expected_release="$3" expected_kind="$4" expected_host="$5" expected_port="$6"
-  local record key value count=0 version="" migration="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
+  local record line key value count=0 version="" migration="" name="" session="" screen_pid="" listener_pid_value="" port="" release="" release_sha="" kind="" host="" cwd="" exe="" cmdline_b64="" screen_owner="" listener_owner=""
   local seen_version=0 seen_migration=0 seen_name=0 seen_session=0 seen_screen_pid=0 seen_listener_pid=0 seen_port=0 seen_release=0 seen_release_sha=0 seen_kind=0 seen_host=0 seen_cwd=0 seen_exe=0 seen_cmdline_b64=0 seen_screen_owner=0 seen_listener_owner=0
   [[ -d "$PROCESS_RECORD_ROOT" && ! -L "$PROCESS_RECORD_ROOT" ]] || { fail "process record root is absent or symlinked"; return 1; }
   record=$(component_record_path "$expected_name") || return 1
   [[ -f "$record" && ! -L "$record" ]] || { fail "component process record is absent or symlinked: $expected_name"; return 1; }
-  while IFS='=' read -r key value; do
+  while IFS= read -r line; do
     ((count += 1))
+    key=${line%%=*}
+    value=${line#*=}
     case "$key" in
       version) ((seen_version += 1)); version="$value" ;;
       migration) ((seen_migration += 1)); migration="$value" ;;
@@ -586,16 +595,32 @@ backend_health_ok() {
   printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' || { fail "backend health body does not report status ok"; return 1; }
 }
 
+sibling_profile() {
+  case "${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}" in
+    drxas|goldendale) printf '%s\n' "${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}" ;;
+    *) fail "unsupported sibling service profile: ${XRAYLARCH_WEB_SIBLING_PROFILE}"; return 1 ;;
+  esac
+}
+
 assert_sibling_services_healthy() {
-  http_200 "http://127.0.0.1:3000/" || return 1
-  http_200 "http://127.0.0.1:3001/" || return 1
-  http_200 "http://127.0.0.1:8000/docs" || return 1
-  http_200 "http://127.0.0.1:8001/docs" || return 1
-  local port code
-  for port in 8002 8003; do
-    code=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/") || return 1
-    [[ "$code" == "404" ]] || { fail "expected existing Dr.XAS sibling on ${port} to return 404, received $code"; return 1; }
-  done
+  local profile port code
+  profile=$(sibling_profile) || return 1
+  case "$profile" in
+    drxas)
+      http_200 "http://127.0.0.1:3000/" || return 1
+      http_200 "http://127.0.0.1:3001/" || return 1
+      http_200 "http://127.0.0.1:8000/docs" || return 1
+      http_200 "http://127.0.0.1:8001/docs" || return 1
+      for port in 8002 8003; do
+        code=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/") || return 1
+        [[ "$code" == "404" ]] || { fail "expected existing Dr.XAS sibling on ${port} to return 404, received $code"; return 1; }
+      done
+      ;;
+    goldendale)
+      http_200 "http://127.0.0.1:3001/" || return 1
+      http_200 "http://127.0.0.1:8001/docs" || return 1
+      ;;
+  esac
 }
 
 verify_component_pair() {
@@ -625,6 +650,45 @@ snapshot_prior_state() {
     cp --preserve=mode "${STATE_ROOT}/last-successful" "$ACTIVATION_STATE_SNAPSHOT" || return 1
     ACTIVATION_STATE_WAS_PRESENT=1
   fi
+}
+
+recovery_surface_is_absent() {
+  local pair name port
+  for pair in \
+    "${FRONTEND_SCREEN}:${FINAL_FRONTEND_PORT}" \
+    "${BACKEND_SCREEN}:${FINAL_BACKEND_PORT}"; do
+    name=${pair%%:*}
+    port=${pair##*:}
+    [[ -z "$(screen_sessions_for_name "$name")" ]] || return 1
+    [[ -z "$(listener_pids "$port")" ]] || return 1
+  done
+}
+
+discard_stale_recovery_records() {
+  local pair prefix name kind host port record frontend_record backend_record
+  for pair in \
+    "RECOVERY_FRONTEND:${FRONTEND_SCREEN}:frontend:${FINAL_FRONTEND_HOST}:${FINAL_FRONTEND_PORT}" \
+    "RECOVERY_BACKEND:${BACKEND_SCREEN}:backend:${FINAL_BACKEND_HOST}:${FINAL_BACKEND_PORT}"; do
+    prefix=${pair%%:*}
+    pair=${pair#*:}
+    name=${pair%%:*}
+    pair=${pair#*:}
+    kind=${pair%%:*}
+    pair=${pair#*:}
+    host=${pair%%:*}
+    port=${pair##*:}
+    record=$(component_record_path "$name") || return 1
+    if [[ -e "$record" || -L "$record" ]]; then
+      load_component_record "$prefix" "$name" "$CURRENT_RELEASE" "$kind" "$host" "$port" || return 1
+    fi
+    if [[ "$kind" == frontend ]]; then frontend_record="$record"; else backend_record="$record"; fi
+  done
+  recovery_surface_is_absent || return 1
+  for record in "$frontend_record" "$backend_record"; do
+    if [[ -e "$record" || -L "$record" ]]; then
+      rm -f -- "$record" || return 1
+    fi
+  done
 }
 
 write_current_link() {
@@ -745,9 +809,16 @@ begin_activation() {
     assert_last_successful_state "$CURRENT_SHA" "$CURRENT_RELEASE" || return 1
     ACTIVATION_PREVIOUS_RELEASE="$CURRENT_RELEASE"
     ACTIVATION_PREVIOUS_SHA="$CURRENT_SHA"
-    capture_component_record ACTIVATION_PREVIOUS_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
-    capture_component_record ACTIVATION_PREVIOUS_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend "$FINAL_BACKEND_HOST" "$FINAL_BACKEND_PORT" || return 1
-    verify_component_pair ACTIVATION_PREVIOUS_FRONTEND ACTIVATION_PREVIOUS_BACKEND "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" "$FINAL_BACKEND_URL" 1 || return 1
+    if recovery_surface_is_absent; then
+      discard_stale_recovery_records || return 1
+      ACTIVATION_PREVIOUS_STOPPED=1
+      ACTIVATION_PREVIOUS_FRONTEND_STOPPED=1
+      ACTIVATION_PREVIOUS_BACKEND_STOPPED=1
+    else
+      capture_component_record ACTIVATION_PREVIOUS_FRONTEND "$FRONTEND_SCREEN" "$CURRENT_RELEASE" frontend "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" || return 1
+      capture_component_record ACTIVATION_PREVIOUS_BACKEND "$BACKEND_SCREEN" "$CURRENT_RELEASE" backend "$FINAL_BACKEND_HOST" "$FINAL_BACKEND_PORT" || return 1
+      verify_component_pair ACTIVATION_PREVIOUS_FRONTEND ACTIVATION_PREVIOUS_BACKEND "$FINAL_FRONTEND_HOST" "$FINAL_FRONTEND_PORT" "$FINAL_BACKEND_URL" 1 || return 1
+    fi
   else
     [[ -z "$(screen_sessions_for_name "$FRONTEND_SCREEN")" ]] || { fail "active frontend screen collision without current release"; return 1; }
     [[ -z "$(screen_sessions_for_name "$BACKEND_SCREEN")" ]] || { fail "active backend screen collision without current release"; return 1; }
@@ -877,6 +948,21 @@ perform_migrate() {
   printf 'process records migrated sha=%s\n' "$REQUESTED_SHA"
 }
 
+perform_recover() {
+  read_current_release || { fail "current release symlink is absent"; return 1; }
+  [[ "$CURRENT_SHA" == "$REQUESTED_SHA" ]] || {
+    fail "current release is not the requested SHA"
+    return 1
+  }
+  assert_last_successful_state "$REQUESTED_SHA" "$CURRENT_RELEASE" || return 1
+  if perform_health >/dev/null 2>&1; then
+    printf 'healthy sha=%s release=%s\n' "$CURRENT_SHA" "$CURRENT_RELEASE"
+    return 0
+  fi
+  activate_release "$REQUESTED_SHA" || return 1
+  printf 'recovered sha=%s release=%s\n' "$REQUESTED_SHA" "$CURRENT_RELEASE"
+}
+
 perform_health() {
   read_current_release || { fail "current release symlink is absent"; return 1; }
   [[ "$CURRENT_SHA" == "$REQUESTED_SHA" ]] || { fail "current release is not the requested SHA"; return 1; }
@@ -896,10 +982,14 @@ main() {
       initialize_host_paths || return 1
       perform_migrate
       ;;
-    deploy|rollback)
+    deploy|rollback|recover)
       initialize_host_paths || return 1
       prepare_candidate_data || return 1
-      if [[ "$ACTION" == deploy ]]; then perform_deploy; else perform_rollback; fi
+      case "$ACTION" in
+        deploy) perform_deploy ;;
+        rollback) perform_rollback ;;
+        recover) perform_recover ;;
+      esac
       ;;
   esac
 }

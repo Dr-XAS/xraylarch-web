@@ -14,6 +14,32 @@ if validate_sha not-a-sha >/dev/null 2>&1; then
 fi
 validate_sha 0123456789abcdef0123456789abcdef01234567
 
+sibling_http_events=()
+http_200() {
+  sibling_http_events+=("$1")
+}
+curl() {
+  sibling_http_events+=("${@: -1}")
+  printf '404'
+}
+
+unset XRAYLARCH_WEB_SIBLING_PROFILE
+assert_sibling_services_healthy || test_fail "default Dr.XAS sibling profile must pass with healthy responses"
+[[ ${#sibling_http_events[@]} -eq 4 ]] || test_fail "default sibling profile must check the established HTTP services"
+[[ "${sibling_http_events[*]}" == "http://127.0.0.1:3000/ http://127.0.0.1:3001/ http://127.0.0.1:8000/docs http://127.0.0.1:8001/docs" ]] || test_fail "default sibling profile must preserve the Dr.XAS HTTP checks"
+
+sibling_http_events=()
+XRAYLARCH_WEB_SIBLING_PROFILE=goldendale
+assert_sibling_services_healthy || test_fail "Goldendale sibling profile must pass with healthy dev responses"
+[[ ${#sibling_http_events[@]} -eq 2 ]] || test_fail "Goldendale sibling profile must check only its established dev services"
+[[ "${sibling_http_events[*]}" == "http://127.0.0.1:3001/ http://127.0.0.1:8001/docs" ]] || test_fail "Goldendale sibling profile must target 3001 and 8001"
+
+XRAYLARCH_WEB_SIBLING_PROFILE=unknown
+if assert_sibling_services_healthy >/dev/null 2>&1; then
+  test_fail "unknown sibling profile must fail closed"
+fi
+unset XRAYLARCH_WEB_SIBLING_PROFILE
+
 state_test_root=$(mktemp -d)
 state_test_root=$(cd "$state_test_root" && pwd -P)
 trap 'rm -rf -- "$state_test_root"' EXIT
@@ -52,7 +78,9 @@ rm -f "${STATE_ROOT}/last-successful"
 read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)"); }
 process_executable() { printf '/opt/drxas-node20/bin/node\n'; }
 component_command_matches 501 /release frontend 127.0.0.1 13004 || test_fail "Next listener title must be accepted without a node_modules argv path"
-read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "unexpected"); }
+read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "" "" ""); }
+component_command_matches 501 /release frontend 127.0.0.1 13004 || test_fail "Next listener title must allow trailing empty argv entries"
+read_process_argv() { PROCESS_ARGV=("next-server (v16.3.1)" "" "unexpected"); }
 if component_command_matches 501 /release frontend 127.0.0.1 13004 >/dev/null 2>&1; then
   test_fail "changed Next listener argv must fail exact identity"
 fi
@@ -61,7 +89,7 @@ set_component_record RECORD xraylarch-web-candidate-frontend 501.xraylarch-web-c
 RECORD_RELEASE_SHA="$state_sha"
 RECORD_CWD="${state_release}/frontend"
 RECORD_EXE=/opt/drxas-node20/bin/node
-RECORD_CMDLINE_B64=bmV4dC1zZXJ2ZXIA
+RECORD_CMDLINE_B64=bmV4dC1zZXJ2ZXIA==
 RECORD_SCREEN_OWNER=drxas
 RECORD_LISTENER_OWNER=drxas
 write_component_record RECORD || test_fail "candidate process record must be written atomically"
@@ -77,7 +105,7 @@ assert_component_record_available xraylarch-web-candidate-frontend || test_fail 
 
 set_component_record RECORD xraylarch-web-candidate-frontend 501.xraylarch-web-candidate-frontend 501 502 13004 "$state_release" frontend 127.0.0.1
 RECORD_RELEASE_SHA="$state_sha"; RECORD_CWD="${state_release}/frontend"; RECORD_EXE=/opt/drxas-node20/bin/node
-RECORD_CMDLINE_B64=bmV4dC1zZXJ2ZXIA; RECORD_SCREEN_OWNER=drxas; RECORD_LISTENER_OWNER=drxas
+RECORD_CMDLINE_B64=bmV4dC1zZXJ2ZXIA==; RECORD_SCREEN_OWNER=drxas; RECORD_LISTENER_OWNER=drxas
 write_component_record RECORD || test_fail "record fixture must be rewritable"
 printf 'version=1\n' >>"$RECORD_RECORD_FILE"
 if load_component_record LOADED xraylarch-web-candidate-frontend "$state_release" frontend 127.0.0.1 13004 >/dev/null 2>&1; then
@@ -218,5 +246,80 @@ recover_activation || test_fail "guarded recovery must return successfully with 
 [[ "${events[*]}" == *"restore-state"* ]] || test_fail "recovery must restore the prior symlink and state"
 [[ "${events[*]}" == *"restart-prior"* ]] || test_fail "recovery must restart the prior release after handoff failure"
 [[ "$ACTIVATION_IN_PROGRESS" == 0 ]] || test_fail "recovery must clear the activation guard"
+
+parse_arguments recover "$state_sha"
+[[ "$ACTION" == recover && "$REQUESTED_SHA" == "$state_sha" ]] ||
+  test_fail "recover must parse as a full-SHA action"
+
+events=()
+read_current_release() {
+  CURRENT_RELEASE="$state_release"
+  CURRENT_SHA="$state_sha"
+}
+assert_last_successful_state() { :; }
+perform_health() { return 1; }
+activate_release() { events+=("activate:$1"); }
+REQUESTED_SHA="$state_sha"
+perform_recover
+[[ "${events[*]}" == "activate:$state_sha" ]] ||
+  test_fail "unhealthy recover must reactivate the requested release"
+
+write_recovery_record() {
+  local prefix="$1" name="$2" session="$3" screen_pid="$4" listener_pid_value="$5" port="$6" kind="$7" host="$8"
+  set_component_record "$prefix" "$name" "$session" "$screen_pid" "$listener_pid_value" "$port" "$state_release" "$kind" "$host"
+  printf -v "${prefix}_RELEASE_SHA" '%s' "$state_sha"
+  printf -v "${prefix}_CWD" '%s' "${state_release}/${kind}"
+  printf -v "${prefix}_EXE" '%s' "/opt/drxas/${kind}"
+  printf -v "${prefix}_CMDLINE_B64" '%s' "${kind}-command"
+  printf -v "${prefix}_SCREEN_OWNER" '%s' drxas
+  printf -v "${prefix}_LISTENER_OWNER" '%s' drxas
+  write_component_record "$prefix"
+}
+
+CURRENT_RELEASE="$state_release"
+CURRENT_SHA="$state_sha"
+REQUESTED_SHA="$state_sha"
+screen_sessions_for_name() { :; }
+listener_pids() { :; }
+write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "501.${FRONTEND_SCREEN}" 501 502 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
+  test_fail "frontend stale record fixture must be written"
+write_recovery_record RECOVERY_BACKEND "$BACKEND_SCREEN" "503.${BACKEND_SCREEN}" 503 504 "$FINAL_BACKEND_PORT" backend "$FINAL_BACKEND_HOST" ||
+  test_fail "backend stale record fixture must be written"
+recovery_surface_is_absent || test_fail "recovery surface must be recognized as absent"
+discard_stale_recovery_records || test_fail "matching stale records must be discarded"
+[[ ! -e "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" ]] ||
+  test_fail "stale frontend record must be removed after absence validation"
+[[ ! -e "$PROCESS_RECORD_ROOT/${BACKEND_SCREEN}.record" ]] ||
+  test_fail "stale backend record must be removed after absence validation"
+
+write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "505.${FRONTEND_SCREEN}" 505 506 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
+  test_fail "partial-cleanup frontend record fixture must be written"
+printf 'version=1\nmalformed=true\n' >"$PROCESS_RECORD_ROOT/${BACKEND_SCREEN}.record"
+if discard_stale_recovery_records >/dev/null 2>&1; then
+  test_fail "malformed paired record must fail closed"
+fi
+[[ -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" ]] ||
+  test_fail "paired record validation must not partially remove the frontend record"
+rm -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" "$PROCESS_RECORD_ROOT/${BACKEND_SCREEN}.record"
+
+write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "505.${FRONTEND_SCREEN}" 505 506 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
+  test_fail "collision frontend record fixture must be written"
+screen_sessions_for_name() {
+  [[ "$1" == "$FRONTEND_SCREEN" ]] && printf '%s\n' "505.${FRONTEND_SCREEN}"
+}
+if recovery_surface_is_absent >/dev/null 2>&1; then
+  test_fail "same-named final screen must block recovery cleanup"
+fi
+[[ -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" ]] ||
+  test_fail "screen collision must leave the record untouched"
+
+rm -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record"
+screen_sessions_for_name() { :; }
+listener_pids() {
+  [[ "$1" == "$FINAL_FRONTEND_PORT" ]] && printf '777\n'
+}
+if recovery_surface_is_absent >/dev/null 2>&1; then
+  test_fail "final listener collision must block recovery cleanup"
+fi
 
 printf 'deployment activation regression checks passed\n'
