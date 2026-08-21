@@ -38,6 +38,7 @@ full 40-character SHA:
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh deploy <full-sha>
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh rollback <full-sha>
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh health <full-sha>
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh recover <full-sha>
 ```
 
 `deploy` first requires `refs/heads/codex/xraylarch-web-v1` at the remote to
@@ -76,6 +77,14 @@ stops only recorded target/candidate processes, restores the preceding
 symlink/state, and restarts plus health-checks the prior release. A same-named
 screen, changed PID, unexpected command, non-canonical release, or listener
 ownership mismatch is a fail-closed collision and is never stopped.
+
+`recover` validates that `current` and `state/last-successful` name the
+requested immutable release. If the release is already healthy it makes no
+application change. Otherwise it reuses the guarded candidate and activation
+path to restore the same SHA. A reboot state with both final screens and
+listeners absent may remove only matching stale process records before launch;
+any ambiguous screen, listener, record, symlink, or identity fails closed.
+The action never builds a release or changes the canonical release SHA.
 
 ## Legacy process-record migration
 
@@ -149,13 +158,25 @@ contract.
 
 The approved watcher is installed as
 `/local/apps/xraylarch-web/ops/start-watcher.sh` and runs in the detached GNU
-`screen` session `xraylarch-web-watch`. It polls `origin/codex/xraylarch-web-v1`
-every 60 seconds, resolves the branch to an exact full SHA, and invokes the
-existing deployer with that SHA. The deployer remains the sole authority for
-candidate staging, process identity, cutover, rollback, health validation, and
-`state/last-successful`; the watcher never performs port or process control
-itself. A failed SHA is retried on a later poll and is not recorded as a
-watcher success.
+`screen` session `xraylarch-web-watch`. The idempotent bootstrap helper is
+installed as `/local/apps/xraylarch-web/ops/ensure-watcher.sh`; it recreates
+only a missing exact watcher screen and never stops a collision. On Goldendale,
+the helper is registered in the existing persistence paths with the explicit
+profile and conda-containing PATH:
+
+```cron
+@reboot /usr/bin/env PATH="$HOME/miniconda3/bin:/usr/local/bin:/usr/bin:/bin" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale /local/apps/xraylarch-web/ops/ensure-watcher.sh >> /tmp/xraylarch-web-watchdog.log 2>&1
+```
+
+The existing five-minute watcher-liveness job invokes the same helper after its
+other scoped watcher checks. The watcher polls
+`origin/codex/xraylarch-web-v1` every 60 seconds, resolves the branch to an
+exact full SHA, health-checks the canonical active SHA, invokes `recover` when
+health fails, and only then invokes `deploy` for a new SHA. The deployer remains
+the sole authority for candidate staging, process identity, cutover, rollback,
+health validation, and `state/last-successful`; the watcher never performs port
+or process control itself. A failed health, recovery, or deployment operation
+is retried on a later poll and is not recorded as watcher success.
 
 Watcher bookkeeping is private and separate from the deployer's canonical
 activation state:

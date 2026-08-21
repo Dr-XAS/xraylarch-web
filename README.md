@@ -103,14 +103,33 @@ uses only a full SHA from `codex/xraylarch-web-v1`:
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh deploy <full-sha>
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh health <full-sha>
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh rollback <full-sha>
+/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh recover <full-sha>
 /local/apps/xraylarch-web/ops/check-xraylarch-web.sh check <full-sha>
 ```
 
 When using the prepared alternate host profile on Goldendale, prefix deploy,
-health, and checker commands with
+health, recover, and checker commands with
 `XRAYLARCH_WEB_SIBLING_PROFILE=goldendale`. This keeps XrayLarch on frontend
 `3004` and backend `8006` while validating Goldendale's existing Dr.XAS dev
 services on `3001` and `8001`; the default `drxas` profile remains unchanged.
+
+`recover <full-sha>` reactivates the existing immutable release when its
+processes or screens are gone, without building a release or changing the
+canonical SHA. It is safe to call after a reboot; ambiguous screens, listeners,
+or process records fail closed. The watcher performs this recovery automatically
+after a failed health check.
+
+The reboot/liveness helper is installed as
+`/local/apps/xraylarch-web/ops/ensure-watcher.sh`. It starts exactly one
+`xraylarch-web-watch` screen, never kills a colliding screen, and can be called
+from Goldendale's existing persistence paths:
+
+```cron
+@reboot /usr/bin/env PATH="$HOME/miniconda3/bin:/usr/local/bin:/usr/bin:/bin" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale /local/apps/xraylarch-web/ops/ensure-watcher.sh >> /tmp/xraylarch-web-watchdog.log 2>&1
+```
+
+The existing five-minute watcher-liveness job invokes the same helper so an
+unexpected watcher exit is repaired without adding a second periodic cron job.
 
 For an installation created by the pre-record deployer, bootstrap the exact
 active process records first; this is an explicit, locked, fail-closed migration

@@ -185,4 +185,11 @@ goldendale_status=$(XRAYLARCH_WEB_SIBLING_PROFILE=goldendale XRAYLARCH_WEB_WATCH
   XRAYLARCH_WEB_REPO_DIR="$test_root/repo" \
   "$status_script" status)
 [[ "$goldendale_status" == *"sibling_profile=goldendale"* ]] || fail "status must report the configured sibling profile"
+
+for documentation in "$repo_root/README.md" "$repo_root/deploy/xraylarch-web.manifest.md"; do
+  grep -F 'recover' "$documentation" >/dev/null || fail "documentation must describe recover: $documentation"
+  grep -F 'ensure-watcher.sh' "$documentation" >/dev/null || fail "documentation must describe ensure-watcher.sh: $documentation"
+  grep -F '@reboot' "$documentation" >/dev/null || fail "documentation must describe reboot persistence: $documentation"
+  grep -F 'XRAYLARCH_WEB_SIBLING_PROFILE=goldendale' "$documentation" >/dev/null || fail "documentation must describe Goldendale profile: $documentation"
+done
 printf 'watcher tests passed\n'
