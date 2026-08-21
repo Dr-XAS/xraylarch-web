@@ -55,6 +55,11 @@ set -Eeuo pipefail
 }
 EOF
 chmod +x "$test_root/bin/flock"
+cat >"$test_root/bin/bad-flock" <<'EOF'
+#!/usr/bin/env bash
+exit 2
+EOF
+chmod +x "$test_root/bin/bad-flock"
 
 common_env=(
   TEST_SCREEN_ROOT="$test_root"
@@ -99,5 +104,10 @@ if env "${common_env[@]}" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale "$helper"; th
 fi
 [[ "$(grep -c '^start$' "$test_root/screen-start.log")" -eq 2 ]] ||
   fail "ambiguous watcher screens must not be stopped or replaced"
+
+printf '' >"$test_root/sessions"
+if env "${common_env[@]}" FLOCK_BIN="$test_root/bin/bad-flock" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale "$helper"; then
+  fail "lock command errors must fail closed"
+fi
 
 printf 'watcher bootstrap tests passed\n'

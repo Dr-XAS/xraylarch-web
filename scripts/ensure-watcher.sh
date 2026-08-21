@@ -10,6 +10,7 @@ STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-${APP_ROOT}/state/watcher}"
 SIBLING_PROFILE="${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}"
 WATCH_PATH="${XRAYLARCH_WEB_WATCH_PATH:-${HOME:-/home/beams/HUANG.JEFFREY}/miniconda3/bin:/usr/local/bin:/usr/bin:/bin}"
 SCREEN_BIN="${SCREEN_BIN:-/usr/bin/screen}"
+FLOCK_BIN="${FLOCK_BIN:-$(command -v flock 2>/dev/null || true)}"
 
 REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-${APP_ROOT}/control}"
 DEPLOY_SCRIPT="${XRAYLARCH_WEB_DEPLOY_SCRIPT:-${APP_ROOT}/ops/deploy-xraylarch-web.sh}"
@@ -42,6 +43,10 @@ esac
   fail "screen binary is absent, non-executable, or symlinked: $SCREEN_BIN"
   exit 1
 }
+[[ -n "$FLOCK_BIN" && -x "$FLOCK_BIN" && ! -L "$FLOCK_BIN" ]] || {
+  fail "flock binary is absent, non-executable, or symlinked: $FLOCK_BIN"
+  exit 1
+}
 [[ -f "$WATCHER_SCRIPT" && ! -L "$WATCHER_SCRIPT" && -x "$WATCHER_SCRIPT" ]] || {
   fail "watcher script is absent, non-executable, or symlinked: $WATCHER_SCRIPT"
   exit 1
@@ -64,10 +69,22 @@ else
   install -d -m 0700 "$STATE_ROOT"
 fi
 
-exec 9>"$STATE_ROOT/ensure.lock"
-if ! flock -n 9; then
-  log "another bootstrap invocation is reconciling the watcher"
-  exit 0
+LOCK_FILE="$STATE_ROOT/ensure.lock"
+[[ ! -L "$LOCK_FILE" ]] || {
+  fail "watcher lock is symlinked: $LOCK_FILE"
+  exit 1
+}
+exec 9>"$LOCK_FILE"
+if "$FLOCK_BIN" -n 9; then
+  :
+else
+  lock_status=$?
+  if [[ "$lock_status" -eq 1 ]]; then
+    log "another bootstrap invocation is reconciling the watcher"
+    exit 0
+  fi
+  fail "flock failed while reconciling the watcher: status=$lock_status"
+  exit 1
 fi
 
 screen_sessions_for_name() {

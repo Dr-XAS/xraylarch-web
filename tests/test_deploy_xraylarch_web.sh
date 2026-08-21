@@ -293,6 +293,16 @@ discard_stale_recovery_records || test_fail "matching stale records must be disc
   test_fail "stale backend record must be removed after absence validation"
 
 write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "505.${FRONTEND_SCREEN}" 505 506 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
+  test_fail "partial-cleanup frontend record fixture must be written"
+printf 'version=1\nmalformed=true\n' >"$PROCESS_RECORD_ROOT/${BACKEND_SCREEN}.record"
+if discard_stale_recovery_records >/dev/null 2>&1; then
+  test_fail "malformed paired record must fail closed"
+fi
+[[ -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" ]] ||
+  test_fail "paired record validation must not partially remove the frontend record"
+rm -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" "$PROCESS_RECORD_ROOT/${BACKEND_SCREEN}.record"
+
+write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "505.${FRONTEND_SCREEN}" 505 506 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
   test_fail "collision frontend record fixture must be written"
 screen_sessions_for_name() {
   [[ "$1" == "$FRONTEND_SCREEN" ]] && printf '%s\n' "505.${FRONTEND_SCREEN}"

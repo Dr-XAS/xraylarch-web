@@ -665,10 +665,12 @@ recovery_surface_is_absent() {
 }
 
 discard_stale_recovery_records() {
-  local pair name kind host port record
+  local pair prefix name kind host port record frontend_record backend_record
   for pair in \
-    "${FRONTEND_SCREEN}:frontend:${FINAL_FRONTEND_HOST}:${FINAL_FRONTEND_PORT}" \
-    "${BACKEND_SCREEN}:backend:${FINAL_BACKEND_HOST}:${FINAL_BACKEND_PORT}"; do
+    "RECOVERY_FRONTEND:${FRONTEND_SCREEN}:frontend:${FINAL_FRONTEND_HOST}:${FINAL_FRONTEND_PORT}" \
+    "RECOVERY_BACKEND:${BACKEND_SCREEN}:backend:${FINAL_BACKEND_HOST}:${FINAL_BACKEND_PORT}"; do
+    prefix=${pair%%:*}
+    pair=${pair#*:}
     name=${pair%%:*}
     pair=${pair#*:}
     kind=${pair%%:*}
@@ -677,7 +679,13 @@ discard_stale_recovery_records() {
     port=${pair##*:}
     record=$(component_record_path "$name") || return 1
     if [[ -e "$record" || -L "$record" ]]; then
-      load_component_record RECOVERY "$name" "$CURRENT_RELEASE" "$kind" "$host" "$port" || return 1
+      load_component_record "$prefix" "$name" "$CURRENT_RELEASE" "$kind" "$host" "$port" || return 1
+    fi
+    if [[ "$kind" == frontend ]]; then frontend_record="$record"; else backend_record="$record"; fi
+  done
+  recovery_surface_is_absent || return 1
+  for record in "$frontend_record" "$backend_record"; do
+    if [[ -e "$record" || -L "$record" ]]; then
       rm -f -- "$record" || return 1
     fi
   done
