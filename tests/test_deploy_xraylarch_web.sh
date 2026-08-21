@@ -247,4 +247,69 @@ recover_activation || test_fail "guarded recovery must return successfully with 
 [[ "${events[*]}" == *"restart-prior"* ]] || test_fail "recovery must restart the prior release after handoff failure"
 [[ "$ACTIVATION_IN_PROGRESS" == 0 ]] || test_fail "recovery must clear the activation guard"
 
+parse_arguments recover "$state_sha"
+[[ "$ACTION" == recover && "$REQUESTED_SHA" == "$state_sha" ]] ||
+  test_fail "recover must parse as a full-SHA action"
+
+events=()
+read_current_release() {
+  CURRENT_RELEASE="$state_release"
+  CURRENT_SHA="$state_sha"
+}
+assert_last_successful_state() { :; }
+perform_health() { return 1; }
+activate_release() { events+=("activate:$1"); }
+REQUESTED_SHA="$state_sha"
+perform_recover
+[[ "${events[*]}" == "activate:$state_sha" ]] ||
+  test_fail "unhealthy recover must reactivate the requested release"
+
+write_recovery_record() {
+  local prefix="$1" name="$2" session="$3" screen_pid="$4" listener_pid_value="$5" port="$6" kind="$7" host="$8"
+  set_component_record "$prefix" "$name" "$session" "$screen_pid" "$listener_pid_value" "$port" "$state_release" "$kind" "$host"
+  printf -v "${prefix}_RELEASE_SHA" '%s' "$state_sha"
+  printf -v "${prefix}_CWD" '%s' "${state_release}/${kind}"
+  printf -v "${prefix}_EXE" '%s' "/opt/drxas/${kind}"
+  printf -v "${prefix}_CMDLINE_B64" '%s' "${kind}-command"
+  printf -v "${prefix}_SCREEN_OWNER" '%s' drxas
+  printf -v "${prefix}_LISTENER_OWNER" '%s' drxas
+  write_component_record "$prefix"
+}
+
+CURRENT_RELEASE="$state_release"
+CURRENT_SHA="$state_sha"
+REQUESTED_SHA="$state_sha"
+screen_sessions_for_name() { :; }
+listener_pids() { :; }
+write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "501.${FRONTEND_SCREEN}" 501 502 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
+  test_fail "frontend stale record fixture must be written"
+write_recovery_record RECOVERY_BACKEND "$BACKEND_SCREEN" "503.${BACKEND_SCREEN}" 503 504 "$FINAL_BACKEND_PORT" backend "$FINAL_BACKEND_HOST" ||
+  test_fail "backend stale record fixture must be written"
+recovery_surface_is_absent || test_fail "recovery surface must be recognized as absent"
+discard_stale_recovery_records || test_fail "matching stale records must be discarded"
+[[ ! -e "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" ]] ||
+  test_fail "stale frontend record must be removed after absence validation"
+[[ ! -e "$PROCESS_RECORD_ROOT/${BACKEND_SCREEN}.record" ]] ||
+  test_fail "stale backend record must be removed after absence validation"
+
+write_recovery_record RECOVERY_FRONTEND "$FRONTEND_SCREEN" "505.${FRONTEND_SCREEN}" 505 506 "$FINAL_FRONTEND_PORT" frontend "$FINAL_FRONTEND_HOST" ||
+  test_fail "collision frontend record fixture must be written"
+screen_sessions_for_name() {
+  [[ "$1" == "$FRONTEND_SCREEN" ]] && printf '%s\n' "505.${FRONTEND_SCREEN}"
+}
+if recovery_surface_is_absent >/dev/null 2>&1; then
+  test_fail "same-named final screen must block recovery cleanup"
+fi
+[[ -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record" ]] ||
+  test_fail "screen collision must leave the record untouched"
+
+rm -f "$PROCESS_RECORD_ROOT/${FRONTEND_SCREEN}.record"
+screen_sessions_for_name() { :; }
+listener_pids() {
+  [[ "$1" == "$FINAL_FRONTEND_PORT" ]] && printf '777\n'
+}
+if recovery_surface_is_absent >/dev/null 2>&1; then
+  test_fail "final listener collision must block recovery cleanup"
+fi
+
 printf 'deployment activation regression checks passed\n'
