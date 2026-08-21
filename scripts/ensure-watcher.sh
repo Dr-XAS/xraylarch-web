@@ -8,7 +8,7 @@ SCREEN_NAME="${XRAYLARCH_WEB_WATCH_SCREEN:-xraylarch-web-watch}"
 WATCHER_SCRIPT="${XRAYLARCH_WEB_WATCHER_SCRIPT:-${APP_ROOT}/ops/start-watcher.sh}"
 STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-${APP_ROOT}/state/watcher}"
 SIBLING_PROFILE="${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}"
-WATCH_PATH="${XRAYLARCH_WEB_WATCH_PATH:-${HOME:-/home/beams/HUANG.JEFFREY}/miniconda3/bin:/usr/local/bin:/usr/bin:/bin}"
+WATCH_PATH="${XRAYLARCH_WEB_WATCH_PATH:-${HOME:-/home/beams/HUANG.JEFFREY}/miniconda3/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin}"
 SCREEN_BIN="${SCREEN_BIN:-/usr/bin/screen}"
 FLOCK_BIN="${FLOCK_BIN:-$(command -v flock 2>/dev/null || true)}"
 

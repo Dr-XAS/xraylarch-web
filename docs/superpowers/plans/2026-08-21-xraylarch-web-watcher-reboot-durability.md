@@ -97,7 +97,7 @@ SCREEN_NAME="${XRAYLARCH_WEB_WATCH_SCREEN:-xraylarch-web-watch}"
 WATCHER_SCRIPT="${XRAYLARCH_WEB_WATCHER_SCRIPT:-${APP_ROOT}/ops/start-watcher.sh}"
 STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-${APP_ROOT}/state/watcher}"
 SIBLING_PROFILE="${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}"
-WATCH_PATH="${XRAYLARCH_WEB_WATCH_PATH:-${HOME:-/home/beams/HUANG.JEFFREY}/miniconda3/bin:/usr/local/bin:/usr/bin:/bin}"
+WATCH_PATH="${XRAYLARCH_WEB_WATCH_PATH:-${HOME:-/home/beams/HUANG.JEFFREY}/miniconda3/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin}"
 SCREEN_BIN="${SCREEN_BIN:-/usr/bin/screen}"
 ```
 
@@ -598,7 +598,7 @@ do not push the branch.
 Add only these exact commands if absent:
 
 ```cron
-@reboot /usr/bin/env PATH="$HOME/miniconda3/bin:/usr/local/bin:/usr/bin:/bin" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale /local/apps/xraylarch-web/ops/ensure-watcher.sh >> /tmp/xraylarch-web-watchdog.log 2>&1
+@reboot /usr/bin/env PATH="$HOME/miniconda3/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale /local/apps/xraylarch-web/ops/ensure-watcher.sh >> /tmp/xraylarch-web-watchdog.log 2>&1
 ```
 
 Add the same helper invocation to the existing `/local/drxas-ops/watcher-liveness.sh`

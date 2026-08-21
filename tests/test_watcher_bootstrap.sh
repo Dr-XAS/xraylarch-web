@@ -110,4 +110,9 @@ if env "${common_env[@]}" FLOCK_BIN="$test_root/bin/bad-flock" XRAYLARCH_WEB_SIB
   fail "lock command errors must fail closed"
 fi
 
+printf '' >"$test_root/sessions"
+env "${common_env[@]}" HOME="$test_root/home" XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/default-path" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale "$helper"
+grep -F '/usr/sbin:/bin:/sbin' "$test_root/screen-start.log" >/dev/null ||
+  fail "default watcher PATH must include system administration binaries"
+
 printf 'watcher bootstrap tests passed\n'
