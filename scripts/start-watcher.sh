@@ -36,6 +36,61 @@ read_successful_sha() {
   fi
 }
 
+run_deployer_action() {
+  local action="$1" sha="$2"
+  XRAYLARCH_WEB_SIBLING_PROFILE="$SIBLING_PROFILE" \
+    bash "$DEPLOY_SCRIPT" "$action" "$sha" >>"$LOG" 2>&1
+}
+
+write_watcher_success() {
+  local sha="$1"
+  write_atomic "$STATE_ROOT/last-successful-sha" "$sha"
+  write_atomic "$STATE_ROOT/last-successful-at" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+}
+
+poll_once() {
+  local remote_sha successful_sha previous
+  if ! git -C "$REPO_DIR" fetch origin "$BRANCH" -q 2>>"$LOG"; then
+    log "fetch failed; retaining the active release and retrying after the next poll"
+    return 1
+  fi
+  remote_sha="$(git -C "$REPO_DIR" rev-parse "origin/${BRANCH}")"
+  if [[ ! "$remote_sha" =~ ^[0-9a-f]{40}$ ]]; then
+    log "refusing invalid remote SHA: ${remote_sha}"
+    return 1
+  fi
+  write_atomic "$STATE_ROOT/last-observed-remote-sha" "$remote_sha"
+  write_atomic "$STATE_ROOT/last-observed-remote-at" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+
+  successful_sha="$(read_successful_sha || true)"
+  if [[ -n "$successful_sha" ]]; then
+    if run_deployer_action health "$successful_sha"; then
+      log "${successful_sha:0:12} health is good"
+    elif run_deployer_action recover "$successful_sha"; then
+      log "${successful_sha:0:12} recovered before branch reconciliation"
+    else
+      log "${successful_sha:0:12} recovery failed; retaining the active release"
+      return 1
+    fi
+  fi
+
+  if [[ "$remote_sha" == "$successful_sha" ]]; then
+    write_watcher_success "$remote_sha"
+    log "${remote_sha:0:12} already active"
+    return 0
+  fi
+
+  previous="${successful_sha:-none}"
+  log "deploying ${remote_sha:0:12} (last success: ${previous:0:12})"
+  if run_deployer_action deploy "$remote_sha"; then
+    write_watcher_success "$remote_sha"
+    log "deployment succeeded for ${remote_sha:0:12}"
+    return 0
+  fi
+  log "deployment failed for ${remote_sha:0:12}; retrying after the next poll"
+  return 1
+}
+
 [[ "$POLL_INTERVAL" =~ ^[1-9][0-9]*$ ]] || {
   printf 'ERROR: watcher interval must be a positive integer\n' >&2
   exit 2
@@ -47,33 +102,7 @@ fi
 log "started; polling origin/${BRANCH} every ${POLL_INTERVAL}s; sibling_profile=${SIBLING_PROFILE}"
 
 while true; do
-  if git -C "$REPO_DIR" fetch origin "$BRANCH" -q 2>>"$LOG"; then
-    remote_sha="$(git -C "$REPO_DIR" rev-parse "origin/${BRANCH}")"
-    if [[ ! "$remote_sha" =~ ^[0-9a-f]{40}$ ]]; then
-      log "refusing invalid remote SHA: ${remote_sha}"
-      sleep "$POLL_INTERVAL"
-      continue
-    fi
-    write_atomic "$STATE_ROOT/last-observed-remote-sha" "$remote_sha"
-    write_atomic "$STATE_ROOT/last-observed-remote-at" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-
-    successful_sha="$(read_successful_sha || true)"
-    if [[ "$remote_sha" == "$successful_sha" ]]; then
-      log "${remote_sha:0:12} already active"
-    else
-      previous="${successful_sha:-none}"
-      log "deploying ${remote_sha:0:12} (last success: ${previous:0:12})"
-      if XRAYLARCH_WEB_SIBLING_PROFILE="$SIBLING_PROFILE" bash "$DEPLOY_SCRIPT" deploy "$remote_sha" >>"$LOG" 2>&1; then
-        write_atomic "$STATE_ROOT/last-successful-sha" "$remote_sha"
-        write_atomic "$STATE_ROOT/last-successful-at" "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-        log "deployment succeeded for ${remote_sha:0:12}"
-      else
-        log "deployment failed for ${remote_sha:0:12}; retrying after the next poll"
-      fi
-    fi
-  else
-    log "fetch failed; retaining the active release and retrying after the next poll"
-  fi
+  if ! poll_once; then :; fi
   [[ "$RUN_ONCE" == 1 ]] && exit 0
   sleep "$POLL_INTERVAL"
 done

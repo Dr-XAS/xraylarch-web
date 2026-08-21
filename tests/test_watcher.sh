@@ -90,8 +90,15 @@ EOF
 cat >"$test_root/deploy.sh" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-printf 'profile=%s args=%s\n' "${XRAYLARCH_WEB_SIBLING_PROFILE:-unset}" "$*" >>"${TEST_DEPLOY_LOG:?}"
-exit "${TEST_DEPLOY_EXIT:-0}"
+action="${1:-}"
+sha="${2:-}"
+printf 'profile=%s action=%s sha=%s args=%s\n' "${XRAYLARCH_WEB_SIBLING_PROFILE:-unset}" "$action" "$sha" "$*" >>"${TEST_DEPLOY_LOG:?}"
+case "$action" in
+  health) exit "${TEST_HEALTH_EXIT:-0}" ;;
+  recover) exit "${TEST_RECOVER_EXIT:-0}" ;;
+  deploy) exit "${TEST_DEPLOY_EXIT:-0}" ;;
+  *) exit 2 ;;
+esac
 EOF
 for utility in install mktemp chmod mv date tee sleep timeout; do
   /bin/mv "$test_root/bin/$utility" "$test_root/bin/$utility.mock"
@@ -109,8 +116,37 @@ XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
 XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
 XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
 XRAYLARCH_WEB_WATCH_INTERVAL=1 XRAYLARCH_WEB_WATCH_ONCE=1 "$watcher" >/dev/null 2>&1 || true
-[[ ! -s "$test_root/deploy.log" ]] || fail "current SHA must not redeploy"
+grep -F 'action=health' "$test_root/deploy.log" >/dev/null || fail "current SHA must be health-checked"
+! grep -F 'action=deploy' "$test_root/deploy.log" >/dev/null || fail "current SHA must not redeploy"
 [[ "$(<"$test_root/state/watcher/last-observed-remote-sha")" == "$sha" ]] || fail "observed SHA must be recorded"
+
+# An unchanged SHA with failed health must recover before it is considered active.
+rm -f "$test_root/deploy.log" "$test_root/state/watcher/last-successful-sha"
+TEST_HEALTH_EXIT=1 TEST_RECOVER_EXIT=0 TEST_DEPLOY_EXIT=0 TEST_REMOTE_SHA="$sha" TEST_DEPLOY_LOG="$test_root/deploy.log" \
+PATH="$test_root/bin:$PATH" XRAYLARCH_WEB_REPO_DIR="$test_root/repo" \
+XRAYLARCH_WEB_DEPLOY_SCRIPT="$test_root/deploy.sh" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale \
+XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
+XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
+XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
+XRAYLARCH_WEB_WATCH_INTERVAL=1 XRAYLARCH_WEB_WATCH_ONCE=1 "$watcher" >/dev/null 2>&1 || true
+grep -F 'action=health' "$test_root/deploy.log" >/dev/null || fail "watcher must health-check an unchanged SHA"
+grep -F 'action=recover' "$test_root/deploy.log" >/dev/null || fail "watcher must recover an unhealthy unchanged SHA"
+! grep -F 'action=deploy' "$test_root/deploy.log" >/dev/null || fail "recovered unchanged SHA must not redeploy"
+[[ "$(<"$test_root/state/watcher/last-successful-sha")" == "$sha" ]] || fail "recovery must advance watcher success state"
+
+# Failed recovery must block deployment and success-state advancement.
+rm -f "$test_root/deploy.log" "$test_root/state/watcher/last-successful-sha"
+TEST_HEALTH_EXIT=1 TEST_RECOVER_EXIT=1 TEST_DEPLOY_EXIT=0 TEST_REMOTE_SHA="$sha" TEST_DEPLOY_LOG="$test_root/deploy.log" \
+PATH="$test_root/bin:$PATH" XRAYLARCH_WEB_REPO_DIR="$test_root/repo" \
+XRAYLARCH_WEB_DEPLOY_SCRIPT="$test_root/deploy.sh" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale \
+XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
+XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
+XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
+XRAYLARCH_WEB_WATCH_INTERVAL=1 XRAYLARCH_WEB_WATCH_ONCE=1 "$watcher" >/dev/null 2>&1 || true
+grep -F 'action=health' "$test_root/deploy.log" >/dev/null || fail "watcher must attempt health before failed recovery"
+grep -F 'action=recover' "$test_root/deploy.log" >/dev/null || fail "watcher must attempt recovery"
+! grep -F 'action=deploy' "$test_root/deploy.log" >/dev/null || fail "failed recovery must block deployment"
+[[ ! -e "$test_root/state/watcher/last-successful-sha" ]] || fail "failed recovery must not advance watcher success state"
 
 # A failed deploy must not advance watcher success state.
 rm -f "$test_root/last-successful" "$test_root/state/watcher/last-successful-sha"
@@ -133,7 +169,7 @@ XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
 XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \
 XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
 XRAYLARCH_WEB_WATCH_INTERVAL=1 XRAYLARCH_WEB_WATCH_ONCE=1 "$watcher" >/dev/null 2>&1 || true
-grep -F 'profile=goldendale args=deploy ' "$test_root/deploy.log" >/dev/null || fail "watcher must pass the sibling profile to the deployer"
+grep -F 'profile=goldendale action=deploy ' "$test_root/deploy.log" >/dev/null || fail "watcher must pass the sibling profile to the deployer"
 
 # The status command is read-only and reports configured state.
 status_output=$(XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
