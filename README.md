@@ -29,6 +29,18 @@ National Science Foundation, and the US Departmen of Energy.
 
 The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/012007
 
+## Athena Web branch
+
+The `Athena` branch adds a browser implementation of Athena's XAS workflows.
+Open [http://localhost:3004](http://localhost:3004) using the local commands
+below, then import spectra or load the measured copper foil example. The
+earlier single-spectrum interface is at `/classic`.
+
+See [Athena research and tutorials](docs/athena-research.md),
+[implementation and validation](docs/athena-verification.md), and the
+[remaining full-parity work](docs/athena-parity.md). This branch is under active
+development and does not yet implement every desktop Athena option.
+
 ## XrayLarch Web V1
 
 XrayLarch Web is a local browser workbench for one XAS spectrum at a time. It

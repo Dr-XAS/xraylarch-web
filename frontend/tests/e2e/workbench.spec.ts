@@ -19,7 +19,7 @@ async function mapUploadedSpectrum(page: Page) {
 }
 
 async function createMappedWorkspace(page: Page) {
-  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await page.goto("/classic", { waitUntil: "domcontentloaded" })
   await expect(page.getByTestId("workbench-ready")).toBeVisible()
 
   const upload = page.getByLabel("Upload spectrum")
@@ -67,7 +67,7 @@ test("restores source A across refresh and downloads both active revision attach
 })
 
 test("accepts a real path-selected XDI browser upload", async ({ page }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await page.goto("/classic", { waitUntil: "domcontentloaded" })
   await expect(page.getByTestId("workbench-ready")).toBeVisible()
 
   const upload = page.getByLabel("Upload spectrum")
@@ -82,7 +82,7 @@ test("accepts a real path-selected XDI browser upload", async ({ page }) => {
 })
 
 test("maps the second duplicate-labeled signal through the real browser path", async ({ page }) => {
-  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await page.goto("/classic", { waitUntil: "domcontentloaded" })
   await expect(page.getByTestId("workbench-ready")).toBeVisible()
 
   const upload = page.getByLabel("Upload spectrum")
@@ -114,7 +114,7 @@ test("maps the second duplicate-labeled signal through the real browser path", a
 
 test("has no document overflow and keeps the processing inspector reachable at 390 by 844", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await page.goto("/classic", { waitUntil: "domcontentloaded" })
   await expect(page.getByTestId("workbench-ready")).toBeVisible()
 
   const processingInspector = page.getByTestId("processing-inspector")

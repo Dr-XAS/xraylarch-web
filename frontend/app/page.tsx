@@ -1,5 +1,5 @@
-import { WorkbenchShell } from "@/components/workbench-shell"
+import { AthenaWorkbench } from "@/components/athena-workbench"
 
 export default function Home() {
-  return <WorkbenchShell />
+  return <AthenaWorkbench />
 }

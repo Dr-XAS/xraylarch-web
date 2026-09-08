@@ -1,0 +1,378 @@
+"use client"
+
+import { useEffect, useRef, useState, type ReactNode } from "react"
+import { Activity, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
+import { apiBase, athenaApi, resources, type AthenaGroup, type AthenaProject, type Parameters, type Analysis } from "@/lib/athena"
+import type { InspectionResponse } from "@/lib/contracts"
+import { AthenaPlot, type Space } from "./athena-plot"
+
+const windows = ["hanning", "kaiser", "parzen", "welch", "gaussian", "sine"]
+const parameterSections = {
+  normalization: { label: "Normalization", keys: ["e0", "step", "pre1", "pre2", "norm1", "norm2", "nnorm", "flatten"] },
+  background: { label: "Background removal", keys: ["rbkg", "bkg_kmin", "bkg_kmax", "bkg_kweight", "bkg_dk", "bkg_window", "nclamp", "clamp_lo", "clamp_hi"] },
+  forward: { label: "Forward Fourier transform", keys: ["kmin", "kmax", "kweight", "dk", "window"] },
+  reverse: { label: "Backward Fourier transform", keys: ["rmin", "rmax", "dr", "rwindow"] },
+  grid: { label: "Transform grid", keys: ["nfft", "kstep"] },
+} as const
+type ParameterSection = "all" | keyof typeof parameterSections
+type ParameterSelection = { section: ParameterSection } | { parameter: keyof Parameters }
+const parameterLabels: Record<keyof Parameters, string> = {
+  e0: "E₀", step: "Edge step", pre1: "Pre-edge start", pre2: "Pre-edge end", norm1: "Post-edge start", norm2: "Post-edge end", nnorm: "Polynomial degree", flatten: "Flatten normalized data",
+  rbkg: "Rbkg", bkg_kmin: "Spline k min", bkg_kmax: "Spline k max", bkg_kweight: "Spline k-weight", bkg_dk: "Spline dk", bkg_window: "Spline window", nclamp: "Clamp points", clamp_lo: "Low clamp", clamp_hi: "High clamp",
+  kmin: "FT k min", kmax: "FT k max", kweight: "FT k-weight", dk: "FT dk", window: "FT window", rmin: "R min", rmax: "R max", dr: "dR", rwindow: "Backward FT window", nfft: "FFT points", kstep: "k step", energy_shift: "Energy shift",
+}
+function selectedParameterKeys(selection: ParameterSelection): readonly (keyof Parameters)[] {
+  if ("parameter" in selection) return [selection.parameter]
+  return selection.section === "all" ? Object.values(parameterSections).flatMap(section => [...section.keys]) : parameterSections[selection.section].keys
+}
+function matchingColumns(left: InspectionResponse, right: InspectionResponse) {
+  return left.columns.length === right.columns.length && left.columns.every((column, index) => column.name === right.columns[index].name)
+}
+function hasCommonChi(groups: AthenaGroup[]) {
+  let minimum = -Infinity, maximum = Infinity
+  for (const group of groups) {
+    const { k, chi } = group.result?.arrays ?? {}
+    if (group.data_type === "xanes" || group.processing_error || !k || !chi || k.length < 2 || k.length !== chi.length) return false
+    minimum = Math.max(minimum, k[0]); maximum = Math.min(maximum, k[k.length - 1])
+  }
+  return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
+}
+type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | null
+const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
+Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
+
+function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
+  const ref = useRef<HTMLDialogElement>(null)
+  useEffect(() => { ref.current?.showModal(); return () => ref.current?.close() }, [])
+  return <dialog className="ath-modal" ref={ref} onCancel={close} aria-label={title}><header><h2>{title}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
+}
+
+function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any" }: {
+  label: string; value: number | null; onChange: (v: number | null) => void; unit?: string
+  effective?: unknown; optional?: boolean; step?: string
+}) {
+  return <label className="ath-field"><span>{label}{unit && <small>{unit}</small>}</span><input type="number" step={step} value={value ?? ""} placeholder={optional ? "Auto" : ""} onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))} />{optional && value === null && typeof effective === "number" && <em>Auto: {effective.toFixed(3).replace(/\.?0+$/, "")}</em>}</label>
+}
+
+export function AthenaWorkbench() {
+  const [project, setProject] = useState<AthenaProject | null>(null)
+  const projectRef = useRef<AthenaProject | null>(null)
+  const skippedCount = useRef(0)
+  const init = useRef(false)
+  const [activeId, setActiveId] = useState("")
+  const [busy, setBusy] = useState("")
+  const [error, setError] = useState("")
+  const [message, setMessage] = useState("Ready to begin")
+  const [modal, setModal] = useState<ModalName>(null)
+  const [menu, setMenu] = useState("")
+  const [search, setSearch] = useState("")
+  const [space, setSpace] = useState<Space>("E")
+  const [energyMode, setEnergyMode] = useState("norm")
+  const [component, setComponent] = useState("mag")
+  const [plotMarked, setPlotMarked] = useState(true)
+  const [background, setBackground] = useState(false)
+  const [showWindow, setShowWindow] = useState(false)
+  const [offset, setOffset] = useState(0)
+  const [range, setRange] = useState<[number | null, number | null]>([null, null])
+  const [drafts, setDrafts] = useState<Record<string, Parameters>>({})
+  const [analysis, setAnalysis] = useState<Analysis | null>(null)
+  const [analysisVisible, setAnalysisVisible] = useState(false)
+  const [inspection, setInspection] = useState<InspectionResponse | null>(null)
+  const [files, setFiles] = useState<File[]>([])
+  const [reuseMapping, setReuseMapping] = useState(true)
+  const [mapping, setMapping] = useState({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
+  const [recent, setRecent] = useState<{ id: string; name: string; updated: string; count: number }[]>([])
+  const [options, setOptions] = useState<Record<string, string | number | boolean>>({})
+  const [journal, setJournal] = useState("")
+  const [projectName, setProjectName] = useState("")
+  const [applyMarked, setApplyMarked] = useState(false)
+  const [parameterScope, setParameterScope] = useState<ParameterSection | "single">("all")
+  const [parameterKey, setParameterKey] = useState<keyof Parameters>("rbkg")
+  const [parameterTarget, setParameterTarget] = useState<"current" | "marked" | "all">("marked")
+  const [fitSelection, setFitSelection] = useState<string[]>([])
+  const [peaks, setPeaks] = useState<{center: number; sigma: number; amplitude: number; kind: string}[]>([])
+  const [combineWeights, setCombineWeights] = useState<Record<string, number | null>>({})
+  const [combineArray, setCombineArray] = useState<"" | "mu" | "norm" | "chi">("")
+  const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
+  const marked = project?.groups.filter(g => g.marked) ?? []
+  const parameters = active && (drafts[active.id] ?? active.parameters)
+  const dirty = active && parameters && JSON.stringify(parameters) !== JSON.stringify(active.parameters)
+  const selectedGroups = plotMarked && marked.length ? marked : active ? [active] : []
+  const parameterTargets = parameterTarget === "all" ? project?.groups ?? [] : parameterTarget === "marked" ? marked : active ? [active] : []
+  const combining = modal === "merge" || modal === "sum"
+  const canCombineMu = marked.length >= 2 && marked.every(g => g.data_type !== "chi")
+  const canCombineNorm = canCombineMu && marked.every(g => !g.processing_error && !!g.result?.arrays.norm?.length)
+  const canCombineChi = hasCommonChi(marked)
+  const combinationReady = marked.length >= 2 && (combineArray === "chi" ? canCombineChi : combineArray === "norm" ? canCombineNorm : combineArray === "mu" ? canCombineMu : true)
+
+  function accept(p: AthenaProject) {
+    projectRef.current = p; setProject(p)
+    setAnalysis(p.analyses?.at(-1) ?? null)
+    localStorage.setItem("athena.project", p.id)
+    setActiveId(id => p.groups.some(g => g.id === id) ? id : p.groups[0]?.id ?? "")
+  }
+  async function task(label: string, work: () => Promise<void>) {
+    setBusy(label); setError(""); skippedCount.current = 0
+    try { await work(); setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "")) }
+    catch (e) { setError(e instanceof Error ? e.message : "The operation failed."); setMessage("Action needs attention") }
+    finally { setBusy("") }
+  }
+  useEffect(() => {
+    if (init.current) return
+    init.current = true
+    void task("Opening project", async () => {
+      const saved = localStorage.getItem("athena.project")
+      if (saved) accept(await athenaApi<AthenaProject>(`/projects/${saved}`))
+      else accept(await athenaApi<AthenaProject>("/projects", {}))
+    })
+  }, [])
+  async function command(action: string, group_ids: string[] = [], commandOptions: Record<string, unknown> = {}) {
+    const p = projectRef.current
+    if (!p) throw new Error("Open a project first.")
+    const next = await athenaApi<AthenaProject>(`/projects/${p.id}/command`, { version: p.version, action, group_ids, options: commandOptions })
+    skippedCount.current = next.last_operation?.action === action ? next.last_operation.skipped_group_ids.length : 0
+    accept(next)
+    return next
+  }
+  function act(action: string, ids = active ? [active.id] : [], opts: Record<string, unknown> = {}) {
+    void task(action.replaceAll("_", " "), async () => { await command(action, ids, opts) })
+    setMenu("")
+  }
+  function openTool(name: ModalName) {
+    setMenu(""); setError(""); setModal(name)
+    const e0 = Number(active?.result?.effective.e0 ?? 0)
+    setOptions({ reference_id: project?.groups.find(g => g.id !== active?.id)?.id ?? "", target: Math.round(e0), observed: e0 - (active?.parameters.energy_shift ?? 0),
+      xmin: e0 ? e0 - 20 : 0, xmax: e0 ? e0 + 80 : 100, window: 7, order: 2, width: 1,
+      kind: "gaussian", formula: "Fe2O3", element: "Fe", edge: "K", angle_in: 45, angle_out: 45,
+      e0, pre_step: 5, xanes_step: .5, exafs_step: .05, xanes_start: -30, xanes_end: 30,
+      offset: 0, linear: 1, quadratic: 0, array: "norm", sum_to_one: true, nonnegative: true,
+      center: e0, sigma: 2, amplitude: .05, use_reference: false, shift: 100,
+      edge_step: Number(active?.result?.effective.edge_step ?? 1), method: "arctangent",
+      kmin: 3, kmax: Math.min(12, Number(active?.result?.effective.kmax ?? 12)), phase_offset: 0,
+      fit_cumulants: true, max_cumulant: 4, parameter: "rbkg", start: .8, stop: 1.2, count: 3 })
+    setPeaks([{center: e0 + 5, sigma: 2, amplitude: 1, kind: "gaussian"}])
+    setFitSelection([...(active ? [active.id] : []), ...marked.filter(g => g.id !== active?.id).map(g => g.id)])
+    if (name === "merge" || name === "sum") {
+      setCombineWeights(Object.fromEntries(marked.map(g => [g.id, 1])))
+      setCombineArray("")
+    }
+    if (name === "journal") { setJournal(project?.journal ?? ""); setProjectName(project?.name ?? "") }
+    if (name === "open") void task("Loading recent projects", async () => { setRecent(await athenaApi("/projects")) })
+    if (name === "metadata") setOptions({ label: active?.label ?? "", notes: active?.notes ?? "", multiplier: active?.multiplier ?? 1, offset: active?.offset ?? 0, reference_id: active?.reference_id ?? "" })
+  }
+  function changeParameter(key: keyof Parameters, value: number | string | boolean | null) {
+    if (!active || !parameters) return
+    setDrafts(d => ({ ...d, [active.id]: { ...parameters, [key]: value } }))
+  }
+  async function updateSharedParameters(action: "copy_parameters" | "reset_parameters", targets: AthenaGroup[], selection: ParameterSelection, closeDialog = false) {
+    if (!active || !parameters) return
+    const writableIds = targets.filter(g => !g.frozen).map(g => g.id)
+    if (!writableIds.length) return
+    await task("Processing spectra", async () => {
+      const next = await command(action, targets.map(g => g.id), {
+        ...selection, ...(action === "copy_parameters" ? { source_id: active.id, values: parameters } : {}),
+      })
+      const keys = selectedParameterKeys(selection)
+      const skipped = next.last_operation?.action === action ? next.last_operation.skipped_group_ids : []
+      // Clear only applied fields. Keep unrelated drafts and every skipped group's draft.
+      setDrafts(d => {
+        const updated = { ...d }
+        for (const id of writableIds) {
+          const saved = next.groups.find(g => g.id === id)?.parameters
+          if (!saved || !updated[id] || skipped.includes(id)) continue
+          updated[id] = { ...updated[id], ...Object.fromEntries(keys.filter(key => key in saved).map(key => [key, saved[key]])) }
+          if (JSON.stringify(updated[id]) === JSON.stringify(saved)) delete updated[id]
+        }
+        return updated
+      })
+      if (closeDialog) setModal(null)
+    })
+  }
+  async function applyParameters() {
+    if (!active || !parameters) return
+    if (applyMarked) {
+      await updateSharedParameters("copy_parameters", marked, { section: "all" })
+      return
+    }
+    await task("Processing spectra", async () => {
+      const changes = Object.fromEntries(Object.entries(parameters).filter(([key, value]) => value !== active.parameters[key as keyof Parameters]))
+      await command("parameters", [active.id], changes)
+      setDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== active.id)))
+    })
+  }
+  function openParameterControls() {
+    setParameterScope("all"); setParameterKey("rbkg"); setParameterTarget("marked")
+    setError(""); setModal("parameters")
+  }
+  function field(key: keyof Parameters, label: string, unit?: string, optional = false) {
+    if (!parameters || !active) return null
+    return <NumberField key={key} label={label} value={parameters[key] as number | null} unit={unit} optional={optional} effective={active.result?.effective[key === "step" ? "edge_step" : key]} onChange={v => changeParameter(key, v)} />
+  }
+  function optionNumber(key: string, label: string, unit?: string) {
+    return <NumberField key={key} label={label} unit={unit} value={typeof options[key] === "number" ? options[key] as number : null} onChange={v => setOptions(o => ({ ...o, [key]: v ?? "" }))} />
+  }
+  function optionText(key: string, label: string) { return <label className="ath-field"><span>{label}</span><input value={String(options[key] ?? "")} onChange={e => setOptions(o => ({ ...o, [key]: e.target.value }))} /></label> }
+  function selectParameter(key: "window" | "rwindow" | "bkg_window", label: string) { return <label className="ath-field"><span>{label}</span><select value={parameters?.[key]} onChange={e => changeParameter(key, e.target.value)}>{windows.map(w => <option key={w}>{w}</option>)}</select></label> }
+  async function inspectFile(file: File, reuseFrom?: InspectionResponse) {
+    const p = projectRef.current
+    if (!p) return
+    // A failed inspection must not leave an already accepted upload available to import again.
+    setInspection(null)
+    const form = new FormData(); form.append("file", file)
+    const inspect = await athenaApi<InspectionResponse>(`/projects/${p.id}/inspect`, form)
+    setInspection(inspect)
+    const cols = inspect.columns
+    if (!reuseMapping || !reuseFrom || !matchingColumns(reuseFrom, inspect)) {
+      setMapping(m => ({ ...m, energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "", numerator: [cols.find(c => c.role_hint === "mu")?.column_id ?? cols[1]?.column_id ?? ""], denominator: cols.find(c => c.role_hint === "i0")?.column_id ?? cols[2]?.column_id ?? "", reference_numerator: "", reference_denominator: "" }))
+    }
+    return inspect
+  }
+  async function queueFiles(incoming: File[]) {
+    if (!incoming.length) return
+    setModal("import"); setFiles(incoming)
+    await task("Inspecting " + incoming[0].name, async () => { await inspectFile(incoming[0]) })
+  }
+  async function importCurrent() {
+    if (!inspection || !projectRef.current) return
+    await task("Importing spectrum", async () => {
+      const p = projectRef.current!
+      const next = await athenaApi<AthenaProject>(`/projects/${p.id}/import`, { ...mapping, denominator: mapping.denominator || null, reference_numerator: mapping.reference_numerator || null, reference_denominator: mapping.reference_denominator || null, version: p.version, upload_id: inspection.upload_id })
+      accept(next); setActiveId(next.groups.at(-1)!.id)
+      let remaining = files.slice(1); setFiles(remaining)
+      while (remaining.length) {
+        const inspected = await inspectFile(remaining[0], inspection)
+        if (!inspected || !reuseMapping || !matchingColumns(inspection, inspected)) return
+        const current = projectRef.current!
+        const result = await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...mapping, denominator: mapping.denominator || null, reference_numerator: mapping.reference_numerator || null, reference_denominator: mapping.reference_denominator || null, version: current.version, upload_id: inspected.upload_id })
+        accept(result); setActiveId(result.groups.at(-1)!.id)
+        remaining = remaining.slice(1); setFiles(remaining)
+      }
+      setInspection(null); setModal(null)
+    })
+  }
+  async function runTool() {
+    if (!modal || !active) return
+    await task(toolTitles[modal] ?? modal, async () => {
+      if (["lcf", "pca", "peaks", "log_ratio"].includes(modal)) {
+        const p = projectRef.current!
+        const opts: Record<string, unknown> = { array: options.array, xmin: options.xmin, xmax: options.xmax }
+        if (modal === "lcf") Object.assign(opts, { sum_to_one: options.sum_to_one, nonnegative: options.nonnegative })
+        if (modal === "peaks") opts.peaks = peaks
+        if (modal === "log_ratio") Object.assign(opts, { kmin: options.kmin, kmax: options.kmax, phase_offset: options.phase_offset, fit_cumulants: true, max_cumulant: options.max_cumulant })
+        const result = await athenaApi<Analysis>(`/projects/${p.id}/analyze`, { version: p.version, action: modal, group_ids: modal === "peaks" ? [active.id] : modal === "log_ratio" ? [active.id, options.reference_id] : fitSelection, options: opts })
+        setAnalysis(result); setAnalysisVisible(true)
+        const updated = { ...p, analyses: [...(p.analyses ?? []), result].slice(-50) }
+        projectRef.current = updated; setProject(updated)
+      } else {
+        const ids = ["merge", "sum", "difference"].includes(modal) || (modal === "align" && applyMarked) ? marked.map(g => g.id) : [active.id]
+        let opts: Record<string, unknown> = { ...options }
+        if (modal === "convolve" || modal === "deconvolve") opts.form = options.kind
+        if (modal === "rebin") opts = { e0: options.e0, pre2: options.xanes_start, exafs1: options.xanes_end, pre_step: options.pre_step, xanes_step: options.xanes_step, exafs_kstep: options.exafs_step }
+        if (modal === "metadata") opts = { label: options.label, notes: options.notes, multiplier: options.multiplier, offset: options.offset, reference_id: options.reference_id || null }
+        const keys: Record<string, string[]> = { calibrate: ["target", "observed"], align: ["reference_id", "xmin", "xmax", "use_reference"],
+          merge: [], sum: [], difference: [], smooth: ["window", "order"], deglitch: ["xmin", "xmax"], truncate: ["xmin", "xmax"],
+          convolve: ["form", "width"], deconvolve: ["form", "width", "xmin", "xmax"], self_absorption: ["formula", "element", "edge", "angle_in", "angle_out"], dispersive: ["offset", "linear", "quadratic"],
+          multi_electron: ["method", "e0", "shift", "amplitude", "width", "edge_step"], copy_series: ["parameter", "start", "stop", "count"] }
+        if (keys[modal]) opts = Object.fromEntries(keys[modal].map(key => [key, opts[key]]))
+        if (modal === "merge" || modal === "sum") {
+          const weights = marked.map(g => {
+            const value = combineWeights[g.id]
+            if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`Enter a finite ${modal === "merge" ? "weight" : "coefficient"} for ${g.label}.`)
+            return value
+          })
+          opts = { weights, ...(combineArray ? { array: combineArray } : {}) }
+        }
+        const next = await command(modal, ids, opts)
+        if (["merge", "sum", "difference", "smooth", "deglitch", "truncate", "rebin", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"].includes(modal)) setActiveId(next.groups.at(-1)!.id)
+      }
+      setModal(null)
+    })
+  }
+  function changeSpace(value: Space) { setSpace(value); setRange([null, null]); setAnalysisVisible(false) }
+  function moveGroup(delta: number) {
+    if (!project || !active) return
+    const ids = project.groups.map(g => g.id), index = ids.indexOf(active.id)
+    if (index + delta < 0 || index + delta >= ids.length) return
+    ;[ids[index], ids[index + delta]] = [ids[index + delta], ids[index]]
+    act("reorder", [], { ids })
+  }
+  const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"] as ModalName[]
+  const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as ModalName[]
+  const fileInput = useRef<HTMLInputElement>(null)
+
+  return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
+    <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>ATHENA <span>WEB</span></h1><p>X-ray absorption spectroscopy</p></div></div>
+      <nav aria-label="Main menu">{["File", "Group", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
+        {label === "File" && <><button disabled={!!busy} onClick={() => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) }}><Plus size={15} />New project</button><button disabled={!project || !!busy} onClick={() => { setMenu(""); setModal("import") }}><Upload size={15} />Import data…</button><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project…</button><hr />{project && <><a href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save Athena project (.prj)</a><a href={`${apiBase}/projects/${project.id}/export?format=json`}><Download size={15} />Save complete web project</a></>}<button onClick={() => openTool("journal")} disabled={!project}><FileText size={15} />Project journal</button></>}
+        {label === "Group" && <><button disabled={!active || !!busy} onClick={() => openTool("metadata")}>Group information…</button><button disabled={!active || !!busy} onClick={() => act("duplicate")}><Copy size={15} />Duplicate current group</button><button disabled={!active || !!busy} onClick={() => act("metadata", [active!.id], { frozen: !active?.frozen })}><LockKeyhole size={15} />{active?.frozen ? "Unfreeze" : "Freeze"} group</button><button disabled={!active || !!busy} onClick={() => act("delete")}><Trash2 size={15} />Remove current group</button><hr /><button disabled={!!busy || marked.length !== 2} onClick={() => act("tie_reference", marked.map(g => g.id))}>Tie marked sample and reference</button><button disabled={!active || !!busy} onClick={() => act("untie_reference")}>Untie current reference</button><p className="ath-hint">Mark exactly two groups: the first in list order is the sample, the second its reference. Tying adopts the sample’s energy shift and keeps both shifts linked when either is edited.</p>{marked.length === 2 && <p className="ath-hint">Sample: {marked[0].label}<br />Reference: {marked[1].label}</p>}</>}
+        {(label === "Process" ? toolsMenu : label === "Analysis" ? analysisMenu : []).map(tool => <button disabled={!active || !!busy} key={tool} onClick={() => openTool(tool)}>{toolTitles[tool!]}</button>)}
+      </div>}</div>)}</nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><span className="ath-local"><i /> Local workspace</span></header>
+    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : project ? "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" /><button disabled={!project || !!busy} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>{project && <a className="ath-button ath-primary" href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save project</a>}</div></section>
+    {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => { const id = projectRef.current?.id ?? localStorage.getItem("athena.project"); if (id) accept(await athenaApi(`/projects/${id}`)); else accept(await athenaApi("/projects", {})) }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
+    <div className="ath-workspace">
+      <aside className="ath-groups"><div className="ath-panel-heading"><h2>Data groups <span>{project?.groups.length ?? 0}</span></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div><label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => setSearch(e.target.value)} /></label>
+        <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><div><button onClick={() => moveGroup(-1)} disabled={!active || !!busy} aria-label="Move group up"><ArrowUp size={13} /></button><button onClick={() => moveGroup(1)} disabled={!active || !!busy} aria-label="Move group down"><ArrowDown size={13} /></button></div></div>
+        <div className="ath-group-list">{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map((g, index) => <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className={`ath-swatch color-${index % 6}`} /><span><strong>{g.label}</strong><small>{g.data_type === "chi" ? "χ(k)" : "μ(E)"} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && JSON.stringify(drafts[g.id]) !== JSON.stringify(g.parameters) && <i title="Unapplied parameters" className="ath-dirty-dot" />}</button></div>)}</div>
+        {!project?.groups.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
+        <div className="ath-sidebar-bottom"><button disabled={!!busy || !project} onClick={() => { void task("Loading copper example", async () => { const next = await command("example"); setActiveId(next.groups.at(-3)!.id) }) }}><Activity size={16} />Load copper foil example</button><small>Real spectra · 10 K, 50 K & 300 K</small><div><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button><button onClick={() => openTool("journal")} disabled={!project} aria-label="Project journal"><FileText size={15} /></button></div></div>
+      </aside>
+      <section className="ath-center"><div className="ath-center-heading"><div><p className="ath-eyebrow">SPECTRUM WORKSPACE</p><h2>{active?.label ?? "Explore your XAS data"}</h2></div>{active && <button className="ath-subtle" onClick={() => openTool("metadata")} aria-label="Edit group information"><Settings2 size={16} /></button>}</div>
+        <div className="ath-plot-card"><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div><label className="ath-check"><input type="checkbox" checked={plotMarked} onChange={e => setPlotMarked(e.target.checked)} />Plot marked</label></div>
+          <div className="ath-plot-controls">{space === "E" ? <><select aria-label="Energy plot" value={energyMode} onChange={e => setEnergyMode(e.target.value)}><option value="mu">μ(E) · raw</option><option value="norm">μ(E) · normalized</option><option value="flat">μ(E) · flattened</option><option value="dmude">Derivative dμ/dE</option><option value="d2mude">Second derivative d²μ/dE²</option></select><label className="ath-check"><input type="checkbox" checked={background} disabled={energyMode !== "mu"} onChange={e => setBackground(e.target.checked)} />Background lines</label></> : <><span className="ath-chip">k-weight {active?.parameters.kweight ?? 2}</span>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">Real part</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} onChange={e => setOffset(Number(e.target.value))} /></label></div>
+          <AthenaPlot groups={selectedGroups} active={active} space={space} energyMode={energyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} />
+          <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div><label>Range <input aria-label="Plot minimum" type="number" placeholder="Auto" value={range[0] ?? ""} onChange={e => setRange([e.target.value === "" ? null : Number(e.target.value), range[1]])} /></label><span>to</span><input aria-label="Plot maximum" type="number" placeholder="Auto" value={range[1] ?? ""} onChange={e => setRange([range[0], e.target.value === "" ? null : Number(e.target.value)])} />{active && project && <a title="Export current group data" href={`${apiBase}/projects/${project.id}/groups/${active.id}/export?space=${space}`}><Download size={14} />CSV</a>}</div></div>
+        </div>
+        <div className="ath-readouts"><div><span>EDGE ENERGY</span><strong>{typeof active?.result?.effective.e0 === "number" ? active.result.effective.e0.toFixed(2) : "—"}<small> eV</small></strong></div><div><span>EDGE STEP</span><strong>{typeof active?.result?.effective.edge_step === "number" ? active.result.effective.edge_step.toFixed(4) : "—"}</strong></div><div><span>ENERGY RANGE</span><strong>{active && active.data_type !== "chi" ? `${Math.round(active.energy[0] + active.parameters.energy_shift)}–${Math.round(active.energy.at(-1)! + active.parameters.energy_shift)}` : "—"}<small> eV</small></strong></div><div><span>PROCESSING</span><strong className={active?.processing_error ? "ath-warn-text" : "ath-green"}>{active ? active.processing_error ? "Needs attention" : dirty ? "Draft changes" : "Up to date" : "Ready"}</strong></div></div>
+        {active?.processing_error && <div className="ath-error">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
+        {analysis && <section className="ath-analysis-result"><header><h3>{toolTitles[analysis.kind]}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><p className="ath-hint">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</p><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
+        <div className="ath-workflow"><div><span className="ath-step">01</span><span><strong>Import & inspect</strong><small>Choose your detector columns</small></span></div><span>→</span><div><span className="ath-step">02</span><span><strong>Normalize & remove background</strong><small>Refine E₀, edge step, and Rbkg</small></span></div><span>→</span><div><span className="ath-step">03</span><span><strong>Transform & compare</strong><small>Explore k, R, and q space</small></span></div></div>
+        <div className="ath-center-note"><BookOpen size={15} /><span>Familiar Athena workflows. Scientific calculations by Larch.</span><button onClick={() => openTool("learn")}>Tutorials & reference <ExternalLink size={12} /></button></div>
+      </section>
+      <aside className="ath-parameters"><div className="ath-panel-heading"><h2>Processing parameters</h2><Settings2 size={16} /></div>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong>{active.label}</strong><button aria-label={active.frozen ? "Unfreeze group" : "Freeze group"} disabled={!!busy} onClick={() => act("metadata", [active.id], { frozen: !active.frozen })}><LockKeyhole size={14} />{active.frozen ? "Frozen" : "Freeze"}</button></div><fieldset disabled={active.frozen || !!busy} className="ath-param-fields">
+        <details open><summary>Normalization <small>μ(E)</small></summary><div className="ath-fields">{field("e0", "E₀", "eV", true)}{field("step", "Edge step", undefined, true)}{field("pre1", "Pre-edge start", "eV relative", true)}{field("pre2", "Pre-edge end", "eV relative", true)}{field("norm1", "Post-edge start", "eV relative", true)}{field("norm2", "Post-edge end", "eV relative", true)}<label className="ath-field"><span>Polynomial degree</span><select value={parameters?.nnorm ?? ""} onChange={e => changeParameter("nnorm", e.target.value === "" ? null : Number(e.target.value))}><option value="">Auto</option>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{field("energy_shift", "Energy shift", "eV")}</div><label className="ath-check"><input type="checkbox" checked={parameters?.flatten} onChange={e => changeParameter("flatten", e.target.checked)} />Flatten normalized data</label><p className="ath-hint">Blank fields use values determined from this spectrum.</p></details>
+        <details open><summary>Background removal <small>AUTOBK</small></summary><div className="ath-fields">{field("rbkg", "Rbkg", "Å")}{field("bkg_kweight", "Spline k-weight")}{field("bkg_kmin", "Spline k min", "Å⁻¹")}{field("bkg_kmax", "Spline k max", "Å⁻¹", true)}{field("clamp_lo", "Low clamp")}{field("clamp_hi", "High clamp")}{field("bkg_dk", "Spline dk", "Å⁻¹")}{field("nclamp", "Clamp points")}{selectParameter("bkg_window", "Spline window")}</div></details>
+        <details open><summary>Forward Fourier transform <small>k → R</small></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
+        <details><summary>Backward Fourier transform <small>R → q</small></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
+        <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details>
+      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" checked={applyMarked} disabled={!!busy} onChange={e => setApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label>{applyMarked && <p className="ath-hint">Frozen groups are skipped. Energy shifts are preserved.</p>}<button className="ath-primary" disabled={!!busy || (applyMarked ? !marked.some(g => !g.frozen) : active.frozen)} onClick={() => { void applyParameters() }}><Check size={16} />{busy === "Processing spectra" ? "Processing…" : "Apply parameters"}</button><button disabled={!!busy} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => setDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== active.id)))}>Discard parameter changes</button>}</div></>}</aside>
+    </div>
+    <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
+
+    {modal === "parameters" && <Modal title="Copy / reset parameters" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">
+      <p>Copy from <strong>{active?.label}</strong>, including its unapplied parameter edits, or restore processing defaults for the destination groups.</p>
+      <div className="ath-fields">
+        <label className="ath-field"><span>Parameters to change</span><select disabled={!!busy} value={parameterScope} onChange={e => setParameterScope(e.target.value as ParameterSection | "single")}><option value="all">All processing parameters</option>{Object.entries(parameterSections).map(([key, section]) => <option key={key} value={key}>{section.label}</option>)}<option value="single">Single parameter</option></select></label>
+        <label className="ath-field"><span>Destination groups</span><select disabled={!!busy} value={parameterTarget} onChange={e => setParameterTarget(e.target.value as typeof parameterTarget)}><option value="marked">Marked groups ({marked.length})</option><option value="all">All groups ({project?.groups.length ?? 0})</option><option value="current">Current group</option></select></label>
+        {parameterScope === "single" && <label className="ath-field"><span>Parameter</span><select disabled={!!busy} value={parameterKey} onChange={e => setParameterKey(e.target.value as keyof Parameters)}>{Object.entries(parameterSections).map(([key, section]) => <optgroup key={key} label={section.label}>{section.keys.map(key => <option key={key} value={key}>{parameterLabels[key]}</option>)}</optgroup>)}<option value="energy_shift">Energy shift</option></select></label>}
+      </div>
+      <p className="ath-hint">Frozen groups and groups with frozen tied references are skipped. {parameterScope === "single" && parameterKey === "energy_shift" ? "Energy shift is explicitly selected and will change." : "Energy shifts are preserved."}</p>
+      <p>{parameterTargets.length} destination group{parameterTargets.length === 1 ? "" : "s"} selected.</p>
+      {error && <div className="ath-error" role="alert">{error}</div>}
+      <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => setModal(null)}>Cancel</button>{(["reset_parameters", "copy_parameters"] as const).map(action => <button key={action} className={action === "copy_parameters" ? "ath-primary" : undefined} disabled={!!busy || !parameterTargets.some(g => !g.frozen)} onClick={() => { void updateSharedParameters(action, parameterTargets, parameterScope === "single" ? { parameter: parameterKey } : { section: parameterScope }, true) }}>{action === "copy_parameters" ? "Copy parameters" : "Reset to defaults"}</button>)}</div>
+    </div></Modal>}
+
+    {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}
+    {modal === "import" && <Modal title="Import spectra" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{!inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">For an Athena .prj or saved web project, use File → Open project.</p></> : <><p><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{files.length > 1 ? ` · ${files.length} files remaining` : ""}</span></p><div className="ath-fields"><label className="ath-field"><span>Data type</span><select value={mapping.data_type} onChange={e => setMapping(m => ({ ...m, data_type: e.target.value }))}><option value="mu">μ(E) · absorption</option><option value="xanes">XANES · short energy range</option><option value="norm">Normalized μ(E)</option><option value="chi">χ(k) · extracted EXAFS</option></select></label><label className="ath-field"><span>Measurement</span><select value={mapping.mode} onChange={e => setMapping(m => ({ ...m, mode: e.target.value }))}><option value="mu">Direct signal</option><option value="transmission">Transmission · ln(I₀ / It)</option><option value="fluorescence">Fluorescence · If / I₀</option></select></label><label className="ath-field"><span>{mapping.data_type === "chi" ? "k column" : "Energy column"}</span><select value={mapping.energy_column} onChange={e => setMapping(m => ({ ...m, energy_column: e.target.value }))}>{inspection.columns.map(c => <option key={c.column_id} value={c.column_id}>{c.name} · column {c.index + 1}</option>)}</select></label><label className="ath-field"><span>Energy units</span><select value={mapping.units} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, units: e.target.value }))}><option>eV</option><option>keV</option></select></label></div><div className="ath-column-table"><table><thead><tr><th>Numerator</th><th>Denominator</th><th>Column</th><th>First values</th></tr></thead><tbody>{inspection.columns.map(c => <tr key={c.column_id}><td><input type="checkbox" aria-label={`Numerator ${c.name}`} checked={mapping.numerator.includes(c.column_id)} onChange={e => setMapping(m => ({ ...m, numerator: e.target.checked ? [...m.numerator, c.column_id] : m.numerator.filter(v => v !== c.column_id) }))} /></td><td><input type="radio" aria-label={`Denominator ${c.name}`} name="denominator" disabled={mapping.mode === "mu"} checked={mapping.denominator === c.column_id} onChange={() => setMapping(m => ({ ...m, denominator: c.column_id }))} /></td><td>{c.name}</td><td>{c.preview.slice(0, 3).map(v => v.toPrecision(5)).join(", ")}</td></tr>)}</tbody></table></div><p className="ath-formula">μ = {mapping.mode === "transmission" ? "ln(" : ""}({mapping.numerator.map(id => inspection.columns.find(c => c.column_id === id)?.name).join(" + ") || "…"}){mapping.mode !== "mu" && ` / ${inspection.columns.find(c => c.column_id === mapping.denominator)?.name ?? "…"}`}{mapping.mode === "transmission" ? ")" : ""}</p><details><summary>Reference channel & ordering</summary><p className="ath-hint">Optional downstream transmission reference: ln(reference numerator / reference denominator).</p><div className="ath-fields">{(["reference_numerator", "reference_denominator"] as const).map(key => <label key={key} className="ath-field"><span>{key.replaceAll("_", " ")}</span><select value={mapping[key]} onChange={e => setMapping(m => ({ ...m, [key]: e.target.value }))}><option value="">None</option>{inspection.columns.map(c => <option value={c.column_id} key={c.column_id}>{c.name}</option>)}</select></label>)}</div><label className="ath-check"><input type="checkbox" checked={mapping.sort} onChange={e => setMapping(m => ({ ...m, sort: e.target.checked }))} />Sort ascending by energy (duplicate energies still require repair)</label></details>{inspection.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}{files.length > 1 && <label className="ath-check"><input type="checkbox" checked={reuseMapping} onChange={e => setReuseMapping(e.target.checked)} />Reuse this mapping for remaining files with matching column labels</label>}<div className="ath-modal-actions"><button disabled={!!busy} onClick={() => { setInspection(null); setFiles([]) }}>Choose another file</button><button className="ath-primary" disabled={!!busy || !mapping.numerator.length} onClick={() => { void importCurrent() }}>{busy ? "Importing…" : "Import spectrum"}</button></div></>}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "open" && <Modal title="Open a project" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-upload-zone"><FolderOpen size={26} /><strong>Open an Athena project</strong><span>.prj or Athena Web .json · adds its groups to this workspace</span><input type="file" aria-label="Open project file" disabled={!!busy || !project} accept=".prj,.json,.gz" onChange={e => { const file = e.target.files?.[0]; if (file) void task("Opening project file", async () => { const p = projectRef.current!; const form = new FormData(); form.append("file", file); accept(await athenaApi(`/projects/${p.id}/restore?version=${p.version}`, form)); setModal(null) }) }} /></label><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
+    {modal && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
+      {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes</span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}</div><label className="ath-field"><span>Reference group</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>
+      {modal === "calibrate" && <><p>Assign a known energy to the observed edge. This sets the energy shift and E₀ together.</p><div className="ath-fields">{optionNumber("observed", "Observed edge (unshifted)", "eV")}{optionNumber("target", "Calibrated energy", "eV")}</div></>}
+      {modal === "align" && <><p>Fit the derivative of the current scan to a reference over the selected energy interval.</p><label className="ath-field"><span>Alignment standard</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}>{project?.groups.filter(g => g.id !== active?.id).map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label><div className="ath-fields">{optionNumber("xmin", "Alignment minimum", "eV")}{optionNumber("xmax", "Alignment maximum", "eV")}</div><label className="ath-check"><input type="checkbox" checked={applyMarked} onChange={e => setApplyMarked(e.target.checked)} />Align all marked groups</label><label className="ath-check"><input type="checkbox" checked={Boolean(options.use_reference)} onChange={e => setOptions(o => ({ ...o, use_reference: e.target.checked }))} />Use linked reference channels</label></>}
+      {combining && <><p>{modal === "merge" ? "Average marked spectra over their common range. Use nonnegative relative weights with a positive total; weights are normalized for the average." : "Add marked spectra over their common range. Signed coefficients are used unchanged, so negative values subtract a spectrum."}</p><label className="ath-field"><span>Signal to combine</span><select disabled={!!busy} value={combineArray} onChange={e => setCombineArray(e.target.value as typeof combineArray)}><option value="">Original data (same type)</option><option value="mu" disabled={!canCombineMu}>μ(E)</option><option value="norm" disabled={!canCombineNorm}>Normalized μ(E)</option><option value="chi" disabled={!canCombineChi}>χ(k)</option></select></label><p className="ath-hint">Original data keeps the existing signal and requires matching data types. Choose a common signal to combine different types. χ(k) requires processed EXAFS for every marked group and overlapping k ranges.</p><div className="ath-fields">{marked.map(g => <label className="ath-field" key={g.id}><span>{modal === "merge" ? "Weight" : "Coefficient"}: {g.label}</span><input type="number" step="any" min={modal === "merge" ? 0 : undefined} disabled={!!busy} value={combineWeights[g.id] ?? ""} onChange={e => setCombineWeights(weights => ({ ...weights, [g.id]: e.target.value === "" ? null : Number(e.target.value) }))} /></label>)}</div>{marked.length < 2 && <p className="ath-hint">Mark at least two groups to combine.</p>}<p className="ath-hint">A new group is created. Undo is available from the project toolbar.</p></>}
+      {modal === "difference" && <><p>Subtract the second marked spectrum from the first, in group-list order. The result is stored without edge normalization.</p><div className="ath-selected-list">{marked.map(g => <span key={g.id}>{g.label}</span>)}</div><p className="ath-hint">A new group is created. Undo is available from the project toolbar.</p></>}
+      {["deglitch", "truncate", "lcf", "pca", "peaks", "deconvolve"].includes(modal) && <div className="ath-fields">{optionNumber("xmin", "Range minimum", "eV")}{optionNumber("xmax", "Range maximum", "eV")}</div>}
+      {modal === "deglitch" && <p>Replace points within the selected interval by interpolation between the surrounding valid points.</p>}
+      {modal === "truncate" && <p>Keep only data inside this interval in a new group.</p>}
+      {modal === "smooth" && <><p>Savitzky–Golay smoothing creates a derived spectrum. Window size is an odd number of data points.</p><div className="ath-fields">{optionNumber("window", "Window length", "points")}{optionNumber("order", "Polynomial order")}</div></>}
+      {modal === "rebin" && <><p>Rebin across pre-edge, XANES, and EXAFS regions.</p><div className="ath-fields">{optionNumber("e0", "Edge energy", "eV")}{optionNumber("pre_step", "Pre-edge step", "eV")}{optionNumber("xanes_step", "XANES step", "eV")}{optionNumber("exafs_step", "EXAFS step", "Å⁻¹")}{optionNumber("xanes_start", "XANES start", "eV relative")}{optionNumber("xanes_end", "XANES end", "eV relative")}</div></>}
+      {["convolve", "deconvolve"].includes(modal) && <><p>{modal === "convolve" ? "Broaden the spectrum with the selected line shape." : "Remove instrumental broadening over the selected energy interval using Larch’s deconvolution. The input is normalized first. This can amplify noise; inspect the derived spectrum."}</p><div className="ath-fields">{optionNumber("width", options.kind === "gaussian" ? "Gaussian sigma" : "Lorentzian HWHM", "eV")}<label className="ath-field"><span>Line shape</span><select value={String(options.kind)} onChange={e => setOptions(o => ({ ...o, kind: e.target.value }))}><option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option></select></label></div></>}
+      {modal === "self_absorption" && <><p>Larch’s thick, homogeneous sample approximation for fluorescence self-absorption. Provide composition and geometry appropriate to your measurement. The derived group contains the corrected normalized signal.</p><div className="ath-fields">{optionText("formula", "Sample formula")}{optionText("element", "Absorbing element")}{optionText("edge", "Absorption edge")}{optionNumber("angle_in", "Incident angle", "degrees")}{optionNumber("angle_out", "Exit angle", "degrees")}</div></>}
+      {modal === "dispersive" && <><p>Convert a pixel axis using E = offset + linear × pixel + quadratic × pixel².</p><div className="ath-fields">{optionNumber("offset", "Offset", "eV")}{optionNumber("linear", "Linear coefficient")}{optionNumber("quadratic", "Quadratic coefficient")}</div></>}
+      {modal === "multi_electron" && <><p>Subtract a weak secondary edge using the arctangent approximation. Choose an excitation justified by your spectrum; the reflected-XANES method is not yet available.</p><div className="ath-fields">{optionNumber("e0", "Primary edge", "eV")}{optionNumber("shift", "Excitation above E₀", "eV")}{optionNumber("amplitude", "Secondary step fraction")}{optionNumber("width", "Excitation HWHM", "eV")}{optionNumber("edge_step", "Primary edge step")}</div></>}
+      {modal === "copy_series" && <><p>Make a series of independent copies to explore how one parameter affects the result.</p><label className="ath-field"><span>Parameter</span><select value={String(options.parameter)} onChange={e => setOptions(o => ({...o, parameter:e.target.value}))}>{["rbkg", "e0", "kmin", "kmax", "dk", "rmin", "rmax", "energy_shift"].map(key => <option key={key}>{key}</option>)}</select></label><div className="ath-fields">{optionNumber("start", "Start value")}{optionNumber("stop", "End value")}{optionNumber("count", "Number of copies")}</div></>}
+      {modal === "log_ratio" && <><p>Compare amplitudes and phases of a common isolated shell. Set identical E₀, k windows, R windows, and k-weights on both groups before running this analysis.</p><label className="ath-field"><span>Reference spectrum</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({...o, reference_id:e.target.value}))}>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><div className="ath-fields">{optionNumber("kmin", "Reliable k minimum", "Å⁻¹")}{optionNumber("kmax", "Reliable k maximum", "Å⁻¹")}{optionNumber("phase_offset", "Phase branch", "multiples of 2π")}<label className="ath-field"><span>Maximum cumulant</span><select value={Number(options.max_cumulant)} onChange={e => setOptions(o => ({...o, max_cumulant:Number(e.target.value)}))}>{[2,3,4].map(n => <option value={n} key={n}>{n}</option>)}</select></label></div><p className="ath-hint">Fits report effective target-minus-reference cumulants. Different scattering species, inconsistent calibration, or overlapping shells invalidate this interpretation.</p></>}
+      {["lcf", "pca", "peaks"].includes(modal) && <><label className="ath-field"><span>Fit signal</span><select value={String(options.array)} onChange={e => setOptions(o => ({ ...o, array: e.target.value }))}><option value="norm">Normalized μ(E)</option><option value="flat">Flattened μ(E)</option><option value="dmude">Derivative dμ/dE</option><option value="chi">χ(k) — range in Å⁻¹</option></select></label>{modal !== "peaks" && <><p className="ath-hint">{modal === "lcf" ? "The current group is the target. Choose at least two standards below." : "Choose the spectra for a common-grid principal component analysis."}</p><div className="ath-fit-groups">{project?.groups.filter(g => modal !== "lcf" || g.id !== active?.id).map(g => <label className="ath-check" key={g.id}><input type="checkbox" checked={fitSelection.includes(g.id)} onChange={e => setFitSelection(s => e.target.checked ? [...s, g.id] : s.filter(id => id !== g.id))} />{g.label}</label>)}</div></>}{modal === "lcf" && <div className="ath-fields">{["sum_to_one", "nonnegative"].map(key => <label className="ath-check" key={key}><input type="checkbox" checked={Boolean(options[key])} onChange={e => setOptions(o => ({ ...o, [key]: e.target.checked }))} />{key === "sum_to_one" ? "Weights sum to 1" : "Non-negative weights"}</label>)}</div>}{modal === "peaks" && <><p className="ath-hint">Fit one or more positive peaks with a linear background. Amplitude is integrated area; sigma is the line-shape width.</p>{peaks.map((peak, index) => <div className="ath-peak-editor" key={index}><header><h3>Peak {index + 1}</h3><button aria-label={`Remove peak ${index + 1}`} disabled={peaks.length === 1} onClick={() => setPeaks(p => p.filter((_, i) => i !== index))}><X size={14} /></button></header><div className="ath-fields">{(["center", "sigma", "amplitude"] as const).map(key => <NumberField key={key} label={`Peak ${index + 1} ${key}`} value={peak[key]} onChange={v => setPeaks(p => p.map((item, i) => i === index ? {...item, [key]: v ?? 0} : item))} />)}<label className="ath-field"><span>Peak {index + 1} shape</span><select value={peak.kind} onChange={e => setPeaks(p => p.map((item, i) => i === index ? {...item, kind:e.target.value} : item))}><option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option><option value="voigt">Voigt</option></select></label></div></div>)}<button disabled={peaks.length >= 8} onClick={() => setPeaks(p => [...p, {center: Number(options.xmin) + (Number(options.xmax) - Number(options.xmin)) * .5, sigma: 2, amplitude: 1, kind:"gaussian"}])}><Plus size={14} />Add peak</button></>}</>}
+      </>}{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="ath-primary" disabled={!!busy || !active || (combining && !combinationReady)} onClick={() => { void runTool() }}>{busy ? "Working…" : modal === "metadata" ? "Save group" : ["lcf", "pca", "peaks", "log_ratio"].includes(modal) ? "Run analysis" : "Apply"}</button></div></div></Modal>}
+  </main>
+}

@@ -66,6 +66,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     app.include_router(build_api_router(store, active_settings))
+    from .athena import build_athena_router
+    app.include_router(build_athena_router(active_settings))
     return app
 
 

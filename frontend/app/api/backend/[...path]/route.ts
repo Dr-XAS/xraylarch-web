@@ -8,7 +8,7 @@ function isAllowedPath(path: string[]): boolean {
     return false
   }
   return (path.length === 1 && path[0] === "health") ||
-    (path[0] === "api" && path[1] === "workspaces")
+    (path[0] === "api" && (path[1] === "workspaces" || path[1] === "athena"))
 }
 
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
