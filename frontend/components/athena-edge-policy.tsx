@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { athenaApi, type EdgeCatalog, type EdgePolicy } from "@/lib/athena"
+import type { EdgePolicy } from "@/lib/athena"
+import { useEdgeCatalog } from "./athena-edge-catalog"
 
 export const edgePolicyStorageKey = "athena.edge-policy"
 const symbolPattern = /^[A-Z][a-z]?$/
@@ -48,51 +49,18 @@ export function EdgePolicyDialog({ policy, apply, close }: {
   policy: EdgePolicy | null; apply: (policy: EdgePolicy) => void; close: () => void
 }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  const generation = useRef(0)
-  const pending = useRef(false)
-  const [element, setElement] = useState(policy?.element ?? "")
-  const [edge, setEdge] = useState("")
+  const { element, edge, catalog, loading, error, pending, selection, changeElement, changeEdge, lookup, setError } = useEdgeCatalog(policy)
   const [fraction, setFraction] = useState(String(policy?.fraction ?? 0.5))
-  const [catalog, setCatalog] = useState<EdgeCatalog | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
   useEffect(() => {
     dialog.current?.showModal()
-    return () => { generation.current++; dialog.current?.close() }
+    return () => { dialog.current?.close() }
   }, [])
   function dismiss() { if (!pending.current) close() }
-  function changeElement(value: string) {
-    // Editing the query abandons its lookup. A late success or error must not
-    // replace the new query's choices, even if requests finish out of order.
-    generation.current++; pending.current = false
-    setLoading(false); setCatalog(null); setEdge(""); setError(""); setElement(value)
-  }
-  async function lookup() {
-    if (pending.current) return
-    const query = element.trim()
-    if (!/^[a-z]{1,2}$/i.test(query)) { setError("Enter an element symbol, for example Cu."); return }
-    const canonical = query[0].toUpperCase() + query.slice(1).toLowerCase()
-    const token = ++generation.current
-    pending.current = true; setLoading(true); setError(""); setCatalog(null); setEdge("")
-    try {
-      const result = await athenaApi<EdgeCatalog>(`/edges?element=${encodeURIComponent(canonical)}`)
-      if (token !== generation.current) return
-      if (!result || result.element !== canonical || !Array.isArray(result.edges) || !result.edges.length
-        || result.edges.some(item => !item || typeof item.edge !== "string" || !edgePattern.test(item.edge) || !Number.isFinite(item.energy) || item.energy <= 0)
-        || new Set(result.edges.map(item => item.edge)).size !== result.edges.length) throw new Error("The edge catalog returned no valid choices for this element. Look up the element again.")
-      setElement(result.element); setCatalog(result)
-      setEdge(result.edges.some(item => item.edge === policy?.edge) ? policy!.edge : "")
-    } catch (reason) {
-      if (token === generation.current) setError(reason instanceof Error ? reason.message : "Could not look up absorption edges. Try again.")
-    } finally {
-      if (token === generation.current) { pending.current = false; setLoading(false) }
-    }
-  }
   function submit() {
-    if (pending.current || !catalog || catalog.element !== element || !catalog.edges.some(item => item.edge === edge)) return
+    if (pending.current || !selection) return
     const value = Number(fraction)
     if (!fraction.trim() || !Number.isFinite(value) || value <= 0 || value > 1) { setError("Enter a finite fraction greater than 0 and at most 1."); return }
-    apply({ element: catalog.element, edge, fraction: value })
+    apply({ ...selection, fraction: value })
     close()
   }
   return <dialog ref={dialog} className="ath-modal" aria-label="Enforce element and edge" onCancel={event => { event.preventDefault(); dismiss() }}>
@@ -103,7 +71,7 @@ export function EdgePolicyDialog({ policy, apply, close }: {
       <label className="ath-field"><span>Element symbol</span><input value={element} maxLength={2} placeholder="Cu" onChange={event => changeElement(event.target.value)} /></label>
       <button type="button" disabled={loading || !element.trim()} onClick={() => { void lookup() }}>{loading ? "Looking up edges…" : "Look up edges"}</button>
       <p className="ath-hint">Look up the element, then choose an edge from its table. Editing the symbol discards any pending lookup.</p>
-      <div className="ath-fields"><label className="ath-field"><span>Enforced edge</span><select aria-label="Enforced edge" value={edge} disabled={loading || !catalog} onChange={event => { setEdge(event.target.value); setError("") }}><option value="">Choose an edge</option>{catalog?.edges.map(item => <option key={item.edge} value={item.edge}>{item.edge} · {item.energy} eV</option>)}</select></label>
+      <div className="ath-fields"><label className="ath-field"><span>Enforced edge</span><select aria-label="Enforced edge" value={edge} disabled={loading || !catalog} onChange={event => changeEdge(event.target.value)}><option value="">Choose an edge</option>{catalog?.edges.map(item => <option key={item.edge} value={item.edge}>{item.edge} · {item.energy} eV</option>)}</select></label>
         <label className="ath-field"><span>Edge-step fraction</span><input type="number" step="any" min="0" max="1" value={fraction} disabled={loading} onChange={event => { setFraction(event.target.value); setError("") }} /></label></div>
       <p className="ath-hint">Use 0 &lt; fraction ≤ 1; 0.5 is half the edge step, and 1 is the full step.</p>
       {error && <div className="ath-error" role="alert">{error}</div>}

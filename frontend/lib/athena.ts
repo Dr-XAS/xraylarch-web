@@ -19,9 +19,15 @@ export interface AthenaGroup {
   marked: boolean; frozen: boolean; multiplier: number; offset: number; notes: string
   reference_id: string | null; parameters: Parameters; result: AthenaResult | null
   background_standard_id?: string | null
+  is_difference?: boolean
   processing_error: string | null; source: Record<string, unknown>
 }
+export function isDifferenceGroup(group: AthenaGroup) {
+  return group.is_difference ?? (group.source.operation === "difference")
+}
 export type E0Method = "derivative" | "atomic" | "fraction" | "zero_crossing" | "white_line" | "manual"
+export type EdgePair = Readonly<{ element: string; edge: string }>
+export type EdgeIdentity = EdgePair & { readonly origin?: "native" | "enforced" | "inferred" | "selected" }
 export type EdgePolicy = Readonly<{ element: string; edge: string; fraction: number }>
 export interface EdgeCatalog { element: string; edges: { edge: string; energy: number }[] }
 export type E0Options =

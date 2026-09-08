@@ -319,6 +319,20 @@
       "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/fft.demeter_conf",
       "sha256": "53f48f115d58b2b39a84407af2dc533431778f6af09ca70f291dbbe590c0db2b",
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/fft.demeter_conf"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Difference.pm",
+      "sha256": "59d320f33878143505c137f8efe3985ef2bbfbc832cf677a946cec2375159343",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Difference.pm",
+      "git_blob_sha1": "ef09c51d7014ac63e555f78dba6fd5b579f37f11",
+      "bytes": 16508
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/documentation/Athena/analysis/diff.rst",
+      "sha256": "93e3fbb275e536966ed639f9ca1d0fbc6440b7e46827bfe7e701dabe7e1431dc",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/documentation/Athena/analysis/diff.rst",
+      "git_blob_sha1": "e425d6cf3cc0f289e3b205ee0513dd3cf61f3f74",
+      "bytes": 5265
     }
   ]
 }

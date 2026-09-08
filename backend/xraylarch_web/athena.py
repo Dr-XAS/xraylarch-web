@@ -358,6 +358,41 @@ def _source_edge_identity(source):
         return None  # Unknown native metadata remains preserved and inert.
 
 
+def _is_difference(group):
+    """The signal's meaning survives changes to its operation provenance."""
+    if "is_difference" not in group:
+        return group.get("source", {}).get("operation") == "difference"
+    value = group["is_difference"]
+    if not isinstance(value, bool):
+        fail("The difference-spectrum flag must be boolean.")
+    return value
+
+
+def _ensure_edge_identity(group):
+    """Populate missing identity from an existing result, without processing."""
+    source = group["source"]
+    effective = (group.get("result") or {}).get("effective", {})
+    if "edge_identity" not in source and group["data_type"] != "chi" and not _is_difference(group):
+        value = effective.get("e0")
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and np.isfinite(value) and value > 0:
+            from .athena_e0 import _infer_atomic
+            entry = _infer_atomic(value)
+            source["edge_identity"] = {**{key: entry[key] for key in ("element", "edge")}, "origin": "inferred"}
+    identity = _source_edge_identity(source)
+    if identity and group.get("result"):
+        effective.update(identity)
+
+
+def _derived_source(parent, operation, **details):
+    # Retain scientific identity, not detector arrays that no longer share
+    # the derived grid. Full input/provenance remains on the parent group.
+    source = {"operation": operation, "parent": parent["id"], **details}
+    for key in ("edge_identity", "e0_fraction"):
+        if key in parent["source"]:
+            source[key] = copy.deepcopy(parent["source"][key])
+    return source
+
+
 def _perl_literal(value):
     if value is None:
         return "undef"
@@ -469,6 +504,13 @@ class SetE0Options(BaseModel):
     value: float | None = Field(default=None, gt=0, le=1e7, strict=True)
 
 
+class EdgeIdentityOptions(BaseModel):
+    """Group metadata, independent of numerical E0 and future-import policy."""
+    model_config = ConfigDict(extra="forbid")
+    element: str = Field(min_length=1, max_length=32, strict=True)
+    edge: str = Field(min_length=1, max_length=3, strict=True)
+
+
 _PARAMETER_MAP = {
     "fnorm": "bkg_fnorm",
     "e0": "bkg_e0", "step": "bkg_step", "pre1": "bkg_pre1", "pre2": "bkg_pre2",
@@ -517,10 +559,12 @@ class AthenaStore:
             defaults = AthenaParameters().model_dump()
             for group in project["groups"]:
                 group.setdefault("background_standard_id", None)
+                group["is_difference"] = _is_difference(group)
                 effective = (group.get("result") or {}).get("effective", {})
                 for key, default in defaults.items():
                     if key not in group["parameters"]:
                         group["parameters"][key] = effective.get(key) if effective.get(key) is not None else default
+                _ensure_edge_identity(group)
             return project
         except FileNotFoundError:
             fail("Project was not found.", "workspace_not_found")
@@ -689,7 +733,7 @@ class AthenaStore:
             if self._frozen_background_dependents(p, [ident]):
                 reasons[ident] = "The group or a group using it as a background standard is frozen."
                 continue
-            if group["data_type"] == "chi" or group["source"].get("operation") == "difference":
+            if group["data_type"] == "chi" or _is_difference(group):
                 reasons[ident] = "E₀ requires an absorption spectrum on an energy axis."
                 continue
             try:
@@ -747,7 +791,7 @@ class AthenaStore:
         return x, y
 
     def make_group(self, label, energy, mu, *, parameters=None, data_type="mu", source=None,
-                   background_standard_id=None, project=None):
+                   background_standard_id=None, project=None, is_difference=None):
         x, y = self.raw_arrays(energy, mu)
         if data_type not in ("mu", "xanes", "norm", "chi"):
             fail("Unsupported data type.")
@@ -759,6 +803,7 @@ class AthenaStore:
              "source": source or {}, "result": None, "processing_error": None}
         if not isinstance(g["source"], dict):
             fail("Source metadata must be an object.")
+        g["is_difference"] = _is_difference(g if is_difference is None else dict(g, is_difference=is_difference))
         # Imported data remains inspectable even if its saved recipe needs repair.
         try:
             self.process(g, project)
@@ -777,10 +822,10 @@ class AthenaStore:
             arrays = (source.get("result") or {}).get("arrays", {})
             if source.get("processing_error") or not arrays.get("k") or not arrays.get("chi"):
                 fail(f"Background standard {source['label']} has no usable chi(k); repair its processing first.")
-            if g["source"].get("operation") == "difference":
+            if _is_difference(g):
                 fail("A difference spectrum cannot use a background-removal standard.")
             standard = {"k": arrays["k"], "chi": arrays["chi"]}
-        if g["source"].get("operation") == "difference" and g["data_type"] != "chi":
+        if _is_difference(g) and g["data_type"] != "chi":
             from .athena_science import ARRAY_NAMES
             x = np.asarray(g["energy"]) + g["parameters"]["energy_shift"]
             y = np.asarray(g["mu"])
@@ -789,13 +834,12 @@ class AthenaStore:
             g["result"] = {"arrays": arrays, "effective": {"e0": None, "edge_step": None, "exafs": False},
                            "warnings": ["Difference spectrum: the signed difference is shown without edge normalization or EXAFS processing."]}
             g["processing_error"] = None
+            _ensure_edge_identity(g)
             return
         g["result"] = process_spectrum(g["energy"], g["mu"], AthenaParameters.model_validate(g["parameters"]),
                                        data_type=g["data_type"], background_standard=standard)
         g["result"]["effective"]["background_standard_id"] = standard_id
-        identity = _source_edge_identity(g["source"])
-        if identity and g["data_type"] != "chi":
-            g["result"]["effective"].update(identity)
+        _ensure_edge_identity(g)
         g["processing_error"] = None
 
     def make_import_group(self, label, energy, mu, *, data_type="mu", source=None, edge_policy=None):
@@ -936,6 +980,9 @@ class AthenaStore:
                 if not stack:
                     fail(f"There is nothing to {action}.")
                 restore = self.storage.read_json(ident, stack[-1])
+                for group in restore["groups"]:
+                    group["is_difference"] = _is_difference(group)
+                    _ensure_edge_identity(group)
                 inverse = "redo" if action == "undo" else "undo"
                 name = f"{inverse}-{old['version']}.json"
                 self.storage.write_json(ident, name, old)
@@ -996,6 +1043,15 @@ class AthenaStore:
                     standard_id = options.get("standard_id")
                     skipped = self.parameter_updates(p, {g["id"]: {"background_standard_id": standard_id}
                         for g in groups}, skip_frozen=True)
+                elif action == "edge_identity":
+                    from .athena_e0 import atomic_edge
+                    choice = EdgeIdentityOptions.model_validate(options)
+                    entry = atomic_edge(choice.element, choice.edge)
+                    identity = {key: entry[key] for key in ("element", "edge")}
+                    for g in groups:
+                        g["source"]["edge_identity"] = {**identity, "origin": "selected"}
+                        if g.get("result"):
+                            g["result"]["effective"].update(identity)
                 elif action == "parameters":
                     skipped = self.parameter_updates(p, {g["id"]: options for g in groups}, skip_frozen=len(groups) > 1)
                 elif action == "set_e0":
@@ -1060,8 +1116,9 @@ class AthenaStore:
                             if key == "energy_shift" and clone["parameters"]["e0"] is not None:
                                 clone["parameters"]["e0"] += float(value) - clone["parameters"]["energy_shift"]
                             clone["parameters"][key] = float(value)
+                            clone["is_difference"] = _is_difference(g)
+                            clone["source"] = _derived_source(g, "copy_series", parameter=key, value=float(value))
                             self.process(clone, p)
-                            clone["source"] = {"operation": "copy_series", "parent": g["id"], "parameter": key, "value": float(value)}
                             p["groups"].append(clone)
                 elif action == "delete":
                     remove = {g["id"] for g in groups}
@@ -1122,6 +1179,10 @@ class AthenaStore:
                         spectra = [(np.asarray(g["energy"]) + (0 if g["data_type"] == "chi" else g["parameters"]["energy_shift"]), np.asarray(g["mu"])) for g in groups]
                     source = {"operation": action, "parents": [g["id"] for g in groups],
                               "array": array or ("chi" if groups[0]["data_type"] == "chi" else "mu")}
+                    for key in ("edge_identity", "e0_fraction"):
+                        if key in groups[0]["source"]:
+                            source[key] = copy.deepcopy(groups[0]["source"][key])
+                    is_difference = action == "difference" or all(_is_difference(g) for g in groups)
                     if action == "difference":
                         if len(groups) != 2:
                             fail("Difference requires exactly two groups, in list order.")
@@ -1138,7 +1199,7 @@ class AthenaStore:
                             source["uncertainty"] = combined["uncertainty"]
                     params = dict(groups[0]["parameters"], energy_shift=0)
                     # A difference spectrum has no absorption edge to normalize.
-                    dtype = "norm" if action == "difference" and groups[0]["data_type"] != "chi" else groups[0]["data_type"]
+                    dtype = "norm" if is_difference and groups[0]["data_type"] != "chi" else groups[0]["data_type"]
                     if array in ("norm", "chi"):
                         dtype = array
                         if array == "norm":
@@ -1147,8 +1208,8 @@ class AthenaStore:
                         params["fnorm"] = False
                     g = self.make_group(options.get("label", f"{action.title()} · {len(groups)} groups"), x, y,
                                         parameters=params, data_type=dtype, source=source,
-                                        background_standard_id=groups[0].get("background_standard_id") if dtype != "chi" and action != "difference" else None,
-                                        project=p)
+                                        background_standard_id=groups[0].get("background_standard_id") if dtype != "chi" and not is_difference else None,
+                                        project=p, is_difference=is_difference)
                     p["groups"].append(g)
                 else:
                     from .athena_operations import transform_spectrum
@@ -1190,8 +1251,9 @@ class AthenaStore:
                         if dtype != "mu":
                             params["fnorm"] = False
                         derived = self.make_group(g["label"] + " · " + action, transformed["energy"], transformed["mu"],
-                            parameters=params, data_type=dtype, source={"operation": action, "parent": g["id"], "options": operation_options, "details": transformed["details"]},
-                            background_standard_id=g.get("background_standard_id") if dtype in ("mu", "norm") else None, project=p)
+                            parameters=params, data_type=dtype, source=_derived_source(g, action, options=operation_options, details=transformed["details"]),
+                            background_standard_id=g.get("background_standard_id") if dtype in ("mu", "norm") else None,
+                            project=p, is_difference=_is_difference(g))
                         if action == "deconvolve":
                             derived["source"]["energy_interval"] = [float(x[0]), float(x[-1])]
                         p["groups"].append(derived)
@@ -1336,7 +1398,7 @@ class AthenaStore:
                     "is_xanes": int(g["data_type"] == "xanes"), "is_nor": int(g["data_type"] == "norm"),
                     "is_chi": int(g["data_type"] == "chi"), "marked": int(g["marked"]), "frozen": int(g["frozen"]),
                     "plot_scale": g["multiplier"], "plot_yoffset": g["offset"], "bkg_flatten": int(params["flatten"]),
-                    "is_diff": int(g["source"].get("operation") == "difference"),
+                    "is_diff": int(_is_difference(g)),
                     "annotation": g["notes"], "referencegroup": g["reference_id"] or "",
                     "bkg_stan": g.get("background_standard_id") or ""})
             identity = _source_edge_identity(source)
@@ -1448,6 +1510,7 @@ class AthenaStore:
                 source = _exchange_source(record.get("source", {}), len(x), self.settings)
                 params = _exchange_recipe(record["parameters"], record.get("result"))
                 label, dtype = record["label"], record["data_type"]
+                is_difference = _is_difference(record)
                 notes, reference = str(record.get("notes", "")), record.get("reference_id")
                 standard = record.get("background_standard_id")
                 marked, frozen = _native_flag(record.get("marked")), _native_flag(record.get("frozen"))
@@ -1463,8 +1526,11 @@ class AthenaStore:
                     params = _native_parameters(args)
                 dtype = next((kind for kind, key in (("chi", "is_chi"), ("norm", "is_nor"), ("xanes", "is_xanes"))
                               if _native_flag(args.get(key))), {"chi": "chi", "xanes": "xanes"}.get(args.get("datatype"), "mu"))
-                if _native_flag(args.get("is_diff")):
-                    source["operation"] = "difference"
+                is_difference = _native_flag(args.get("is_diff"))
+                if "is_difference" in meta and _is_difference(meta) != is_difference:
+                    fail("Native and web-sidecar difference-spectrum flags disagree.")
+                if is_difference:
+                    source.setdefault("operation", "difference")
                 label = args.get("label", old_id)
                 notes = str(meta.get("notes", args.get("annotation", "")))
                 reference = meta.get("reference_id", args.get("referencegroup", args.get("reference")))
@@ -1509,6 +1575,7 @@ class AthenaStore:
                 fail("Invalid plot values in project.")
             provisional.append({"old_id": old_id, "energy": x, "mu": y, "source": source,
                                 "parameters": params, "label": label, "data_type": dtype,
+                                "is_difference": is_difference,
                                 "notes": notes, "reference_id": reference, "marked": marked,
                                 "background_standard_id": standard,
                                 "frozen": frozen, "multiplier": multiplier, "offset": offset,
@@ -1557,6 +1624,7 @@ class AthenaStore:
         return {"id": ident or uid(), "label": str(record["label"])[:200],
                 "energy": record["energy"], "mu": record["mu"], "parameters": params,
                 "data_type": record["data_type"], "source": record["source"],
+                "is_difference": record["is_difference"],
                 "notes": record["notes"][:20_000], "result": None, "processing_error": record["recipe_error"],
                 **{key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id", "background_standard_id")}}
 
@@ -1569,6 +1637,7 @@ class AthenaStore:
             x, y = self._preview_samples(self._preview_raw_axis(record), record["mu"])
             groups.append({"id": record["old_id"], "label": str(record["label"])[:200],
                            "data_type": record["data_type"], "points": len(record["energy"]),
+                           "is_difference": record["is_difference"],
                            "x": x, "y": y, "notes": record["notes"][:20_000],
                            "reference_id": record["reference_id"], "parameters": record["parameters"],
                            "background_standard_id": record["background_standard_id"]})

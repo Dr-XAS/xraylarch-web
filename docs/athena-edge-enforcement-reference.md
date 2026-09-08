@@ -185,6 +185,23 @@ enforcement or replace the recipient's preferences.
   first sample. Retain explicit scientific validation in the web implementation.
   ([normalized branch](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/Mu.pm#L366-L378))
 
+## Group identity editor follow-up
+
+The webapp now offers a separate current-group absorber/edge editor. It changes
+saved identity and the corresponding effective-result labels without changing
+E0, energy shift, processing arrays, recipes, reference links, fraction history
+or import enforcement. Frozen edits are rejected atomically; unfrozen chi,
+difference and failed-processing groups can retain descriptive identity.
+Older absorption groups obtain missing identity from an existing cached E0,
+without scientific recalculation. Derived operations retain selected identity
+and the saved fraction separately from operation history. The
+[verification record](athena-verification.md) supplies tests and live evidence.
+
+This follows the metadata-only `OnAbsorber`/`OnEdge` handlers in
+[Main.pm](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Main.pm#L922-L933).
+The source's `all_group` set also includes absorber, edge and importance;
+full-parameter copying of those fields remains open in the webapp.
+
 ## Minimal implementation recommendation for this store
 
 The following is the original research handoff, retained to explain the

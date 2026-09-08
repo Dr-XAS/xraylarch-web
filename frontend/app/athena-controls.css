@@ -19,4 +19,6 @@
 .ath-edge-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 20px; border-bottom: 1px solid var(--ath-line); background: #f4f8fa; font-size: 12px; line-height: 1.5; }
 .ath-edge-policy-bar > span { flex: 1; min-width: 220px; }
 .ath-import-policy { padding: 10px; margin-bottom: 12px; border: 1px solid var(--ath-line); border-radius: 5px; font-size: 12px; line-height: 1.5; }
+.ath-group-identity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; font-size: 12px; color: #405c6b; }
+.ath-group-identity strong { color: #173d52; }
 @media (max-width: 700px) { .ath-pick-prompt { align-items: flex-start; flex-direction: column; } }

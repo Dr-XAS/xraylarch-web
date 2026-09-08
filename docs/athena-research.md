@@ -128,6 +128,38 @@ the older native-project order mapping still requires correction and a
 separate round-trip comparison. The implementation does not yet reproduce
 personal configuration or every native reference-channel option.
 
+## Absorber identity and difference-group semantics
+
+At the pinned Demeter revision, the main panel's `OnAbsorber` and `OnEdge`
+handlers change `bkg_z` and `fft_edge` and mark the project modified. They do
+not set numerical E0 or request recalculation. Group controls are disabled
+when frozen; chi input disables background controls but retains group identity
+controls. These observations support a separate, metadata-only editor in the
+webapp. The editor validates the element/edge catalog without requiring the
+tabulated edge energy to lie within the scan. See
+[Main.pm handlers](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Main.pm#L922-L933)
+and [control eligibility](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Main.pm#L621-L673).
+The same file includes identity and importance in `all_group`; full-parameter
+copy in the webapp still needs that metadata coverage.
+
+The [difference guide](https://bruceravel.github.io/demeter/documents/Athena/analysis/diff.html)
+allows raw, normalized and derivative representations, a scaled standard,
+inversion, integration and optional renormalization of the saved group. The
+[pinned difference panel](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Difference.pm#L209-L278)
+exposes those choices and sets the saved data type according to the selected
+form. Therefore, a mathematical difference is not universally prohibited from
+subsequent processing. The current web `is_difference` flag preserves its
+existing signed energy mode through copies, transforms and exchange; it does
+not implement the entire desktop panel or its renormalization option. Numeric
+corrections retain their own requirements. Chi-domain differences still undergo
+Fourier processing. Broader difference-tool equivalence remains open.
+
+`Main.pm` was re-fetched and matched its committed content and Git blob hashes.
+The difference panel and manual text were fetched from the same pinned revision
+and added to the [54-file source manifest](athena-primary-sources.json). Only
+these three source files were checked in this checkpoint; the earlier 52-file
+verification is historical evidence, not a new full-bundle run.
+
 ## YouTube discovery and verification limits
 
 The [IXAS video index](https://xafs.xrayabsorption.org/videos.html) lists the following resources. Titles/presenter associations are verified from that index; its approximate duration/count is catalog metadata.

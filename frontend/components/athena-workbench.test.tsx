@@ -281,6 +281,208 @@ async function enableCopperPolicy() {
   expect(policyBar()).toHaveTextContent("Cu K · fraction 0.5")
 }
 
+function identityBar() { return screen.getByRole("region", { name: "Current absorber and edge" }) }
+async function openIdentityDialog() {
+  fireEvent.click(within(identityBar()).getByRole("button", { name: "Edit absorber and edge…" }))
+  return screen.findByRole("dialog", { name: "Edit absorber and edge" })
+}
+async function chooseIronIdentity(dialog: HTMLElement) {
+  const view = within(dialog)
+  fireEvent.change(view.getByRole("textbox", { name: "Element symbol" }), { target: { value: "fe" } })
+  api.mockResolvedValueOnce({ element: "Fe", edges: [{ edge: "K", energy: 7112 }, { edge: "L3", energy: 706.8 }] })
+  fireEvent.click(view.getByRole("button", { name: "Look up edges" }))
+  await view.findByRole("option", { name: "K · 7112 eV" })
+  fireEvent.change(view.getByRole("combobox", { name: "Absorption edge" }), { target: { value: "K" } })
+}
+function identityResponse(project: AthenaProject, id: string) {
+  const saved = project.groups.find(g => g.id === id)!
+  return nextProject(project, { [id]: {
+    source: { ...saved.source, edge_identity: { element: "Fe", edge: "K", origin: "selected" } },
+    result: saved.result ? { ...saved.result, effective: { ...saved.result.effective, element: "Fe", edge: "K" } } : null,
+  } })
+}
+
+describe("AthenaWorkbench absorber and edge identity", () => {
+  it("displays saved native identity before effective fallback or Unknown, without lookups or activating import policy", async () => {
+    const initial = projectFixture()
+    initial.groups[0].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
+    initial.groups[0].result!.effective = { ...initial.groups[0].result!.effective, element: "Fe", edge: "K" }
+    initial.groups[1].result!.effective = { ...initial.groups[1].result!.effective, element: "Zn", edge: "L3" }
+    await openSaved(initial)
+    expect(identityBar()).toHaveTextContent("Cu K · native")
+    expect(policyBar()).toHaveTextContent("Off")
+    selectGroup("Sample scan")
+    expect(identityBar()).toHaveTextContent("Zn L3")
+    selectGroup("Oxide standard")
+    expect(identityBar()).toHaveTextContent("Unknown")
+    const dialog = await openIdentityDialog()
+    expect(within(dialog).getByRole("textbox", { name: "Element symbol" })).toHaveValue("")
+    expect(within(dialog).getByRole("button", { name: "Save identity" })).toBeDisabled()
+    expect(within(dialog).queryByRole("spinbutton")).not.toBeInTheDocument()
+    expect(api.mock.calls).toEqual([[`/projects/${initial.id}`]])
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
+  })
+
+  it("saves current-group identity with no coverage restriction, preserving recipes, arrays, ties, drafts and tab enforcement", async () => {
+    sessionStorage.setItem(edgePolicyStorageKey, JSON.stringify(copperPolicy))
+    const initial = projectFixture()
+    initial.groups[0].parameters.energy_shift = 3
+    initial.groups[0].reference_id = "unused"
+    initial.groups[0].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
+    const project = await openSaved(initial)
+    selectGroup("Sample scan"); editNumber(/^Rbkg/, 2.8)
+    selectGroup("Foil scan"); editNumber(/^Rbkg/, 2.3); editNumber(/^E₀/, 8990); editNumber(/^Energy shift/, 9)
+    const dialog = await openIdentityDialog()
+    await chooseIronIdentity(dialog) // 7112 eV is intentionally outside the saved Cu scan.
+    expect(api.mock.calls.at(-1)).toEqual(["/edges?element=Fe"])
+    const next = identityResponse(project, "foil")
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save identity" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(api.mock.calls.at(-1)).toEqual([`/projects/${project.id}/command`, {
+      version: project.version, action: "edge_identity", group_ids: ["foil"], options: { element: "Fe", edge: "K" },
+    }])
+    expect(identityBar()).toHaveTextContent("Fe K · selected")
+    expect(screen.getByRole("status")).toHaveTextContent("Saving absorber and edge · complete")
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+    expect(plotProps().active?.result?.arrays).toBe(project.groups[0].result!.arrays)
+    expect(plotProps().active?.reference_id).toBe("unused")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8990)
+    expect(screen.getByRole("spinbutton", { name: /^Energy shift/ })).toHaveValue(9)
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
+    selectGroup("Sample scan")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.8)
+    selectGroup("Foil scan")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
+    expect(sessionStorage.getItem(edgePolicyStorageKey)).toBe(JSON.stringify(copperPolicy))
+    expect(policyBar()).toHaveTextContent("Cu K")
+    expect(api).toHaveBeenCalledTimes(3)
+  })
+
+  it.each(["chi", "difference"] as const)("allows %s identity metadata even though E₀ selection is unsupported", async kind => {
+    const initial = projectFixture()
+    if (kind === "chi") initial.groups[0].data_type = "chi"
+    else initial.groups[0].is_difference = true
+    const project = await openSaved(initial)
+    if (kind === "difference") expect(screen.getByRole("button", { name: /Foil scan Difference \(E\)/ })).toBeEnabled()
+    const e0 = await openE0Dialog()
+    expect(within(e0).getByRole("button", { name: "Apply E₀" })).toBeDisabled()
+    fireEvent.click(within(e0).getByRole("button", { name: "Cancel" }))
+    openGroupMenu()
+    fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Edit absorber and edge…" }))
+    const dialog = await screen.findByRole("dialog", { name: "Edit absorber and edge" })
+    await chooseIronIdentity(dialog)
+    api.mockResolvedValueOnce(identityResponse(project, "foil"))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save identity" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: project.version, action: "edge_identity", group_ids: ["foil"], options: { element: "Fe", edge: "K" } })
+    expect(identityBar()).toHaveTextContent("Fe K · selected")
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+    expect(plotProps().active?.data_type).toBe(project.groups[0].data_type)
+  })
+
+  it("shows frozen identity but disables both edit entry points and enables them for the next writable scan", async () => {
+    const initial = projectFixture()
+    initial.groups[1].frozen = true
+    initial.groups[1].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
+    await openSaved(initial)
+    selectGroup("Sample scan")
+    expect(identityBar()).toHaveTextContent("Cu K · native")
+    expect(within(identityBar()).getByRole("button", { name: "Edit absorber and edge…" })).toBeDisabled()
+    openGroupMenu()
+    const menuEdit = within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Edit absorber and edge…" })
+    expect(menuEdit).toBeDisabled()
+    fireEvent.click(menuEdit)
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    selectGroup("Oxide standard")
+    expect(within(identityBar()).getByRole("button", { name: "Edit absorber and edge…" })).toBeEnabled()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("locks pending saves and retries a backend failure with the same accepted version and catalog selection", async () => {
+    const project = await openSaved()
+    editNumber(/^Rbkg/, 2.3)
+    const saved = plotProps().active
+    const dialog = await openIdentityDialog()
+    const view = within(dialog)
+    await chooseIronIdentity(dialog)
+    const pending = deferred<AthenaProject>()
+    api.mockReturnValueOnce(pending.promise)
+    fireEvent.click(view.getByRole("button", { name: "Save identity" }))
+    expect(view.getByRole("textbox", { name: "Element symbol" })).toBeDisabled()
+    expect(view.getByRole("combobox", { name: "Absorption edge" })).toBeDisabled()
+    expect(view.getByRole("button", { name: "Cancel" })).toBeDisabled()
+    expect(view.getByRole("button", { name: "Saving identity…" })).toBeDisabled()
+    fireEvent.click(view.getByRole("button", { name: "Close dialog" }))
+    fireEvent(dialog, new Event("cancel", { cancelable: true }))
+    selectGroup("Sample scan") // Busy workbench controls must also retain the target.
+    expect(plotProps().active?.id).toBe("foil")
+    expect(dialog).toBeInTheDocument()
+    await act(async () => pending.reject(new Error("Identity save failed; retry this group")))
+    expect(view.getByRole("alert")).toHaveTextContent("Identity save failed; retry this group")
+    expect(plotProps().active).toBe(saved)
+    expect(identityBar()).toHaveTextContent("Unknown")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
+    expect(view.getByRole("textbox", { name: "Element symbol" })).toHaveValue("Fe")
+    expect(view.getByRole("combobox", { name: "Absorption edge" })).toHaveValue("K")
+    api.mockResolvedValueOnce(identityResponse(project, "foil"))
+    fireEvent.click(view.getByRole("button", { name: "Save identity" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(api.mock.calls[3]).toEqual(api.mock.calls[2])
+    expect(api).toHaveBeenCalledTimes(4)
+    expect(identityBar()).toHaveTextContent("Fe K · selected")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
+  })
+
+  it("invalidates old catalog responses and editor choices when the active scan changes", async () => {
+    const initial = projectFixture()
+    initial.groups[0].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
+    initial.groups[1].source.edge_identity = { element: "Fe", edge: "L3", origin: "native" }
+    const project = await openSaved(initial)
+    let dialog = await openIdentityDialog()
+    const pending = deferred<unknown>()
+    api.mockReturnValueOnce(pending.promise)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Look up edges" }))
+    // Simulate an external active-group change while the native dialog is open.
+    selectGroup("Sample scan")
+    dialog = await screen.findByRole("dialog", { name: "Edit absorber and edge" })
+    expect(within(dialog).getByRole("textbox", { name: "Element symbol" })).toHaveValue("Fe")
+    expect(within(dialog).getByRole("button", { name: "Save identity" })).toBeDisabled()
+    await act(async () => pending.resolve({ element: "Cu", edges: [{ edge: "K", energy: 8979 }] }))
+    expect(within(dialog).queryByRole("option", { name: "K · 8979 eV" })).not.toBeInTheDocument()
+    await chooseIronIdentity(dialog)
+    api.mockResolvedValueOnce(identityResponse(project, "sample"))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save identity" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: project.version, action: "edge_identity", group_ids: ["sample"], options: { element: "Fe", edge: "K" } })
+    selectGroup("Foil scan")
+    expect(identityBar()).toHaveTextContent("Cu K · native")
+  })
+
+  it.each([
+    { flag: true, legacy: false, supported: false },
+    { flag: false, legacy: true, supported: true },
+    { flag: undefined, legacy: true, supported: false },
+    { flag: undefined, legacy: false, supported: true },
+  ])("uses is_difference=$flag before legacy operation=$legacy for E₀ eligibility", async ({ flag, legacy, supported }) => {
+    const initial = projectFixture()
+    initial.groups[0].is_difference = flag
+    if (legacy) initial.groups[0].source.operation = "difference"
+    await openSaved(initial)
+    const dialog = await openE0Dialog()
+    const apply = within(dialog).getByRole("button", { name: "Apply E₀" })
+    if (supported) expect(apply).toBeEnabled()
+    else {
+      expect(apply).toBeDisabled()
+      fireEvent.click(apply)
+    }
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe("AthenaWorkbench import edge policy", () => {
   it("starts off without a catalog request, enables without mutating the project, and cancels edits", async () => {
     const project = await openSaved()

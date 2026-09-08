@@ -386,8 +386,92 @@ support every native signed/implicit-keV default expression, or reproduce all
 native reference-channel options. The import initializer correctly converts
 Demeter configuration order 3 to Larch degree 2; the older native exchange
 mapping of `bkg_nnorm` still needs a separate correction and round-trip oracle.
-Absorber/edge metadata editing and preservation across every derived-group
-operation remain further parity work. No requirement row is Verified.
+Absorber/edge editing and derived signal identity were still open at that
+checkpoint; the follow-up below records the implemented subset. No requirement
+row is Verified.
+
+## Absorber identity and derived signals checkpoint, 2026-09-07
+
+The current-group editor saves absorber/edge independently of numerical E0 and
+future-import enforcement. The backend validates and canonicalizes the pair,
+rejects frozen/invalid/stale edits atomically, and changes only saved identity
+and effective-result labels. Cached numerical results, recipes, calibration,
+references, fraction history and unrelated frontend drafts are preserved.
+Unfrozen chi, difference and failed-processing groups also support identity
+metadata. Missing legacy absorption identity is inferred from cached E0 without
+recalculating arrays or inventing an edge for chi/difference data.
+
+Difference processing now uses a persistent boolean rather than the latest
+operation name. Copy series, numeric transforms and combinations of differences
+retain the current signed energy mode and primary identity/fraction. Parent
+detector arrays are not copied onto changed grids. Web/native exchange and
+subset preview preserve the flag even without the parent group. Native
+`is_diff` and an explicit web-sidecar flag must agree. Chi differences still
+produce Fourier products; numeric corrections enforce their own requirements
+instead of a blanket difference-group restriction.
+
+Executed validation:
+
+- Earlier full backend collection: **1098 passed**, five existing Larch
+  deconvolution/NumPy matrix warnings, 105.52 s. This preceded the final nine
+  derived-correction cases, removal of blanket correction guards and one HTTP
+  identity case; it is not a full-suite claim for those final edits.
+- Final backend command: `backend/.venv/bin/python -m pytest
+  backend/tests/test_athena_derived_identity.py
+  backend/tests/test_athena_edge_identity.py
+  backend/tests/test_athena_api.py -q` → **130 passed**, one existing
+  deconvolution warning, 30.10 s. Includes 49 real-store derived cases, 55
+  identity cases and 26 HTTP cases. Checks cover exact metadata-only updates,
+  invalid/frozen/failed edits, undo/redo, native-only restore, real Larch Fourier
+  comparisons, negative/zero differences and valid/invalid numeric corrections.
+- Final frontend command: `npm test -- --fileParallelism=false && npm run
+  typecheck && npm run build` → **259 passed across 11 files**, 42.91 s for
+  tests, TypeScript and production build passed. The 131 workbench cases, six
+  identity-dialog cases and ten policy cases cover save/retry, catalog races,
+  busy/frozen controls, legacy flag precedence and separate drafts/policy.
+  Nine additional plot cases verify signed values with difference-only/mixed
+  labels, derivative labels, legacy flags and chi Fourier labels. Plotly is
+  mocked in these tests; actual rendering was checked below.
+- Re-fetched `Main.pm` matches its committed SHA-256 and Git blob SHA-1.
+  Pinned `Difference.pm` and `diff.rst` were downloaded and hashed, expanding
+  the source manifest to **54 files**. The other cached source files were
+  unavailable during this follow-up, so the earlier 52-file check was not
+  repeated. Source reading does not establish desktop runtime equivalence.
+
+Live checks used the original three copper scans in project
+`XOmEzrdc6QQOciQUZhJq8-VH`:
+
+1. At revision 41, entered an unapplied Rbkg draft of 1.25 on 10 K. Selected
+   Fe L3 (706.8 eV) through the real identity catalog and saved revision 42.
+   E0 remained **8977.58 eV**, saved Rbkg remained **1**, and the draft remained
+   **1.25**. Comparing every group against the baseline showed only the selected
+   `source.edge_identity` and result element/edge labels changed. This choice
+   deliberately lies outside the measured Cu scan and tests metadata separation.
+2. Undid the identity edit and discarded the draft. Unmarked 300 K and created
+   the difference of 10 K and interpolated 50 K, then made two Rbkg copies at
+   0.8 and 1.2. At revision 46 all three derived groups retained their difference
+   flags and Cu K identity; each copy's latest operation remained `copy_series`.
+3. Applied parameters to the 1.2 copy, producing revision 47. Every group field
+   was exactly equal to revision 46; each copy's arrays and result were exactly
+   equal to the original difference. No normalization or EXAFS result appeared.
+   This measured difference is positive throughout (0.06185866–0.124534); the
+   negative/zero cases come from backend fixtures, not this live example.
+4. Four Undo actions restored revision 51 with all original group fields exactly
+   equal to revision 41. A later Redo display check reached revision 54 to verify
+   the corrected copy caption `Difference (E)` and plot axis `Difference signal`
+   in the actual Plotly view. Mixed absorption/difference plots identify forms
+   in their legends rather than claiming every trace is normalized.
+5. Three more Undo actions removed the display fixtures and restored the marks.
+   Revision **57** again matched every original group field exactly. The app
+   was left on the 10 K scan with marked plotting enabled and enforcement Off;
+   backend and same-origin proxy health endpoints both reported `status: ok`.
+
+This implements identity editing and persistence of the existing difference
+mode. Athena's full difference representation, standard scaling, inversion,
+integration, marked-series, naming and renormalization controls remain open.
+Other gaps include full metadata parameter copying, general provenance
+remapping and invalidation, and complete native processing/type semantics.
+All **107** requirement rows are retained and none is Verified.
 
 ## Limitations retained for continued work
 

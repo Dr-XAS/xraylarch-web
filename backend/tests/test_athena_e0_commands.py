@@ -88,6 +88,7 @@ def test_frozen_and_nonabsorption_groups_are_reported_and_untouched(workspace):
     changed = deepcopy(before)
     changed["groups"][1].update(data_type="chi", processing_error="Deliberately unavailable")
     changed["groups"][2]["source"]["operation"] = "difference"
+    changed["groups"][2]["is_difference"] = True
     before = store.save(changed, before, "Nonabsorption data")
     after = run(store, before, method="manual", value=8980)
     assert after["groups"] == before["groups"]

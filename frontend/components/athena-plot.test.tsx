@@ -77,6 +77,52 @@ function handoff(): Handoff {
   return call[0]
 }
 
+describe("AthenaPlot difference signal labels", () => {
+  it.each([
+    ["mu", "Difference signal"], ["norm", "Difference signal"], ["flat", "Difference signal"],
+    ["dmude", "d(difference)/dE (eV⁻¹)"], ["d2mude", "d²(difference)/dE² (eV⁻²)"],
+  ])("identifies a copied difference in %s without changing signed values", (energyMode, title) => {
+    const sample = group("Copied difference")
+    sample.is_difference = true
+    sample.source.operation = "copy_series"
+    sample.result!.arrays[energyMode] = [-0.2, 0, 0.1]
+    freeze(sample)
+    show({ groups: [sample], energyMode, active: group("Unplotted absorption") })
+    expect(handoff().layout.yaxis.title.text).toBe(title)
+    expect(handoff().data[0].y).toEqual([-0.2, 0, 0.1])
+    expect(handoff().data[0].name).toBe("Copied difference")
+  })
+
+  it("names both signal forms when absorption and difference traces share the plot", () => {
+    const diff = group("Difference")
+    diff.is_difference = true
+    diff.result!.arrays.norm = [-0.2, 0, 0.1]
+    show({ groups: [group("Absorption"), diff], energyMode: "norm" })
+    expect(handoff().layout.yaxis.title.text).toBe("Signal (forms in legend)")
+    expect(handoff().data.map(trace => trace.name)).toEqual([
+      "Absorption (Normalized μ(E))", "Difference (Difference signal)",
+    ])
+    expect(handoff().data[1].y).toEqual([-0.2, 0, 0.1])
+  })
+
+  it.each([undefined, false])("uses legacy provenance only when the saved flag is absent (%s)", flag => {
+    const sample = group()
+    sample.source.operation = "difference"
+    sample.is_difference = flag
+    show({ groups: [sample], energyMode: "norm" })
+    expect(handoff().layout.yaxis.title.text).toBe(flag === false ? "Normalized μ(E)" : "Difference signal")
+  })
+
+  it("keeps a chi difference's Fourier-space labels and signed products", () => {
+    const sample = group("Chi difference")
+    sample.is_difference = true
+    sample.data_type = "chi"
+    show({ groups: [sample], space: "R", component: "re" })
+    expect(handoff().layout.yaxis.title.text).toBe("Re[χ(R)]")
+    expect(handoff().data[0].y).toEqual([3, 0, -3])
+  })
+})
+
 describe("AthenaPlot coordinate picking", () => {
   it.each<Space>(["E", "k", "R"])("reports the finite plotted x in %s space without applying offsets to it", space => {
     const onPickX = vi.fn()

@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import type { AthenaGroup, Analysis } from "@/lib/athena"
+import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div> })
 const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47", "#967055"]
@@ -52,9 +52,14 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   })
   const weights = [...new Set(displayed.map(trace => trace.weight))]
   const mixedWeights = space !== "E" && weights.length > 1
+  const energyTitle = ({ mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", d2mude: "d²μ/dE² (eV⁻²)" } as Record<string, string>)[energyMode]
+  const differenceTitle = energyMode === "dmude" ? "d(difference)/dE (eV⁻¹)" : energyMode === "d2mude" ? "d²(difference)/dE² (eV⁻²)" : "Difference signal"
+  const energyForm = (group: AthenaGroup) => isDifferenceGroup(group) ? differenceTitle : energyTitle
+  const energyForms = [...new Set(displayed.map(trace => energyForm(trace.g)))]
+  const mixedEnergyForms = space === "E" && energyForms.length > 1
   for (const trace of displayed) {
     const { g, index, x, y, rawChi, weight, transform } = trace
-    const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "")
+    const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "") + (mixedEnergyForms ? ` (${energyForm(g)})` : "")
     // R/q products already include the forward k-weight. Apply display
     // multiplier/offset only, never another k- or q-dependent weighting.
     add(x, transform(y), name, colors[index % colors.length])
@@ -77,7 +82,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   }
   let xTitle = { E: "Energy (eV)", k: "k (Å⁻¹)", R: "R (Å)", q: "q (Å⁻¹)" }[space]
   const kTitle = mixedWeights ? "k-weighted χ(k) (weights in legend)" : weights[0] === 0 ? "χ(k)" : `k<sup>${weights[0] ?? 2}</sup> χ(k)`
-  let yTitle = { E: ({ mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", d2mude: "d²μ/dE² (eV⁻²)" } as Record<string, string>)[energyMode], k: kTitle, R: component === "mag" ? "|χ(R)|" : component === "pha" ? "Phase χ(R) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(R)]`, q: component === "mag" ? "|χ(q)|" : component === "pha" ? "Phase χ(q) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(q)]` }[space]
+  let yTitle = { E: mixedEnergyForms ? "Signal (forms in legend)" : energyForms[0] ?? energyTitle, k: kTitle, R: component === "mag" ? "|χ(R)|" : component === "pha" ? "Phase χ(R) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(R)]`, q: component === "mag" ? "|χ(q)|" : component === "pha" ? "Phase χ(q) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(q)]` }[space]
   if (analysis && analysisVisible) {
     data.length = 0
     const result = analysis.result

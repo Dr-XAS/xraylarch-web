@@ -68,6 +68,27 @@ def _inspect_edge_policy_data(client, project, energy, mu):
             "energy_column": columns["energy"], "numerator": [columns["mu"]]}
 
 
+def test_group_edge_identity_http_preserves_science_and_rejects_invalid_edits(client):
+    p = example(client)
+    ident = p["groups"][0]["id"]
+    response = command(client, p, "edge_identity", [ident], element="fe", edge="l3")
+    assert response.status_code == 200, response.text
+    after = response.json()
+    expected = json.loads(json.dumps(p["groups"]))
+    expected[0]["source"]["edge_identity"] = {"element": "Fe", "edge": "L3", "origin": "selected"}
+    expected[0]["result"]["effective"].update(element="Fe", edge="L3")
+    assert after["groups"] == expected
+    for invalid in ({"element": "Cu", "edge": "L9"}, {"element": "Cu", "edge": "K", "e0": 8979}):
+        rejected = command(client, after, "edge_identity", [ident], **invalid)
+        assert rejected.status_code == 400
+        assert rejected.json()["error"]["recovery"]
+        assert client.get(f"/api/athena/projects/{p['id']}").json() == after
+    frozen = command(client, after, "metadata", [ident], frozen=True).json()
+    assert command(client, frozen, "edge_identity", [ident], element="Cu", edge="K").status_code == 400
+    assert client.get(f"/api/athena/projects/{p['id']}").json() == frozen
+    assert command(client, p, "edge_identity", [ident], element="Cu", edge="K").status_code == 409
+
+
 def test_import_edge_policy_is_request_scoped_and_exported_as_provenance(client, xas_arrays):
     p = create(client)
     body = _inspect_edge_policy_data(client, p, *xas_arrays)
