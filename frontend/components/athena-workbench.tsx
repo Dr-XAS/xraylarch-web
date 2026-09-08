@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { Activity, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
-import { apiBase, athenaApi, resources, type AthenaGroup, type AthenaProject, type Parameters, type Analysis } from "@/lib/athena"
+import { apiBase, athenaApi, resources, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options } from "@/lib/athena"
 import type { InspectionResponse } from "@/lib/contracts"
 import { AthenaPlot, type Space } from "./athena-plot"
 import { AthenaProjectImport } from "./athena-project-import"
@@ -62,7 +62,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | null
+type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | null
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
 
@@ -78,6 +78,85 @@ function NumberField({ label, value, onChange, unit, effective, optional = false
 }) {
   const input = <label className="ath-field"><span>{label}{unit && <small>{unit}</small>}</span><input type="number" step={step} value={value ?? ""} placeholder={optional ? "Auto" : ""} onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))} />{optional && value === null && typeof effective === "number" && <em>Auto: {effective.toFixed(3).replace(/\.?0+$/, "")}</em>}</label>
   return pick ? <div className="ath-pick-field">{input}{pick}</div> : input
+}
+
+const e0Methods: Record<E0Method, { label: string; hint: string }> = {
+  derivative: { label: "Derivative maximum", hint: "Locate the absorption edge from the maximum first derivative of the saved spectrum." },
+  atomic: { label: "Tabulated atomic energy", hint: "Use the tabulated energy for an element and edge. Leave both fields blank to infer both separately for each group." },
+  fraction: { label: "Fraction of edge step", hint: "Find the selected fraction of the normalized edge step, repeating normalization for up to 5 iterations. Use a fraction greater than 0 and at most 1 (the full edge step)." },
+  zero_crossing: { label: "Second-derivative zero crossing", hint: "Find the second-derivative zero crossing nearest the initial E₀." },
+  white_line: { label: "White-line peak", hint: "Refine the first peak after the initial E₀ using the locally interpolated, flattened spectrum." },
+  manual: { label: "Manual energy", hint: "Set a positive E₀ in eV on the shifted energy axis. The same value is used for every selected group." },
+}
+function supportsE0(group: AthenaGroup) {
+  return !group.frozen && group.data_type !== "chi" && group.source.operation !== "difference"
+}
+function E0Dialog({ project, active, busy, error, clearError, selectGroup, close, apply }: {
+  project: AthenaProject | null; active?: AthenaGroup; busy: boolean; error: string
+  clearError: () => void; selectGroup: (id: string) => void; close: () => void
+  apply: (ids: string[], options: E0Options) => Promise<AthenaProject | undefined>
+}) {
+  const [method, setMethod] = useState<E0Method>("derivative")
+  const [scope, setScope] = useState<"current" | "marked" | "all">("current")
+  const [fraction, setFraction] = useState("0.5")
+  const [value, setValue] = useState(String(active?.parameters.e0 ?? active?.result?.effective.e0 ?? ""))
+  const [element, setElement] = useState("")
+  const [edge, setEdge] = useState("")
+  const [validation, setValidation] = useState("")
+  const [completed, setCompleted] = useState<AthenaProject | null>(null)
+  const pending = useRef(false)
+  const targets = scope === "all" ? project?.groups ?? [] : scope === "marked" ? project?.groups.filter(g => g.marked) ?? [] : active ? [active] : []
+  const supported = targets.filter(supportsE0)
+  function edit() { setValidation(""); clearError(); setCompleted(null) }
+  function dismiss() { if (!busy && !pending.current) close() }
+  async function submit() {
+    if (busy || pending.current || !supported.length) return
+    let options: E0Options
+    if (method === "fraction") {
+      const number = Number(fraction)
+      if (!fraction.trim() || !Number.isFinite(number) || number <= 0 || number > 1) { setValidation("Enter a finite fraction greater than 0 and at most 1."); return }
+      options = { method, fraction: number }
+    } else if (method === "manual") {
+      const number = Number(value)
+      if (!value.trim() || !Number.isFinite(number) || number <= 0) { setValidation("Enter a finite, positive manual E₀ in eV."); return }
+      options = { method, value: number }
+    } else if (method === "atomic") {
+      const absorber = element.trim(), shell = edge.trim()
+      if (!!absorber !== !!shell) { setValidation("Supply both element and edge, or leave both blank to infer them per group."); return }
+      options = absorber ? { method, element: absorber, edge: shell } : { method }
+    } else options = { method }
+    edit(); pending.current = true
+    try { setCompleted(await apply(targets.map(g => g.id), options) ?? null) }
+    finally { pending.current = false }
+  }
+  const report = completed?.last_operation
+  return <Modal title="Select E₀" close={dismiss}><form className="ath-modal-body" noValidate onSubmit={event => { event.preventDefault(); void submit() }}>
+    <p className="ath-hint">Uses saved spectra and processing recipes. Apply E₀ replaces E₀ for accepted groups; other parameter drafts wait for Apply parameters. Energy shifts are preserved, including linked reference shifts.</p>
+    <fieldset className="ath-e0-fields" disabled={busy}>
+      <div className="ath-fields">
+        <label className="ath-field"><span>E₀ targets</span><select value={scope} onChange={event => { edit(); setScope(event.target.value as typeof scope) }}><option value="current">Current group</option><option value="marked">Marked groups ({project?.groups.filter(g => g.marked).length ?? 0})</option><option value="all">All groups ({project?.groups.length ?? 0})</option></select></label>
+        {scope === "current" && <label className="ath-field"><span>Current group</span><select value={active?.id ?? ""} disabled={!project?.groups.length} onChange={event => { edit(); selectGroup(event.target.value) }}>{!active && <option value="">No groups</option>}{project?.groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label>}
+        <label className="ath-field"><span>E₀ method</span><select value={method} aria-describedby="ath-e0-method-hint" onChange={event => { edit(); setMethod(event.target.value as E0Method) }}>{Object.entries(e0Methods).map(([key, item]) => <option key={key} value={key}>{item.label}</option>)}</select></label>
+        {method === "fraction" && <label className="ath-field"><span>Edge-step fraction</span><input type="number" step="any" min="0" max="1" value={fraction} onChange={event => { edit(); setFraction(event.target.value) }} /></label>}
+        {method === "manual" && <label className="ath-field"><span>Manual E₀ <small>eV</small></span><input type="number" step="any" min="0" value={value} onChange={event => { edit(); setValue(event.target.value) }} /></label>}
+        {method === "atomic" && <><label className="ath-field"><span>Absorbing element (optional)</span><input value={element} placeholder="Infer, e.g. Cu" maxLength={32} onChange={event => { edit(); setElement(event.target.value) }} /></label><label className="ath-field"><span>Absorption edge (optional)</span><input value={edge} placeholder="Infer, e.g. K" maxLength={3} onChange={event => { edit(); setEdge(event.target.value) }} /></label></>}
+      </div>
+    </fieldset>
+    <p id="ath-e0-method-hint" className="ath-hint">{e0Methods[method].hint}</p>
+    <p className="ath-hint">Frozen groups, groups with frozen background consumers, χ(k), and signed difference spectra are skipped. All targets include groups hidden by search. Switching the current scan resets method inputs.</p>
+    <p>{targets.length} target{targets.length === 1 ? "" : "s"} selected · {supported.length} supported and unfrozen before dependency checks.</p>
+    {!!targets.length && <details><summary>Selected groups</summary><ul>{targets.map(g => <li key={g.id}>{g.label}{g.frozen ? " · frozen" : !supportsE0(g) ? " · unsupported spectrum" : ""}</li>)}</ul></details>}
+    {!supported.length && <p className="ath-hint">No supported, unfrozen groups in this selection. Choose another scope, mark absorption spectra, or unfreeze a group.</p>}
+    {(validation || error) && <div className="ath-error" role="alert">{validation || error}</div>}
+    {report?.action === "set_e0" && <section className="ath-e0-report" aria-label="E₀ selection results" aria-live="polite"><h3>Accepted E₀ results</h3>
+      <ul>{report.e0_results?.map(result => <li key={result.group_id}><strong>{completed?.groups.find(g => g.id === result.group_id)?.label ?? result.group_id}</strong>: <output>{result.e0.toFixed(3)} eV</output><span> · {e0Methods[result.method].label}</span>
+        {result.element && result.edge && <span> · {result.element} {result.edge}{result.tabulated_e0 != null && ` (${result.tabulated_e0} eV tabulated)`}</span>}
+        {result.method === "fraction" && <span> · {result.iterations} iteration{result.iterations === 1 ? "" : "s"} · {result.converged ? "converged" : "not converged"}</span>}
+        {result.warnings.map((warning, index) => <p className="ath-warning" key={index}>{warning}</p>)}</li>)}</ul>
+      {report.skipped_group_ids.length > 0 && <><h4>Skipped groups</h4><ul>{report.skipped_group_ids.map(id => <li key={id}><strong>{completed?.groups.find(g => g.id === id)?.label ?? id}</strong>: {report.skipped_reasons?.[id] ?? "Skipped by processing guards."}</li>)}</ul></>}
+    </section>}
+    <div className="ath-modal-actions"><button type="button" disabled={busy} onClick={dismiss}>{completed ? "Close" : "Cancel"}</button><button type="submit" className="ath-primary" disabled={busy || !supported.length}>{busy ? "Applying E₀…" : "Apply E₀"}</button></div>
+  </form></Modal>
 }
 
 export function AthenaWorkbench() {
@@ -315,6 +394,26 @@ export function AthenaWorkbench() {
       if (!next.last_operation?.skipped_group_ids.includes(id)) setStandardDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== id)))
     })
   }
+  async function applySelectedE0(ids: string[], options: E0Options) {
+    if (busy || !ids.length) return
+    let completed: AthenaProject | undefined
+    await task("Selecting E₀", async () => {
+      const next = await command("set_e0", ids, options)
+      const accepted = new Set(next.last_operation?.e0_results?.map(result => result.group_id))
+      setDrafts(current => {
+        const updated = { ...current }
+        for (const group of next.groups) {
+          if (!accepted.has(group.id) || !updated[group.id]) continue
+          const draft = { ...updated[group.id], e0: group.parameters.e0 }
+          if (sameParameters(draft, group.parameters)) delete updated[group.id]
+          else updated[group.id] = draft
+        }
+        return updated
+      })
+      completed = next
+    })
+    return completed
+  }
   function openParameterControls() {
     setParameterScope("all"); setParameterKey("rbkg"); setParameterTarget("marked")
     setError(""); setModal("parameters")
@@ -425,7 +524,8 @@ export function AthenaWorkbench() {
 
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>ATHENA <span>WEB</span></h1><p>X-ray absorption spectroscopy</p></div></div>
-      <nav aria-label="Main menu">{["File", "Group", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
+      <nav aria-label="Main menu">{["File", "Group", "Energy", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
+        {label === "Energy" && <button disabled={!project || !!busy} onClick={() => { cancelPick(); setMenu(""); setError(""); setModal("e0") }}>Select E₀…</button>}
         {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("groups")}>Mark / freeze groups…</button>}
         {label === "File" && project && (marked.length ? <a href={`${apiBase}/projects/${project.id}/export?format=prj&marked_only=true`}><Download size={15} />Save marked project (.prj)</a> : <button disabled>Save marked project (.prj)</button>)}
         {label === "File" && <><button disabled={!!busy} onClick={() => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) }}><Plus size={15} />New project</button><button disabled={!project || !!busy} onClick={() => { setMenu(""); setModal("import") }}><Upload size={15} />Import data…</button><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project…</button><hr />{project && <><a href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save Athena project (.prj)</a><a href={`${apiBase}/projects/${project.id}/export?format=json`}><Download size={15} />Save complete web project</a></>}<button onClick={() => openTool("journal")} disabled={!project}><FileText size={15} />Project journal</button></>}
@@ -467,6 +567,7 @@ export function AthenaWorkbench() {
     </div>
     <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
 
+    {modal === "e0" && <E0Dialog key={`${project?.id}:${active?.id}`} project={project} active={active} busy={!!busy} error={error} clearError={() => setError("")} selectGroup={id => { setActiveId(id); setAnalysisVisible(false) }} close={() => setModal(null)} apply={applySelectedE0} />}
     {modal === "groups" && <Modal title="Mark / freeze groups" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body ath-group-controls">
       <p className="ath-hint">Actions use the full group list, including groups hidden by search, and keep the current group selected. Frozen groups can still be marked or unfrozen.</p>
       <fieldset disabled={!!busy}><legend>Mark groups</legend><div className="ath-bulk-actions">

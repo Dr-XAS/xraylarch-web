@@ -97,6 +97,27 @@ the Ifeffit archive hash is
 These files were fetched and inspected locally. No desktop Ifeffit execution
 or exact standard-amplitude parity is claimed.
 
+## Edge-energy methods and scientific meaning
+
+The [E0 guide][e0] distinguishes setting an edge reference from calibrating
+the energy axis. The new `set_e0` command records an explicit E0 on each
+scan's shifted energy axis while retaining its energy shift. It supports
+fresh derivative estimates, tabulated atomic energies, iterative edge-step
+fractions, second-derivative zero crossings, white-line refinement, and
+manual input. The atomic method can infer an element/edge for each scan or
+use an explicit pair. Inference is an energy-table match, not a chemical
+identification.
+
+The fraction method repeats scalar normalization up to five times. Derivative
+refinement must respect the source's search order on irregular grids; an
+unrestricted global peak is not an equivalent substitute. White-line source
+review includes `Data/Mu.pm::find_white_line` and the `find_wl` templates,
+which refine a local peak using flattened data. Element/edge enforcement is
+a separate operation involving import/default state; atomic E0 selection
+alone does not implement enforcement. The [enforcement reference](athena-edge-enforcement-reference.md)
+records the import/default-state contract. The [verification notes](athena-verification.md)
+and coverage matrix retain the numerical limits and remaining work.
+
 ## YouTube discovery and verification limits
 
 The [IXAS video index](https://xafs.xrayabsorption.org/videos.html) lists the following resources. Titles/presenter associations are verified from that index; its approximate duration/count is catalog metadata.

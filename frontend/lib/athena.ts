@@ -21,11 +21,22 @@ export interface AthenaGroup {
   background_standard_id?: string | null
   processing_error: string | null; source: Record<string, unknown>
 }
+export type E0Method = "derivative" | "atomic" | "fraction" | "zero_crossing" | "white_line" | "manual"
+export type E0Options =
+  | { method: "derivative" | "zero_crossing" | "white_line" }
+  | { method: "atomic"; element?: string; edge?: string }
+  | { method: "fraction"; fraction: number }
+  | { method: "manual"; value: number }
+export interface E0SelectionResult {
+  group_id: string; method: E0Method; e0: number; seed_e0: number | null
+  element: string | null; edge: string | null; tabulated_e0: number | null
+  iterations: number; converged: boolean; warnings: string[]
+}
 export interface AthenaProject {
   id: string; name: string; version: number; groups: AthenaGroup[]; journal: string
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]
   analyses?: Analysis[]
-  last_operation?: { action: string; skipped_group_ids: string[] }
+  last_operation?: { action: string; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[] }
 }
 export interface Analysis {
   id?: string; created?: string

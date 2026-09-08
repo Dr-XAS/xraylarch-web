@@ -11,4 +11,9 @@
 .ath-group-controls legend { padding-inline: 4px; font-weight: 600; }
 .ath-bulk-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ath-app .ath-bulk-actions button { border: 1px solid var(--ath-line); }
+.ath-e0-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ath-e0-report { margin-block: 16px; border-top: 1px solid var(--ath-line); padding-top: 12px; }
+.ath-e0-report ul { padding-left: 20px; }
+.ath-e0-report li { margin-block: 8px; }
+.ath-e0-report output { font-variant-numeric: tabular-nums; font-weight: 600; }
 @media (max-width: 700px) { .ath-pick-prompt { align-items: flex-start; flex-direction: column; } }

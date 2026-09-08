@@ -419,6 +419,16 @@ class Command(BaseModel):
     options: dict[str, Any] = Field(default_factory=dict)
 
 
+class SetE0Options(BaseModel):
+    """One explicit E0 operation; it does not change the import defaults."""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    method: Literal["derivative", "atomic", "fraction", "zero_crossing", "white_line", "manual"] = "derivative"
+    fraction: float = Field(default=0.5, gt=0, le=1, strict=True)
+    element: str | None = Field(default=None, max_length=32)
+    edge: str | None = Field(default=None, max_length=3)
+    value: float | None = Field(default=None, gt=0, le=1e7, strict=True)
+
+
 _PARAMETER_MAP = {
     "fnorm": "bkg_fnorm",
     "e0": "bkg_e0", "step": "bkg_step", "pre1": "bkg_pre1", "pre2": "bkg_pre2",
@@ -619,6 +629,46 @@ class AthenaStore:
         self._process_groups(p, recipes)
         return sorted(skipped)
 
+    def set_e0(self, p, groups, options):
+        from .athena_e0 import compute_e0
+
+        choice = SetE0Options.model_validate(options)
+        allowed = {"method"} | {
+            "fraction": {"fraction"}, "atomic": {"element", "edge"},
+            "manual": {"value"},
+        }.get(choice.method, set())
+        if set(options) - allowed:
+            fail("Only supply options used by the selected E₀ method.")
+        if choice.method == "manual" and choice.value is None:
+            fail("Enter the manual E₀ value in eV on the shifted energy axis.")
+        if (choice.element is None) != (choice.edge is None):
+            fail("Supply both the absorbing element and edge, or leave both automatic.")
+        updates, results, reasons = {}, [], {}
+        for group in groups:
+            ident = group["id"]
+            if self._frozen_background_dependents(p, [ident]):
+                reasons[ident] = "The group or a group using it as a background standard is frozen."
+                continue
+            if group["data_type"] == "chi" or group["source"].get("operation") == "difference":
+                reasons[ident] = "E₀ requires an absorption spectrum on an energy axis."
+                continue
+            try:
+                result = compute_e0(group["energy"], group["mu"], group["parameters"],
+                                    data_type=group["data_type"], **choice.model_dump())
+            except ValueError as exc:
+                fail(f"{group['label']}: {exc}")
+            updates[ident] = {"e0": result["e0"]}
+            results.append({"group_id": ident, **result})
+        # Every E0 is chosen before the atomic recalculation. Consumers of a
+        # selected background standard therefore see the newly processed chi.
+        self.parameter_updates(p, updates)
+        for result in results:
+            group = self.group(p, result["group_id"])
+            group["source"]["e0_selection"] = {
+                **result, "energy_shift": group["parameters"]["energy_shift"], "time": now(),
+            }
+        return results, reasons
+
     def tie_reference(self, p, sample, reference):
         if sample["id"] == reference["id"]:
             fail("A group cannot reference itself.")
@@ -792,7 +842,7 @@ class AthenaStore:
             p = copy.deepcopy(old)
             action, options = request.action, request.options
             groups = [self.group(p, gid) for gid in dict.fromkeys(request.group_ids)]
-            skipped = []
+            skipped, operation_details = [], {}
             if action in ("undo", "redo"):
                 stack = old[action]
                 if not stack:
@@ -827,7 +877,7 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("metadata", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
+                if action not in ("metadata", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
                 if action == "selection":
                     field, mode = options.get("field", "marked"), options.get("mode", "invert")
@@ -860,6 +910,10 @@ class AthenaStore:
                         for g in groups}, skip_frozen=True)
                 elif action == "parameters":
                     skipped = self.parameter_updates(p, {g["id"]: options for g in groups}, skip_frozen=len(groups) > 1)
+                elif action == "set_e0":
+                    results, reasons = self.set_e0(p, groups, options)
+                    skipped = list(reasons)
+                    operation_details = {"e0_results": results, "skipped_reasons": reasons}
                 elif action in ("copy_parameters", "reset_parameters"):
                     defaults = AthenaParameters().model_dump()
                     defaults["background_standard_id"] = None
@@ -1055,8 +1109,9 @@ class AthenaStore:
                         p["groups"].append(derived)
             message = f"{action.replace('_', ' ').capitalize()} · {len(groups)} selected groups" if groups else action.capitalize()
             if skipped:
-                message += f" · skipped {len(skipped)} frozen groups or reference pairs"
-            p["last_operation"] = {"action": action, "skipped_group_ids": skipped}
+                message += (f" · skipped {len(skipped)} groups" if action == "set_e0" else
+                            f" · skipped {len(skipped)} frozen groups or reference pairs")
+            p["last_operation"] = {"action": action, "skipped_group_ids": skipped, **operation_details}
             return self.save(p, old, message)
 
     def analyze(self, ident, request: Command):
@@ -1592,6 +1647,11 @@ def build_athena_router(settings: Settings):
     @router.get("/projects")
     def list_projects():
         return store.list()
+
+    @router.get("/edges")
+    def absorption_edges(element: str = Query(min_length=1, max_length=32)):
+        from .athena_e0 import edge_catalog
+        return guarded(lambda: edge_catalog(element))
 
     @router.post("/projects")
     def create_project():

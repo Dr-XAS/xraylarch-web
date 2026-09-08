@@ -34,6 +34,28 @@ def example(client):
     return response.json()
 
 
+def test_edge_catalog_and_e0_batch_through_http(client):
+    catalog = client.get("/api/athena/edges", params={"element": "cu"})
+    assert catalog.status_code == 200, catalog.text
+    assert catalog.json()["element"] == "Cu"
+    assert {item["edge"]: item["energy"] for item in catalog.json()["edges"]}["K"] == 8979
+    assert client.get("/api/athena/edges", params={"element": "not-an-element"}).status_code == 400
+    p = example(client)
+    ids = [g["id"] for g in p["groups"]]
+    response = command(client, p, "set_e0", ids, method="atomic", element="Cu", edge="K")
+    assert response.status_code == 200, response.text
+    after = response.json()
+    assert after["version"] == p["version"] + 1
+    assert len(after["last_operation"]["e0_results"]) == 3
+    assert all(g["parameters"]["e0"] == g["result"]["effective"]["e0"] == 8979 for g in after["groups"])
+    assert all(g["parameters"]["energy_shift"] == 0 for g in after["groups"])
+    invalid = command(client, after, "set_e0", ids, method="fraction", fraction=1.1)
+    assert invalid.status_code == 400
+    assert invalid.json()["error"]["recovery"]
+    assert command(client, p, "set_e0", ids, method="manual", value=8980).status_code == 409
+    assert client.get(f"/api/athena/projects/{p['id']}").json() == after
+
+
 def test_example_api_all_four_spaces_and_exchange_files(client):
     p = example(client)
     assert len(p["groups"]) == 3

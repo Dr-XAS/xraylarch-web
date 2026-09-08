@@ -3,7 +3,7 @@ import { StrictMode, useLayoutEffect } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
-import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Parameters } from "@/lib/athena"
+import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Parameters, type E0Method } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
 import type { InspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./athena-plot"
@@ -247,6 +247,284 @@ async function openGroupControls() {
   fireEvent.click(screen.getByRole("button", { name: /Mark \/ freeze groups/ }))
   return screen.findByRole("dialog", { name: "Mark / freeze groups" })
 }
+
+async function openE0Dialog() {
+  fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" }))
+  fireEvent.click(screen.getByRole("button", { name: "Select E₀…" }))
+  return screen.findByRole("dialog", { name: "Select E₀" })
+}
+
+function chooseE0Method(dialog: HTMLElement, method: E0Method) {
+  fireEvent.change(within(dialog).getByRole("combobox", { name: "E₀ method" }), { target: { value: method } })
+}
+
+function e0Response(project: AthenaProject, method: E0Method, values: Record<string, number>, skipped: Record<string, string> = {}): AthenaProject {
+  const updated = nextProject(project, Object.fromEntries(project.groups.filter(g => g.id in values).map(g => [g.id, {
+    parameters: { ...g.parameters, e0: values[g.id] },
+    result: g.result && { ...g.result, effective: { ...g.result.effective, e0: values[g.id] } },
+  }])))
+  updated.last_operation = {
+    action: "set_e0", skipped_group_ids: Object.keys(skipped), skipped_reasons: skipped,
+    e0_results: Object.entries(values).map(([group_id, e0]) => ({
+      group_id, method, e0, seed_e0: method === "manual" || method === "derivative" ? null : 8979, element: method === "atomic" ? "Cu" : null,
+      edge: method === "atomic" ? "K" : null, tabulated_e0: method === "atomic" ? 8979 : null,
+      iterations: method === "fraction" ? 3 : 0, converged: true, warnings: [],
+    })),
+  }
+  return updated
+}
+
+describe("AthenaWorkbench E₀ selection", () => {
+  it.each(["derivative", "atomic", "fraction", "zero_crossing", "white_line", "manual"] as const)("applies %s to the current saved spectrum with only relevant options and reports accepted E₀", async method => {
+    const project = await openSaved()
+    editNumber(/^E₀/, 9100)
+    const dialog = await openE0Dialog()
+    chooseE0Method(dialog, method)
+    const expected = method === "fraction" ? { method, fraction: 0.5 } : method === "manual" ? { method, value: 8984.25 } : { method }
+    if (method === "manual") {
+      // Initial manual value comes from the saved recipe, never the unapplied E₀.
+      expect(within(dialog).getByRole("spinbutton", { name: /^Manual E₀/ })).toHaveValue(8979)
+      editNumber(/^Manual E₀/, 8984.25, dialog)
+    }
+    const next = e0Response(project, method, { foil: 8984.25 })
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    const report = await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "set_e0", group_ids: ["foil"], options: expected,
+    })
+    expect(report).toHaveTextContent("Foil scan: 8984.250 eV")
+    if (method === "atomic") expect(report).toHaveTextContent("Cu K (8979 eV tabulated)")
+    if (method === "fraction") expect(report).toHaveTextContent("3 iterations · converged")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8984.25)
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    expect(plotProps().active?.parameters.energy_shift).toBe(project.groups[0].parameters.energy_shift)
+  })
+
+  it("rejects fractions outside (0, 1] and nonpositive manual values before sending, then recovers", async () => {
+    const project = await openSaved()
+    const dialog = await openE0Dialog()
+    chooseE0Method(dialog, "fraction")
+    for (const value of ["", 0, 1.1, -0.1, 1.2] as const) {
+      editNumber(/^Edge-step fraction$/, value, dialog)
+      fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(/greater than 0 and at most 1/)
+      expect(api).toHaveBeenCalledTimes(1)
+    }
+    chooseE0Method(dialog, "manual")
+    for (const value of ["", 0, -1] as const) {
+      editNumber(/^Manual E₀/, value, dialog)
+      fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+      expect(within(dialog).getByRole("alert")).toHaveTextContent(/finite, positive/)
+      expect(api).toHaveBeenCalledTimes(1)
+    }
+    // Native number inputs sanitize nonfinite text to empty; it must still be rejected.
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: /^Manual E₀/ }), { target: { value: "Infinity" } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    expect(api).toHaveBeenCalledTimes(1)
+    chooseE0Method(dialog, "fraction")
+    editNumber(/^Edge-step fraction$/, 0.37, dialog)
+    api.mockResolvedValueOnce(e0Response(project, "fraction", { foil: 8980 }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 7, action: "set_e0", group_ids: ["foil"], options: { method: "fraction", fraction: 0.37 } })
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("accepts fraction 1 for the full edge step and sends that exact value", async () => {
+    const project = await openSaved()
+    const dialog = await openE0Dialog()
+    chooseE0Method(dialog, "fraction")
+    editNumber(/^Edge-step fraction$/, 1, dialog)
+    api.mockResolvedValueOnce(e0Response(project, "fraction", { foil: 8992 }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    const report = await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "set_e0", group_ids: ["foil"], options: { method: "fraction", fraction: 1 },
+    })
+    expect(report).toHaveTextContent("Foil scan: 8992.000 eV")
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("requires an atomic element/edge pair and omits previous method inputs", async () => {
+    const project = await openSaved()
+    const dialog = await openE0Dialog()
+    chooseE0Method(dialog, "fraction")
+    editNumber(/^Edge-step fraction$/, 0.75, dialog)
+    chooseE0Method(dialog, "manual")
+    editNumber(/^Manual E₀/, 8982, dialog)
+    chooseE0Method(dialog, "atomic")
+    fireEvent.change(within(dialog).getByRole("textbox", { name: /Absorbing element/ }), { target: { value: " Cu " } })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    expect(within(dialog).getByRole("alert")).toHaveTextContent(/both element and edge/)
+    expect(api).toHaveBeenCalledTimes(1)
+    fireEvent.change(within(dialog).getByRole("textbox", { name: /Absorption edge/ }), { target: { value: " K " } })
+    api.mockResolvedValueOnce(e0Response(project, "atomic", { foil: 8979 }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 7, action: "set_e0", group_ids: ["foil"], options: { method: "atomic", element: "Cu", edge: "K" } })
+  })
+
+  it.each(["marked", "all"] as const)("sends explicit %s IDs in list order including skipped groups, independent of search", async scope => {
+    const initial = projectFixture()
+    initial.groups[2].frozen = true
+    initial.groups[3].data_type = "chi"
+    const project = await openSaved(initial)
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "Foil" } })
+    const dialog = await openE0Dialog()
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "E₀ targets" }), { target: { value: scope } })
+    const values: Record<string, number> = scope === "all" ? { foil: 8981, sample: 8982 } : { sample: 8982 }
+    const skips: Record<string, string> = { oxide: "The group is frozen." }
+    if (scope === "all") skips.unused = "E₀ requires an absorption spectrum on an energy axis."
+    const next = e0Response(project, "derivative", values, skips)
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    const report = await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 7, action: "set_e0", group_ids: scope === "all" ? ["foil", "sample", "oxide", "unused"] : ["sample", "oxide"], options: { method: "derivative" } })
+    expect(report).toHaveTextContent("Sample scan: 8982.000 eV")
+    expect(report).toHaveTextContent("Oxide standard: The group is frozen.")
+    if (scope === "all") expect(report).toHaveTextContent("Unused reference: E₀ requires an absorption spectrum")
+    expect(plotProps().active?.id).toBe("foil")
+    expect(project.groups[2].parameters).toEqual(next.groups[2].parameters)
+    expect(within(dialog).getByText(/Energy shifts are preserved/)).toBeVisible()
+  })
+
+  it("reconciles only accepted E₀ drafts, preserving other edits, non-targets, skipped consumers and saved shifts", async () => {
+    const initial = projectFixture()
+    initial.groups[0].parameters.energy_shift = 3
+    initial.groups[1].parameters.energy_shift = -2
+    const project = await openSaved(initial)
+    editNumber(/^Rbkg/, 2.6); editNumber(/^E₀/, 9000); editNumber(/^Energy shift/, 9)
+    selectGroup("Sample scan")
+    editNumber(/^Rbkg/, 3.2); editNumber(/^E₀/, 9010)
+    selectGroup("Oxide standard")
+    editNumber(/^E₀/, 9020)
+    selectGroup("Foil scan")
+    const dialog = await openE0Dialog()
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "E₀ targets" }), { target: { value: "marked" } })
+    const next = e0Response(project, "derivative", { sample: 8983 }, { oxide: "A group using it as a background standard is frozen." })
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    const report = await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(report).toHaveTextContent("Oxide standard: A group using it as a background standard is frozen.")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(9000)
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.6)
+    expect(screen.getByRole("spinbutton", { name: /^Energy shift/ })).toHaveValue(9)
+    expect(plotProps().active?.parameters.energy_shift).toBe(3)
+    selectGroup("Oxide standard")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(9020)
+    selectGroup("Sample scan")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8983)
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(3.2)
+    expect(screen.getByRole("spinbutton", { name: /^Energy shift/ })).toHaveValue(-2)
+    api.mockResolvedValueOnce(nextProject(next, { sample: { parameters: { ...next.groups[1].parameters, rbkg: 3.2 } } }))
+    fireEvent.click(screen.getByRole("button", { name: "Apply parameters" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Apply parameters" })).toBeEnabled())
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: next.version, action: "parameters", group_ids: ["sample"], options: { rbkg: 3.2 } })
+  })
+
+  it("locks input and dismissal while pending, leaves project/drafts intact on failure, and retries the same saved version", async () => {
+    const project = await openSaved()
+    editNumber(/^Rbkg/, 2.3)
+    const saved = plotProps().active
+    const dialog = await openE0Dialog()
+    chooseE0Method(dialog, "fraction")
+    editNumber(/^Edge-step fraction$/, 0.6, dialog)
+    const pending = deferred<AthenaProject>()
+    api.mockReturnValueOnce(pending.promise)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    expect(within(dialog).getByRole("combobox", { name: "E₀ method" })).toBeDisabled()
+    expect(within(dialog).getByRole("combobox", { name: "E₀ targets" })).toBeDisabled()
+    expect(within(dialog).getByRole("combobox", { name: "Current group" })).toBeDisabled()
+    expect(within(dialog).getByRole("spinbutton", { name: "Edge-step fraction" })).toBeDisabled()
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled()
+    expect(within(dialog).getByRole("button", { name: "Applying E₀…" })).toBeDisabled()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }))
+    fireEvent(dialog, new Event("cancel", { cancelable: true }))
+    expect(dialog).toBeInTheDocument()
+    await act(async () => pending.reject(new Error("Fraction normalization failed for Foil scan")))
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("Fraction normalization failed for Foil scan")
+    expect(plotProps().active).toBe(saved)
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
+    expect(within(dialog).getByRole("spinbutton", { name: "Edge-step fraction" })).toHaveValue(0.6)
+    expect(within(dialog).queryByRole("region", { name: "E₀ selection results" })).not.toBeInTheDocument()
+    const next = e0Response(project, "fraction", { foil: 8981 })
+    next.last_operation!.e0_results![0] = { ...next.last_operation!.e0_results![0], iterations: 5, converged: false, warnings: ["Iteration limit reached; inspect this E₀."] }
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    const report = await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api.mock.calls[2]).toEqual(api.mock.calls[1])
+    expect(report).toHaveTextContent("5 iterations · not converged")
+    expect(report).toHaveTextContent("Iteration limit reached; inspect this E₀.")
+    expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8981)
+  })
+
+  it("resets method inputs when switching scans and sends the new scan's explicit ID", async () => {
+    const initial = projectFixture()
+    initial.groups[1].parameters.e0 = 8986
+    const project = await openSaved(initial)
+    let dialog = await openE0Dialog()
+    chooseE0Method(dialog, "manual")
+    editNumber(/^Manual E₀/, 9200, dialog)
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Current group" }), { target: { value: "sample" } })
+    dialog = await screen.findByRole("dialog", { name: "Select E₀" })
+    expect(within(dialog).getByRole("combobox", { name: "E₀ method" })).toHaveValue("derivative")
+    chooseE0Method(dialog, "manual")
+    expect(within(dialog).getByRole("spinbutton", { name: /^Manual E₀/ })).toHaveValue(8986)
+    api.mockResolvedValueOnce(e0Response(project, "manual", { sample: 8986 }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 7, action: "set_e0", group_ids: ["sample"], options: { method: "manual", value: 8986 } })
+  })
+
+  it.each(["empty", "chi", "difference", "frozen", "unmarked"] as const)("disables Apply for %s selections without sending an empty or unsupported request", async kind => {
+    const initial = projectFixture()
+    if (kind === "empty") initial.groups = []
+    else {
+      if (kind === "chi") initial.groups.forEach(g => { g.data_type = "chi" })
+      if (kind === "difference") initial.groups.forEach(g => { g.source.operation = "difference" })
+      if (kind === "frozen") initial.groups.forEach(g => { g.frozen = true })
+      if (kind === "unmarked") initial.groups.forEach(g => { g.marked = false })
+    }
+    localStorage.setItem(storageKey, initial.id)
+    api.mockResolvedValueOnce(initial)
+    render(<AthenaWorkbench />)
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Opening project · complete"))
+    const dialog = await openE0Dialog()
+    if (kind === "unmarked") fireEvent.change(within(dialog).getByRole("combobox", { name: "E₀ targets" }), { target: { value: "marked" } })
+    const button = within(dialog).getByRole("button", { name: "Apply E₀" })
+    expect(button).toBeDisabled()
+    expect(within(dialog).getByText(/No supported, unfrozen groups/)).toBeVisible()
+    fireEvent.click(button)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("cancels without commands or draft changes and reports an all-skipped dependency result", async () => {
+    const project = await openSaved()
+    editNumber(/^E₀/, 8990)
+    let dialog = await openE0Dialog()
+    chooseE0Method(dialog, "manual")
+    editNumber(/^Manual E₀/, 9000, dialog)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8990)
+    dialog = await openE0Dialog()
+    api.mockResolvedValueOnce(e0Response(project, "derivative", {}, { foil: "A background consumer is frozen." }))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Apply E₀" }))
+    const report = await within(dialog).findByRole("region", { name: "E₀ selection results" })
+    expect(report).toHaveTextContent("Foil scan: A background consumer is frozen.")
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("status")).toHaveTextContent("1 group skipped")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8990)
+    expect(plotProps().active?.parameters.e0).toBe(8979)
+  })
+})
 
 describe("AthenaWorkbench plot picking", () => {
   it("picks absolute E₀ and relative limits using draft E₀, with no processing before Apply", async () => {

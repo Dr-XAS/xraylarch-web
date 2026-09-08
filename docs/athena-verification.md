@@ -37,6 +37,10 @@ web JSON project for a portable copy.
 - Copy or reset individual parameters, scientific sections or full recipes.
   Full-recipe copies preserve per-scan energy shifts; global operations skip
   frozen groups. Sample/reference energy shifts propagate in both directions.
+- Energy → Select E₀ offers derivative, atomic, edge-fraction, second-derivative
+  zero-crossing, white-line and manual methods for current/marked/all groups.
+  Values use the shifted energy axis, retain calibration, and preserve other
+  parameter drafts. Per-group reports show accepted values and skipped groups.
 - ASCII/CSV/XDI inspection, explicit column mapping, detector-channel summation,
   transmission logarithm, fluorescence ratio, reference channels, eV/keV units,
   ascending-sort option and multi-file mapping reuse for matching layouts.
@@ -245,6 +249,69 @@ Using the running app and real example data:
     initial workspace was still loading. Preview actions now await the enabled
     control before clicking, without increasing timeouts or changing assertions.
     All eight classic workbench tests pass with this setup.
+
+## E0 checkpoint, 2026-09-07
+
+Verification was staged as the source review finished:
+
+- Full backend suite: **752 passed** in 322.59 s, before the new numerical
+  E0 test file was collected. After the final fraction=1 adjustment, the
+  E0 science/command/API run passed **135 tests**: 96 numerical E0, 24 store
+  operations and 15 HTTP cases. These counts overlap; the 96 numerical cases
+  are the additions to the full-suite checkpoint.
+- Full frontend suite: **204 passed across nine files**. The subsequent
+  fraction=1 regression brings the workbench file to **102 passing tests**,
+  including **20 E0 cases**. The final targeted run passed that whole file;
+  these counts overlap the full-suite run.
+- TypeScript and the production build passed, including `/`, `/classic` and
+  the API proxy. No CLI browser suite was run; actual browser checks follow.
+
+Commands were `backend/.venv/bin/python -m pytest backend/tests -q`, then
+`backend/.venv/bin/python -m pytest backend/tests/test_athena_e0_science.py
+backend/tests/test_athena_e0_commands.py backend/tests/test_athena_api.py -q`.
+From `frontend`: `npm test`, `npx vitest run
+components/athena-workbench.test.tsx`, `npx tsc --noEmit --incremental false`,
+and `npm run build`. Existing NumPy matrix deprecation warnings in Larch's
+deconvolution remain unrelated to E0 selection.
+
+`athena_e0.py` implements the six selections as a pure scientific operation;
+`AthenaStore.set_e0` stages all selected values before recalculating spectra
+and downstream background consumers. Frozen targets/consumers, chi(k), and
+signed differences are skipped with reasons. A calculation error rolls back
+the entire selection. The accepted result is retained in source provenance,
+undo/redo and web/native sidecar exchange. The operation does not alter import
+defaults or propagate E0 alone through energy-shift reference ties.
+
+The pinned Demeter algorithms supply the five-pass/0.001 eV fraction iteration,
+sample-ordered second-derivative search, K/L identity search/remappings, and
+white-line first-turnover refinement. The latter uses the flattened full scan,
+a six-sample local margin, a 0.02 eV grid and a natural cubic spline, checked
+against independently solved spline equations. Initial E0 and normalization
+still use local Larch. Exact Demeter/Ifeffit runtime equivalence, configurable
+atomic data resources, native default preferences and full L-edge coverage
+remain open. The fraction range includes 1; invalid values are rejected instead
+of silently clamped. Undefined crossings and inadequate measured margins also
+produce explicit errors. Source identities are in
+[athena-primary-sources.json](athena-primary-sources.json).
+
+Live browser checks used the three original copper scans, in 10 K / 50 K /
+300 K order:
+
+| Method / scope | Accepted E0 (eV) | Observation |
+| --- | --- | --- |
+| Inferred atomic / marked | 8979 / 8979 / 8979 | All inferred Cu K; shifts remained zero. |
+| Fraction 0.5 / marked | 8983.090244 / 8983.077584 / 8985.999636 | Each converged in three iterations. |
+| Second-derivative zero / marked | 8977.533657 / 8977.524001 / 8980.558481 | All processed successfully. |
+| White-line / marked | 8979.626 / 8979.686 / 8982.680 | Source-based local flattened-curve refinement. |
+| Manual / current 10 K | 8981.25 | Other two scans retained their previous E0. |
+| Derivative / all | 8977.58 / 8977.58 / 8980.5 | Fresh estimates, independent of saved explicit E0. |
+
+The actual result dialog was inspected visually. Six Undo actions restored
+the three original marked/unfrozen groups, automatic E0, zero energy shifts
+and no processing errors at project revision 37. No reference/background link
+was introduced during these checks. This demonstrates the interface workflow
+on copper; it does not establish the chemical suitability of every method for
+every absorption edge.
 
 ## Limitations retained for continued work
 
