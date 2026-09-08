@@ -257,3 +257,27 @@ def test_combination_explicit_uncertainties_are_not_confused_with_scatter(worksp
     source = p["groups"][-1]["source"]
     np.testing.assert_allclose(source["stddev"], 0)
     np.testing.assert_allclose(source["uncertainty"], np.sqrt(.1**2+.2**2)/2)
+
+
+@pytest.mark.parametrize("field", ["marked", "frozen"])
+@pytest.mark.parametrize("mode", ["all", "none", "invert"])
+def test_selection_changes_only_target_flags_and_is_undoable(workspace, field, mode):
+    store, p = workspace
+    p = run(store, p, "metadata", [1], marked=False, frozen=True)
+    before = deepcopy(p)
+    p = run(store, p, "selection", [0, 1], field=field, mode=mode)
+    for index, group in enumerate(p["groups"]):
+        expected = deepcopy(before["groups"][index])
+        if index in (0, 1):
+            expected[field] = not expected[field] if mode == "invert" else mode == "all"
+        assert group == expected
+    p = run(store, p, "undo", [])
+    assert p["groups"] == before["groups"]
+
+
+@pytest.mark.parametrize("options", [{"field": "parameters"}, {"mode": "pattern"}])
+def test_invalid_selection_does_not_change_project(workspace, options):
+    store, p = workspace
+    with pytest.raises(WebInputError):
+        run(store, p, "selection", [0, 1], **options)
+    assert store.load(p["id"]) == p

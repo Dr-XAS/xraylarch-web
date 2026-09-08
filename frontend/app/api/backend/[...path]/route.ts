@@ -20,6 +20,7 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
   const upstreamBase = process.env.BACKEND_URL ?? "http://127.0.0.1:8006"
   const path = `/${routePath.map(encodeURIComponent).join("/")}`
   const upstream = new URL(path, upstreamBase.endsWith("/") ? upstreamBase : `${upstreamBase}/`)
+  upstream.search = new URL(request.url).search
   const headers = new Headers()
   for (const header of allowedHeaders) {
     const value = request.headers.get(header)

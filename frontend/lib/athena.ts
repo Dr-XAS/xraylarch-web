@@ -4,7 +4,7 @@ export type Parameters = {
   e0: number | null; step: number | null; pre1: number | null; pre2: number | null
   norm1: number | null; norm2: number | null; nnorm: number | null; flatten: boolean
   rbkg: number; bkg_kmin: number; bkg_kmax: number | null; bkg_kweight: number
-  bkg_dk?: number; bkg_window?: string; nclamp?: number
+  bkg_dk?: number; bkg_window?: string; nclamp?: number; fnorm?: boolean
   clamp_lo: number; clamp_hi: number; kmin: number; kmax: number | null; kweight: number
   dk: number; window: string; rmin: number; rmax: number; dr: number; rwindow: string
   energy_shift: number; nfft: number; kstep: number
@@ -18,6 +18,7 @@ export interface AthenaGroup {
   id: string; label: string; energy: number[]; mu: number[]; data_type: "mu" | "xanes" | "norm" | "chi"
   marked: boolean; frozen: boolean; multiplier: number; offset: number; notes: string
   reference_id: string | null; parameters: Parameters; result: AthenaResult | null
+  background_standard_id?: string | null
   processing_error: string | null; source: Record<string, unknown>
 }
 export interface AthenaProject {

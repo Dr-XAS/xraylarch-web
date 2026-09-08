@@ -172,6 +172,14 @@ function fakeClient(overrides: Partial<BackendClient> = {}): BackendClient {
   } as unknown as BackendClient
 }
 
+async function clickReadyPreview() {
+  const button = await screen.findByTestId("preview-button")
+  // The control exists before the asynchronous workspace snapshot is hydrated.
+  // Wait for the same enabled state a user needs before attempting the action.
+  await waitFor(() => expect(button).toBeEnabled())
+  fireEvent.click(button)
+}
+
 describe("WorkbenchShell", () => {
   beforeEach(() => localStorage.clear())
 
@@ -240,7 +248,7 @@ describe("WorkbenchShell", () => {
     })
     render(<WorkbenchShell client={client} />)
 
-    fireEvent.click(await screen.findByTestId("preview-button"))
+    await clickReadyPreview()
     await waitFor(() => expect(client.preview).toHaveBeenCalledTimes(1))
     fireEvent.change(screen.getByLabelText(/rbkg/i), { target: { value: "1.5" } })
     await act(async () => {
@@ -265,7 +273,7 @@ describe("WorkbenchShell", () => {
     })
     render(<WorkbenchShell client={client} />)
 
-    fireEvent.click(await screen.findByTestId("preview-button"))
+    await clickReadyPreview()
 
     expect(await screen.findByText(/energy range is invalid/i)).toBeVisible()
     expect(screen.getByTestId("plot-canvas")).toBeVisible()
@@ -330,7 +338,7 @@ describe("WorkbenchShell", () => {
     render(<WorkbenchShell client={client} />)
 
     expect(await screen.findByText("source-a.xmu")).toBeVisible()
-    fireEvent.click(screen.getByTestId("preview-button"))
+    await clickReadyPreview()
 
     await waitFor(() => expect(preview).toHaveBeenCalledWith("workspace-1", {
       source_revision_id: 1,
@@ -346,7 +354,7 @@ describe("WorkbenchShell", () => {
     })
     render(<WorkbenchShell client={client} />)
 
-    fireEvent.click(await screen.findByTestId("preview-button"))
+    await clickReadyPreview()
     fireEvent.click(await screen.findByRole("button", { name: /cancel preview/i }))
 
     expect(screen.getByTestId("plot-canvas")).toBeVisible()

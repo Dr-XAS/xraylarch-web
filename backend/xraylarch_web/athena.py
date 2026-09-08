@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, File, Query, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -99,7 +99,13 @@ def _project_json(text):
     def nonfinite(value):
         fail(f"Project JSON contains non-finite {value}; supply finite numbers.")
 
-    return json.loads(text, object_pairs_hook=unique, parse_constant=nonfinite)
+    def finite_float(value):
+        parsed = float(value)
+        if not np.isfinite(parsed):
+            nonfinite(value)
+        return parsed
+
+    return json.loads(text, object_pairs_hook=unique, parse_constant=nonfinite, parse_float=finite_float)
 
 
 def _metadata(value, name="Native metadata"):
@@ -274,6 +280,9 @@ def _native_parameters(args):
         raw = args.get(native, args.get(_NATIVE_ALIASES.get(native)))
         if raw in ("", None):
             continue
+        if key == "fnorm":
+            parameters[key] = _native_flag(raw)
+            continue
         if key in ("clamp_lo", "clamp_hi"):
             raw = {"None": 0, "Slight": 0.1, "Weak": 0.1, "Strong": 1}.get(str(raw), raw)
         elif raw == "None":
@@ -309,8 +318,8 @@ def _native_source(record, filename, kind, settings):
             source["native"].setdefault("unaligned_arrays", {})[key] = values
             source["warnings"].append(f"Native {key} has {0 if values is None else len(values)} values for {npoints} points; retained without treating it as pointwise data.")
     supported = set(_PARAMETER_MAP.values()) | set(_NATIVE_ALIASES.values()) | {
-        "label", "is_xmu", "is_xanes", "is_nor", "is_chi", "is_diff", "marked", "frozen",
-        "plot_scale", "plot_yoffset", "bkg_flatten", "bkg_fixstep", "referencegroup", "reference", "annotation"}
+        "label", "datatype", "is_xmu", "is_xanes", "is_nor", "is_chi", "is_diff", "marked", "frozen",
+        "plot_scale", "plot_yoffset", "bkg_flatten", "bkg_fixstep", "bkg_stan", "referencegroup", "reference", "annotation"}
     unapplied = sorted(set(args) - supported)
     if unapplied:
         source["native"]["unapplied_args"] = unapplied
@@ -329,10 +338,9 @@ def _perl_literal(value):
     return repr(value)
 
 
-def _import_analyses(records, source_version, idmap, pristine, new_version, warnings):
+def _validate_analysis_records(records):
     if not isinstance(records, list) or len(records) > 50:
         fail("A project exchange supports at most 50 saved analyses.")
-    imported = []
     for record in records:
         if not isinstance(record, dict) or not isinstance(record.get("group_ids"), list):
             fail("Saved analyses must include a group_ids list.")
@@ -341,6 +349,13 @@ def _import_analyses(records, source_version, idmap, pristine, new_version, warn
             fail("Saved analyses require 1–100 group IDs.")
         if not isinstance(record.get("result"), dict) or not isinstance(record.get("options", {}), dict):
             fail("Saved analysis results and options must be objects.")
+    return records
+
+
+def _import_analyses(records, source_version, idmap, pristine, new_version, warnings):
+    imported = []
+    for record in _validate_analysis_records(records):
+        ids = record["group_ids"]
         def remap(value):
             if isinstance(value, dict):
                 return {key: remap(val) for key, val in value.items()}
@@ -359,6 +374,26 @@ def _import_analyses(records, source_version, idmap, pristine, new_version, warn
             warnings.append("Saved analysis references missing groups; retained as stale with unmapped_group_ids.")
         imported.append(out)
     return imported
+
+
+def _select_project_groups(groups, group_ids, key="id"):
+    """Athena's empty selection means all; selection never changes file order."""
+    if group_ids is None:
+        return groups
+    if not isinstance(group_ids, list) or len(group_ids) > 100 or not all(isinstance(gid, str) and gid for gid in group_ids):
+        fail("Select a list of at most 100 nonempty project group IDs.")
+    if len(set(group_ids)) != len(group_ids):
+        fail("Selected project group IDs must not contain duplicates.")
+    if not set(group_ids) <= {g[key] for g in groups}:
+        fail("Selected group IDs are not present in this project upload or export.")
+    return [g for g in groups if not group_ids or g[key] in group_ids]
+
+
+class RestoreUploadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(ge=0)
+    upload_id: str = Field(pattern=r"^[A-Za-z0-9_-]{16,128}$")
+    group_ids: list[str] | None = Field(default=None, max_length=100)
 
 
 class ImportRequest(BaseModel):
@@ -385,6 +420,7 @@ class Command(BaseModel):
 
 
 _PARAMETER_MAP = {
+    "fnorm": "bkg_fnorm",
     "e0": "bkg_e0", "step": "bkg_step", "pre1": "bkg_pre1", "pre2": "bkg_pre2",
     "norm1": "bkg_nor1", "norm2": "bkg_nor2", "nnorm": "bkg_nnorm",
     "rbkg": "bkg_rbkg", "bkg_kmin": "bkg_spl1", "bkg_kmax": "bkg_spl2",
@@ -397,7 +433,7 @@ _PARAMETER_MAP = {
 
 _PARAMETER_SECTIONS = {
     "normalization": ("e0", "step", "pre1", "pre2", "norm1", "norm2", "nnorm", "flatten"),
-    "background": ("rbkg", "bkg_kmin", "bkg_kmax", "bkg_kweight", "bkg_dk", "bkg_window", "nclamp", "clamp_lo", "clamp_hi"),
+    "background": ("rbkg", "bkg_kmin", "bkg_kmax", "bkg_kweight", "bkg_dk", "bkg_window", "nclamp", "clamp_lo", "clamp_hi", "fnorm"),
     "forward": ("kmin", "kmax", "kweight", "dk", "window"),
     "reverse": ("rmin", "rmax", "dr", "rwindow"),
     "grid": ("nfft", "kstep"),
@@ -430,6 +466,7 @@ class AthenaStore:
             # older cached result, rather than relabeling it with new defaults.
             defaults = AthenaParameters().model_dump()
             for group in project["groups"]:
+                group.setdefault("background_standard_id", None)
                 effective = (group.get("result") or {}).get("effective", {})
                 for key, default in defaults.items():
                     if key not in group["parameters"]:
@@ -481,6 +518,58 @@ class AthenaStore:
             if members == previous:
                 return [g for g in p["groups"] if g["id"] in members]
 
+    @staticmethod
+    def background_dependents(p, group_ids):
+        members = set(group_ids)
+        while True:
+            following = {g["id"] for g in p["groups"] if g.get("background_standard_id") in members}
+            if following <= members:
+                return members
+            members.update(following)
+
+    def _validate_background_graph(self, p):
+        visited, visiting = set(), set()
+        def visit(group):
+            ident = group["id"]
+            if ident in visiting:
+                fail("Background standards cannot form a cycle or refer to the same group.")
+            if ident in visited:
+                return
+            visiting.add(ident)
+            standard_id = group.get("background_standard_id")
+            if standard_id:
+                visit(self.group(p, standard_id))
+            visiting.remove(ident)
+            visited.add(ident)
+        for group in p["groups"]:
+            visit(group)
+
+    def _process_groups(self, p, group_ids, *, tolerate_errors=False):
+        """Refresh changed spectra and all users of their background standards."""
+        self._validate_background_graph(p)
+        needed = self.background_dependents(p, group_ids)
+        processed = set()
+        def visit(group):
+            if group["id"] in processed:
+                return
+            standard_id = group.get("background_standard_id")
+            if standard_id in needed:
+                visit(self.group(p, standard_id))
+            try:
+                self.process(group, p)
+            except (ValueError, WebInputError) as exc:
+                if not tolerate_errors:
+                    raise
+                group.update(result=None, processing_error=str(exc))
+            processed.add(group["id"])
+        for group in p["groups"]:
+            if group["id"] in needed:
+                visit(group)
+
+    def _frozen_background_dependents(self, p, group_ids):
+        dependents = self.background_dependents(p, group_ids)
+        return [g for g in p["groups"] if g["id"] in dependents and g["frozen"]]
+
     def parameter_updates(self, p, updates, *, skip_frozen=False):
         """Stage all recipes before recalculation; energy-shift ties are atomic."""
         expanded, skipped = {}, set()
@@ -489,11 +578,11 @@ class AthenaStore:
             family = self.reference_family(p, ident) if "energy_shift" in patch else [group]
             changing = [g for g in family if g["id"] == ident or
                         g["parameters"]["energy_shift"] != patch["energy_shift"]]
-            if any(g["frozen"] for g in changing):
+            if any(g["frozen"] for g in changing) or self._frozen_background_dependents(p, [g["id"] for g in changing]):
                 if skip_frozen:
                     skipped.add(ident)
                     continue
-                fail("Unfreeze the group and its linked reference before changing their parameters.")
+                fail("Unfreeze the group, its linked reference, and any groups using it as a background standard before changing their parameters.")
             expanded.setdefault(ident, {}).update(patch)
             if "energy_shift" in patch:
                 for tied in family:
@@ -502,11 +591,20 @@ class AthenaStore:
                         fail("Linked groups cannot receive different energy shifts in one operation.")
                     if not tied["frozen"]:
                         expanded[tied["id"]]["energy_shift"] = patch["energy_shift"]
-        recipes = {}
+        recipes, standard_links = {}, {}
         for ident, patch in expanded.items():
-            if not patch:
-                continue
-            previous = self.group(p, ident)["parameters"]
+            group = self.group(p, ident)
+            patch = dict(patch)
+            if "background_standard_id" in patch:
+                standard_id = patch.pop("background_standard_id")
+                if standard_id is not None:
+                    if not isinstance(standard_id, str):
+                        fail("Choose a background-standard group or None.")
+                    self.group(p, standard_id)
+                    if group["data_type"] not in ("mu", "norm"):
+                        fail("Background standards apply to energy spectra with EXAFS processing.")
+                standard_links[ident] = standard_id
+            previous = group["parameters"]
             recipe = AthenaParameters.model_validate(previous | patch)
             # E0 uses the shifted energy axis. Apply the delta once, after
             # merging every explicit edit, so calibration targets take priority.
@@ -516,7 +614,9 @@ class AthenaStore:
         for ident, recipe in recipes.items():
             group = self.group(p, ident)
             group["parameters"] = recipe
-            self.process(group)
+        for ident, standard_id in standard_links.items():
+            self.group(p, ident)["background_standard_id"] = standard_id
+        self._process_groups(p, recipes)
         return sorted(skipped)
 
     def tie_reference(self, p, sample, reference):
@@ -549,7 +649,8 @@ class AthenaStore:
             fail("The horizontal axis must be strictly increasing. Use sorting at import if appropriate.")
         return x, y
 
-    def make_group(self, label, energy, mu, *, parameters=None, data_type="mu", source=None):
+    def make_group(self, label, energy, mu, *, parameters=None, data_type="mu", source=None,
+                   background_standard_id=None, project=None):
         x, y = self.raw_arrays(energy, mu)
         if data_type not in ("mu", "xanes", "norm", "chi"):
             fail("Unsupported data type.")
@@ -557,18 +658,31 @@ class AthenaStore:
         g = {"id": uid(), "label": str(label)[:200], "energy": x.tolist(), "mu": y.tolist(),
              "data_type": data_type, "parameters": params.model_dump(), "marked": True,
              "frozen": False, "multiplier": 1.0, "offset": 0.0, "notes": "", "reference_id": None,
+             "background_standard_id": background_standard_id,
              "source": source or {}, "result": None, "processing_error": None}
         if not isinstance(g["source"], dict):
             fail("Source metadata must be an object.")
         # Imported data remains inspectable even if its saved recipe needs repair.
         try:
-            self.process(g)
+            self.process(g, project)
         except (ValueError, WebInputError) as exc:
             g["processing_error"] = str(exc)
         return g
 
-    @staticmethod
-    def process(g):
+    def process(self, g, project=None):
+        standard_id, standard = g.get("background_standard_id"), None
+        if standard_id:
+            if project is None:
+                fail("Resolve the background standard in its project before processing this group.")
+            if standard_id == g["id"]:
+                fail("A group cannot be its own background standard.")
+            source = self.group(project, standard_id)
+            arrays = (source.get("result") or {}).get("arrays", {})
+            if source.get("processing_error") or not arrays.get("k") or not arrays.get("chi"):
+                fail(f"Background standard {source['label']} has no usable chi(k); repair its processing first.")
+            if g["source"].get("operation") == "difference":
+                fail("A difference spectrum cannot use a background-removal standard.")
+            standard = {"k": arrays["k"], "chi": arrays["chi"]}
         if g["source"].get("operation") == "difference" and g["data_type"] != "chi":
             from .athena_science import ARRAY_NAMES
             x = np.asarray(g["energy"]) + g["parameters"]["energy_shift"]
@@ -579,7 +693,9 @@ class AthenaStore:
                            "warnings": ["Difference spectrum: the signed difference is shown without edge normalization or EXAFS processing."]}
             g["processing_error"] = None
             return
-        g["result"] = process_spectrum(g["energy"], g["mu"], AthenaParameters.model_validate(g["parameters"]), data_type=g["data_type"])
+        g["result"] = process_spectrum(g["energy"], g["mu"], AthenaParameters.model_validate(g["parameters"]),
+                                       data_type=g["data_type"], background_standard=standard)
+        g["result"]["effective"]["background_standard_id"] = standard_id
         g["processing_error"] = None
 
     def inspect(self, ident, data, filename):
@@ -711,9 +827,15 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("metadata", "duplicate", "copy_series", "delete", "parameters", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
+                if action not in ("metadata", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
-                if action == "metadata":
+                if action == "selection":
+                    field, mode = options.get("field", "marked"), options.get("mode", "invert")
+                    if field not in ("marked", "frozen") or mode not in ("all", "none", "invert"):
+                        fail("Choose marked or frozen groups and all, none, or invert.")
+                    for g in groups:
+                        g[field] = not g[field] if mode == "invert" else mode == "all"
+                elif action == "metadata":
                     for g in groups:
                         for key in ("label", "notes", "marked", "frozen", "multiplier", "offset", "reference_id"):
                             if key in options:
@@ -732,10 +854,15 @@ class AthenaStore:
                                 else:
                                     value = str(value)[:(200 if key == "label" else 20_000)]
                                 g[key] = value
+                elif action == "background_standard":
+                    standard_id = options.get("standard_id")
+                    skipped = self.parameter_updates(p, {g["id"]: {"background_standard_id": standard_id}
+                        for g in groups}, skip_frozen=True)
                 elif action == "parameters":
                     skipped = self.parameter_updates(p, {g["id"]: options for g in groups}, skip_frozen=len(groups) > 1)
                 elif action in ("copy_parameters", "reset_parameters"):
                     defaults = AthenaParameters().model_dump()
+                    defaults["background_standard_id"] = None
                     parameter, section = options.get("parameter"), options.get("section", "all")
                     if parameter is not None:
                         if parameter not in defaults:
@@ -745,6 +872,8 @@ class AthenaStore:
                         keys = tuple(key for key in defaults if key != "energy_shift")
                     elif section in _PARAMETER_SECTIONS:
                         keys = _PARAMETER_SECTIONS[section]
+                        if section == "background":
+                            keys = (*keys, "background_standard_id")
                     else:
                         fail("Choose normalization, background, forward, reverse, grid, or all parameters.")
                     if action == "copy_parameters":
@@ -752,11 +881,15 @@ class AthenaStore:
                         values = options.get("values", {})
                         if not isinstance(values, dict) or set(values) - set(defaults):
                             fail("Supply known processing parameters as an object.")
-                        values = source["parameters"] | values
+                        values = source["parameters"] | {"background_standard_id": source.get("background_standard_id")} | values
                     else:
                         values = defaults
                     patch = {key: values[key] for key in keys}
-                    skipped = self.parameter_updates(p, {g["id"]: patch for g in groups}, skip_frozen=True)
+                    # A source's standard can itself be among the destinations.
+                    # Skip it rather than creating a self-link in an all-group copy.
+                    self_standard = [g["id"] for g in groups if g["id"] == patch.get("background_standard_id")]
+                    skipped = self_standard + self.parameter_updates(p,
+                        {g["id"]: patch for g in groups if g["id"] not in self_standard}, skip_frozen=True)
                 elif action == "tie_reference":
                     if len(groups) != 2:
                         fail("Choose exactly two groups: sample first, reference second.")
@@ -782,16 +915,24 @@ class AthenaStore:
                         for value in np.linspace(start, stop, count):
                             clone = copy.deepcopy(g)
                             clone.update(id=uid(), label=f"{g['label']} · {key}={value:g}", frozen=False, reference_id=None)
+                            if key == "energy_shift" and clone["parameters"]["e0"] is not None:
+                                clone["parameters"]["e0"] += float(value) - clone["parameters"]["energy_shift"]
                             clone["parameters"][key] = float(value)
-                            self.process(clone)
+                            self.process(clone, p)
                             clone["source"] = {"operation": "copy_series", "parent": g["id"], "parameter": key, "value": float(value)}
                             p["groups"].append(clone)
                 elif action == "delete":
                     remove = {g["id"] for g in groups}
+                    affected = self.background_dependents(p, remove) - remove
                     p["groups"] = [g for g in p["groups"] if g["id"] not in remove]
                     for g in p["groups"]:
                         if g["reference_id"] in remove:
                             g["reference_id"] = None
+                        if g.get("background_standard_id") in remove:
+                            g["source"].setdefault("warnings", []).append("Background standard was removed; its link was cleared.")
+                            g["background_standard_id"] = None
+                        if g["id"] in affected:
+                            g.update(result=None, processing_error="A background standard was removed. Apply parameters to recalculate this group and its dependents.")
                 elif action in ("calibrate", "align"):
                     reference = self.group(p, options.get("reference_id")) if action == "align" else None
                     fixed = {g["id"] for g in self.reference_family(p, reference["id"])} if reference else set()
@@ -801,7 +942,7 @@ class AthenaStore:
                         family_ids = {tied["id"] for tied in family}
                         if g["id"] in fixed or g["id"] in updated_families:
                             continue
-                        if action == "align" and any(tied["frozen"] for tied in family):
+                        if action == "align" and (any(tied["frozen"] for tied in family) or self._frozen_background_dependents(p, family_ids)):
                             skipped.append(g["id"])
                             continue
                         if g["data_type"] == "chi":
@@ -860,8 +1001,12 @@ class AthenaStore:
                         dtype = array
                         if array == "norm":
                             params["step"] = None
+                    if dtype != "mu":
+                        params["fnorm"] = False
                     g = self.make_group(options.get("label", f"{action.title()} · {len(groups)} groups"), x, y,
-                                        parameters=params, data_type=dtype, source=source)
+                                        parameters=params, data_type=dtype, source=source,
+                                        background_standard_id=groups[0].get("background_standard_id") if dtype != "chi" and action != "difference" else None,
+                                        project=p)
                     p["groups"].append(g)
                 else:
                     from .athena_operations import transform_spectrum
@@ -900,8 +1045,11 @@ class AthenaStore:
                         dtype = "norm" if action in ("deconvolve", "self_absorption") else g["data_type"]
                         if action == "dispersive":
                             params = AthenaParameters().model_dump()
+                        if dtype != "mu":
+                            params["fnorm"] = False
                         derived = self.make_group(g["label"] + " · " + action, transformed["energy"], transformed["mu"],
-                            parameters=params, data_type=dtype, source={"operation": action, "parent": g["id"], "options": operation_options, "details": transformed["details"]})
+                            parameters=params, data_type=dtype, source={"operation": action, "parent": g["id"], "options": operation_options, "details": transformed["details"]},
+                            background_standard_id=g.get("background_standard_id") if dtype in ("mu", "norm") else None, project=p)
                         if action == "deconvolve":
                             derived["source"]["energy_interval"] = [float(x[0]), float(x[-1])]
                         p["groups"].append(derived)
@@ -978,7 +1126,58 @@ class AthenaStore:
             self.storage.write_json(ident, "analyses.json", {"analyses": (current["analyses"] + [record])[-50:]})
             return record
 
-    def export_prj(self, p):
+    def project_for_export(self, p, group_ids=None, marked_only=False):
+        groups = _select_project_groups(p["groups"], group_ids)
+        if marked_only:
+            groups = [g for g in groups if g["marked"]]
+            if not groups:
+                fail("No marked groups match the project export selection.")
+        _exchange_budget(groups, self.settings)
+        if len(groups) == len(p["groups"]):
+            return p
+        out = copy.deepcopy({**p, "groups": groups})
+        selected = {g["id"] for g in groups}
+        all_ids = {g["id"] for g in p["groups"]}
+        warnings = out.setdefault("import_warnings", [])
+        for g in out["groups"]:
+            for key, label in (("reference_id", "reference"), ("background_standard_id", "background standard")):
+                if g.get(key) and g[key] not in selected:
+                    message = f"{g['label']}: {label} {g[key]} was omitted from the project export."
+                    warnings.append(message)
+                    g["source"].setdefault("warnings", []).append(message)
+                    g[key] = None
+        def referenced_strings(value):
+            if isinstance(value, dict):
+                return set().union(set(value) & all_ids, *(referenced_strings(v) for v in value.values()))
+            if isinstance(value, list):
+                return set().union(*(referenced_strings(v) for v in value))
+            return {value} & all_ids if isinstance(value, str) else set()
+        retained = []
+        for record in _validate_analysis_records(out.get("analyses", [])):
+            dependencies = set(record["group_ids"]) | referenced_strings(record.get("options", {})) | referenced_strings(record["result"])
+            if record.get("unmapped_group_ids") or not dependencies <= selected:
+                continue
+            # A subset export changes the project context (including links).
+            # Keep self-contained reports, conservatively marked stale.
+            if record.get("project_version") == p["version"]:
+                record["project_version"] = p["version"] - 1
+            retained.append(record)
+        out["analyses"] = retained
+        out["native_projects"] = []
+        warnings.append("Subset project export: reports requiring omitted groups and native project-wide state were omitted; retained reports are stale.")
+        return out
+
+    def export_project(self, ident, format="json", group_ids=None, marked_only=False):
+        if format not in ("json", "prj"):
+            fail("Choose json or prj for the project export.")
+        p = self.project_for_export(self.load(ident), group_ids, marked_only)
+        content = self.export_prj(p) if format == "prj" else json.dumps(p, allow_nan=False).encode()
+        if len(content) > self.settings.max_upload_bytes:
+            fail("Project export exceeds the configured byte limit; select fewer groups.")
+        return content
+
+    def export_prj(self, p, group_ids=None, marked_only=False):
+        p = self.project_for_export(p, group_ids, marked_only)
         _exchange_budget(p["groups"], self.settings)
         lines = ["# Athena project file -- Demeter version 0.9.26", "# Exported by Athena Web / XrayLarch"]
         for g in p["groups"]:
@@ -995,7 +1194,8 @@ class AthenaStore:
                     "is_chi": int(g["data_type"] == "chi"), "marked": int(g["marked"]), "frozen": int(g["frozen"]),
                     "plot_scale": g["multiplier"], "plot_yoffset": g["offset"], "bkg_flatten": int(params["flatten"]),
                     "is_diff": int(g["source"].get("operation") == "difference"),
-                    "annotation": g["notes"], "referencegroup": g["reference_id"] or ""})
+                    "annotation": g["notes"], "referencegroup": g["reference_id"] or "",
+                    "bkg_stan": g.get("background_standard_id") or ""})
             for key, target in _PARAMETER_MAP.items():
                 value = params.get(key)
                 if value is None:
@@ -1027,7 +1227,8 @@ class AthenaStore:
         # on a web round trip; native Athena ignores this comment.
         sidecar = {"name": p["name"], "version": p["version"], "analyses": p.get("analyses", []),
                    "native_projects": p.get("native_projects", []), "import_warnings": p.get("import_warnings", []),
-                   "groups": [{k: g[k] for k in ("id", "parameters", "notes", "source", "reference_id")} for g in p["groups"]]}
+                   "groups": [dict({k: g[k] for k in ("id", "parameters", "notes", "source", "reference_id")},
+                                   background_standard_id=g.get("background_standard_id")) for g in p["groups"]]}
         for meta, g in zip(sidecar["groups"], p["groups"]):
             meta["parameters"] = _exchange_recipe(g["parameters"], g.get("result"))
         lines.insert(2, "# Athena-Web " + json.dumps(sidecar, ensure_ascii=True, allow_nan=False))
@@ -1036,7 +1237,8 @@ class AthenaStore:
             fail("Expanded project export exceeds the configured byte limit; reduce retained data or split the project.")
         return gzip.compress(payload)
 
-    def restore(self, ident, version, data, filename):
+    def _parse_project(self, data, filename):
+        """Validate a project without science, destination edits, or new group IDs."""
         if len(data) > self.settings.max_upload_bytes:
             fail("Project upload exceeds the configured byte limit.")
         if data[:2] == b"\x1f\x8b":
@@ -1045,155 +1247,319 @@ class AthenaStore:
         if len(data) > self.settings.max_upload_bytes:
             fail("Expanded project is too large.")
         text = data.decode("utf-8-sig")
+        journal, name = "", Path(filename).stem
+        sidecar, native_project = {}, None
+        import_warnings = []
+        web = False
+        if text.lstrip().startswith("{"):
+            document = _project_json(text)
+            web = document.get("format") == "athena-web"
+            if web:
+                if document.get("schema_version") != 1:
+                    fail("Unsupported Athena Web project schema version.")
+                records = document.get("groups", [])
+                sidecar = document
+                journal, name = _journal(document.get("journal", "")), str(document.get("name", name))
+            else:
+                records, journal, metadata = _native_json_document(document)
+                native_project = {"filename": filename, "format": "athena-json", "metadata": metadata}
+        else:
+            records, journal, sidecar, metadata = _native_perl_document(text)
+            if not isinstance(sidecar, dict):
+                fail("Athena Web sidecar must be an object.")
+            if not sidecar:
+                native_project = {"filename": filename, "format": "athena-perl", "metadata": metadata}
+            name = sidecar.get("name", name)
+        if not isinstance(records, list) or len(records) > 100:
+            fail("A project can contain at most 100 groups.")
+        if not isinstance(sidecar, dict):
+            fail("Athena Web sidecar must be an object.")
+        meta_records = sidecar.get("groups", [])
+        if not isinstance(meta_records, list) or len(meta_records) > 100:
+            fail("Invalid sidecar group list.")
+        metadata = {}
+        for meta in meta_records:
+            if not isinstance(meta, dict) or not isinstance(meta.get("id"), str) or meta["id"] in metadata:
+                fail("Sidecar group IDs must be unique strings.")
+            metadata[meta["id"]] = meta
+        idmap, provisional = {}, []
+        for record in records:
+            if not isinstance(record, dict):
+                fail("Each project group must be an object.")
+            old_id = record.get("id" if web else "old_group")
+            if not isinstance(old_id, str) or not old_id or old_id in idmap:
+                fail("Native and web group IDs must be nonempty unique strings.")
+            idmap[old_id] = None
+            x = _exchange_array(record.get("energy" if web else "x"), "energy", self.settings)
+            y = _exchange_array(record.get("mu" if web else "y"), "mu", self.settings)
+            # Validate every group's data/budget before doing expensive science.
+            self.raw_arrays(x, y)
+            meta = record if web else metadata.get(old_id, {})
+            if web:
+                source = _exchange_source(record.get("source", {}), len(x), self.settings)
+                params = _exchange_recipe(record["parameters"], record.get("result"))
+                label, dtype = record["label"], record["data_type"]
+                notes, reference = str(record.get("notes", "")), record.get("reference_id")
+                standard = record.get("background_standard_id")
+                marked, frozen = _native_flag(record.get("marked")), _native_flag(record.get("frozen"))
+                multiplier, offset = record.get("multiplier", 1), record.get("offset", 0)
+            else:
+                args = record.get("args", {})
+                if not isinstance(args, dict):
+                    fail("Native args must be an object.")
+                source = (_exchange_source(meta["source"], len(x), self.settings) if "source" in meta else
+                          _native_source(record, filename, native_project["format"] if native_project else "athena-perl", self.settings))
+                params = meta.get("parameters")
+                if params is None:
+                    params = _native_parameters(args)
+                dtype = next((kind for kind, key in (("chi", "is_chi"), ("norm", "is_nor"), ("xanes", "is_xanes"))
+                              if _native_flag(args.get(key))), {"chi": "chi", "xanes": "xanes"}.get(args.get("datatype"), "mu"))
+                if _native_flag(args.get("is_diff")):
+                    source["operation"] = "difference"
+                label = args.get("label", old_id)
+                notes = str(meta.get("notes", args.get("annotation", "")))
+                reference = meta.get("reference_id", args.get("referencegroup", args.get("reference")))
+                standard = meta.get("background_standard_id", args.get("bkg_stan"))
+                if "background_standard_id" not in meta and standard in ("None", "none"):
+                    standard = None
+                marked = _native_flag(args.get("marked", args.get("project_marked")), True)
+                frozen = _native_flag(args.get("frozen"))
+                multiplier, offset = args.get("plot_scale", 1), args.get("plot_yoffset", 0)
+            if dtype not in ("mu", "norm", "xanes", "chi"):
+                fail("Unsupported data type in project.")
+            if reference not in (None, "", 0, "0"):
+                if not isinstance(reference, (str, int)):
+                    fail("Project reference IDs must be strings or integer native IDs.")
+                reference = str(reference)
+                if reference == old_id:
+                    fail("An imported group cannot reference itself.")
+            else:
+                reference = None
+            if standard not in (None, "", 0, "0"):
+                if not isinstance(standard, (str, int)):
+                    fail("Background standard IDs must be strings or integer native IDs.")
+                standard = str(standard)
+            else:
+                standard = None
+            if not isinstance(params, dict):
+                fail("Project parameters must be an object.")
+            recipe_error = None
+            try:
+                AthenaParameters.model_validate(params)
+            except ValidationError as exc:
+                if (web or "parameters" in meta) and not source.get("native"):
+                    raise
+                recipe_error = "Native processing settings need repair: " + str(exc)
+                import_warnings.append(f"{label}: {recipe_error}")
+            messages = source.get("warnings", [])
+            if not isinstance(messages, list) or not all(isinstance(message, str) for message in messages):
+                fail("Source warnings must be a list of strings.")
+            import_warnings.extend(f"{label}: {message}" for message in messages)
+            multiplier, offset = float(multiplier), float(offset)
+            if not np.isfinite([multiplier, offset]).all():
+                fail("Invalid plot values in project.")
+            provisional.append({"old_id": old_id, "energy": x, "mu": y, "source": source,
+                                "parameters": params, "label": label, "data_type": dtype,
+                                "notes": notes, "reference_id": reference, "marked": marked,
+                                "background_standard_id": standard,
+                                "frozen": frozen, "multiplier": multiplier, "offset": offset,
+                                "has_web_recipe": web or "parameters" in meta, "recipe_error": recipe_error})
+
+        _exchange_budget(provisional, self.settings)
+        for record in provisional:
+            if record["reference_id"] and record["reference_id"] not in idmap:
+                import_warnings.append(f"{record['label']}: reference {record['reference_id']} was not present in the project.")
+            if record["background_standard_id"] and record["background_standard_id"] not in idmap:
+                import_warnings.append(f"{record['label']}: background standard {record['background_standard_id']} was not present in the project.")
+        retained_projects = sidecar.get("native_projects", [])
+        if not isinstance(retained_projects, list):
+            fail("native_projects must be a list.")
+        retained_projects = [_metadata(state) for state in retained_projects]
+        if native_project:
+            retained_projects.append(native_project)
+            state_keys = [key for key in native_project["metadata"] if not key.startswith(("_____head", "_____journ", "_____order", "_____emacs"))]
+            if state_keys:
+                import_warnings.append("Native project state retained as metadata, not executed: " + ", ".join(state_keys))
+        prior_warnings = sidecar.get("import_warnings", [])
+        if not isinstance(prior_warnings, list) or not all(isinstance(w, str) for w in prior_warnings):
+            fail("import_warnings must be a list of strings.")
+        analyses = _validate_analysis_records(sidecar.get("analyses", []))
+        return {"name": str(name)[:200], "journal": journal[:50_000], "groups": provisional,
+                "format": "athena-web" if web else "athena-json" if native_project and native_project["format"] == "athena-json" else "athena-perl",
+                "native_projects": retained_projects, "analyses": analyses, "version": sidecar.get("version"),
+                "warnings": list(dict.fromkeys(prior_warnings + import_warnings))}
+
+    @staticmethod
+    def _preview_samples(x, y):
+        indices = np.linspace(0, len(x) - 1, min(len(x), 800), dtype=int)
+        return np.asarray(x)[indices].tolist(), np.asarray(y)[indices].tolist()
+
+    @staticmethod
+    def _preview_raw_axis(record):
+        shift = 0 if record["data_type"] == "chi" else AthenaParameters(
+            energy_shift=record["parameters"].get("energy_shift", 0)).energy_shift
+        return np.asarray(record["energy"]) + shift
+
+    @staticmethod
+    def _unprocessed_project_group(record, ident=None):
+        """Build validated raw records before resolving project dependencies."""
+        params = (AthenaParameters().model_dump() | record["parameters"] if record["recipe_error"] else
+                  AthenaParameters.model_validate(record["parameters"]).model_dump())
+        return {"id": ident or uid(), "label": str(record["label"])[:200],
+                "energy": record["energy"], "mu": record["mu"], "parameters": params,
+                "data_type": record["data_type"], "source": record["source"],
+                "notes": record["notes"][:20_000], "result": None, "processing_error": record["recipe_error"],
+                **{key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id", "background_standard_id")}}
+
+    def preview_project(self, ident, data, filename):
+        self.load(ident)
+        filename = Path(filename.replace("\\", "/")).name[:255] or "project.prj"
+        parsed = self._parse_project(data, filename)
+        groups = []
+        for record in parsed["groups"]:
+            x, y = self._preview_samples(self._preview_raw_axis(record), record["mu"])
+            groups.append({"id": record["old_id"], "label": str(record["label"])[:200],
+                           "data_type": record["data_type"], "points": len(record["energy"]),
+                           "x": x, "y": y, "notes": record["notes"][:20_000],
+                           "reference_id": record["reference_id"], "parameters": record["parameters"],
+                           "background_standard_id": record["background_standard_id"]})
+        upload_id = uid()
+        prefix = f"project-upload-{upload_id}"
+        # Cache at most ten original uploads and twice the configured upload
+        # byte limit per workspace. Older previews expire, never saved groups.
+        with self.storage.lock(ident):
+            workspace = self.storage.workspace_dir(ident)
+            self.storage.write_bytes(ident, prefix + ".bin", data)
+            try:
+                self.storage.write_json(ident, prefix + ".json", {"filename": filename})
+            except OSError:
+                self.storage.path(ident, prefix + ".bin").unlink(missing_ok=True)
+                raise
+            cached = sorted(workspace.glob("project-upload-*.bin"), key=lambda path: path.stat().st_mtime_ns)
+            size = sum(path.stat().st_size for path in cached)
+            while len(cached) > 10 or size > 2 * self.settings.max_upload_bytes:
+                expired = cached.pop(0)
+                size -= expired.stat().st_size
+                expired.unlink()
+                expired.with_suffix(".json").unlink(missing_ok=True)
+        return {"upload_id": upload_id, "filename": filename, "name": parsed["name"],
+                "journal": parsed["journal"], "format": parsed["format"],
+                "groups": groups, "warnings": parsed["warnings"]}
+
+    def _read_project_upload(self, ident, upload_id):
+        self.storage._validate_id(upload_id)
+        prefix = f"project-upload-{upload_id}"
+        with self.storage.lock(ident):
+            self.load(ident)
+            try:
+                metadata = self.storage.read_json(ident, prefix + ".json")
+                with self.storage.path(ident, prefix + ".bin").open("rb") as handle:
+                    data = handle.read(self.settings.max_upload_bytes + 1)
+            except FileNotFoundError:
+                fail("Project preview expired or belongs to another workspace; upload the file again.")
+        if len(data) > self.settings.max_upload_bytes:
+            fail("Project upload exceeds the configured byte limit.")
+        return data, metadata["filename"]
+
+    def restore_upload(self, ident, request: RestoreUploadRequest):
+        self.check(self.load(ident), request.version)
+        data, filename = self._read_project_upload(ident, request.upload_id)
+        return self.restore(ident, request.version, data, filename, request.group_ids, keep_name=True)
+
+    def preview_project_group(self, ident, upload_id, group_id, mode="mu"):
+        if mode not in ("mu", "norm", "flat", "dmude", "chi"):
+            fail("Choose mu, norm, flat, dmude, or chi for the project preview.")
+        data, filename = self._read_project_upload(ident, upload_id)
+        parsed = self._parse_project(data, filename)
+        record = _select_project_groups(parsed["groups"], [group_id], key="old_id")[0]
+        response = {"label": str(record["label"])[:200], "mode": mode,
+                    "data_type": record["data_type"], "warnings": parsed["warnings"], "x": [], "y": []}
+        if (mode == "mu" and record["data_type"] != "chi") or (mode == "chi" and record["data_type"] == "chi"):
+            x, y = self._preview_raw_axis(record), record["mu"]
+        else:
+            if record["recipe_error"]:
+                return dict(response, processing_error=record["recipe_error"])
+            # Resolve standards by original IDs in the full upload. Process only
+            # the requested dependency chain; unrelated groups stay unprocessed.
+            by_id = {item["old_id"]: self._unprocessed_project_group(item, item["old_id"])
+                     for item in parsed["groups"]}
+            needed, cursor = set(), group_id
+            while cursor and cursor not in needed:
+                if cursor not in by_id:
+                    return dict(response, processing_error=f"Background standard {cursor} was not present in the project upload.")
+                needed.add(cursor)
+                cursor = by_id[cursor]["background_standard_id"]
+            ephemeral = {"groups": [g for key, g in by_id.items() if key in needed]}
+            try:
+                self._process_groups(ephemeral, list(needed), tolerate_errors=True)
+            except (ValueError, WebInputError) as exc:
+                return dict(response, processing_error=str(exc))
+            g = by_id[group_id]
+            if g["processing_error"]:
+                return dict(response, processing_error=g["processing_error"])
+            arrays = g["result"]["arrays"]
+            x, y = arrays.get("k" if mode == "chi" else "energy", []), arrays.get(mode, [])
+            response["warnings"] = list(dict.fromkeys(response["warnings"] + g["result"]["warnings"]))
+            if not x or not y or len(x) != len(y):
+                return dict(response, processing_error=f"This {record['data_type']} group has no {mode} curve.")
+        response["x"], response["y"] = self._preview_samples(x, y)
+        return response
+
+    def restore(self, ident, version, data, filename, group_ids=None, *, keep_name=False):
         with self.storage.lock(ident):
             old = self.load(ident)
             self.check(old, version)
-            p = copy.deepcopy(old)
-            imported, journal, name = [], "", Path(filename).stem
-            sidecar, native_project = {}, None
-            import_warnings = []
-            web = False
-            if text.lstrip().startswith("{"):
-                document = _project_json(text)
-                web = document.get("format") == "athena-web"
-                if web:
-                    if document.get("schema_version") != 1:
-                        fail("Unsupported Athena Web project schema version.")
-                    records = document.get("groups", [])
-                    sidecar = document
-                    journal, name = _journal(document.get("journal", "")), str(document.get("name", name))
-                else:
-                    records, journal, metadata = _native_json_document(document)
-                    native_project = {"filename": filename, "format": "athena-json", "metadata": metadata}
-            else:
-                records, journal, sidecar, metadata = _native_perl_document(text)
-                if not sidecar:
-                    native_project = {"filename": filename, "format": "athena-perl", "metadata": metadata}
-                name = sidecar.get("name", name)
-            if not isinstance(records, list) or len(records) + len(old["groups"]) > 100:
+            parsed = self._parse_project(data, filename)
+            records = _select_project_groups(parsed["groups"], group_ids, key="old_id")
+            complete = len(records) == len(parsed["groups"])
+            if len(old["groups"]) + len(records) > 100:
                 fail("A project can contain at most 100 groups.")
-            if not isinstance(sidecar, dict):
-                fail("Athena Web sidecar must be an object.")
-            meta_records = sidecar.get("groups", [])
-            if not isinstance(meta_records, list) or len(meta_records) > 100:
-                fail("Invalid sidecar group list.")
-            metadata = {}
-            for meta in meta_records:
-                if not isinstance(meta, dict) or not isinstance(meta.get("id"), str) or meta["id"] in metadata:
-                    fail("Sidecar group IDs must be unique strings.")
-                metadata[meta["id"]] = meta
-            idmap, pristine, provisional = {}, set(), []
+            _exchange_budget([*old["groups"], *records], self.settings)
+            p = copy.deepcopy(old)
+            imported, idmap, pristine = [], {}, set()
+            import_warnings = list(parsed["warnings"])
             for record in records:
-                if not isinstance(record, dict):
-                    fail("Each project group must be an object.")
-                old_id = record.get("id" if web else "old_group")
-                if not isinstance(old_id, str) or not old_id or old_id in idmap:
-                    fail("Native and web group IDs must be nonempty unique strings.")
-                idmap[old_id] = None
-                x = _exchange_array(record.get("energy" if web else "x"), "energy", self.settings)
-                y = _exchange_array(record.get("mu" if web else "y"), "mu", self.settings)
-                # Validate every group's data/budget before doing expensive science.
-                self.raw_arrays(x, y)
-                meta = record if web else metadata.get(old_id, {})
-                if web:
-                    source = _exchange_source(record.get("source", {}), len(x), self.settings)
-                    params = _exchange_recipe(record["parameters"], record.get("result"))
-                    label, dtype = record["label"], record["data_type"]
-                    notes, reference = str(record.get("notes", "")), record.get("reference_id")
-                    marked, frozen = _native_flag(record.get("marked")), _native_flag(record.get("frozen"))
-                    multiplier, offset = record.get("multiplier", 1), record.get("offset", 0)
-                else:
-                    args = record.get("args", {})
-                    if not isinstance(args, dict):
-                        fail("Native args must be an object.")
-                    source = (_exchange_source(meta["source"], len(x), self.settings) if "source" in meta else
-                              _native_source(record, filename, native_project["format"] if native_project else "athena-perl", self.settings))
-                    params = meta.get("parameters")
-                    if params is None:
-                        params = _native_parameters(args)
-                    dtype = next((kind for kind, key in (("chi", "is_chi"), ("norm", "is_nor"), ("xanes", "is_xanes"))
-                                  if _native_flag(args.get(key))), "mu")
-                    if _native_flag(args.get("is_diff")):
-                        source["operation"] = "difference"
-                    label = args.get("label", old_id)
-                    notes = str(meta.get("notes", args.get("annotation", "")))
-                    reference = meta.get("reference_id", args.get("referencegroup", args.get("reference")))
-                    marked = _native_flag(args.get("marked", args.get("project_marked")), True)
-                    frozen = _native_flag(args.get("frozen"))
-                    multiplier, offset = args.get("plot_scale", 1), args.get("plot_yoffset", 0)
-                multiplier, offset = float(multiplier), float(offset)
-                if not np.isfinite([multiplier, offset]).all():
-                    fail("Invalid plot values in project.")
-                provisional.append({"old_id": old_id, "energy": x, "mu": y, "source": source,
-                                    "parameters": params, "label": label, "data_type": dtype,
-                                    "notes": notes, "reference_id": reference, "marked": marked,
-                                    "frozen": frozen, "multiplier": multiplier, "offset": offset,
-                                    "has_web_recipe": web or "parameters" in meta})
-            _exchange_budget([*old["groups"], *provisional], self.settings)
-            for record in provisional:
-                params, recipe_error = record["parameters"], None
-                try:
-                    AthenaParameters.model_validate(params)
-                except ValidationError as exc:
-                    if record["has_web_recipe"] and not record["source"].get("native"):
-                        raise
-                    recipe_error = "Native processing settings need repair: " + str(exc)
-                g = self.make_group(record["label"], record["energy"], record["mu"],
-                                    parameters=None if recipe_error else params,
-                                    data_type=record["data_type"], source=record["source"])
-                if recipe_error:
-                    # Preserve incompatible native settings and the raw scan,
-                    # without presenting a default calculation as that recipe.
-                    g.update(parameters=AthenaParameters().model_dump() | params,
-                             result=None, processing_error=recipe_error)
-                g.update({key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id")})
-                g["notes"] = record["notes"][:20_000]
+                g = self._unprocessed_project_group(record)
                 if len(record["notes"]) > 20_000:
                     g["source"].setdefault("warnings", []).append("Native annotation exceeds the notes limit; original text remains in native args.")
                 idmap[record["old_id"]] = g["id"]
-                if record["has_web_recipe"] and not g["processing_error"]:
-                    pristine.add(record["old_id"])
-                if g["source"].get("native"):
-                    messages = g["source"].get("warnings", [])
-                    import_warnings.extend(f"{g['label']}: {message}" for message in messages)
-                    if g["result"]:
-                        g["result"]["warnings"].extend(message for message in messages if message not in g["result"]["warnings"])
                 imported.append(g)
+            broken_links = set()
             for g in imported:
-                reference = g["reference_id"]
-                if reference in (None, "", 0, "0"):
-                    g["reference_id"] = None
-                else:
-                    mapped = idmap.get(str(reference))
-                    if mapped == g["id"]:
-                        fail("An imported group cannot reference itself.")
-                    g["reference_id"] = mapped
-                    if mapped is None:
-                        g["source"].setdefault("warnings", []).append(f"Native reference {reference} was not present; link was not restored.")
-                        import_warnings.append(f"{g['label']}: native reference {reference} was not present.")
-            if native_project:
-                state_keys = [key for key in native_project["metadata"] if not key.startswith(("_____head", "_____journ", "_____order", "_____emacs"))]
-                if state_keys:
-                    import_warnings.append("Native project state retained as metadata, not executed: " + ", ".join(state_keys))
-                p.setdefault("native_projects", []).append(native_project)
-            retained_projects = sidecar.get("native_projects", [])
-            if not isinstance(retained_projects, list):
-                fail("native_projects must be a list.")
-            for state in retained_projects:
-                p.setdefault("native_projects", []).append(_metadata(state))
-            prior_warnings = sidecar.get("import_warnings", [])
-            if not isinstance(prior_warnings, list) or not all(isinstance(w, str) for w in prior_warnings):
-                fail("import_warnings must be a list of strings.")
-            imported_analyses = _import_analyses(sidecar.get("analyses", []), sidecar.get("version"),
-                idmap, pristine, old["version"] + 1, import_warnings)
+                for key, label in (("reference_id", "Reference"), ("background_standard_id", "Background standard")):
+                    pointer = g[key]
+                    g[key] = idmap.get(pointer)
+                    if pointer and g[key] is None:
+                        message = f"{label} {pointer} was not selected or present; link was not restored."
+                        g["source"].setdefault("warnings", []).append(message)
+                        import_warnings.append(f"{g['label']}: {message}")
+                        broken_links.add(g["id"])
+            p["groups"].extend(imported)
+            self._process_groups(p, [g["id"] for g in imported], tolerate_errors=True)
+            changed_dependencies = self.background_dependents(p, broken_links)
+            for record, g in zip(records, imported, strict=True):
+                if record["has_web_recipe"] and not g["processing_error"] and g["id"] not in changed_dependencies:
+                    pristine.add(record["old_id"])
+                if g["source"].get("native") and g["result"]:
+                    g["result"]["warnings"].extend(message for message in g["source"].get("warnings", [])
+                                                    if message not in g["result"]["warnings"])
+            if complete:
+                if parsed["native_projects"]:
+                    p.setdefault("native_projects", []).extend(parsed["native_projects"])
+                imported_analyses = _import_analyses(parsed["analyses"], parsed["version"],
+                    idmap, pristine, old["version"] + 1, import_warnings)
+            else:
+                imported_analyses = []
+                if parsed["analyses"] or parsed["native_projects"]:
+                    import_warnings.append("Partial project import: saved analyses and native project-wide state were not imported; select all groups to restore them.")
             if len(old.get("analyses", [])) + len(imported_analyses) > 50:
                 fail("Restoring these analyses would exceed the 50-analysis limit; split the exchange or remove reports first.")
             p["analyses"] = old.get("analyses", []) + imported_analyses
-            if import_warnings or prior_warnings:
-                p["import_warnings"] = list(dict.fromkeys(p.get("import_warnings", []) + prior_warnings + import_warnings))
-            p["groups"].extend(imported)
-            p["name"] = str(name)[:200]
-            p["journal"] = (p["journal"] + "\n" + journal).strip()[:50_000]
+            if import_warnings:
+                p["import_warnings"] = list(dict.fromkeys(p.get("import_warnings", []) + import_warnings))
+            if not keep_name or (not old["groups"] and old["name"] == "Untitled project"):
+                p["name"] = parsed["name"]
+            p["journal"] = (p["journal"] + "\n" + parsed["journal"]).strip()[:50_000]
             saved = self.save(p, old, f"Imported project {filename}: {len(imported)} groups")
             if imported_analyses:
                 try:
@@ -1257,10 +1623,24 @@ def build_athena_router(settings: Settings):
         data = await _read_bounded_upload(file, settings.max_upload_bytes)
         return guarded(lambda: store.restore(ident, version, data, file.filename or "project.prj"))
 
+    @router.post("/projects/{ident}/preview-project")
+    async def preview_project(ident: str, file: UploadFile = File(...)):
+        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        return guarded(lambda: store.preview_project(ident, data, file.filename or "project.prj"))
+
+    @router.get("/projects/{ident}/preview-project/{upload_id}/groups/{group_id:path}")
+    def preview_project_group(ident: str, upload_id: str, group_id: str,
+                              mode: Literal["mu", "norm", "flat", "dmude", "chi"] = "mu"):
+        return guarded(lambda: store.preview_project_group(ident, upload_id, group_id, mode))
+
+    @router.post("/projects/{ident}/restore-upload")
+    def restore_upload(ident: str, request: RestoreUploadRequest):
+        return guarded(lambda: store.restore_upload(ident, request))
+
     @router.get("/projects/{ident}/export")
-    def export(ident: str, format: Literal["json", "prj"] = "json"):
-        p = store.load(ident)
-        content = store.export_prj(p) if format == "prj" else json.dumps(p, allow_nan=False).encode()
+    def export(ident: str, format: Literal["json", "prj"] = "json",
+               group_ids: list[str] | None = Query(default=None), marked_only: bool = False):
+        content = guarded(lambda: store.export_project(ident, format, group_ids, marked_only))
         return Response(content, media_type="application/octet-stream" if format == "prj" else "application/json",
                         headers={"Content-Disposition": f'attachment; filename="athena-project.{format}"'})
 

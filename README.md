@@ -53,11 +53,12 @@ Create the backend environment from `backend/requirements.txt` before starting
 the services. From the repository root, start the backend in one terminal:
 
 ```bash
-PYTHONPATH=backend backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --reload --port 8006
+PYTHONPATH=backend backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --reload --reload-dir backend/xraylarch_web --port 8006
 ```
 
 `PYTHONPATH=backend` is required for the current source-tree layout because the
-web backend package lives beneath `backend/`. Start the frontend in a second
+web backend package lives beneath `backend/`. Reload watches application code
+only, so editing tests does not restart the local service. Start the frontend in a second
 terminal:
 
 ```bash

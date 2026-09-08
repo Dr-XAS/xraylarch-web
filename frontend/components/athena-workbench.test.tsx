@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest"
-import { StrictMode } from "react"
+import { StrictMode, useLayoutEffect } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -7,7 +7,12 @@ import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Pa
 import { ApiRequestError } from "@/lib/backend-client"
 import type { InspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./athena-plot"
+import { AthenaProjectImport } from "./athena-project-import"
 import { AthenaWorkbench } from "./athena-workbench"
+
+// Full workbench flows exercise many controls; leave time for jsdom style/accessibility
+// calculation on shared CI hosts. Individual waitFor assertions stay bounded.
+vi.setConfig({ testTimeout: 15000 })
 
 vi.mock("@/lib/athena", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/athena")>(),
@@ -18,9 +23,14 @@ vi.mock("@/lib/athena", async importOriginal => ({
 vi.mock("./athena-plot", () => ({
   AthenaPlot: vi.fn(() => <div data-testid="athena-plot" />),
 }))
+// The standalone panel tests own preview/import interactions; verify its host contract here.
+vi.mock("./athena-project-import", () => ({
+  AthenaProjectImport: vi.fn(() => <div data-testid="project-import-panel" />),
+}))
 
 const api = vi.mocked(athenaApi)
 const plot = vi.mocked(AthenaPlot)
+const projectImport = vi.mocked(AthenaProjectImport)
 const storageKey = "athena.project"
 const dialogDescriptors = {
   showModal: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal"),
@@ -53,6 +63,8 @@ beforeEach(() => {
   api.mockReset()
   api.mockRejectedValue(new Error("Unexpected Athena API request in test"))
   plot.mockClear()
+  plot.mockImplementation(() => <div data-testid="athena-plot" />)
+  projectImport.mockClear()
 })
 
 afterEach(() => {
@@ -220,6 +232,415 @@ function importCalls() {
 function submitImport(dialog: HTMLElement) {
   fireEvent.click(within(dialog).getByRole("button", { name: /^Import spectrum$/i }))
 }
+
+function armPick(label: string) {
+  const button = screen.getByRole("button", { name: `Pick ${label} from plot` })
+  fireEvent.click(button)
+  expect(button).toHaveAttribute("aria-pressed", "true")
+  expect(screen.getByRole("button", { name: /Cancel pick/ })).toBeVisible()
+  expect(plotProps().picking).toBe(true)
+  return plotProps().onPickX!
+}
+
+async function openGroupControls() {
+  openGroupMenu()
+  fireEvent.click(screen.getByRole("button", { name: /Mark \/ freeze groups/ }))
+  return screen.findByRole("dialog", { name: "Mark / freeze groups" })
+}
+
+describe("AthenaWorkbench plot picking", () => {
+  it("picks absolute E₀ and relative limits using draft E₀, with no processing before Apply", async () => {
+    const project = await openSaved()
+    const savedArrays = plotProps().active!.result!.arrays
+    const pickE0 = armPick("E₀")
+    act(() => pickE0(8985, "E"))
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8985)
+    expect(plotProps().picking).toBe(false)
+    // The same queued click cannot overwrite a completed pick.
+    act(() => pickE0(9999, "E"))
+    const picks = [
+      ["Pre-edge start", 8960, -25], ["Pre-edge end", 8970, -15],
+      ["Post-edge start", 8990, 5], ["Post-edge end", 9000, 15],
+    ] as const
+    for (const [label, x, expected] of picks) {
+      const pickX = armPick(label)
+      act(() => pickX(x, "E"))
+      expect(screen.getByRole("spinbutton", { name: new RegExp(`^${label}`) })).toHaveValue(expected)
+    }
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(plotProps().active!.parameters).toEqual(project.groups[0].parameters)
+    expect(plotProps().active!.result!.arrays).toBe(savedArrays)
+    const changes = { e0: 8985, pre1: -25, pre2: -15, norm1: 5, norm2: 15 }
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: { ...parameters, ...changes } } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: changes,
+    }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+  })
+
+  it("uses effective automatic E₀ and refuses a relative pick when no E₀ is available", async () => {
+    const project = projectFixture()
+    project.groups[0].parameters.e0 = null
+    project.groups[1].parameters.e0 = null
+    project.groups[1].result = null
+    await openSaved(project)
+    const pickX = armPick("Post-edge end")
+    act(() => pickX(9000, "E"))
+    expect(screen.getByRole("spinbutton", { name: /^Post-edge end/ })).toHaveValue(21)
+    selectGroup("Sample scan")
+    fireEvent.click(screen.getByRole("button", { name: "Pick Pre-edge start from plot" }))
+    expect(screen.getByRole("alert")).toHaveTextContent(/E₀/)
+    expect(plotProps().picking).toBe(false)
+    editNumber(/^E₀/, 8980)
+    const retry = armPick("Pre-edge start")
+    act(() => retry(8960, "E"))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("spinbutton", { name: /^Pre-edge start/ })).toHaveValue(-20)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("updates spline k and relative energy reciprocally for typed and picked values", async () => {
+    await openSaved()
+    const conversion = 3.8099821109685847
+    const pickK = armPick("Spline k min")
+    expect(plotProps().space).toBe("k")
+    act(() => pickK(2, "k"))
+    expect(screen.getByRole("spinbutton", { name: /^Spline energy min/ })).toHaveValue(4 * conversion)
+    editNumber(/^Spline energy max/, 25 * conversion)
+    expect(screen.getByRole("spinbutton", { name: /^Spline k max/ })).toHaveValue(5)
+    editNumber(/^Spline k max/, 4)
+    expect(screen.getByRole("spinbutton", { name: /^Spline energy max/ })).toHaveValue(16 * conversion)
+    const pickEnergy = armPick("Spline energy max")
+    expect(plotProps().space).toBe("E")
+    act(() => pickEnergy(8979 + 9 * conversion, "E"))
+    expect(Number((screen.getByRole("spinbutton", { name: /^Spline k max/ }) as HTMLInputElement).value)).toBeCloseTo(3, 10)
+    editNumber(/^Spline energy max/, "")
+    expect(screen.getByRole("spinbutton", { name: /^Spline k max/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^Spline energy max/ })).toHaveValue(null)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("rejects below-edge spline picks and negative typed limits without losing the draft, then recovers", async () => {
+    await openSaved()
+    editNumber(/^Spline k min/, 2)
+    const pickEnergy = armPick("Spline energy min")
+    act(() => pickEnergy(8978, "E"))
+    expect(screen.getByRole("alert")).toHaveTextContent(/at or above E₀/)
+    expect(screen.getByRole("spinbutton", { name: /^Spline k min/ })).toHaveValue(2)
+    expect(plotProps().picking).toBe(true)
+    act(() => pickEnergy(8979, "E"))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("spinbutton", { name: /^Spline k min/ })).toHaveValue(0)
+    editNumber(/^Spline energy min/, -1)
+    expect(screen.getByRole("alert")).toHaveTextContent(/nonnegative/)
+    expect(screen.getByRole("spinbutton", { name: /^Spline k min/ })).toHaveValue(0)
+    editNumber(/^Spline energy min/, 3.8099821109685847)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("spinbutton", { name: /^Spline k min/ })).toHaveValue(1)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("picks k/R transform limits directly and ignores mismatched spaces and nonfinite coordinates", async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByText("Backward Fourier transform"))
+    for (const [label, space, value] of [["FT k min", "k", 4], ["FT k max", "k", 11], ["R min", "R", 1.4], ["R max", "R", 3.4]] as const) {
+      const pickX = armPick(label)
+      expect(plotProps().space).toBe(space)
+      act(() => { pickX(8888, "q"); pickX(NaN, space) })
+      expect(plotProps().picking).toBe(true)
+      act(() => pickX(value, space))
+      expect(screen.getByRole("spinbutton", { name: new RegExp(`^${label}`) })).toHaveValue(value)
+    }
+    expect(api).toHaveBeenCalledTimes(1)
+    const changes = { kmin: 4, kmax: 11, rmin: 1.4, rmax: 3.4 }
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: { ...parameters, ...changes } } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: changes,
+    }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+  })
+
+  it("keeps a new arm when a previous render's context effect is still pending", async () => {
+    let pickOnNextCommit = false
+    // Force the event ordering without timers or mocked React effects: the group
+    // change commits, a native pick click occurs, then parent passive effects run.
+    plot.mockImplementation(function PlotWithEarlyClick() {
+      useLayoutEffect(() => {
+        if (!pickOnNextCommit) return
+        pickOnNextCommit = false
+        const button = screen.getByRole("button", { name: "Pick FT k min from plot" })
+        expect(button).toBeEnabled()
+        button.click()
+      })
+      return <div data-testid="athena-plot" />
+    })
+    await openSaved()
+    const oldPick = armPick("E₀")
+    pickOnNextCommit = true
+    selectGroup("Sample scan")
+
+    expect(plotProps().space).toBe("k")
+    expect(plotProps().active?.id).toBe("sample")
+    expect(screen.getByRole("button", { name: "Pick FT k min from plot" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: /Cancel pick/ })).toBeVisible()
+    expect(plotProps().picking).toBe(true)
+    const newPick = plotProps().onPickX!
+    act(() => oldPick(9999, "E"))
+    expect(plotProps().picking).toBe(true)
+    act(() => newPick(4, "k"))
+    expect(screen.getByRole("spinbutton", { name: /^FT k min/ })).toHaveValue(4)
+    expect(plotProps().picking).toBe(false)
+    selectGroup("Foil scan")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979)
+    expect(screen.getByRole("spinbutton", { name: /^FT k min/ })).toHaveValue(3)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(["cancel", "escape", "group", "space", "plotted groups", "draft", "dialog"])("disarms on %s and ignores stale plot callbacks", async reason => {
+    await openSaved()
+    const stalePick = armPick("E₀")
+    if (reason === "cancel") fireEvent.click(screen.getByRole("button", { name: /Cancel pick/ }))
+    if (reason === "escape") fireEvent.keyDown(document, { key: "Escape" })
+    if (reason === "group") selectGroup("Sample scan")
+    if (reason === "space") fireEvent.click(screen.getByRole("tab", { name: /EXAFS/ }))
+    if (reason === "plotted groups") fireEvent.click(screen.getByRole("checkbox", { name: "Plot marked" }))
+    if (reason === "draft") editNumber(/^Rbkg/, 1.7)
+    if (reason === "dialog") await openGroupControls()
+    expect(plotProps().picking).toBe(false)
+    act(() => stalePick(9999, "E"))
+    if (reason === "dialog") fireEvent.click(screen.getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979)
+    // Re-arming must not revive a previously queued click for the same field.
+    const freshPick = armPick("E₀")
+    act(() => stalePick(9999, "E"))
+    expect(plotProps().picking).toBe(true)
+    act(() => freshPick(8980, "E"))
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8980)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps keyboard-editable fields and prevents picking for frozen groups", async () => {
+    const project = projectFixture()
+    project.groups[1].frozen = true
+    await openSaved(project)
+    const field = screen.getByRole("spinbutton", { name: /^Pre-edge start/ })
+    field.focus()
+    expect(field).toHaveFocus()
+    editNumber(/^Pre-edge start/, -175)
+    expect(field).toHaveValue(-175)
+    selectGroup("Sample scan")
+    expect(screen.getByRole("button", { name: "Pick E₀ from plot" })).toBeDisabled()
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toBeDisabled()
+    selectGroup("Foil scan")
+    expect(screen.getByRole("spinbutton", { name: /^Pre-edge start/ })).toHaveValue(-175)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("AthenaWorkbench background science controls", () => {
+  it("defaults energy-dependent normalization off and submits only its changed flag on Apply", async () => {
+    const project = await openSaved()
+    const control = screen.getByRole("checkbox", { name: "Energy-dependent normalization" })
+    expect(control).not.toBeChecked()
+    fireEvent.click(control)
+    expect(control).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(plotProps().active!.result).toBe(project.groups[0].result)
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: { ...parameters, fnorm: true } } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { fnorm: true },
+    }))
+    await waitFor(() => expect(control).toBeEnabled())
+    expect(control).toBeChecked()
+  })
+
+  it.each(["norm", "chi", "xanes"] as const)("disables energy-dependent normalization for %s groups", async data_type => {
+    const project = projectFixture()
+    project.groups[0].data_type = data_type
+    await openSaved(project)
+    const control = screen.getByRole("checkbox", { name: "Energy-dependent normalization" })
+    expect(control).toBeDisabled()
+    // Native click respects disabled inputs; dispatchEvent can toggle them in jsdom.
+    act(() => control.click())
+    expect(control).not.toBeChecked()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps standard choices per group, excludes self/unprocessed sources, and applies or removes explicitly", async () => {
+    const project = projectFixture()
+    project.groups[0].result!.arrays.chi = [0.1, -0.1]
+    project.groups[1].result!.arrays.chi = [0.2, -0.2]
+    await openSaved(project)
+    const selector = () => screen.getByRole("combobox", { name: "Background removal standard" })
+    const apply = () => screen.getByRole("button", { name: "Apply standard" })
+    expect(within(selector()).getAllByRole("option").map(option => option.textContent)).toEqual(["None", "Sample scan"])
+    expect(apply()).toBeDisabled()
+    fireEvent.change(selector(), { target: { value: "sample" } })
+    selectGroup("Unused reference")
+    expect(selector()).toHaveValue("")
+    fireEvent.change(selector(), { target: { value: "foil" } })
+    selectGroup("Foil scan")
+    expect(selector()).toHaveValue("sample")
+    expect(api).toHaveBeenCalledTimes(1)
+    const accepted = nextProject(project, { foil: { background_standard_id: "sample" } })
+    api.mockResolvedValueOnce(accepted)
+    fireEvent.click(apply())
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: 7, action: "background_standard", group_ids: ["foil"], options: { standard_id: "sample" },
+    }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expect(apply()).toBeDisabled()
+    fireEvent.change(selector(), { target: { value: "" } })
+    api.mockResolvedValueOnce(nextProject(accepted, { foil: { background_standard_id: null } }))
+    fireEvent.click(apply())
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: 8, action: "background_standard", group_ids: ["foil"], options: { standard_id: null },
+    }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    selectGroup("Unused reference")
+    expect(selector()).toHaveValue("foil")
+  })
+
+  it("preserves standard and parameter drafts on failure and surfaces frozen skips from the backend", async () => {
+    const project = projectFixture()
+    project.groups[1].result!.arrays.chi = [0.2, -0.2]
+    await openSaved(project)
+    editNumber(/^Rbkg/, 1.7)
+    const selector = screen.getByRole("combobox", { name: "Background removal standard" })
+    fireEvent.change(selector, { target: { value: "sample" } })
+    api.mockRejectedValueOnce(new Error("Background standard would create a cycle"))
+    fireEvent.click(screen.getByRole("button", { name: "Apply standard" }))
+    expect(await screen.findByRole("alert")).toHaveTextContent(/create a cycle/)
+    expect(selector).toHaveValue("sample")
+    expect(plotProps().active!.background_standard_id).toBeUndefined()
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1.7)
+    const skipped = nextProject(project, { foil: { frozen: true } })
+    skipped.last_operation = { action: "background_standard", skipped_group_ids: ["foil"] }
+    api.mockResolvedValueOnce(skipped)
+    fireEvent.click(screen.getByRole("button", { name: "Apply standard" }))
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("1 group skipped"))
+    expect(api.mock.calls[1]).toEqual(api.mock.calls[2])
+    expect(selector).toHaveValue("sample")
+    expect(selector).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Apply standard" })).toBeDisabled()
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1.7)
+    expect(plotProps().active!.result).toEqual(project.groups[0].result)
+  })
+})
+
+describe("AthenaWorkbench bulk marking and freezing", () => {
+  it.each(["Mark all", "Mark none", "Invert marks"])("%s uses all IDs in list order, including frozen and search-hidden groups", async label => {
+    const project = projectFixture()
+    project.groups[2].frozen = true
+    await openSaved(project)
+    editNumber(/^Rbkg/, 1.8)
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "Foil" } })
+    const dialog = await openGroupControls()
+    const updated = nextProject(project, Object.fromEntries(project.groups.map(g => [g.id, { marked: label === "Invert marks" ? !g.marked : label === "Mark all" }])))
+    api.mockResolvedValueOnce(updated)
+    fireEvent.click(within(dialog).getByRole("button", { name: label }))
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: label })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: label === "Invert marks" ? "selection" : "metadata",
+      group_ids: ["foil", "sample", "oxide", "unused"],
+      options: label === "Invert marks" ? { field: "marked", mode: "invert" } : { marked: label === "Mark all" },
+    })
+    expect(plotProps().active!.id).toBe("foil")
+    expect(plotProps().active!.result).toEqual(project.groups[0].result)
+    expect(plotProps().groups.map(g => g.id)).toEqual(label === "Mark all" ? ["foil", "sample", "oxide", "unused"] : label === "Mark none" ? ["foil"] : ["foil", "unused"])
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1.8)
+  })
+
+  it("recovers from invalid JavaScript patterns, targets matching labels only, and skips empty matches", async () => {
+    const project = await openSaved()
+    const dialog = await openGroupControls()
+    const view = within(dialog)
+    const pattern = view.getByRole("textbox", { name: "JavaScript regular expression" })
+    const mark = view.getByRole("button", { name: "Mark matching" })
+    expect(mark).toBeDisabled()
+    fireEvent.change(pattern, { target: { value: "[" } })
+    expect(view.getByRole("alert")).toHaveTextContent(/Invalid JavaScript/)
+    fireEvent.click(mark)
+    expect(api).toHaveBeenCalledTimes(1)
+    fireEvent.change(pattern, { target: { value: "^not-present$" } })
+    expect(view.queryByRole("alert")).not.toBeInTheDocument()
+    expect(mark).toBeDisabled()
+    fireEvent.change(pattern, { target: { value: "^foil|reference$" } })
+    fireEvent.click(view.getByRole("checkbox", { name: "Ignore case" }))
+    const accepted = nextProject(project, { foil: { marked: true }, unused: { marked: true } })
+    api.mockResolvedValueOnce(accepted)
+    fireEvent.click(mark)
+    await waitFor(() => expect(mark).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: 7, action: "metadata", group_ids: ["foil", "unused"], options: { marked: true },
+    })
+    api.mockResolvedValueOnce(nextProject(accepted, { foil: { marked: false }, unused: { marked: false } }))
+    fireEvent.click(view.getByRole("button", { name: "Unmark matching" }))
+    await waitFor(() => expect(mark).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: 8, action: "metadata", group_ids: ["foil", "unused"], options: { marked: false },
+    })
+    expect(plotProps().active!.id).toBe("foil")
+    expect(plotProps().groups.map(g => g.id)).toEqual(["sample", "oxide"])
+  })
+
+  it.each(["current", "marked", "all", "matching"] as const)("freezes and unfreezes %s targets without changing numerical state", async target => {
+    const project = projectFixture()
+    project.groups[2].frozen = true
+    await openSaved(project)
+    const dialog = await openGroupControls()
+    const view = within(dialog)
+    fireEvent.change(view.getByRole("textbox", { name: "JavaScript regular expression" }), { target: { value: "scan$" } })
+    fireEvent.change(view.getByRole("combobox", { name: "Freeze targets" }), { target: { value: target } })
+    const ids = { current: ["foil"], marked: ["sample", "oxide"], all: ["foil", "sample", "oxide", "unused"], matching: ["foil", "sample"] }[target]
+    let accepted = project
+    for (const [label, frozen] of [["Freeze targets", true], ["Unfreeze targets", false]] as const) {
+      const before = accepted
+      accepted = nextProject(before, Object.fromEntries(ids.map(id => [id, { frozen }])))
+      api.mockResolvedValueOnce(accepted)
+      fireEvent.click(view.getByRole("button", { name: label }))
+      await waitFor(() => expect(view.getByRole("button", { name: label })).toBeEnabled())
+      expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+        version: before.version, action: "metadata", group_ids: ids, options: { frozen },
+      })
+      expect(plotProps().active!.id).toBe("foil")
+      expect(plotProps().active!.parameters).toEqual(project.groups[0].parameters)
+      expect(plotProps().active!.result).toEqual(project.groups[0].result)
+    }
+  })
+
+  it("keeps flags and drafts on command failure, retries the accepted version, and makes no request for empty targets", async () => {
+    const project = projectFixture()
+    project.groups.forEach(g => { g.marked = false })
+    await openSaved(project)
+    editNumber(/^Rbkg/, 1.9)
+    const dialog = await openGroupControls()
+    const view = within(dialog)
+    expect(view.getByRole("button", { name: "Freeze targets" })).toBeDisabled()
+    fireEvent.click(view.getByRole("button", { name: "Freeze targets" }))
+    expect(api).toHaveBeenCalledTimes(1)
+    const failure = deferred<AthenaProject>()
+    api.mockReturnValueOnce(failure.promise)
+    fireEvent.click(view.getByRole("button", { name: "Invert marks" }))
+    expect(view.getByRole("button", { name: "Invert marks" })).toBeDisabled()
+    await act(async () => failure.reject(new Error("Selection could not be saved")))
+    expect(view.getByRole("alert")).toHaveTextContent("Selection could not be saved")
+    expect(plotProps().active!.marked).toBe(false)
+    expect(plotProps().active!.id).toBe("foil")
+    api.mockResolvedValueOnce(nextProject(project, Object.fromEntries(project.groups.map(g => [g.id, { marked: true }]))))
+    fireEvent.click(view.getByRole("button", { name: "Invert marks" }))
+    await waitFor(() => expect(view.queryByRole("alert")).not.toBeInTheDocument())
+    await waitFor(() => expect(view.getByRole("button", { name: "Invert marks" })).toBeEnabled())
+    expect(api.mock.calls[1]).toEqual(api.mock.calls[2])
+    expect(plotProps().groups.map(g => g.id)).toEqual(["foil", "sample", "oxide", "unused"])
+    fireEvent.click(view.getByRole("button", { name: "Close" }))
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1.9)
+  })
+})
 
 describe("AthenaWorkbench batch import", () => {
   it("reuses the chosen detector and reference mapping for matching layouts with each accepted revision", async () => {
@@ -451,7 +872,138 @@ describe("AthenaWorkbench project loading", () => {
   })
 })
 
+describe("AthenaWorkbench project import integration", () => {
+  it("passes the latest accepted project to the panel and guards closing while imports are busy", async () => {
+    const project = await openSaved()
+    api.mockResolvedValueOnce([])
+    fireEvent.click(screen.getByRole("button", { name: /^Open project$/ }))
+    const dialog = await screen.findByRole("dialog", { name: "Open a project" })
+    const panelProps = () => projectImport.mock.calls.at(-1)![0]
+    await waitFor(() => expect(panelProps().disabled).toBe(false))
+    expect(panelProps().getProject()).toBe(project)
+    act(() => panelProps().onBusyChange("Importing project groups"))
+    expect(panelProps().disabled).toBe(true)
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }))
+    const escape = new Event("cancel", { bubbles: false, cancelable: true })
+    fireEvent(dialog, escape)
+    expect(escape.defaultPrevented).toBe(true)
+    expect(dialog).toBeInTheDocument()
+    const accepted = importedProject(project, "Imported foil")
+    act(() => panelProps().onImported(accepted))
+    expect(panelProps().getProject()).toBe(accepted)
+    expect(plotProps().active!.id).toBe("Imported foil")
+    act(() => { panelProps().onBusyChange(""); panelProps().onComplete() })
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("Project import · complete")
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/projects"]])
+  })
+
+  it.each([true, false])("offers marked-only export only when marked groups exist (%s)", async hasMarks => {
+    const project = projectFixture()
+    if (!hasMarks) project.groups.forEach(g => { g.marked = false })
+    await openSaved(project)
+    fireEvent.click(within(screen.getByRole("navigation", { name: /Main menu/ })).getByRole("button", { name: "File" }))
+    if (hasMarks) expect(screen.getByRole("link", { name: /Save marked project/ })).toHaveAttribute("href", expect.stringContaining(`/projects/${project.id}/export?format=prj&marked_only=true`))
+    else {
+      expect(screen.queryByRole("link", { name: /Save marked project/ })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: /Save marked project/ })).toBeDisabled()
+    }
+  })
+})
+
 describe("AthenaWorkbench group selection and drafts", () => {
+  it("keeps restored scalar drafts clean across reordered standard and undo recipes, preserving other groups' edits", async () => {
+    const project = projectFixture()
+    project.groups[0].parameters = { ...parameters, e0: null, fnorm: false }
+    project.groups[1].result!.arrays.chi = [0.2, -0.2]
+    await openSaved(project)
+    selectGroup("Sample scan")
+    editNumber(/^Rbkg/, 2.7)
+    selectGroup("Foil scan")
+    const pickE0 = armPick("E₀")
+    act(() => pickE0(8985, "E"))
+    editNumber(/^E₀/, "")
+    editNumber(/^Spline energy min/, 100)
+    editNumber(/^Spline k min/, 0)
+
+    const expectCleanFoil = () => {
+      expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+      expect(screen.getByText("Up to date")).toBeVisible()
+      expect(within(screen.getByRole("button", { name: name => name.startsWith("Foil scan") })).queryByTitle("Unapplied parameters")).not.toBeInTheDocument()
+    }
+    expectCleanFoil()
+    const reordered = Object.fromEntries(Object.entries(project.groups[0].parameters).reverse()) as Parameters
+    expect(Object.keys(reordered)).not.toEqual(Object.keys(project.groups[0].parameters))
+    const applied = nextProject(project, { foil: { background_standard_id: "sample", parameters: reordered } })
+    applied.undo = ["before-standard"]
+    api.mockResolvedValueOnce(applied)
+    fireEvent.change(screen.getByRole("combobox", { name: "Background removal standard" }), { target: { value: "sample" } })
+    fireEvent.click(screen.getByRole("button", { name: "Apply standard" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled())
+    expectCleanFoil()
+
+    // A restored older recipe can omit the false default as well as reorder keys.
+    const restored = Object.fromEntries(Object.entries(reordered).filter(([key]) => key !== "fnorm")) as Parameters
+    api.mockResolvedValueOnce(nextProject(applied, { foil: { background_standard_id: null, parameters: restored } }))
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expectCleanFoil()
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^Spline k min/ })).toHaveValue(0)
+    expect(screen.getByRole("combobox", { name: "Background removal standard" })).toHaveValue("")
+    expect(api.mock.calls.slice(1).map(([, body]) => (body as { action: string }).action)).toEqual(["background_standard", "undo"])
+
+    // Automatic E0 is still different from an explicit value equal to its readout.
+    editNumber(/^E₀/, 8979)
+    expect(screen.getByRole("button", { name: /Discard parameter changes/ })).toBeVisible()
+    selectGroup("Sample scan")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.7)
+    expect(within(screen.getByRole("button", { name: name => name.startsWith("Sample scan") })).getByTitle("Unapplied parameters")).toBeInTheDocument()
+  })
+
+  it("treats an omitted fnorm and a reverted false draft as equal in dirty indicators and the Apply patch", async () => {
+    const project = await openSaved()
+    expect(project.groups[0].parameters.fnorm).toBeUndefined()
+    const control = screen.getByRole("checkbox", { name: "Energy-dependent normalization" })
+    fireEvent.click(control)
+    expect(screen.getByRole("button", { name: /Discard parameter changes/ })).toBeVisible()
+    expect(screen.getByTitle("Unapplied parameters")).toBeInTheDocument()
+    fireEvent.click(control)
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    expect(screen.queryByTitle("Unapplied parameters")).not.toBeInTheDocument()
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: { fnorm: false, ...Object.fromEntries(Object.entries(parameters).reverse()) } as Parameters } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: {},
+    })
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+  })
+
+  it("removes an applied draft after reordered copy responses so Undo reveals the restored server recipe", async () => {
+    const project = await openSaved()
+    editNumber(/^Rbkg/, 2)
+    selectGroup("Sample scan")
+    const copied = nextProject(project, Object.fromEntries(project.groups.map(g => [g.id, {
+      parameters: Object.fromEntries(Object.entries({ ...g.parameters, rbkg: 1.2, fnorm: false }).reverse()) as Parameters,
+    }])))
+    copied.undo = ["before-copy"]
+    api.mockResolvedValueOnce(copied)
+    const dialog = await openParameterDialog("background", "all")
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Copy parameters$/ }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    selectGroup("Foil scan")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1.2)
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+
+    api.mockResolvedValueOnce({ ...project, version: copied.version + 1 })
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1)
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    expect(screen.queryByTitle("Unapplied parameters")).not.toBeInTheDocument()
+  })
+
   it("keeps active selection independent of marks and the plot target", async () => {
     const project = await openSaved()
     selectGroup("Unused reference")

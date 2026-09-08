@@ -65,6 +65,38 @@ The linked [author's Fe-foil directory](https://github.com/bruceravel/XAS-Educat
 
 The example supports a sulfur-associated intermediate but does not uniquely identify one compound. Its old statement that PCA is unavailable conflicts with the dedicated PCA chapter; that discrepancy requires version-specific verification.
 
+## Pinned background-processing source evidence
+
+The [energy-dependent normalization guide][ednorm] describes its intended use
+for low-energy fluorescence EXAFS and explains why energy plots retain the
+original signal while χ/R/q use corrected processing. Its prose is not a
+sufficient numerical specification. The implementation follows the explicit
+[Demeter fnorm template at commit 06afc8da08a5a7d5a26ee14992170fcf5dc67406](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/fnorm.tmpl):
+form the post-minus-pre curve, scale the post-edge portion by its maximum,
+leave earlier samples at a factor of one, divide raw μ by that factor, and
+refit normalization and background removal. This is not a rescaling of an
+already extracted χ array.
+
+The [Ifeffit 1.2.11d source archive](https://deb.debian.org/debian/pool/main/i/ifeffit/ifeffit_1.2.11d.orig.tar.gz)
+resolves two otherwise ambiguous expressions. `decod.f`'s `v1mth` maps
+`ceil(array)` to the vector maximum; it does not round upward to an integer.
+`nofx` expression dispatch uses `nofxa` in `misc_num.f`, whose strict comparison
+keeps the first sample when distances tie. The science tests cover both details.
+The archive's `spline.f`/`splfun.f` also show automatic standard-amplitude
+adjustment. The local Larch standard uses fixed amplitude and subtracts the
+standard before dividing by edge step, requiring the supplied dimensionless
+χ standard to be scaled into residual μ units. Source-level agreement on the
+correction sequence does not establish identical polynomial/spline numerics.
+
+The checked-in [source manifest](athena-primary-sources.json) records exact
+upstream URLs, versions, paths within their source packages, and SHA-256 hashes.
+The fnorm template hash is
+`146d05e061f6b6d77c0ec04b522c8c038d371b280eecede87120b4142713c1a0`;
+the Ifeffit archive hash is
+`76797e14a922cae4e76c92cfb6fddef545d2e3ffb6af4f53bf12ef6cf3b461a8`.
+These files were fetched and inspected locally. No desktop Ifeffit execution
+or exact standard-amplitude parity is claimed.
+
 ## YouTube discovery and verification limits
 
 The [IXAS video index](https://xafs.xrayabsorption.org/videos.html) lists the following resources. Titles/presenter associations are verified from that index; its approximate duration/count is catalog metadata.

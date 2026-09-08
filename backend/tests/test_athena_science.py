@@ -222,9 +222,261 @@ def test_normalized_input_second_derivative_and_inactive_background_settings():
     assert all(result["arrays"][key] == [] for key in ("chir_pha", "chiq_im", "chiq_pha"))
 
 
-def test_unavailable_energy_dependent_normalization_is_not_silently_accepted(xas_arrays):
-    with pytest.raises(ScientificError, match="fnorm"):
-        process_spectrum(*xas_arrays, {"fnorm": True})
+@pytest.fixture
+def fluorescence_arrays():
+    """Rising low-energy fluorescence envelope with known EXAFS modulation."""
+    energy = np.linspace(2300, 3000, 1401)
+    k = np.sqrt(np.maximum(0, (energy - 2472) * science.ETOK))
+    edge = 1 / (1 + np.exp(-(energy - 2472) / 1.5))
+    chi = 0.04 * np.sin(5 * k) * np.exp(-0.012 * k*k)
+    response = 1 + 0.002 * (energy - 2472) + 1e-6 * (energy - 2472)**2
+    return energy, edge * response * (1 + chi), edge * (1 + chi)
+
+
+def test_fnorm_defaults_and_saved_recipe_roundtrip_preserve_existing_outputs(xas_arrays):
+    recipe = AthenaParameters().model_dump()
+    assert recipe.pop("fnorm") is False
+    old = process_spectrum(*xas_arrays, recipe)
+    explicit = process_spectrum(*xas_arrays, {**recipe, "fnorm": False}, background_standard=None)
+    assert old == explicit == process_spectrum(*xas_arrays, {})
+    assert old["effective"]["fnorm"] is False
+    assert old["effective"]["fnorm_edge_step"] is None
+    assert old["effective"]["fnorm_scale"] is None
+    assert old["effective"]["background_standard"] is False
+    enabled = AthenaParameters(fnorm=True)
+    assert AthenaParameters.model_validate_json(enabled.model_dump_json()).fnorm is True
+    enabled.fnorm = False
+    assert enabled.fnorm is False
+
+
+@pytest.mark.parametrize("invalid", [None, 0, 1, 0.5, "true", "false", [], np.nan])
+def test_fnorm_requires_a_boolean(invalid):
+    with pytest.raises(ValidationError, match="fnorm"):
+        AthenaParameters(fnorm=invalid)
+
+
+def test_functional_normalization_matches_demeter_array_operations():
+    # Independent hand calculation of fnorm.tmpl: ceil([1.2,1.8,2.4]) is
+    # max=2.4, giving [1,1,0.5,0.75,1], then divide the ENTIRE mu signal.
+    x = np.array([100, 102, 104, 106, 108.0])
+    mu = np.array([0.1, 0.2, 1.5, 1.8, 2.5])
+    pre = np.full(5, 0.2)
+    post = np.array([-1, 0, 1.4, 2.0, 2.6])
+    before = [value.copy() for value in (x, mu, pre, post)]
+    corrected, scale = science._functional_normalization(x, mu, pre, post, 104)
+    assert scale == pytest.approx(2.4)
+    np.testing.assert_allclose(corrected, [0.1, 0.2, 3, 2.4, 2.5])
+    for value, original in zip((x, mu, pre, post), before):
+        np.testing.assert_array_equal(value, original)
+
+
+def test_fnorm_uses_ifeffit_parser_nearest_sample_with_lower_midpoint_tie():
+    corrected, scale = science._functional_normalization(
+        np.array([100, 102, 104, 106.0]), np.array([0.1, 1, 2, 3.0]),
+        np.zeros(4), np.array([1, 2, 3, 4.0]), 103)
+    assert scale == 4
+    np.testing.assert_allclose(corrected, [0.1, 2, 8 / 3, 3])
+
+
+def test_fnorm_keeps_energy_shift_and_native_grids_consistent(fluorescence_arrays):
+    x, y, _ = fluorescence_arrays
+    params = {"e0": 2477, "fnorm": True, "nclamp": 0, "norm1": 80, "norm2": 500}
+    shifted = process_spectrum(x, y, {**params, "energy_shift": 5})
+    direct = process_spectrum(x + 5, y, params)
+    assert shifted["arrays"] == direct["arrays"]
+    assert shifted["effective"]["fnorm_scale"] == direct["effective"]["fnorm_scale"]
+    ordinary = process_spectrum(x + 5, y, {**params, "fnorm": False})
+    for key in ("k", "r", "q"):
+        np.testing.assert_array_equal(shifted["arrays"][key], ordinary["arrays"][key])
+
+
+@pytest.mark.parametrize("step", [None, 2.0])
+def test_fnorm_refits_mu_before_autobk_and_preserves_energy_outputs(fluorescence_arrays, step):
+    x, y, _ = fluorescence_arrays
+    params = {"e0": 2472, "norm1": 80, "norm2": 500, "nnorm": 2, "step": step,
+              "nclamp": 0, "bkg_kweight": 1.5, "kweight": 2.25}
+    baseline = process_spectrum(x, y, params)
+    result = process_spectrum(x, y, {**params, "fnorm": True})
+    # Numerical reference: literal Demeter template array operations followed
+    # by independent public Larch pre_edge/autobk/FT calls on corrected mu.
+    a, e = baseline["arrays"], result["effective"]
+    nearest = int(np.argmin(abs(x - params["e0"])))
+    denominator = np.array(a["post_edge"]) - np.array(a["pre_edge"])
+    factor = np.r_[np.ones(nearest), denominator[nearest:] / max(denominator[nearest:])]
+    corrected_mu = y / factor
+    normalized = Group()
+    pre_edge(x, corrected_mu, group=normalized, e0=2472, step=step, make_flat=False,
+             **{key: e[key] for key in ("pre1", "pre2", "norm1", "norm2", "nnorm")})
+    direct = direct_pipeline(x, corrected_mu, {**e, "step": normalized.edge_step, "edge_step": normalized.edge_step})
+    assert e["fnorm"] is True
+    assert e["edge_step"] == baseline["effective"]["edge_step"]
+    assert e["fnorm_edge_step"] == pytest.approx(normalized.edge_step)
+    assert e["fnorm_scale"] == pytest.approx(max(denominator[nearest:]))
+    for key in ("energy", "mu", "norm", "flat", "pre_edge", "post_edge", "bkg", "dmude", "d2mude"):
+        np.testing.assert_array_equal(result["arrays"][key], baseline["arrays"][key], err_msg=key)
+    for key in ("k", "chi", "chir_re", "chir_im", "chiq_re", "chiq_im", "chiq_pha"):
+        np.testing.assert_allclose(result["arrays"][key], getattr(direct, key), atol=1e-10, rtol=1e-10, err_msg=key)
+    assert not np.allclose(result["arrays"]["chi"], baseline["arrays"]["chi"])
+    # A correction applied only after the old background fit is not this method.
+    chi_energy = params["e0"] + np.array(a["k"])**2 / science.ETOK
+    posthoc = np.array(a["chi"]) / np.interp(chi_energy, x, factor)
+    assert not np.allclose(result["arrays"]["chi"], posthoc)
+    assert any("E-space" in warning and "fluorescence" in warning for warning in result["warnings"])
+    json.dumps(result, allow_nan=False)
+
+
+def test_fnorm_corrects_synthetic_fluorescence_amplitude_growth(fluorescence_arrays):
+    x, measured, unamplified = fluorescence_arrays
+    params = {"e0": 2472, "norm1": 80, "norm2": 500, "nnorm": 2, "nclamp": 0}
+    reference = process_spectrum(x, unamplified, params)["arrays"]
+    ordinary = process_spectrum(x, measured, params)["arrays"]
+    corrected = process_spectrum(x, measured, {**params, "fnorm": True})["arrays"]
+    reliable = (np.array(reference["k"]) >= 4) & (np.array(reference["k"]) <= 10)
+    truth = np.array(reference["chi"])[reliable]
+    before = np.linalg.norm(np.array(ordinary["chi"])[reliable] - truth)
+    after = np.linalg.norm(np.array(corrected["chi"])[reliable] - truth)
+    assert after < before * 0.25
+
+
+@pytest.mark.parametrize("bad_post", [[1, 1, 0, 1], [1, 1, -1, 1], [1, 1, np.inf, 1]])
+def test_fnorm_rejects_nonpositive_or_nonfinite_postedge_divisors(bad_post):
+    with pytest.raises(ScientificError, match="fnorm.*post_edge"):
+        science._functional_normalization(np.arange(100, 104.0), np.ones(4), np.zeros(4), np.array(bad_post), 101)
+
+
+def test_fnorm_and_standard_reject_numerical_overflow_and_oversized_standard(xas_arrays):
+    with pytest.raises(ScientificError, match="fnorm correction overflowed"):
+        science._functional_normalization(np.arange(100, 104.0), np.full(4, 1e308),
+                                           np.zeros(4), np.array([1, 1e-10, 1, 1.0]), 101)
+    k = np.linspace(0, 12, 100)
+    with pytest.raises(ScientificError, match="standard scaling overflowed"):
+        process_spectrum(*xas_arrays, {"step": 2}, background_standard={"k": k, "chi": np.full(k.size, 1e308)})
+    k = np.linspace(0, 12, 100001)
+    with pytest.raises(ScientificError, match="100000 points"):
+        process_spectrum(*xas_arrays, {}, background_standard={"k": k, "chi": np.zeros(k.size)})
+
+
+@pytest.mark.parametrize("data_type", ["norm", "chi", "xanes"])
+def test_fnorm_rejects_inputs_without_raw_mu_exafs(xas_arrays, data_type):
+    with pytest.raises(ScientificError, match="fnorm requires raw mu"):
+        process_spectrum(*xas_arrays, {"fnorm": True}, data_type)
+
+
+@pytest.mark.parametrize("step", [0.85, 2.7])
+def test_background_standard_matches_larch_with_dimensionless_chi_units(xas_arrays, step):
+    x, y = xas_arrays
+    k = np.linspace(0, 12, 601)
+    standard = {"k": k, "chi": 0.035 * np.sin(2.2*k + 0.3) * np.exp(-0.17*k)}
+    before = {key: value.copy() for key, value in standard.items()}
+    params = {"e0": 8980, "step": step, "nclamp": 0, "bkg_kweight": 1.25}
+    result = process_spectrum(x, y, params, background_standard=standard)
+    baseline = process_spectrum(x, y, params)
+    e = result["effective"]
+    direct = Group()
+    autobk(x, y, group=direct, ek0=8980, edge_step=step, rbkg=e["rbkg"],
+           kmin=e["bkg_kmin"], kmax=e["bkg_kmax"], kweight=e["bkg_kweight"],
+           dk=e["bkg_dk"], win=e["bkg_window"], nclamp=e["nclamp"],
+           clamp_lo=e["clamp_lo"], clamp_hi=e["clamp_hi"], nfft=e["nfft"], kstep=e["kstep"],
+           k_std=k, chi_std=standard["chi"] * step)
+    np.testing.assert_allclose(result["arrays"]["bkg"], direct.bkg, atol=1e-12)
+    np.testing.assert_allclose(result["arrays"]["chi"], direct.chi, atol=1e-12)
+    np.testing.assert_array_equal(result["arrays"]["norm"], baseline["arrays"]["norm"])
+    assert not np.allclose(result["arrays"]["chi"], baseline["arrays"]["chi"])
+    assert e["background_standard"] is True
+    assert e["background_standard_kmin"] == 0
+    assert e["background_standard_kmax"] == 12
+    assert e["background_standard_points"] == 601
+    for key in standard:
+        np.testing.assert_array_equal(standard[key], before[key])
+    assert any("fixed-amplitude" in warning for warning in result["warnings"])
+    json.dumps(result, allow_nan=False)
+
+
+def test_background_standard_recovers_known_low_r_chi_instead_of_subtracting_it():
+    e0, step = 8980.0, 2.5
+    k = np.arange(0, 12.0001, 0.025)
+    chi = 0.04 * np.sin(1.2 * k)
+    post_energy = e0 + k*k / science.ETOK
+    pre_energy = np.linspace(e0 - 200, e0 - 0.5, 400)
+    energy = np.r_[pre_energy, post_energy]
+    baseline = 0.2 + 0.00005 * (energy - e0)
+    mu = baseline + np.r_[np.zeros(pre_energy.size), step * (1 + chi)]
+    params = {"e0": e0, "step": step, "nclamp": 0, "bkg_kmax": 12, "norm1": 100, "norm2": 500}
+    result = process_spectrum(energy, mu, params, background_standard={"k": k, "chi": chi})
+    ordinary = process_spectrum(energy, mu, params)
+    kout = np.array(result["arrays"]["k"])
+    expected = 0.04 * np.sin(1.2 * kout)
+    np.testing.assert_allclose(result["arrays"]["chi"], expected, atol=2e-5)
+    assert np.linalg.norm(np.array(ordinary["arrays"]["chi"]) - expected) > 0.1
+
+
+def test_fnorm_and_standard_use_the_corrected_step_together(fluorescence_arrays):
+    x, y, _ = fluorescence_arrays
+    k = np.linspace(0, 12, 1201)
+    standard = {"k": k, "chi": 0.04 * np.sin(5*k) * np.exp(-0.012*k*k)}
+    params = {"e0": 2472, "norm1": 80, "norm2": 500, "nnorm": 2, "nclamp": 0}
+    raw = process_spectrum(x, y, params, background_standard=standard)
+    result = process_spectrum(x, y, {**params, "fnorm": True}, background_standard=standard)
+    a, e = result["arrays"], result["effective"]
+    start = int(np.argmin(abs(x - 2472)))
+    d = np.array(a["post_edge"])[start:] - np.array(a["pre_edge"])[start:]
+    corrected_mu = y / np.r_[np.ones(start), d / max(d)]
+    direct = Group()
+    autobk(x, corrected_mu, group=direct, ek0=2472, edge_step=e["fnorm_edge_step"],
+           rbkg=e["rbkg"], kmin=e["bkg_kmin"], kmax=e["bkg_kmax"],
+           kweight=e["bkg_kweight"], dk=e["bkg_dk"], win=e["bkg_window"],
+           nclamp=e["nclamp"], clamp_lo=e["clamp_lo"], clamp_hi=e["clamp_hi"],
+           nfft=e["nfft"], kstep=e["kstep"], k_std=k, chi_std=standard["chi"] * e["fnorm_edge_step"])
+    np.testing.assert_allclose(a["chi"], direct.chi, atol=1e-12)
+    np.testing.assert_array_equal(a["bkg"], raw["arrays"]["bkg"])
+    assert e["fnorm"] is True and e["background_standard"] is True
+    assert e["fnorm_edge_step"] != pytest.approx(e["edge_step"])
+
+
+@pytest.mark.parametrize("standard", [
+    {}, {"k": [0, 1, 2, 3]}, {"k": [0, 1, 2, 3], "chi": [0, 0, 0, 0], "scale": 2},
+    ([0, 1, 2, 3], [0, 0, 0, 0]),
+    {"k": [0, 1, 2, 3], "chi": [0, 1]},
+    {"k": [0, 1, 1, 3], "chi": [0, 1, 2, 3]},
+    {"k": [0, 1, 2, 3], "chi": [0, np.nan, 0, 0]},
+    {"k": [0, 1, 2, 3], "chi": np.array([0, 1j, 0, 0])},
+    {"k": [-1, 0, 1, 2], "chi": [0, 1, 2, 3]},
+    {"k": [0, 1, 2, 101], "chi": [0, 1, 2, 3]},
+])
+def test_invalid_background_standard_is_actionable(xas_arrays, standard):
+    with pytest.raises(ScientificError, match="[Bb]ackground.standard"):
+        process_spectrum(*xas_arrays, {}, background_standard=standard)
+
+
+@pytest.mark.parametrize("k", [np.linspace(0.05, 12, 100), np.linspace(0, 5, 100)])
+def test_background_standard_never_extrapolates_even_with_a_positive_fit_kmin(xas_arrays, k):
+    with pytest.raises(ScientificError, match="complete AUTOBK grid"):
+        process_spectrum(*xas_arrays, {"bkg_kmin": 2}, background_standard={"k": k, "chi": np.zeros(k.size)})
+
+
+def test_background_standard_supports_normalized_input_and_explicit_shorter_grid(xas_arrays):
+    x, y = xas_arrays
+    norm = process_spectrum(x, y, {})["arrays"]["norm"]
+    k = np.linspace(0, 5, 201)
+    result = process_spectrum(x, norm, {"e0": 8980, "bkg_kmax": 5}, "norm",
+                              background_standard={"k": k, "chi": np.zeros(k.size)})
+    baseline = process_spectrum(x, norm, {"e0": 8980, "bkg_kmax": 5}, "norm")
+    assert result["arrays"] == baseline["arrays"]
+    assert result["effective"]["background_standard"] is True
+
+
+@pytest.mark.parametrize("data_type", ["xanes", "chi"])
+def test_standard_rejects_inputs_without_background_removal(xas_arrays, data_type):
+    with pytest.raises(ScientificError, match="requires mu or norm"):
+        process_spectrum(*xas_arrays, {}, data_type, background_standard={"k": [0, 1, 2, 20], "chi": [0, 0, 0, 0]})
+
+
+@pytest.mark.parametrize("fnorm, standard", [(True, None), (False, {"k": [0, 1, 2, 20], "chi": [0, 0, 0, 0]})])
+def test_explicit_background_options_reject_insufficient_exafs(fnorm, standard):
+    x = np.linspace(8970, 8990, 201)
+    y = 1 / (1 + np.exp(-(x - 8980)))
+    with pytest.raises(ScientificError, match="sufficient post-edge"):
+        process_spectrum(x, y, {"e0": 8980, "fnorm": fnorm}, background_standard=standard)
 
 
 def test_rbkg_reports_larch_resolution_clamp(xas_arrays):

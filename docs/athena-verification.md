@@ -11,7 +11,7 @@ screenshots, and YouTube references used to guide it.
 From the repository root:
 
 ```bash
-PYTHONPATH=backend backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --reload --host 127.0.0.1 --port 8006
+PYTHONPATH=backend backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --reload --reload-dir backend/xraylarch_web --host 127.0.0.1 --port 8006
 ```
 
 In a second terminal:
@@ -32,6 +32,8 @@ web JSON project for a portable copy.
 
 - Multiple data groups with independent active/marked states, filter, ordering,
   labels, notes, freezing, duplication, deletion and versioned undo/redo.
+  Bulk marking supports all/none/invert and JavaScript regular expressions;
+  freezing targets the current, marked, all or matching groups.
 - Copy or reset individual parameters, scientific sections or full recipes.
   Full-recipe copies preserve per-scan energy shifts; global operations skip
   frozen groups. Sample/reference energy shifts propagate in both directions.
@@ -41,9 +43,13 @@ web JSON project for a portable copy.
 - μ(E), XANES, normalized μ(E), and χ(k) inputs; normalization, flattening,
   AUTOBK, independently configured forward/reverse Fourier transforms.
   Background taper/window/clamp-point controls and fractional k-weights are
-  independent of forward-transform settings.
+  independent of forward-transform settings. Energy-dependent normalization
+  is available for raw fluorescence EXAFS; live background-standard links
+  recalculate downstream groups in dependency order.
 - E/k/R/q plots, overlays, complex components, transform windows, zoom,
   group scale/offset and stacked comparison. CSV exports carry computed arrays.
+  Plot clicks fill draft E0, relative normalization ranges, and k/R bounds;
+  spline energy and k limits are reciprocal. Apply saves the new processing.
 - Calibration, derivative alignment, sample/reference alignment, weighted
   merge/sum, signed differences, parameter-copy series, smoothing, deglitching,
   truncation, rebinning, convolution and bounded-interval deconvolution.
@@ -56,6 +62,11 @@ web JSON project for a portable copy.
   retain detector arrays and unimplemented native state as metadata. Saved web
   analyses are remapped across project exchange and report obsolete source
   versions. Scientific errors leave existing source groups intact.
+- Project-file previews show raw or computed curves, notes and journal before
+  mutation. Select groups by checkbox/range, all/none/invert, periodic position
+  or JavaScript regex. A whole-project choice imports remaining queued projects
+  in full; a subset pauses for the next preview. Failed imports can be retried
+  without replaying accepted files. Save marked groups exports a subset.
 
 Weighted merges normalize finite nonnegative coefficients. Sums preserve signed
 coefficients exactly. Inputs can be raw μ, processed normalized μ, or χ(k), and
@@ -63,6 +74,24 @@ are restricted to the common measured range. Population scatter and explicitly
 supplied measurement uncertainty remain distinct; both export on their native
 grid. A zero sum retains its raw data and can be exported even though it has no
 edge to normalize.
+
+Background standards use the source group's live, unweighted, dimensionless
+χ(k). Cycles and insufficient k coverage reject the entire edit. Frozen
+consumers block direct source edits and cause global operations to skip those
+sources. Background/all parameter copy and reset include the standard link;
+copying onto that standard itself skips the self-link destination. Deleting a
+standard clears direct links and invalidates its consumers, including indirect
+ones. Apply on the first affected consumer repairs its processing and downstream
+groups; undo restores the full prior dependency state.
+
+The standard has fixed amplitude in this Larch implementation. Ifeffit's
+automatic standard-amplitude adjustment is not implemented, and the app does
+not align E0 automatically when a standard is chosen. Standards must cover the complete AUTOBK grid, including endpoint
+clamps; the app never extrapolates a short standard. Energy-dependent
+normalization follows Demeter's correction sequence but retains Larch's
+normalization and spline numerics. E-space curves show the original processing;
+χ/R/q use the corrected signal. See the pinned source evidence in the research
+notes before interpreting this as exact Demeter/Ifeffit equivalence.
 
 ## Numerical and integration evidence
 
@@ -84,7 +113,17 @@ answers. Test count is a checkpoint, not a full-parity claim.
   mixture weights, PCA/peak reports, stale requests and malformed imports.
 - `test_athena_constraints.py`: whole/section/single-parameter copies and
   defaults, frozen destinations, explicit reference ties, calibration/alignment
-  propagation, preserved source arrays, weighted combinations and uncertainty.
+  propagation, preserved source arrays, weighted combinations and uncertainty;
+  all/none/invert marking and freezing with undo.
+- `test_athena_background.py`: live standard dependencies across two hops and
+  reordered groups, direct scientific comparisons, atomic graph/grid failures,
+  frozen consumers, link copy/reset, deletion repair, derived groups and fnorm.
+- `test_athena_project_preview.py`: sampled read-only previews, full-data lazy
+  processing, subset exchange, omitted dependency warnings, report freshness,
+  bounded staging/retry, native fnorm and distinct standard/reference links.
+- `athena-project-import.test.tsx`: ordered subsets, empty-selection semantics,
+  periodic/regex/shift selection, asynchronous plot isolation, whole/subset batch
+  transitions, current revisions and recovery without replaying accepted files.
 - `athena-workbench.test.tsx`: browser state and request contracts, active versus
   marked groups, per-group drafts, parameter application, project recovery and
   dialog behavior. Plotly is mocked in these component tests.
@@ -93,12 +132,23 @@ answers. Test count is a checkpoint, not a full-parity claim.
   q-window interpolation, raw χ fallback and malformed imported reports. Plotly
   rendering is mocked here and checked separately in the live browser.
 
-On 2026-09-07, the final checkpoint passed **565 backend tests** and
+The earlier 2026-09-07 checkpoint passed **565 backend tests** and
 **119 frontend tests across eight files**. `npm run build` passed TypeScript,
 production compilation and route generation for `/`, `/classic` and the backend
 proxy. The backend project/constraint subset also passed **110 tests with
 warnings treated as errors**. `git diff --check` passed. No CLI Playwright suite
 was executed for this checkpoint; live browser checks are listed below.
+The final integrated checkpoint passed **727 backend tests** and **185 frontend
+tests across nine files**. Commands: `backend/.venv/bin/python -m pytest
+backend/tests -q`, then from `frontend`, `npm test`, `npx tsc --noEmit
+--incremental false`, and `npm run build`; all completed successfully. The
+production build compiled `/`, `/classic` and the backend proxy. The 82 workbench,
+49 plot, 17 proxy and 15 project-import component tests are included in the 185,
+not additional counts. No CLI Playwright suite was run; real browser checks and
+resolved integration regressions are recorded below. `git diff --check` passed,
+all 107 parity requirement rows remain in order, documentation links resolve,
+and all nine pinned source hashes match the fetched files.
+
 The Python dependencies emit deprecation warnings for NumPy's matrix class
 inside Larch deconvolution, without test failures.
 
@@ -113,7 +163,7 @@ equivalence claim. SHA-256 identities of the measured fixtures:
 | `cu_50k.xmu` | `f8fc32296f8045ab39ac738416f8d0121672d17d291d61658fcd1531b193f882` |
 | `cu_rt01.xmu` | `cb66455a09abf464d486989faf43ffbaffdf14f970e85bdbe75f47261cfa96e6` |
 
-## Browser observations, 2026-09-07
+## Browser observations and integration regressions, 2026-09-07
 
 Using the running app and real example data:
 
@@ -145,12 +195,62 @@ Using the running app and real example data:
    from four groups/revision 4 to six groups/revision 6, with `cu_50k.xmu` active.
    Returned the plot to normalized E space. Induced retry failures remain covered
    through frontend mocks, rather than a manually disrupted live import.
+10. Marked none, matched `50 K`, and froze the marked result through the new
+    group dialog. The stored revision contained only the 50 K group marked and
+    frozen, while the 10 K group remained active. Undo restored the initial flags.
+11. Exported the copper project and opened it with the native file chooser.
+    The preview showed all three original point counts. A proxy query-forwarding
+    bug initially returned raw data when normalized preview was selected; this
+    was detected visually and in the backend request log, then fixed (step 15). Selecting every second group checked positions 1 and 3;
+    Import added exactly the 612-point 10 K and 408-point 300 K groups, preserving
+    the originals and selecting the last imported group. Undo removed the copies.
+12. Armed E0 picking and clicked a real Plotly trace near the edge. The draft
+    became 8990.698 eV; the stored E0 remained automatic. Entering a 100 eV
+    relative spline minimum produced 5.123167223161844 Å⁻¹. Cleared both drafts
+    back to their original values without processing that picked E0.
+13. Selected 50 K as the 10 K group's background standard and clicked Apply
+    standard. The saved link and effective standard flag were present, with no
+    processing error; the real k-weighted plot rendered. This verifies interface
+    integration, not the appropriateness of these standards for a research fit.
+    Undid the assignment and cleared temporary drafts. The workspace again held
+    three original marked/unfrozen scans, with normalized E space active.
+
+14. Selected two native project files through the file chooser. The backend
+    had stopped before preview; after restarting it, Retry preview retained both
+    files. One Import all groups action added both three-group files, advanced
+    revision 21 to 23 and closed the dialog at nine groups. Two Undo actions
+    restored the three original scans at revision 25. This covers a real initial
+    preview failure/recovery; a mid-batch failure remains covered by mocks.
+15. Fixed the Next proxy to forward query parameters unchanged. Its previous
+    omission returned raw preview values for `mode=norm`, default project format
+    for `format=json`, and E arrays for other CSV spaces. Added route tests for
+    repeated/encoded IDs, formats, mode, space, exact response bytes and retained
+    path/header restrictions. A preview now rejects a mismatched returned mode.
+    Through the live proxy, normalized preview values exactly matched the direct
+    backend; the first y value was 0.006099431461699751 versus raw 1.013661.
+    The corrected normalized Plotly curve was visually inspected. A selected
+    marked JSON export contained exactly one requested group; k export began
+    `k,chi,weighted_chi,kwin` with attachment name `athena-k.csv`.
+16. Corrected false draft indicators caused by object-property ordering. Scalar
+    equality now treats an omitted fnorm as false and preserves the distinction
+    between automatic and explicit values. Three component regressions exercise
+    reordered server recipes, real changes, and Undo with preserved drafts.
+17. A full frontend run exposed an intermittent k/R picking failure (183 passed,
+    one failed). A new regression schedules a native pick click between a child
+    layout effect and the parent's older passive effect. Cancellation now checks
+    the captured pick's identity, preserving the new arm while rejecting old
+    callbacks and still invalidating changed contexts. This is a controlled
+    component timing check, not an induced browser scheduling test.
+18. Corrected a legacy `/classic` test setup that attempted Preview while the
+    initial workspace was still loading. Preview actions now await the enabled
+    control before clicking, without increasing timeouts or changing assertions.
+    All eight classic workbench tests pass with this setup.
 
 ## Limitations retained for continued work
 
 Full desktop behavior remains broader than the current application. Outstanding
-areas include complete default preferences, interactive plot
-plucking, advanced import/project selection, automatic noise/edge-step weighting,
+areas include complete default preferences, plot picking in processing and
+analysis dialogs, import preprocessing, automatic noise/edge-step weighting,
 batch model fitting, PCA target transforms, additional self-absorption methods,
 phase-correction standards, some peak/step functions, all native analysis-state
 formats, and the full collection of diagnostic plots and report formats.

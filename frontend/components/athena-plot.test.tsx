@@ -9,6 +9,7 @@ import { AthenaPlot, type Space } from "./athena-plot"
 type Trace = { name: string; x: number[]; y: number[]; yaxis?: string }
 type Handoff = {
   data: Trace[]
+  onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
   layout: {
     xaxis: { title: { text: string }; range?: number[] }
     yaxis: { title: { text: string } }
@@ -75,6 +76,46 @@ function handoff(): Handoff {
   if (!call) throw new Error("No Plotly handoff was rendered")
   return call[0]
 }
+
+describe("AthenaPlot coordinate picking", () => {
+  it.each<Space>(["E", "k", "R"])("reports the finite plotted x in %s space without applying offsets to it", space => {
+    const onPickX = vi.fn()
+    const active = group()
+    active.multiplier = 7; active.offset = 20
+    show({ groups: [active], active, space, picking: true, onPickX, offset: 100 })
+    const x = { E: 8980, k: 2, R: 1, q: 2 }[space]
+    handoff().onClick!({ points: [{ x, y: -10000 }] })
+    expect(onPickX).toHaveBeenCalledExactlyOnceWith(x, space)
+    expect(screen.getByTestId("athena-plot")).toHaveClass("ath-picking")
+  })
+
+  it("ignores ordinary clicks, analysis plots and q coordinates", () => {
+    const onPickX = vi.fn()
+    const { unmount } = show({ onPickX })
+    handoff().onClick!({ points: [{ x: 8980 }] })
+    unmount()
+    const q = show({ space: "q", picking: true, onPickX })
+    handoff().onClick!({ points: [{ x: 2 }] })
+    q.unmount()
+    show({ picking: true, onPickX, analysisVisible: true, analysis: {
+      kind: "pca", project_version: 1, group_ids: [], options: {}, result: { explained_variance_ratio: [0.9, 0.1] },
+    } })
+    handoff().onClick!({ points: [{ x: 1 }] })
+    expect(onPickX).not.toHaveBeenCalled()
+    expect(screen.getByTestId("athena-plot")).not.toHaveClass("ath-picking")
+  })
+
+  it("ignores missing, string and nonfinite coordinates while armed", () => {
+    const onPickX = vi.fn()
+    show({ picking: true, onPickX })
+    handoff().onClick!({})
+    handoff().onClick!({ points: [] })
+    for (const x of [undefined, null, "8980", NaN, Infinity, -Infinity]) handoff().onClick!({ points: [{ x }] })
+    expect(onPickX).not.toHaveBeenCalled()
+    handoff().onClick!({ points: [{ x: 0 }] })
+    expect(onPickX).toHaveBeenCalledExactlyOnceWith(0, "E")
+  })
+})
 
 describe("AthenaPlot backgrounds and displayed groups", () => {
   it("gives active background curves the same multiplier, group offset, and stack offset as the signal", () => {

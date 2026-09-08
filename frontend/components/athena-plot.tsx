@@ -10,6 +10,7 @@ interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string
   background: boolean; window: boolean; component: string; offset: number
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
+  picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
 
 // Window values are dimensionless. Interpolate only within the paired k/kwin
@@ -27,7 +28,7 @@ function windowOnGrid(k: number[], window: number[], q: number[]) {
   return { x, y }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, analysis, analysisVisible, range }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
   const data: Record<string, unknown>[] = []
   const add = (x: number[], y: number[], name: string, color: string, dash = "solid") => {
     if (!Array.isArray(x) || !Array.isArray(y) || !x.length || x.length !== y.length) return
@@ -100,7 +101,11 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   }
   const hasData = data.some(d => (d.x as number[])?.length)
   if (!hasData) return <div className="ath-no-plot"><span>{space}</span><h3>{groups.length ? "No data in this plot space" : "Your spectra, in perspective."}</h3><p>{groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or open the copper foil example to begin."}</p></div>
-  return <div className="ath-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`}><Plot data={data} layout={{
+  const canPick = picking && !analysisVisible && space !== "q"
+  return <div className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`}><Plot data={data} onClick={event => {
+    const x = event.points?.[0]?.x
+    if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
+  }} layout={{
     autosize: true, margin: { l: 72, r: 25, t: 24, b: 86 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Arial, sans-serif", color: "#586661", size: 12 },
     xaxis: { title: { text: xTitle, standoff: 16 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...(range[0] !== null && range[1] !== null && !analysisVisible ? { range } : { autorange: true }) },

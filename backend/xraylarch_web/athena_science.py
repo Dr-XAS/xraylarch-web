@@ -48,8 +48,9 @@ class AthenaParameters(BaseModel):
     Missing saved fields use Athena defaults bkg_dk=1, bkg_window=hanning,
     nclamp=5, overriding this checkout's lower-level Larch defaults.
     FFTs are limited to powers of two from 128 through 65536.
-    Energy-dependent fnorm is not supported: local AUTOBK only normalizes by
-    a scalar edge_step (larch/xafs/autobk.py), despite saved bkg_fnorm metadata.
+    fnorm=False preserves scalar edge-step normalization. With fnorm=True,
+    raw mu(E) is corrected before a separate normalization/AUTOBK calculation;
+    this is intended only for low-energy fluorescence EXAFS (see process_spectrum).
     """
 
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False, validate_assignment=True)
@@ -62,6 +63,7 @@ class AthenaParameters(BaseModel):
     norm2: float | None = Field(default=None, gt=0)
     nnorm: int | None = Field(default=None, ge=0, le=3)
     flatten: bool = True
+    fnorm: bool = Field(default=False, strict=True)
     rbkg: float = Field(default=1, gt=0, le=20)
     bkg_kmin: float = Field(default=0, ge=0, le=100)
     bkg_kmax: float | None = Field(default=None, gt=0, le=100)
@@ -264,7 +266,77 @@ def _transforms(group, p, effective, warnings):
                      rmax_out=float(rmax_out), rstep=float(rstep), qmax_out=available)
 
 
-def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, data_type="mu") -> dict:
+def _functional_normalization(energy, mu, pre, post, e0):
+    """Return corrected mu and the post-edge maximum of post-pre, in mu units.
+
+    Implements Demeter's process/ifeffit/fnorm.tmpl at revision
+    06afc8da08a5a7d5a26ee14992170fcf5dc67406:
+    https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/fnorm.tmpl
+    Its Ifeffit ceil(array) means ARRAY MAXIMUM, not integer rounding (Ifeffit
+    1.2.11d src/lib/decod.f, v1mth). The factor is 1 before the nearest e0
+    sample and (post-pre)/max(post-pre) from that sample onward. Divide the
+    entire mu signal by this factor, then refit pre_edge and AUTOBK. Dividing
+    an already extracted chi is not equivalent. energy/e0 are shifted eV;
+    the supplied pre/post curves retain this wrapper's Larch polynomial order.
+    Reject nonpositive divisors instead of concealing ill-chosen fit ranges.
+    """
+    # The expression parser's nofx dispatches to nofxa (misc_num.f), which
+    # selects the first/lower sample at a tie, as does Larch index_nearest.
+    start = index_nearest(energy, e0)
+    try:
+        with np.errstate(over="raise", divide="raise", invalid="raise"):
+            difference = post[start:] - pre[start:]
+            if not np.isfinite(difference).all() or np.any(difference <= 0):
+                raise ScientificError("fnorm requires a positive, finite post_edge - pre_edge from e0 to the end of the data; adjust the normalization ranges/order.")
+            scale = float(np.max(difference))
+            factor = np.ones_like(mu)
+            factor[start:] = difference / scale
+            corrected = mu / factor
+    except ArithmeticError as exc:
+        raise ScientificError("fnorm correction overflowed; choose better pre/post-edge fits or rescale mu.") from exc
+    if not np.isfinite(corrected).all():
+        raise ScientificError("fnorm correction overflowed; choose better pre/post-edge fits or rescale mu.")
+    return corrected, scale
+
+
+def _background_standard(standard):
+    """Validate an explicitly supplied, unweighted, dimensionless chi(k)."""
+    if standard is None:
+        return None
+    if not isinstance(standard, Mapping) or set(standard) != {"k", "chi"}:
+        raise ScientificError("background_standard must be a mapping containing exactly k and chi arrays; supply the standard's processed, unweighted chi(k).")
+    k, chi = _pair(standard["k"], standard["chi"], name="Background standard", minimum=4)
+    if k[0] < 0 or k[-1] > 100:
+        raise ScientificError("Background standard k must be between 0 and 100 inverse angstroms.")
+    return k, chi
+
+
+def _standard_arguments(standard, kmax, kstep, edge_step):
+    """Map chi_std into local Larch's unnormalized (mu-bkg) residual units.
+
+    Larch autobk._resid subtracts chi_std BEFORE dividing by edge_step; thus
+    a dimensionless standard needs the factor edge_step. Its np.interp would
+    otherwise extend endpoint values silently, so require full kout coverage.
+    Both endpoints and endpoint-clamp samples are included, even at kmin > 0.
+    Larch fits the supplied amplitude without the automatic standard-amplitude
+    adjustment in Ifeffit 1.2.11d spline.f/splfun.f. E0 is never fitted here.
+    """
+    if standard is None:
+        return {}
+    k, chi = standard
+    last = kstep * (int(1.01 + kmax / kstep) - 1)
+    if k[0] > 0 or k[-1] < last:
+        raise ScientificError(f"Background standard must cover the complete AUTOBK grid from k=0 to {last:.12g} inverse angstroms; extend the standard or lower bkg_kmax. No extrapolation is performed.")
+    try:
+        with np.errstate(over="raise", invalid="raise"):
+            scaled_chi = chi * edge_step
+    except ArithmeticError as exc:
+        raise ScientificError("Background standard scaling overflowed; check the standard's dimensionless chi amplitude and the sample's edge step.") from exc
+    return {"k_std": k, "chi_std": scaled_chi}
+
+
+def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, data_type="mu", *,
+                     background_standard: Mapping | None = None) -> dict:
     """Return {effective, arrays, warnings}; every ARRAY_NAMES key is present.
 
     mu: normalize, subtract AUTOBK background, forward FT and reverse FT.
@@ -286,7 +358,37 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
     The background controls and forward FT controls are independent. Reported
     bkg_dk, bkg_window, nclamp and real weights are the supplied Larch settings;
     background effective settings are None when AUTOBK is not run.
-    Energy-dependent fnorm is deferred; an fnorm option is rejected.
+    fnorm=True is for low-energy fluorescence EXAFS in raw mu input only.
+    Following Athena bkg/ednorm.html and Demeter's fnorm.tmpl, divide mu by
+    a scaled post_edge-pre_edge curve BEFORE refitting normalization and
+    AUTOBK. Pre-edge samples before the nearest e0 sample are unchanged.
+    E-space arrays (including bkg, norm, flat and derivatives) still describe
+    the original mu, while chi and all its transforms use the corrected mu.
+    effective.edge_step remains the original E-space step; fnorm_edge_step
+    records the independently fitted corrected step (or the explicit p.step),
+    and fnorm_scale is max(post_edge-pre_edge) on the post-edge data, in mu
+    units. Both diagnostics are None when fnorm is off. This reproduces the
+    correction sequence, not Ifeffit's different polynomial/spline numerics.
+
+    background_standard optionally supplies exactly {"k": array, "chi": array}:
+    4..100000 real finite pairs, strictly increasing k in inverse angstroms
+    within [0,100], chi unweighted and dimensionless. It must cover the FULL
+    AUTOBK output grid from 0 through kstep*(int(1.01+bkg_kmax/kstep)-1).
+    Linear interpolation is Larch's; no extrapolation, standard amplitude fit,
+    k weighting, phase correction or alignment is added. The caller must
+    provide a suitably scaled standard with comparable local structure and
+    consistent E0. Only the low-R objective and endpoint clamps use the
+    standard; returned chi is the sample's chi, not sample-minus-standard.
+    The fixed-amplitude local Larch behavior differs from Ifeffit's automatic
+    standard scaling. effective.background_standard records whether applied;
+    background_standard_kmin/kmax/points describe its supplied support.
+
+    fnorm rejects norm/xanes/chi input because no raw-mu EXAFS correction can
+    be performed there. Standards support mu/norm, and reject xanes/chi.
+    Explicit requests reject insufficient EXAFS support instead of ignoring
+    the option. A standard is applied to both raw and corrected AUTOBK runs
+    when fnorm is enabled. The caller owns standard selection/persistence;
+    no group identifiers or reference spectra are stored in the recipe.
     """
     try:
         p = AthenaParameters.model_validate(parameters.model_dump(exclude_unset=True)
@@ -295,9 +397,18 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
         raise ScientificError(f"Invalid Athena parameters: {exc}") from exc
     if data_type not in ("mu", "xanes", "norm", "chi"):
         raise ScientificError("data_type must be mu, xanes, norm, or chi.")
+    standard = _background_standard(background_standard)
+    if p.fnorm and data_type != "mu":
+        raise ScientificError("fnorm requires raw mu input with EXAFS support; use data_type='mu' and supply the original fluorescence mu(E).")
+    if standard is not None and data_type not in ("mu", "norm"):
+        raise ScientificError("background_standard requires mu or norm input with AUTOBK processing; xanes and chi do not remove a background.")
     x, y = _pair(energy, mu, minimum=10 if data_type != "chi" else 4)
     effective = p.model_dump()
-    effective.update(data_type=data_type, edge_step=None, exafs=False)
+    effective.update(data_type=data_type, edge_step=None, exafs=False,
+                     fnorm_edge_step=None, fnorm_scale=None, background_standard=standard is not None,
+                     background_standard_kmin=None if standard is None else float(standard[0][0]),
+                     background_standard_kmax=None if standard is None else float(standard[0][-1]),
+                     background_standard_points=None if standard is None else int(standard[0].size))
     arrays = {key: [] for key in ARRAY_NAMES}
     warnings = []
     group = Group()
@@ -354,6 +465,8 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     raise ScientificError("kmax exceeds the background k range; lower kmax or increase bkg_kmax.")
                 _fft_capacity(bmax, p)
                 if bmax - p.bkg_kmin < 2 or np.count_nonzero(x > e0) < 10:
+                    if p.fnorm or standard is not None:
+                        raise ScientificError("fnorm/background_standard requires sufficient post-edge data for AUTOBK; extend the EXAFS range or disable the option.")
                     if p.bkg_kmax is not None or p.kmax is not None or p.bkg_kmin != 0:
                         raise ScientificError("The requested EXAFS range is too short; widen it or select xanes.")
                     warnings.append("Insufficient post-edge data for EXAFS; returning normalization only.")
@@ -375,10 +488,28 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     knot_indices = [index_nearest(kraw, v) for v in np.linspace(p.bkg_kmin, bmax, nspl)]
                     if len(set(knot_indices)) < nspl:
                         raise ScientificError("Too few distinct points for AUTOBK spline knots; lower rbkg or use denser data.")
-                    autobk(x, y, group=group, ek0=e0, edge_step=group.edge_step,
-                           rbkg=p.rbkg, kmin=p.bkg_kmin, kmax=bmax, kweight=p.bkg_kweight,
-                           dk=p.bkg_dk, win=p.bkg_window, nclamp=p.nclamp,
-                           clamp_lo=p.clamp_lo, clamp_hi=p.clamp_hi, nfft=p.nfft, kstep=p.kstep)
+                    bkg_options = dict(ek0=e0, rbkg=p.rbkg, kmin=p.bkg_kmin, kmax=bmax,
+                                       kweight=p.bkg_kweight, dk=p.bkg_dk, win=p.bkg_window,
+                                       nclamp=p.nclamp, clamp_lo=p.clamp_lo, clamp_hi=p.clamp_hi,
+                                       nfft=p.nfft, kstep=p.kstep)
+                    autobk(x, y, group=group, edge_step=group.edge_step, **bkg_options,
+                           **_standard_arguments(standard, bmax, p.kstep, group.edge_step))
+                    if p.fnorm:
+                        corrected_mu, scale = _functional_normalization(x, y, group.pre_edge, group.post_edge, e0)
+                        corrected = Group()
+                        pre_edge(x, corrected_mu, group=corrected, e0=e0, step=p.step,
+                                 make_flat=False, **ranges)
+                        ie0 = index_nearest(x, e0)
+                        fitted_step = float(corrected.post_edge[ie0] - corrected.pre_edge[ie0])
+                        if p.step is None and fitted_step <= max(1e-12, np.ptp(corrected_mu) * 1e-10):
+                            raise ScientificError("fnorm produced a nonpositive or unresolved corrected edge step; adjust pre/post-edge ranges or disable fnorm.")
+                        autobk(x, corrected_mu, group=corrected, edge_step=corrected.edge_step,
+                               **bkg_options, **_standard_arguments(standard, bmax, p.kstep, corrected.edge_step))
+                        group.k, group.chi = corrected.k, corrected.chi
+                        effective.update(fnorm_edge_step=float(corrected.edge_step), fnorm_scale=scale)
+                        warnings.append("Energy-dependent normalization (fnorm) assumes low-energy fluorescence EXAFS affected by an energy-dependent I0 response and reliable pre/post-edge fits. E-space mu/background/normalization remain uncorrected; chi and R/q use a separately corrected and refitted spectrum.")
+                    if standard is not None:
+                        warnings.append("Background standard uses fixed-amplitude, unweighted chi(k) in Larch's low-R objective and endpoint clamps. Supply comparable local structure and consistent E0; no automatic amplitude or E0 adjustment is fitted, unlike legacy Ifeffit standard scaling.")
                     effective.update(rbkg=float(group.rbkg), bkg_kmin=float(group.autobk_details.kmin),
                                      bkg_kmax=float(group.autobk_details.kmax), bkg_dk=float(p.bkg_dk),
                                      bkg_window=p.bkg_window, nclamp=p.nclamp,

@@ -5,11 +5,26 @@ import { Activity, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Copy, Downl
 import { apiBase, athenaApi, resources, type AthenaGroup, type AthenaProject, type Parameters, type Analysis } from "@/lib/athena"
 import type { InspectionResponse } from "@/lib/contracts"
 import { AthenaPlot, type Space } from "./athena-plot"
+import { AthenaProjectImport } from "./athena-project-import"
+import "@/app/athena-controls.css"
+
+// hbar² / (2 m_e), in eV Å²; same constant as larch.xafs.xafsutils.KTOE.
+const ktoe = 3.8099821109685847
+const pickFields = {
+  e0: { space: "E", relative: false },
+  pre1: { space: "E", relative: true }, pre2: { space: "E", relative: true },
+  norm1: { space: "E", relative: true }, norm2: { space: "E", relative: true },
+  bkg_kmin: { space: "k", relative: false }, bkg_kmax: { space: "k", relative: false },
+  kmin: { space: "k", relative: false }, kmax: { space: "k", relative: false },
+  rmin: { space: "R", relative: false }, rmax: { space: "R", relative: false },
+} as const
+type PickKey = keyof typeof pickFields
+type PlotPick = { key: PickKey; label: string; space: Space; relative: boolean; splineEnergy: boolean; e0: number | null; context: string }
 
 const windows = ["hanning", "kaiser", "parzen", "welch", "gaussian", "sine"]
 const parameterSections = {
   normalization: { label: "Normalization", keys: ["e0", "step", "pre1", "pre2", "norm1", "norm2", "nnorm", "flatten"] },
-  background: { label: "Background removal", keys: ["rbkg", "bkg_kmin", "bkg_kmax", "bkg_kweight", "bkg_dk", "bkg_window", "nclamp", "clamp_lo", "clamp_hi"] },
+  background: { label: "Background removal", keys: ["rbkg", "bkg_kmin", "bkg_kmax", "bkg_kweight", "bkg_dk", "bkg_window", "nclamp", "clamp_lo", "clamp_hi", "fnorm"] },
   forward: { label: "Forward Fourier transform", keys: ["kmin", "kmax", "kweight", "dk", "window"] },
   reverse: { label: "Backward Fourier transform", keys: ["rmin", "rmax", "dr", "rwindow"] },
   grid: { label: "Transform grid", keys: ["nfft", "kstep"] },
@@ -18,8 +33,18 @@ type ParameterSection = "all" | keyof typeof parameterSections
 type ParameterSelection = { section: ParameterSection } | { parameter: keyof Parameters }
 const parameterLabels: Record<keyof Parameters, string> = {
   e0: "E₀", step: "Edge step", pre1: "Pre-edge start", pre2: "Pre-edge end", norm1: "Post-edge start", norm2: "Post-edge end", nnorm: "Polynomial degree", flatten: "Flatten normalized data",
-  rbkg: "Rbkg", bkg_kmin: "Spline k min", bkg_kmax: "Spline k max", bkg_kweight: "Spline k-weight", bkg_dk: "Spline dk", bkg_window: "Spline window", nclamp: "Clamp points", clamp_lo: "Low clamp", clamp_hi: "High clamp",
+  rbkg: "Rbkg", bkg_kmin: "Spline k min", bkg_kmax: "Spline k max", bkg_kweight: "Spline k-weight", bkg_dk: "Spline dk", bkg_window: "Spline window", nclamp: "Clamp points", clamp_lo: "Low clamp", clamp_hi: "High clamp", fnorm: "Energy-dependent normalization",
   kmin: "FT k min", kmax: "FT k max", kweight: "FT k-weight", dk: "FT dk", window: "FT window", rmin: "R min", rmax: "R max", dr: "dR", rwindow: "Backward FT window", nfft: "FFT points", kstep: "k step", energy_shift: "Energy shift",
+}
+function sameParameterValue(left: Parameters, right: Parameters, key: keyof Parameters) {
+  // Older recipes omit fnorm; its processing default is false. Keep all other
+  // scalar comparisons exact, including automatic (null) versus explicit values.
+  const value = (recipe: Parameters) => key === "fnorm" && recipe[key] === undefined ? false : recipe[key]
+  return value(left) === value(right)
+}
+function sameParameters(left: Parameters, right: Parameters) {
+  const keys = new Set([...Object.keys(left), ...Object.keys(right)] as (keyof Parameters)[])
+  return [...keys].every(key => sameParameterValue(left, right, key))
 }
 function selectedParameterKeys(selection: ParameterSelection): readonly (keyof Parameters)[] {
   if ("parameter" in selection) return [selection.parameter]
@@ -37,21 +62,22 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | null
+type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | null
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
 
 function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close() }, [])
-  return <dialog className="ath-modal" ref={ref} onCancel={close} aria-label={title}><header><h2>{title}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
+  return <dialog className="ath-modal" ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-label={title}><header><h2>{title}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
 }
 
-function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any" }: {
+function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any", pick }: {
   label: string; value: number | null; onChange: (v: number | null) => void; unit?: string
-  effective?: unknown; optional?: boolean; step?: string
+  effective?: unknown; optional?: boolean; step?: string; pick?: ReactNode
 }) {
-  return <label className="ath-field"><span>{label}{unit && <small>{unit}</small>}</span><input type="number" step={step} value={value ?? ""} placeholder={optional ? "Auto" : ""} onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))} />{optional && value === null && typeof effective === "number" && <em>Auto: {effective.toFixed(3).replace(/\.?0+$/, "")}</em>}</label>
+  const input = <label className="ath-field"><span>{label}{unit && <small>{unit}</small>}</span><input type="number" step={step} value={value ?? ""} placeholder={optional ? "Auto" : ""} onChange={e => onChange(e.target.value === "" ? null : Number(e.target.value))} />{optional && value === null && typeof effective === "number" && <em>Auto: {effective.toFixed(3).replace(/\.?0+$/, "")}</em>}</label>
+  return pick ? <div className="ath-pick-field">{input}{pick}</div> : input
 }
 
 export function AthenaWorkbench() {
@@ -93,25 +119,101 @@ export function AthenaWorkbench() {
   const [peaks, setPeaks] = useState<{center: number; sigma: number; amplitude: number; kind: string}[]>([])
   const [combineWeights, setCombineWeights] = useState<Record<string, number | null>>({})
   const [combineArray, setCombineArray] = useState<"" | "mu" | "norm" | "chi">("")
+  const [pick, setPick] = useState<PlotPick | null>(null)
+  const pickRef = useRef<PlotPick | null>(null)
+  const [groupPattern, setGroupPattern] = useState("")
+  const [ignoreCase, setIgnoreCase] = useState(false)
+  const [freezeTarget, setFreezeTarget] = useState<"current" | "marked" | "all" | "matching">("marked")
+  const [standardDrafts, setStandardDrafts] = useState<Record<string, string>>({})
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
   const marked = project?.groups.filter(g => g.marked) ?? []
   const parameters = active && (drafts[active.id] ?? active.parameters)
-  const dirty = active && parameters && JSON.stringify(parameters) !== JSON.stringify(active.parameters)
+  const dirty = active && parameters && !sameParameters(parameters, active.parameters)
   const selectedGroups = plotMarked && marked.length ? marked : active ? [active] : []
   const parameterTargets = parameterTarget === "all" ? project?.groups ?? [] : parameterTarget === "marked" ? marked : active ? [active] : []
+  const backgroundStandard = active ? standardDrafts[active.id] ?? active.background_standard_id ?? "" : ""
+  const backgroundStandards = project?.groups.filter(g => g.id !== active?.id && !!g.result?.arrays.chi?.length) ?? []
   const combining = modal === "merge" || modal === "sum"
   const canCombineMu = marked.length >= 2 && marked.every(g => g.data_type !== "chi")
   const canCombineNorm = canCombineMu && marked.every(g => !g.processing_error && !!g.result?.arrays.norm?.length)
   const canCombineChi = hasCommonChi(marked)
   const combinationReady = marked.length >= 2 && (combineArray === "chi" ? canCombineChi : combineArray === "norm" ? canCombineNorm : combineArray === "mu" ? canCombineMu : true)
+  const referenceE0 = parameters?.e0 ?? active?.result?.effective.e0
+  const draftE0 = typeof referenceE0 === "number" && Number.isFinite(referenceE0) ? referenceE0 : null
+  function pickContext(plotSpace = space, showAnalysis = analysisVisible) {
+    return JSON.stringify([project?.id, project?.version, active?.id, active?.frozen, plotSpace, showAnalysis, energyMode, component, plotMarked, selectedGroups.map(g => g.id), modal, busy, parameters])
+  }
+  const context = pickContext()
+  const contextRef = useRef(context)
+  contextRef.current = context
+  useEffect(() => {
+    // A newer click can arm a pick before this render's passive effect runs.
+    // Invalidate only the pick captured with this context, never that newer arm.
+    if (pick && pickRef.current === pick && pick.context !== context) cancelPick()
+  }, [context, pick])
+  useEffect(() => {
+    if (!pick) return
+    const escape = (event: KeyboardEvent) => { if (event.key === "Escape") cancelPick() }
+    document.addEventListener("keydown", escape)
+    return () => document.removeEventListener("keydown", escape)
+  }, [pick])
+
+  let patternError = ""
+  let matchingGroups: AthenaGroup[] = []
+  if (groupPattern) {
+    try {
+      const regex = new RegExp(groupPattern, ignoreCase ? "i" : "")
+      matchingGroups = project?.groups.filter(g => regex.test(g.label)) ?? []
+    } catch { patternError = "Invalid JavaScript regular expression. Correct the pattern to continue." }
+  }
+  const freezeTargets = freezeTarget === "all" ? project?.groups ?? [] : freezeTarget === "marked" ? marked : freezeTarget === "matching" ? matchingGroups : active ? [active] : []
+
+  function cancelPick() { pickRef.current = null; setPick(null) }
+  function armPick(key: PickKey, label: string, splineEnergy = false) {
+    if (!active || active.frozen || busy) return
+    if (pick?.key === key && pick.splineEnergy === splineEnergy) { cancelPick(); return }
+    const { space: nativeSpace, relative: nativeRelative } = pickFields[key]
+    const pickSpace = splineEnergy ? "E" : nativeSpace
+    const relative = splineEnergy || nativeRelative
+    if (relative && draftE0 === null) { setError("Set E₀ or apply automatic normalization before picking a relative energy."); return }
+    const next: PlotPick = { key, label, space: pickSpace, relative, splineEnergy, e0: draftE0, context: pickContext(pickSpace, false) }
+    setError(""); setSpace(pickSpace); setAnalysisVisible(false); setRange([null, null])
+    pickRef.current = next; setPick(next)
+  }
+  function pluck(x: number, plotSpace: Space, armed: PlotPick | null) {
+    // Ignore queued Plotly clicks after cancellation, a new arm, or a context change.
+    if (!armed || pickRef.current !== armed || contextRef.current !== armed.context || plotSpace !== armed.space || !Number.isFinite(x)) return
+    const value = armed.relative ? x - armed.e0! : x
+    if ((armed.splineEnergy || armed.space !== "E") && value < 0) {
+      setError(armed.splineEnergy ? "The spline energy must be at or above E₀. Pick again or type a nonnegative relative energy." : "Pick a nonnegative transform limit, or type the value.")
+      return
+    }
+    cancelPick(); setError("")
+    changeParameter(armed.key, armed.splineEnergy ? Math.sqrt(value / ktoe) : value)
+    setMessage(`${armed.label} updated in draft · Apply parameters to process`)
+  }
+  function pickButton(key: PickKey, label: string, splineEnergy = false) {
+    const requiredSpace = splineEnergy ? "E" : pickFields[key].space
+    return <button type="button" className="ath-pick-button" aria-label={`Pick ${label} from plot`} aria-pressed={pick?.key === key && pick.splineEnergy === splineEnergy} title={`Pick x from the ${requiredSpace} plot, or type the value`} disabled={requiredSpace === "E" && active?.data_type === "chi"} onClick={() => armPick(key, label, splineEnergy)}>⌖</button>
+  }
+  function setGroupFlags(field: "marked" | "frozen", value: boolean, targets: AthenaGroup[]) {
+    if (busy || !targets.length) return
+    act("metadata", targets.map(g => g.id), { [field]: value })
+  }
+  function invertMarks() {
+    if (busy || !project?.groups.length) return
+    act("selection", project.groups.map(g => g.id), { field: "marked", mode: "invert" })
+  }
 
   function accept(p: AthenaProject) {
+    if (projectRef.current?.id !== p.id) setStandardDrafts({})
     projectRef.current = p; setProject(p)
     setAnalysis(p.analyses?.at(-1) ?? null)
     localStorage.setItem("athena.project", p.id)
     setActiveId(id => p.groups.some(g => g.id === id) ? id : p.groups[0]?.id ?? "")
   }
   async function task(label: string, work: () => Promise<void>) {
+    cancelPick()
     setBusy(label); setError(""); skippedCount.current = 0
     try { await work(); setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "")) }
     catch (e) { setError(e instanceof Error ? e.message : "The operation failed."); setMessage("Action needs attention") }
@@ -139,6 +241,7 @@ export function AthenaWorkbench() {
     setMenu("")
   }
   function openTool(name: ModalName) {
+    cancelPick()
     setMenu(""); setError(""); setModal(name)
     const e0 = Number(active?.result?.effective.e0 ?? 0)
     setOptions({ reference_id: project?.groups.find(g => g.id !== active?.id)?.id ?? "", target: Math.round(e0), observed: e0 - (active?.parameters.energy_shift ?? 0),
@@ -162,6 +265,10 @@ export function AthenaWorkbench() {
   }
   function changeParameter(key: keyof Parameters, value: number | string | boolean | null) {
     if (!active || !parameters) return
+    cancelPick()
+    if ((key === "bkg_kmin" || key === "bkg_kmax") && typeof value === "number" && (!Number.isFinite(value) || value < 0)) {
+      setError("Spline limits must be nonnegative. Correct the value to continue."); return
+    }
     setDrafts(d => ({ ...d, [active.id]: { ...parameters, [key]: value } }))
   }
   async function updateSharedParameters(action: "copy_parameters" | "reset_parameters", targets: AthenaGroup[], selection: ParameterSelection, closeDialog = false) {
@@ -181,7 +288,7 @@ export function AthenaWorkbench() {
           const saved = next.groups.find(g => g.id === id)?.parameters
           if (!saved || !updated[id] || skipped.includes(id)) continue
           updated[id] = { ...updated[id], ...Object.fromEntries(keys.filter(key => key in saved).map(key => [key, saved[key]])) }
-          if (JSON.stringify(updated[id]) === JSON.stringify(saved)) delete updated[id]
+          if (sameParameters(updated[id], saved)) delete updated[id]
         }
         return updated
       })
@@ -195,9 +302,17 @@ export function AthenaWorkbench() {
       return
     }
     await task("Processing spectra", async () => {
-      const changes = Object.fromEntries(Object.entries(parameters).filter(([key, value]) => value !== active.parameters[key as keyof Parameters]))
+      const changes = Object.fromEntries(Object.entries(parameters).filter(([key]) => !sameParameterValue(parameters, active.parameters, key as keyof Parameters)))
       await command("parameters", [active.id], changes)
       setDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== active.id)))
+    })
+  }
+  async function applyBackgroundStandard() {
+    if (!active || active.frozen || busy) return
+    const id = active.id
+    await task("Applying background standard", async () => {
+      const next = await command("background_standard", [id], { standard_id: backgroundStandard || null })
+      if (!next.last_operation?.skipped_group_ids.includes(id)) setStandardDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== id)))
     })
   }
   function openParameterControls() {
@@ -206,7 +321,15 @@ export function AthenaWorkbench() {
   }
   function field(key: keyof Parameters, label: string, unit?: string, optional = false) {
     if (!parameters || !active) return null
-    return <NumberField key={key} label={label} value={parameters[key] as number | null} unit={unit} optional={optional} effective={active.result?.effective[key === "step" ? "edge_step" : key]} onChange={v => changeParameter(key, v)} />
+    return <NumberField key={key} label={label} value={parameters[key] as number | null} unit={unit} optional={optional} effective={active.result?.effective[key === "step" ? "edge_step" : key]} onChange={v => changeParameter(key, v)} pick={key in pickFields ? pickButton(key as PickKey, label) : undefined} />
+  }
+  function splineEnergyField(key: "bkg_kmin" | "bkg_kmax", label: string) {
+    const k = parameters?.[key]
+    const effective = active?.result?.effective[key]
+    return <NumberField label={label} unit="E − E₀ (eV)" value={typeof k === "number" ? k * k * ktoe : null} optional={key === "bkg_kmax"} effective={typeof effective === "number" ? effective * effective * ktoe : undefined} pick={pickButton(key, label, true)} onChange={value => {
+      if (value !== null && (!Number.isFinite(value) || value < 0)) { cancelPick(); setError("Spline energy relative to E₀ must be nonnegative. Correct the value to continue."); return }
+      setError(""); changeParameter(key, value === null ? key === "bkg_kmin" ? 0 : null : Math.sqrt(value / ktoe))
+    }} />
   }
   function optionNumber(key: string, label: string, unit?: string) {
     return <NumberField key={key} label={label} unit={unit} value={typeof options[key] === "number" ? options[key] as number : null} onChange={v => setOptions(o => ({ ...o, [key]: v ?? "" }))} />
@@ -288,7 +411,7 @@ export function AthenaWorkbench() {
       setModal(null)
     })
   }
-  function changeSpace(value: Space) { setSpace(value); setRange([null, null]); setAnalysisVisible(false) }
+  function changeSpace(value: Space) { cancelPick(); setSpace(value); setRange([null, null]); setAnalysisVisible(false) }
   function moveGroup(delta: number) {
     if (!project || !active) return
     const ids = project.groups.map(g => g.id), index = ids.indexOf(active.id)
@@ -303,6 +426,8 @@ export function AthenaWorkbench() {
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>ATHENA <span>WEB</span></h1><p>X-ray absorption spectroscopy</p></div></div>
       <nav aria-label="Main menu">{["File", "Group", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
+        {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("groups")}>Mark / freeze groups…</button>}
+        {label === "File" && project && (marked.length ? <a href={`${apiBase}/projects/${project.id}/export?format=prj&marked_only=true`}><Download size={15} />Save marked project (.prj)</a> : <button disabled>Save marked project (.prj)</button>)}
         {label === "File" && <><button disabled={!!busy} onClick={() => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) }}><Plus size={15} />New project</button><button disabled={!project || !!busy} onClick={() => { setMenu(""); setModal("import") }}><Upload size={15} />Import data…</button><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project…</button><hr />{project && <><a href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save Athena project (.prj)</a><a href={`${apiBase}/projects/${project.id}/export?format=json`}><Download size={15} />Save complete web project</a></>}<button onClick={() => openTool("journal")} disabled={!project}><FileText size={15} />Project journal</button></>}
         {label === "Group" && <><button disabled={!active || !!busy} onClick={() => openTool("metadata")}>Group information…</button><button disabled={!active || !!busy} onClick={() => act("duplicate")}><Copy size={15} />Duplicate current group</button><button disabled={!active || !!busy} onClick={() => act("metadata", [active!.id], { frozen: !active?.frozen })}><LockKeyhole size={15} />{active?.frozen ? "Unfreeze" : "Freeze"} group</button><button disabled={!active || !!busy} onClick={() => act("delete")}><Trash2 size={15} />Remove current group</button><hr /><button disabled={!!busy || marked.length !== 2} onClick={() => act("tie_reference", marked.map(g => g.id))}>Tie marked sample and reference</button><button disabled={!active || !!busy} onClick={() => act("untie_reference")}>Untie current reference</button><p className="ath-hint">Mark exactly two groups: the first in list order is the sample, the second its reference. Tying adopts the sample’s energy shift and keeps both shifts linked when either is edited.</p>{marked.length === 2 && <p className="ath-hint">Sample: {marked[0].label}<br />Reference: {marked[1].label}</p>}</>}
         {(label === "Process" ? toolsMenu : label === "Analysis" ? analysisMenu : []).map(tool => <button disabled={!active || !!busy} key={tool} onClick={() => openTool(tool)}>{toolTitles[tool!]}</button>)}
@@ -312,14 +437,15 @@ export function AthenaWorkbench() {
     <div className="ath-workspace">
       <aside className="ath-groups"><div className="ath-panel-heading"><h2>Data groups <span>{project?.groups.length ?? 0}</span></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div><label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><div><button onClick={() => moveGroup(-1)} disabled={!active || !!busy} aria-label="Move group up"><ArrowUp size={13} /></button><button onClick={() => moveGroup(1)} disabled={!active || !!busy} aria-label="Move group down"><ArrowDown size={13} /></button></div></div>
-        <div className="ath-group-list">{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map((g, index) => <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className={`ath-swatch color-${index % 6}`} /><span><strong>{g.label}</strong><small>{g.data_type === "chi" ? "χ(k)" : "μ(E)"} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && JSON.stringify(drafts[g.id]) !== JSON.stringify(g.parameters) && <i title="Unapplied parameters" className="ath-dirty-dot" />}</button></div>)}</div>
+        <div className="ath-group-list">{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map((g, index) => <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className={`ath-swatch color-${index % 6}`} /><span><strong>{g.label}</strong><small>{g.data_type === "chi" ? "χ(k)" : "μ(E)"} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title="Unapplied parameters" className="ath-dirty-dot" />}</button></div>)}</div>
         {!project?.groups.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
         <div className="ath-sidebar-bottom"><button disabled={!!busy || !project} onClick={() => { void task("Loading copper example", async () => { const next = await command("example"); setActiveId(next.groups.at(-3)!.id) }) }}><Activity size={16} />Load copper foil example</button><small>Real spectra · 10 K, 50 K & 300 K</small><div><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button><button onClick={() => openTool("journal")} disabled={!project} aria-label="Project journal"><FileText size={15} /></button></div></div>
       </aside>
       <section className="ath-center"><div className="ath-center-heading"><div><p className="ath-eyebrow">SPECTRUM WORKSPACE</p><h2>{active?.label ?? "Explore your XAS data"}</h2></div>{active && <button className="ath-subtle" onClick={() => openTool("metadata")} aria-label="Edit group information"><Settings2 size={16} /></button>}</div>
         <div className="ath-plot-card"><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div><label className="ath-check"><input type="checkbox" checked={plotMarked} onChange={e => setPlotMarked(e.target.checked)} />Plot marked</label></div>
           <div className="ath-plot-controls">{space === "E" ? <><select aria-label="Energy plot" value={energyMode} onChange={e => setEnergyMode(e.target.value)}><option value="mu">μ(E) · raw</option><option value="norm">μ(E) · normalized</option><option value="flat">μ(E) · flattened</option><option value="dmude">Derivative dμ/dE</option><option value="d2mude">Second derivative d²μ/dE²</option></select><label className="ath-check"><input type="checkbox" checked={background} disabled={energyMode !== "mu"} onChange={e => setBackground(e.target.checked)} />Background lines</label></> : <><span className="ath-chip">k-weight {active?.parameters.kweight ?? 2}</span>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">Real part</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} onChange={e => setOffset(Number(e.target.value))} /></label></div>
-          <AthenaPlot groups={selectedGroups} active={active} space={space} energyMode={energyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} />
+          {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes wait for Apply.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
+          <AthenaPlot groups={selectedGroups} active={active} space={space} energyMode={energyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />
           <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div><label>Range <input aria-label="Plot minimum" type="number" placeholder="Auto" value={range[0] ?? ""} onChange={e => setRange([e.target.value === "" ? null : Number(e.target.value), range[1]])} /></label><span>to</span><input aria-label="Plot maximum" type="number" placeholder="Auto" value={range[1] ?? ""} onChange={e => setRange([range[0], e.target.value === "" ? null : Number(e.target.value)])} />{active && project && <a title="Export current group data" href={`${apiBase}/projects/${project.id}/groups/${active.id}/export?space=${space}`}><Download size={14} />CSV</a>}</div></div>
         </div>
         <div className="ath-readouts"><div><span>EDGE ENERGY</span><strong>{typeof active?.result?.effective.e0 === "number" ? active.result.effective.e0.toFixed(2) : "—"}<small> eV</small></strong></div><div><span>EDGE STEP</span><strong>{typeof active?.result?.effective.edge_step === "number" ? active.result.effective.edge_step.toFixed(4) : "—"}</strong></div><div><span>ENERGY RANGE</span><strong>{active && active.data_type !== "chi" ? `${Math.round(active.energy[0] + active.parameters.energy_shift)}–${Math.round(active.energy.at(-1)! + active.parameters.energy_shift)}` : "—"}<small> eV</small></strong></div><div><span>PROCESSING</span><strong className={active?.processing_error ? "ath-warn-text" : "ath-green"}>{active ? active.processing_error ? "Needs attention" : dirty ? "Draft changes" : "Up to date" : "Ready"}</strong></div></div>
@@ -330,7 +456,10 @@ export function AthenaWorkbench() {
       </section>
       <aside className="ath-parameters"><div className="ath-panel-heading"><h2>Processing parameters</h2><Settings2 size={16} /></div>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong>{active.label}</strong><button aria-label={active.frozen ? "Unfreeze group" : "Freeze group"} disabled={!!busy} onClick={() => act("metadata", [active.id], { frozen: !active.frozen })}><LockKeyhole size={14} />{active.frozen ? "Frozen" : "Freeze"}</button></div><fieldset disabled={active.frozen || !!busy} className="ath-param-fields">
         <details open><summary>Normalization <small>μ(E)</small></summary><div className="ath-fields">{field("e0", "E₀", "eV", true)}{field("step", "Edge step", undefined, true)}{field("pre1", "Pre-edge start", "eV relative", true)}{field("pre2", "Pre-edge end", "eV relative", true)}{field("norm1", "Post-edge start", "eV relative", true)}{field("norm2", "Post-edge end", "eV relative", true)}<label className="ath-field"><span>Polynomial degree</span><select value={parameters?.nnorm ?? ""} onChange={e => changeParameter("nnorm", e.target.value === "" ? null : Number(e.target.value))}><option value="">Auto</option>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{field("energy_shift", "Energy shift", "eV")}</div><label className="ath-check"><input type="checkbox" checked={parameters?.flatten} onChange={e => changeParameter("flatten", e.target.checked)} />Flatten normalized data</label><p className="ath-hint">Blank fields use values determined from this spectrum.</p></details>
-        <details open><summary>Background removal <small>AUTOBK</small></summary><div className="ath-fields">{field("rbkg", "Rbkg", "Å")}{field("bkg_kweight", "Spline k-weight")}{field("bkg_kmin", "Spline k min", "Å⁻¹")}{field("bkg_kmax", "Spline k max", "Å⁻¹", true)}{field("clamp_lo", "Low clamp")}{field("clamp_hi", "High clamp")}{field("bkg_dk", "Spline dk", "Å⁻¹")}{field("nclamp", "Clamp points")}{selectParameter("bkg_window", "Spline window")}</div></details>
+        <details open><summary>Background removal <small>AUTOBK</small></summary><div className="ath-fields">{field("rbkg", "Rbkg", "Å")}{field("bkg_kweight", "Spline k-weight")}{field("bkg_kmin", "Spline k min", "Å⁻¹")}{field("bkg_kmax", "Spline k max", "Å⁻¹", true)}{splineEnergyField("bkg_kmin", "Spline energy min")}{splineEnergyField("bkg_kmax", "Spline energy max")}{field("clamp_lo", "Low clamp")}{field("clamp_hi", "High clamp")}{field("bkg_dk", "Spline dk", "Å⁻¹")}{field("nclamp", "Clamp points")}{selectParameter("bkg_window", "Spline window")}</div><p className="ath-hint">Spline energy is relative to E₀; energy and k limits update each other. Use ⌖ to pick a plotted x value or type either limit. Apply to process.</p>
+          <label className="ath-check"><input type="checkbox" checked={parameters?.fnorm ?? false} disabled={active.data_type !== "mu"} onChange={e => changeParameter("fnorm", e.target.checked)} />Energy-dependent normalization</label><p className="ath-hint">For low-energy fluorescence EXAFS in raw μ(E) groups, with well-chosen pre/post-edge fits. Affects χ(k), not the energy plot. Apply parameters to process.</p>
+          <label className="ath-field"><span>Background removal standard</span><select value={backgroundStandard} onChange={e => { cancelPick(); setStandardDrafts(d => ({ ...d, [active.id]: e.target.value })) }}><option value="">None</option>{backgroundStandard && !backgroundStandards.some(g => g.id === backgroundStandard) && <option disabled value={backgroundStandard}>Unavailable standard</option>}{backgroundStandards.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label><button disabled={backgroundStandard === (active.background_standard_id ?? "")} onClick={() => { void applyBackgroundStandard() }}>Apply standard</button><p className="ath-hint">Uses the standard’s live processed χ(k). Apply standard saves this choice and processes the current group with saved parameters. Parameter copy uses the saved standard, so apply a new choice first. Other parameter drafts wait for Apply parameters. Frozen groups are skipped.</p>
+        </details>
         <details open><summary>Forward Fourier transform <small>k → R</small></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
         <details><summary>Backward Fourier transform <small>R → q</small></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
         <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details>
@@ -338,6 +467,25 @@ export function AthenaWorkbench() {
     </div>
     <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
 
+    {modal === "groups" && <Modal title="Mark / freeze groups" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body ath-group-controls">
+      <p className="ath-hint">Actions use the full group list, including groups hidden by search, and keep the current group selected. Frozen groups can still be marked or unfrozen.</p>
+      <fieldset disabled={!!busy}><legend>Mark groups</legend><div className="ath-bulk-actions">
+        <button disabled={!project?.groups.length} onClick={() => setGroupFlags("marked", true, project?.groups ?? [])}>Mark all</button>
+        <button disabled={!project?.groups.length} onClick={() => setGroupFlags("marked", false, project?.groups ?? [])}>Mark none</button>
+        <button disabled={!project?.groups.length} onClick={invertMarks}>Invert marks</button>
+      </div></fieldset>
+      <label className="ath-field"><span>JavaScript regular expression</span><input value={groupPattern} aria-describedby="ath-regex-hint" onChange={e => { setGroupPattern(e.target.value); setError("") }} placeholder="e.g. ^Foil|standard$" /></label>
+      <p id="ath-regex-hint" className="ath-hint">Match group labels using JavaScript syntax, without / delimiters. Perl-specific regex features are unavailable. A blank pattern selects no groups.</p>
+      <label className="ath-check"><input type="checkbox" checked={ignoreCase} onChange={e => { setIgnoreCase(e.target.checked); setError("") }} />Ignore case</label>
+      <p aria-live="polite">{matchingGroups.length} matching groups</p>
+      <div className="ath-bulk-actions"><button disabled={!!busy || !!patternError || !matchingGroups.length} onClick={() => setGroupFlags("marked", true, matchingGroups)}>Mark matching</button><button disabled={!!busy || !!patternError || !matchingGroups.length} onClick={() => setGroupFlags("marked", false, matchingGroups)}>Unmark matching</button></div>
+      <fieldset disabled={!!busy}><legend>Freeze groups</legend><label className="ath-field"><span>Freeze targets</span><select value={freezeTarget} onChange={e => setFreezeTarget(e.target.value as typeof freezeTarget)}><option value="current">Current group</option><option value="marked">Marked groups</option><option value="all">All groups</option><option value="matching">Matching labels</option></select></label><p className="ath-hint">{freezeTargets.length} targets. Freezing protects processing parameters; marking remains available.</p><div className="ath-bulk-actions">
+        <button disabled={!freezeTargets.length || (freezeTarget === "matching" && !!patternError)} onClick={() => setGroupFlags("frozen", true, freezeTargets)}>Freeze targets</button>
+        <button disabled={!freezeTargets.length || (freezeTarget === "matching" && !!patternError)} onClick={() => setGroupFlags("frozen", false, freezeTargets)}>Unfreeze targets</button>
+      </div></fieldset>
+      {(patternError || error) && <div className="ath-error" role="alert">{patternError || error}</div>}
+      <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => setModal(null)}>Close</button></div>
+    </div></Modal>}
     {modal === "parameters" && <Modal title="Copy / reset parameters" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">
       <p>Copy from <strong>{active?.label}</strong>, including its unapplied parameter edits, or restore processing defaults for the destination groups.</p>
       <div className="ath-fields">
@@ -353,7 +501,7 @@ export function AthenaWorkbench() {
 
     {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}
     {modal === "import" && <Modal title="Import spectra" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{!inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">For an Athena .prj or saved web project, use File → Open project.</p></> : <><p><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{files.length > 1 ? ` · ${files.length} files remaining` : ""}</span></p><div className="ath-fields"><label className="ath-field"><span>Data type</span><select value={mapping.data_type} onChange={e => setMapping(m => ({ ...m, data_type: e.target.value }))}><option value="mu">μ(E) · absorption</option><option value="xanes">XANES · short energy range</option><option value="norm">Normalized μ(E)</option><option value="chi">χ(k) · extracted EXAFS</option></select></label><label className="ath-field"><span>Measurement</span><select value={mapping.mode} onChange={e => setMapping(m => ({ ...m, mode: e.target.value }))}><option value="mu">Direct signal</option><option value="transmission">Transmission · ln(I₀ / It)</option><option value="fluorescence">Fluorescence · If / I₀</option></select></label><label className="ath-field"><span>{mapping.data_type === "chi" ? "k column" : "Energy column"}</span><select value={mapping.energy_column} onChange={e => setMapping(m => ({ ...m, energy_column: e.target.value }))}>{inspection.columns.map(c => <option key={c.column_id} value={c.column_id}>{c.name} · column {c.index + 1}</option>)}</select></label><label className="ath-field"><span>Energy units</span><select value={mapping.units} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, units: e.target.value }))}><option>eV</option><option>keV</option></select></label></div><div className="ath-column-table"><table><thead><tr><th>Numerator</th><th>Denominator</th><th>Column</th><th>First values</th></tr></thead><tbody>{inspection.columns.map(c => <tr key={c.column_id}><td><input type="checkbox" aria-label={`Numerator ${c.name}`} checked={mapping.numerator.includes(c.column_id)} onChange={e => setMapping(m => ({ ...m, numerator: e.target.checked ? [...m.numerator, c.column_id] : m.numerator.filter(v => v !== c.column_id) }))} /></td><td><input type="radio" aria-label={`Denominator ${c.name}`} name="denominator" disabled={mapping.mode === "mu"} checked={mapping.denominator === c.column_id} onChange={() => setMapping(m => ({ ...m, denominator: c.column_id }))} /></td><td>{c.name}</td><td>{c.preview.slice(0, 3).map(v => v.toPrecision(5)).join(", ")}</td></tr>)}</tbody></table></div><p className="ath-formula">μ = {mapping.mode === "transmission" ? "ln(" : ""}({mapping.numerator.map(id => inspection.columns.find(c => c.column_id === id)?.name).join(" + ") || "…"}){mapping.mode !== "mu" && ` / ${inspection.columns.find(c => c.column_id === mapping.denominator)?.name ?? "…"}`}{mapping.mode === "transmission" ? ")" : ""}</p><details><summary>Reference channel & ordering</summary><p className="ath-hint">Optional downstream transmission reference: ln(reference numerator / reference denominator).</p><div className="ath-fields">{(["reference_numerator", "reference_denominator"] as const).map(key => <label key={key} className="ath-field"><span>{key.replaceAll("_", " ")}</span><select value={mapping[key]} onChange={e => setMapping(m => ({ ...m, [key]: e.target.value }))}><option value="">None</option>{inspection.columns.map(c => <option value={c.column_id} key={c.column_id}>{c.name}</option>)}</select></label>)}</div><label className="ath-check"><input type="checkbox" checked={mapping.sort} onChange={e => setMapping(m => ({ ...m, sort: e.target.checked }))} />Sort ascending by energy (duplicate energies still require repair)</label></details>{inspection.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}{files.length > 1 && <label className="ath-check"><input type="checkbox" checked={reuseMapping} onChange={e => setReuseMapping(e.target.checked)} />Reuse this mapping for remaining files with matching column labels</label>}<div className="ath-modal-actions"><button disabled={!!busy} onClick={() => { setInspection(null); setFiles([]) }}>Choose another file</button><button className="ath-primary" disabled={!!busy || !mapping.numerator.length} onClick={() => { void importCurrent() }}>{busy ? "Importing…" : "Import spectrum"}</button></div></>}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
-    {modal === "open" && <Modal title="Open a project" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-upload-zone"><FolderOpen size={26} /><strong>Open an Athena project</strong><span>.prj or Athena Web .json · adds its groups to this workspace</span><input type="file" aria-label="Open project file" disabled={!!busy || !project} accept=".prj,.json,.gz" onChange={e => { const file = e.target.files?.[0]; if (file) void task("Opening project file", async () => { const p = projectRef.current!; const form = new FormData(); form.append("file", file); accept(await athenaApi(`/projects/${p.id}/restore?version=${p.version}`, form)); setModal(null) }) }} /></label><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
     {modal && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
       {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes</span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}</div><label className="ath-field"><span>Reference group</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>
