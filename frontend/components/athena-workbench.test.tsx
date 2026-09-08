@@ -10,6 +10,7 @@ import { AthenaPlot } from "./athena-plot"
 import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
 import { AthenaWorkbench } from "./athena-workbench"
+import { differenceOptions, differencePreview, differenceSaved } from "./athena-difference.fixtures"
 
 // Full workbench flows exercise many controls; leave time for jsdom style/accessibility
 // calculation on shared CI hosts. Individual waitFor assertions stay bounded.
@@ -24,6 +25,7 @@ vi.mock("@/lib/athena", async importOriginal => ({
 vi.mock("./athena-plot", () => ({
   AthenaPlot: vi.fn(() => <div data-testid="athena-plot" />),
 }))
+vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // The standalone panel tests own preview/import interactions; verify its host contract here.
 vi.mock("./athena-project-import", () => ({
   AthenaProjectImport: vi.fn(() => <div data-testid="project-import-panel" />),
@@ -2207,13 +2209,57 @@ describe("AthenaWorkbench weighted combinations", () => {
     fireEvent.click(within(sum).getByRole("button", { name: /cancel/i }))
     const difference = await openTool("Process", /difference spectrum/i)
     expect(within(difference).queryByRole("combobox", { name: /signal to combine/i })).not.toBeInTheDocument()
-    api.mockResolvedValueOnce(importedProject(project, "difference"))
-    fireEvent.click(within(difference).getByRole("button", { name: /^Apply$/i }))
+    fireEvent.change(within(difference).getByRole("combobox", { name: "STANDARD" }), { target: { value: "oxide" } })
+    const preview = differencePreview(project, ["foil"], { standard_id: "oxide" })
+    api.mockResolvedValueOnce(preview)
+    fireEvent.click(within(difference).getByRole("button", { name: "Preview difference" }))
+    await waitFor(() => expect(within(difference).getByRole("button", { name: "Save difference groups" })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/difference/preview`, {
+      version: project.version, action: "difference", group_ids: ["foil"], options: { ...differenceOptions, standard_id: "oxide" },
+    })
+    expect(plotProps().active?.id).toBe("foil")
+    const next = differenceSaved(project, preview)
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(difference).getByRole("button", { name: "Save difference groups" }))
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
-      version: project.version, action: "difference", group_ids: ["sample", "oxide"], options: {},
+      version: project.version, action: "difference", group_ids: ["foil"], options: preview.options,
     })
+    expect(plotProps().active?.id).toBe("diff-foil")
+    expect(screen.getByRole("status")).toHaveTextContent("Difference groups saved · 1 created")
+  })
+
+  it("previews marked differences from saved recipes and preserves source data and independent drafts on save", async () => {
+    const initial = projectFixture()
+    initial.groups[1].frozen = true
+    const project = await openSaved(initial)
+    editNumber(/^Rbkg/, 2.7)
+    selectGroup("Oxide standard"); editNumber(/^Rbkg/, 3.1)
+    const dialog = await openTool("Process", /difference spectrum/i)
+    const view = within(dialog)
+    fireEvent.change(view.getByRole("combobox", { name: "STANDARD" }), { target: { value: "unused" } })
+    fireEvent.change(view.getByRole("combobox", { name: "DATA targets" }), { target: { value: "marked" } })
+    const preview = differencePreview(project, ["sample", "oxide"], { standard_id: "unused" })
+    api.mockResolvedValueOnce(preview)
+    fireEvent.click(view.getByRole("button", { name: "Preview difference" }))
+    await waitFor(() => expect(view.getByRole("button", { name: "Save difference groups" })).toBeEnabled())
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 7, action: "difference", group_ids: ["sample", "oxide"], options: preview.options })
+    expect(plotProps().active?.parameters.rbkg).toBe(1.4)
+    const next = differenceSaved(project, preview)
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(view.getByRole("button", { name: "Save difference groups" }))
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(plotProps().active?.id).toBe("diff-oxide")
+    selectGroup("Sample scan")
+    expect(plotProps().active).toBe(project.groups[1])
+    expect(plotProps().active?.frozen).toBe(true)
+    selectGroup("Oxide standard")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(3.1)
+    expect(plotProps().active?.result?.arrays).toBe(project.groups[2].result?.arrays)
+    selectGroup("Foil scan")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.7)
+    expect(api).toHaveBeenCalledTimes(3)
   })
 })
 

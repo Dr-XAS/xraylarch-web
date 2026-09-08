@@ -84,6 +84,16 @@ signals. Live measured-copper checks preserved arrays exactly across identity
 edits, difference copies and reprocessing. Counts, scope and open requirements
 are recorded in [the checkpoint](athena-verification.md#absorber-identity-and-derived-signals-checkpoint-2026-09-07).
 
+**B-difference / F-difference**: the dedicated difference workflow now supports
+all six desktop energy forms, independent DATA/STANDARD selection, scaling,
+inversion, per-group flatten choices, source-based Romberg integration, naming
+tokens, marked area sequences, optional renormalization and E/k previews.
+Preview is read-only and save is atomic. Numeric tests include the original
+measured Pt recipe with an explicitly specified Larch normalization oracle;
+store and browser evidence distinguish this from native Demeter execution.
+See [difference source contract](athena-difference-reference.md) and the
+[verification checkpoint](athena-verification.md#difference-tool-checkpoint-2026-09-07).
+
 ## Workspace, groups, and shared parameters
 
 | ID | Required coverage and primary reference | Proposed acceptance check | Implementation | Evidence |
@@ -196,8 +206,8 @@ Separate scientific stages are required. Shared screen placement must not collap
 | AN-10 | Peak centers/amplitudes/widths/shape parameters, fixed/varied states, add/change functions, pluck initialization, preview/reset. [Peaks][peak] | Compare fitted and fixed parameters. | Partial | F-tools adds, edits and removes multiple peaks, then checks the surviving model for the active group. Fixed/varied controls, additional shape parameters, pluck initialization and full preview/reset remain open. |
 | AN-11 | Peak data/fit/components/residual reports; marked sequences, row inspection, parameter evolution, spreadsheet uncertainties. [Peaks][peak] | Compare single and batch results/exports. | Partial | F-tools checks a single-group fit handoff; B-peaks contains component-sum/residual assertions. Marked sequences, parameter-evolution views and spreadsheet uncertainty reports remain open. |
 | AN-12 | Log-ratio/phase-difference: standard/unknown, FT/filter/fit ranges, cumulants through fourth order, plots and export. [Log-ratio][lr] | Verify sign conventions and isolated-shell reference outputs. | Pending | — |
-| AN-13 | Difference: raw/normalized/first/second derivative, scaled standard, inversion, optional input overlays. [Difference][diff] | Check subtraction direction and scaling. | Partial | B-derived-identity preserves the existing two-group ordered subtraction through copies, transforms and reprocessing; negative and zero fixtures retain their numeric values. Live copper subtraction and copy-series checks preserve arrays exactly; display labels now identify difference signals. The dedicated representation/standard/multiplier/inversion and input-overlay controls remain open. |
-| AN-14 | Difference integration bounds, marked-series area plot, group naming tokens, normalized/renormalize result type. [Difference][diff] | Compare integrals and saved groups. | Partial | Persistent is_difference state and native is_diff exchange retain the web's existing mode without energy normalization. Native-only subset restore works without parent groups. This is not the full Athena type/renormalization contract; integration, marked-series areas, naming tokens and selectable renormalization remain open. |
+| AN-13 | Difference: raw/normalized/first/second derivative, scaled standard, inversion, optional input overlays. [Difference][diff] | Check subtraction direction and scaling. | Partial | B-difference/F-difference implement xmu/norm/der/nder/sec/nsec, per-input flatten resolution, explicit STANDARD, signed multiplier, inversion, full STANDARD grid with reported extrapolation, and DATA/STANDARD overlays. Live scaled/inverted copper E and k previews passed; saved arrays exactly match the Larch-template formula. Actual Demeter/Ifeffit execution, its qinterp alternative and broader native preprocessing equivalence remain open. |
+| AN-14 | Difference integration bounds, marked-series area plot, group naming tokens, normalized/renormalize result type. [Difference][diff] | Compare integrals and saved groups. | Partial | B-difference/F-difference implement E0-relative typed/picked bounds, natural-spline Romberg areas with convergence reports, marked-series plots, naming tokens and explicit renormalization. Save is atomic, preserves originals and records correct native type/is_nor/mode flags; live signed batch and processed raw saves plus Undo passed. Real mouse picks updated both bounds, invalidated the old preview and recalculated the area on measured copper. Actual desktop round-trip execution and complete historical native-type semantics remain open. |
 
 ## Metadata, persistence, preferences, and export
 

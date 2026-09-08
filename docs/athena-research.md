@@ -160,6 +160,25 @@ and added to the [54-file source manifest](athena-primary-sources.json). Only
 these three source files were checked in this checkpoint; the earlier 52-file
 verification is historical evidence, not a new full-bundle run.
 
+## Difference workflow follow-up
+
+The [difference source contract](athena-difference-reference.md) traces the
+six-form panel, full STANDARD-grid Larch template, physical coordinate handling,
+Romberg integration, native type/normalization flags and preview/save separation.
+The original measured platinum recipe and compressed 21-scan project were
+located under `examples/recipes/Difference` at the pinned revision; the project
+is retained as a byte-identical test fixture. The manifest now contains 61
+source entries, and all recorded Demeter Git blob IDs were checked against
+the pinned repository tree. This is source/fixture provenance, not a new content
+download and SHA-256 check of every historical source entry.
+
+The implemented dedicated panel replaces the former two-marked-group UI.
+The legacy empty-options subtraction API remains available for earlier clients.
+The native Pt demo's raw arrays import, but its zero-width Kaiser background
+recipe is incompatible with current Larch validation; native polynomial-order
+conversion is also unfinished. Numerical comparisons explicitly choose Larch
+normalization settings and do not claim untouched native preprocessing passed.
+
 ## YouTube discovery and verification limits
 
 The [IXAS video index](https://xafs.xrayabsorption.org/videos.html) lists the following resources. Titles/presenter associations are verified from that index; its approximate duration/count is catalog metadata.

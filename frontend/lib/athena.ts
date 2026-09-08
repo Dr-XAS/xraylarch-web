@@ -40,11 +40,33 @@ export interface E0SelectionResult {
   element: string | null; edge: string | null; tabulated_e0: number | null
   iterations: number; converged: boolean; warnings: string[]
 }
+export type DifferenceForm = "xmu" | "norm" | "der" | "nder" | "sec" | "nsec"
+export interface DifferenceOptions {
+  standard_id: string; form: DifferenceForm; multiplier: number; invert: boolean
+  integrate: boolean; xmin: number; xmax: number; renormalize: boolean
+  name_template: string; plot_inputs: boolean; plot_space: "E" | "k"
+}
+export interface DifferenceInputK {
+  role: "DATA" | "STANDARD"; group_id: string; label: string
+  k: number[]; weighted_chi: number[]; kweight: number | null; error: string | null
+}
+export interface DifferenceResult {
+  group_id: string; label: string; energy: number[]; difference: number[]
+  data: number[]; standard: number[]; form: DifferenceForm; data_form: string; standard_form: string
+  area: number | null; e0: number | null
+  integration: null | { xmin: number; xmax: number; lower: number; upper: number; converged: boolean; iterations: number }
+  warnings: string[]; y_label: string; area_label: string
+  extrapolated_points: number
+  k: number[]; weighted_chi: number[]; kweight: number | null; k_error: string | null
+  input_k?: DifferenceInputK[]
+}
+export interface DifferencePreview { version: number; options: DifferenceOptions; results: DifferenceResult[] }
+export interface DifferenceSavedResult { group_id: string; source_group_id: string; label: string; area: number | null }
 export interface AthenaProject {
   id: string; name: string; version: number; groups: AthenaGroup[]; journal: string
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]
   analyses?: Analysis[]
-  last_operation?: { action: string; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[] }
+  last_operation?: { action: string; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[] }
 }
 export interface Analysis {
   id?: string; created?: string

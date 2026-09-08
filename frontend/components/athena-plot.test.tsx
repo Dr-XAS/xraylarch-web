@@ -78,6 +78,26 @@ function handoff(): Handoff {
 }
 
 describe("AthenaPlot difference signal labels", () => {
+  it.each(["mu", "norm", "flat"])("uses saved form units for an unrenormalized difference in %s", energyMode => {
+    const sample = group("Normalized derivative difference")
+    sample.is_difference = true
+    sample.source.y_label = "Δdμnorm/dE (eV⁻¹)"
+    show({ groups: [sample], active: sample, energyMode })
+    expect(handoff().layout.yaxis.title.text).toBe("Δdμnorm/dE (eV⁻¹)")
+  })
+
+  it("does not carry the saved difference units into renormalized groups or new derivative plots", () => {
+    const sample = group("Renormalized difference")
+    sample.is_difference = false
+    sample.source = { operation: "difference", y_label: "Δdμnorm/dE (eV⁻¹)" }
+    const rendered = show({ groups: [sample], energyMode: "norm" })
+    expect(handoff().layout.yaxis.title.text).toBe("Normalized μ(E)")
+    rendered.unmount()
+    sample.is_difference = true
+    show({ groups: [sample], energyMode: "dmude" })
+    expect(handoff().layout.yaxis.title.text).toBe("d(difference)/dE (eV⁻¹)")
+  })
+
   it.each([
     ["mu", "Difference signal"], ["norm", "Difference signal"], ["flat", "Difference signal"],
     ["dmude", "d(difference)/dE (eV⁻¹)"], ["d2mude", "d²(difference)/dE² (eV⁻²)"],

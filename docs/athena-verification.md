@@ -467,11 +467,129 @@ Live checks used the original three copper scans in project
    backend and same-origin proxy health endpoints both reported `status: ok`.
 
 This implements identity editing and persistence of the existing difference
-mode. Athena's full difference representation, standard scaling, inversion,
-integration, marked-series, naming and renormalization controls remain open.
+mode. At this checkpoint Athena's full difference representation, standard
+scaling, inversion, integration, marked-series, naming and renormalization
+controls remained open; the next checkpoint implements those controls.
 Other gaps include full metadata parameter copying, general provenance
 remapping and invalidation, and complete native processing/type semantics.
 All **107** requirement rows are retained and none is Verified.
+
+## Difference tool checkpoint, 2026-09-07
+
+The dedicated difference panel implements six energy forms, explicit DATA and
+STANDARD selection, current/marked targets, signed standard scaling, inversion,
+input overlays, E0-relative integration bounds, naming tokens, area sequences,
+optional renormalization and E/k previews. Energy CSV and full preview JSON are
+available. Numerical behavior and intentional boundaries are described in
+[athena-difference-reference.md](athena-difference-reference.md), with source
+identity in [athena-primary-sources.json](athena-primary-sources.json).
+
+Preview reads saved spectra and recipes without writing project groups,
+histories or analyses. A version check after calculation rejects concurrent
+edits. Save recomputes the accepted options under the project lock and either
+creates every requested group or leaves the project unchanged. It preserves
+original groups, including frozen inputs and frontend parameter drafts. Signed
+outputs keep their difference mode and form-specific labels; renormalized
+outputs run the copied processing recipe. Native export/restore distinguishes
+the absorption type, `is_nor` and the explicit web difference-mode flag.
+
+Executed validation (focused counts overlap full collections):
+
+- Difference science: `backend/.venv/bin/python -m pytest
+  backend/tests/test_athena_difference_science.py -q -W error` → **103 passed**,
+  1.65 s. Covers all forms, independent flatten preferences, nonuniform and
+  shifted grids, full-STANDARD interpolation/extrapolation, raw processing
+  failures with known E0, signs/zero, naming, interval boundaries, natural
+  cubic splines and six-step Romberg convergence/nonconvergence. Six cases use
+  the original measured Pt recipe records 6, 9, 12, 15, 18 and 21 against
+  standard record 1. Their oracle explicitly runs Larch pre-edge normalization
+  with saved E0 and fit ranges, polynomial degree 2, refitted edge step and
+  each record's flatten preference. This is not untouched native preprocessing
+  or an executed Demeter/Ifeffit comparison.
+- Store/HTTP tests initially passed **62 cases** in 12.25 s. The final run,
+  `backend/.venv/bin/python -m pytest
+  backend/tests/test_athena_difference_store.py -q`, passed **67 cases** in
+  12.87 s after adding original-input k overlays. Coverage includes read-only
+  previews, immutable inputs, atomic batch failure, stale versions, recovery,
+  undo/redo, persistent labels/identity/mode, native/web exchange, temporary k
+  processing, separate failed-input warnings, and exact cached input k grids
+  and weights independent of difference scaling and display offsets.
+- Existing project/derived-identity/edge-identity regressions passed **189
+  cases**, 42.39 s. The full backend command `backend/.venv/bin/python -m
+  pytest backend/tests -q` passed **1273 tests**, 112.24 s, with five existing
+  Larch deconvolution/NumPy matrix warnings. That full run preceded the final
+  input-k response fields and five new store cases; the final 67-case store
+  run covers those changes. No later backend numerical algorithm changed.
+- Final frontend command from `frontend`: `npm test --
+  --fileParallelism=false && npm run typecheck && npm run build` → **322 passed
+  across 13 files**, 42.09 s for tests; TypeScript and production build passed.
+  The final focused difference run passed **58 cases**. These cover panel
+  defaults/options, selection/scopes, pending/stale responses, save/retry,
+  busy controls, both bound pickers, draft preservation, export contracts,
+  input-k validation, independent grids/weights and shared-standard rendering.
+  Unit plots mock Plotly; actual rendering and mouse picking were checked below.
+- The source manifest has **61 entries**. All **38 recorded Demeter Git blob
+  IDs** were checked against the complete pinned GitHub tree. Available cached
+  difference sources and `Main.pm` match their recorded content hashes; the
+  whole older source collection was not re-downloaded. The committed original
+  `demeter-diff.prj` is byte-identical to the pinned 35,186-byte fixture, SHA-256
+  `c7152007277746e19cbe6a8ea5805fd06d58477535e4265c4853ae109e83a9a7`.
+
+Live checks used the measured copper project `XOmEzrdc6QQOciQUZhJq8-VH`:
+
+1. At revision **57**, entered an unapplied Rbkg draft of 1.25 on 50 K.
+   Previewed normalized 50 K DATA against 10 K STANDARD, multiplier 0.9,
+   inversion on, bounds −20/+30 eV, renormalization off and template
+   `%d - %s (%f) %a`. The 612-point STANDARD grid yielded
+   `Cu foil · 10 K - Cu foil · 50 K (flat) -2.55079`, area
+   **−2.5507860715371367 eV**. E0 was **8977.58 eV** and physical integration
+   limits were 8957.58–9007.58 eV. The finite area did not converge within six
+   refinements; the warning appeared visibly. The k preview also rendered.
+2. Switched to marked DATA, excluding the 10 K STANDARD. Area sequence plotted
+   50 K then 300 K in list order. The latter area was
+   **0.06199615593376477 eV**, with **151/612 extrapolated points** explicitly
+   reported because its measured energy coverage is shorter. Both integrals
+   retained visible nonconvergence warnings.
+3. Saving created two signed xanes groups at revision **58**. Every original
+   group field remained exactly equal to revision 57. Both saved arrays exactly
+   matched `-(interp(DATA.flat, STANDARD.energy) - 0.9 * STANDARD.flat)` on the
+   complete STANDARD grid. They had no live reference/background links, no
+   processing error and no cached EXAFS products. The 50 K draft remained 1.25.
+   Discarded that draft and undid the save, returning to three groups at
+   revision **59**.
+4. With 10 K DATA and 50 K STANDARD, selected raw mu, which enabled
+   renormalization. Used multiplier 0.5 and disabled integration. Saving at
+   revision **60** created one processed mu group with `is_difference=false`,
+   no area, E0 **8977.58 eV** and edge step **1.1586588008229857**. Its source
+   signal exactly matched the scaled subtraction on the 620-point STANDARD
+   grid, and its processed arrays exactly matched direct `process_spectrum`
+   with the saved recipe. Original groups again remained exactly unchanged.
+5. Undo restored revision **61**, with all three original group dictionaries
+   exactly equal to revision 57. The final k preview used 10 K DATA against
+   50 K STANDARD with default normalized/scaling options. Actual Plotly showed
+   the derived difference and both original input curves, labeled with their
+   saved k-weight 2. Each had 501 points; API input arrays were exactly equal to
+   the original cached k and weighted-chi arrays. The default interval's area
+   was **−0.008773743731109028 eV**, with two reported extrapolated energy
+   points and the source-algorithm nonconvergence warning.
+6. Switched to E preview and used real mouse clicks on the plotted curve for
+   both integration bounds. Minimum became **−64.964 eV** and maximum
+   **47.927 eV**, corresponding exactly to STANDARD samples **8912.616** and
+   **9025.507 eV** after adding DATA E0. Each click cleared the old preview and
+   disabled Save until recalculation. The fresh preview returned area
+   **0.005873718792736849 eV** with six-refinement nonconvergence reported.
+   Read-only API checks confirmed those coordinates and left the complete
+   project unchanged at revision 61.
+7. Cancelled the panel. The app remains on the 10 K scan, with three marked
+   original spectra, normalized E plotting, no parameter drafts and import
+   enforcement Off. No preview groups were left in the project.
+
+The native Pt fixture still exposes separate unfinished preprocessing work:
+its zero-width Kaiser background window is rejected, and native polynomial
+order needs correct conversion to Larch degree. Other open requirements include
+actual Demeter/Ifeffit runtime comparison, historical native type conventions,
+general provenance remapping and the wider desktop surface. All **107** original
+requirement IDs and their order remain intact; none is marked Verified.
 
 ## Limitations retained for continued work
 

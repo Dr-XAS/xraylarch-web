@@ -333,6 +333,55 @@
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/documentation/Athena/analysis/diff.rst",
       "git_blob_sha1": "e425d6cf3cc0f289e3b205ee0513dd3cf61f3f74",
       "bytes": 5265
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Diff.pm",
+      "sha256": "673c570e8310ffca354832ee93b1ae873b4de9c71b84f2b55e7bea7b73b9c528",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Diff.pm",
+      "git_blob_sha1": "472e73ebf605d48f1cc0d9770febb00a080721d0",
+      "bytes": 11345
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/ifeffit/diff_diff.tmpl",
+      "sha256": "702c5acdac8696a76b2a479c51c9f027f5c9c1b9949b0baaaba7f3760d802af5",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/ifeffit/diff_diff.tmpl",
+      "git_blob_sha1": "996e38ee0787d8f82799345474b02ab2e0a7dfca",
+      "bytes": 537
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/larch/diff_diff.tmpl",
+      "sha256": "fee7ab738912e8f4958fe91b715f629239389ed7218cd2868e180444a8072e2c",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/larch/diff_diff.tmpl",
+      "git_blob_sha1": "f07ba9bb986b9542c1f04b6c9302776b30cc14a6",
+      "bytes": 572
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/ifeffit/diff_make.tmpl",
+      "sha256": "d1cbf7384f2d3bf5013f041850249777c43fc357bc97ef86f82eb2575475eff2",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/ifeffit/diff_make.tmpl",
+      "git_blob_sha1": "842fedf91c0509aa23785890ce77405984eff7bf",
+      "bytes": 208
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/larch/diff_make.tmpl",
+      "sha256": "78a5e9e568d3da3f2468ec3e3339bbd89ced7418219bcf10d027cd6a5f095eac",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/analysis/larch/diff_make.tmpl",
+      "git_blob_sha1": "3487a72ed86c34b17c72cda7b4117c2e540cf1a6",
+      "bytes": 184
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Difference/diff.prj",
+      "sha256": "c7152007277746e19cbe6a8ea5805fd06d58477535e4265c4853ae109e83a9a7",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Difference/diff.prj",
+      "git_blob_sha1": "019f57e7163cc26592c94a1a1b7e15e6e616771e",
+      "bytes": 35186
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Difference/diff.pl",
+      "sha256": "db9850f7d10a64979de9cb6355e0817370c407713359a5146a28a3ad19757167",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Difference/diff.pl",
+      "git_blob_sha1": "48f53923311f914354e9796ef7ad280c9a929b2c",
+      "bytes": 507
     }
   ]
 }

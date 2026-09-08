@@ -54,7 +54,11 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const mixedWeights = space !== "E" && weights.length > 1
   const energyTitle = ({ mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", d2mude: "d²μ/dE² (eV⁻²)" } as Record<string, string>)[energyMode]
   const differenceTitle = energyMode === "dmude" ? "d(difference)/dE (eV⁻¹)" : energyMode === "d2mude" ? "d²(difference)/dE² (eV⁻²)" : "Difference signal"
-  const energyForm = (group: AthenaGroup) => isDifferenceGroup(group) ? differenceTitle : energyTitle
+  const energyForm = (group: AthenaGroup) => {
+    if (!isDifferenceGroup(group)) return energyTitle
+    const label = group.source.y_label
+    return ["mu", "norm", "flat"].includes(energyMode) && typeof label === "string" && label.trim() ? label : differenceTitle
+  }
   const energyForms = [...new Set(displayed.map(trace => energyForm(trace.g)))]
   const mixedEnergyForms = space === "E" && energyForms.length > 1
   for (const trace of displayed) {

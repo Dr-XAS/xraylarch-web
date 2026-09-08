@@ -1157,6 +1157,28 @@ class AthenaStore:
                             e0 = reference["result"]["effective"]["e0"]
                         self.parameter_updates(p, {g["id"]: {"energy_shift": float(shift), "e0": e0}})
                         updated_families.update(family_ids)
+                elif action == "difference" and (set(options) - {"array", "label"}):
+                    choice, results = self._difference_results(p, request)
+                    if len(p["groups"]) + len(results) > 100:
+                        fail("A project can contain at most 100 groups.")
+                    operation_details["difference_results"] = []
+                    for result in results:
+                        parent = self.group(p, result["group_id"])
+                        params = self._difference_parameters(parent, result)
+                        source = _derived_source(parent, "difference", standard_id=choice.standard_id,
+                            parents=[parent["id"], choice.standard_id], options=choice.model_dump(),
+                            form=result["form"], data_form=result["data_form"], standard_form=result["standard_form"],
+                            area=result["area"], integration=result["integration"], warnings=result["warnings"],
+                            extrapolated_points=result["extrapolated_points"],
+                            y_label=result["y_label"], area_label=result["area_label"])
+                        derived = self.make_group(result["label"], result["energy"], result["difference"],
+                            parameters=params, data_type="mu" if choice.form == "xmu" else "xanes",
+                            source=source, is_difference=not choice.renormalize)
+                        if derived["processing_error"]:
+                            fail(f"Could not process difference for {parent['label']}: {derived['processing_error']}")
+                        p["groups"].append(derived)
+                        operation_details["difference_results"].append({"group_id": derived["id"],
+                            "source_group_id": parent["id"], "label": derived["label"], "area": result["area"]})
                 elif action in ("merge", "sum", "difference"):
                     if len(groups) < 2:
                         fail("Select at least two groups.")
@@ -1263,6 +1285,67 @@ class AthenaStore:
                             f" · skipped {len(skipped)} frozen groups or reference pairs")
             p["last_operation"] = {"action": action, "skipped_group_ids": skipped, **operation_details}
             return self.save(p, old, message)
+
+    def _difference_results(self, project, request: Command):
+        """Resolve a coherent, read-only set of DATA-minus-STANDARD results."""
+        from .athena_difference import DifferenceOptions, difference_spectrum
+        if request.action != "difference":
+            fail("Choose the difference action for this preview.")
+        if not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail("Select distinct data groups for the difference.")
+        try:
+            choice = DifferenceOptions.model_validate(request.options)
+            if choice.renormalize is None:
+                choice = choice.model_copy(update={"renormalize": choice.form == "xmu"})
+            if choice.standard_id in request.group_ids:
+                fail("The difference standard cannot also be a data target.")
+            standard = self.group(project, choice.standard_id)
+            results = [difference_spectrum(self.group(project, gid), standard, choice)
+                       for gid in request.group_ids]
+        except (ValueError, TypeError, KeyError) as exc:
+            if isinstance(exc, WebInputError):
+                raise
+            fail(str(exc))
+        return choice, results
+
+    @staticmethod
+    def _difference_parameters(parent, result):
+        # Difference coordinates already include calibration. Keep the target
+        # E0 and numerical recipe, without applying its energy shift a second time.
+        return dict(parent["parameters"], energy_shift=0, e0=result["e0"], fnorm=False)
+
+    def preview_difference(self, ident, request: Command):
+        project = self.load(ident)
+        self.check(project, request.version)
+        choice, results = self._difference_results(project, request)
+        for result in results:
+            result.update(k=[], weighted_chi=[], kweight=None, k_error=None, input_k=[])
+            if choice.plot_space == "k":
+                parent = self.group(project, result["group_id"])
+                for role, original in (("DATA", parent), ("STANDARD", self.group(project, choice.standard_id))):
+                    cached = original.get("result") or {}
+                    arrays = cached.get("arrays", {})
+                    k, chi = arrays.get("k", []), arrays.get("weighted_chi", [])
+                    usable = (not original.get("processing_error") and isinstance(k, list) and isinstance(chi, list)
+                              and len(k) > 0 and len(k) == len(chi))
+                    result["input_k"].append({"role": role, "group_id": original["id"], "label": original["label"],
+                        "k": list(k) if usable else [], "weighted_chi": list(chi) if usable else [],
+                        "kweight": cached.get("effective", {}).get("kweight", original["parameters"]["kweight"]) if usable else None,
+                        "error": None if usable else "The saved input has no usable processed chi(k). Repair its recipe to plot it in k space."})
+                try:
+                    processed = process_spectrum(result["energy"], result["difference"],
+                        self._difference_parameters(parent, result),
+                        data_type="mu" if choice.renormalize else "norm")
+                    arrays = processed["arrays"]
+                    if not arrays["k"] or not arrays["weighted_chi"]:
+                        raise ValueError("The difference has no usable EXAFS interval with this recipe.")
+                    result.update(k=arrays["k"], weighted_chi=arrays["weighted_chi"],
+                                  kweight=processed["effective"]["kweight"])
+                except (ValueError, TypeError, KeyError) as exc:
+                    result["k_error"] = str(exc)
+        # An edit during an expensive preview must not become a current result.
+        self.check(self.load(ident), request.version)
+        return {"version": project["version"], "options": choice.model_dump(), "results": results}
 
     def analyze(self, ident, request: Command):
         p = self.load(ident)
@@ -1395,7 +1478,8 @@ class AthenaStore:
             # properties and fits remain inert in the web sidecar.
             args = {key: value for key, value in args.items() if not isinstance(value, dict)}
             args.update({"label": g["label"], "is_xmu": int(g["data_type"] == "mu"),
-                    "is_xanes": int(g["data_type"] == "xanes"), "is_nor": int(g["data_type"] == "norm"),
+                    "is_xanes": int(g["data_type"] == "xanes"),
+                    "is_nor": int(g["data_type"] == "norm" or (_is_difference(g) and g["data_type"] != "chi")),
                     "is_chi": int(g["data_type"] == "chi"), "marked": int(g["marked"]), "frozen": int(g["frozen"]),
                     "plot_scale": g["multiplier"], "plot_yoffset": g["offset"], "bkg_flatten": int(params["flatten"]),
                     "is_diff": int(_is_difference(g)),
@@ -1442,6 +1526,7 @@ class AthenaStore:
                                    background_standard_id=g.get("background_standard_id")) for g in p["groups"]]}
         for meta, g in zip(sidecar["groups"], p["groups"]):
             meta["parameters"] = _exchange_recipe(g["parameters"], g.get("result"))
+            meta["is_difference"] = _is_difference(g)
         lines.insert(2, "# Athena-Web " + json.dumps(sidecar, ensure_ascii=True, allow_nan=False))
         payload = "\n".join(lines).encode()
         if len(payload) > self.settings.max_upload_bytes:
@@ -1530,6 +1615,12 @@ class AthenaStore:
                 if "is_difference" in meta and _is_difference(meta) != is_difference:
                     fail("Native and web-sidecar difference-spectrum flags disagree.")
                 if is_difference:
+                    # is_nor is independent of the native xmu/xanes type. A
+                    # signed XANES difference must retain both flags on exchange.
+                    if _native_flag(args.get("is_xanes")):
+                        dtype = "xanes"
+                    elif _native_flag(args.get("is_xmu")):
+                        dtype = "mu"
                     source.setdefault("operation", "difference")
                 label = args.get("label", old_id)
                 notes = str(meta.get("notes", args.get("annotation", "")))
@@ -1840,6 +1931,10 @@ def build_athena_router(settings: Settings):
     @router.post("/projects/{ident}/analyze")
     def analyze(ident: str, request: Command):
         return guarded(lambda: store.analyze(ident, request))
+
+    @router.post("/projects/{ident}/difference/preview")
+    def preview_difference(ident: str, request: Command):
+        return guarded(lambda: store.preview_difference(ident, request))
 
     @router.post("/projects/{ident}/restore")
     async def restore(ident: str, version: int, file: UploadFile = File(...)):
