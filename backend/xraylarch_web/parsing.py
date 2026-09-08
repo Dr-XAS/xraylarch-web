@@ -25,6 +25,9 @@ _NAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
 _COMMENT_PREFIXES = ("#", ";", "!")
 _DEFAULT_MAX_POINTS = 250_000
 _DEFAULT_MAX_COLUMNS = 64
+_XDAC_MARKER = re.compile(r"XDAC V\d+(?:\.\d+)* Datafile V\d+(?:\.\d+)*")
+_XDAC_SEPARATOR = re.compile(r"-{7,}")
+_XDAC_LABEL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
 def _safe_display_name(filename: str) -> str:
@@ -130,6 +133,54 @@ def _tabular_rows(text: str, suffix: str) -> tuple[tuple[str, ...], ...]:
     )
 
 
+def _xdac_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
+    """Locate the XDAC table without guessing where numeric observations start.
+
+    Source: larch/io/xafs_beamlines.py, NSLSXDAC_BeamlineData: the XDAC
+    first header line identifies the format, and labels follow the first
+    '-------' separator. This checkout's V1.2 fe.060 and V1.4 beamline
+    fixture use a dash-only separator and whitespace-separated labels.
+    Blank lines are ignored, as in larch/io/columnfile.py read_ascii.
+
+    Our boundary is deliberately stricter than Larch's reverse scan, which
+    can discard damaged first/middle observations as header text. Once
+    labels are consumed, every nonblank line is a data row, including text
+    or comments that Larch might otherwise treat as a header/footer. A
+    numeric-leading row before the boundary is ambiguous and rejected.
+    Metadata is not rewritten: read_ascii still receives the original file,
+    and ParsedUpload.source_bytes retains its complete original header.
+    """
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines or not lines[0].lower().startswith("xdac"):
+        return None
+
+    def malformed_header():
+        return WebInputError(
+            "upload_malformed_rows",
+            "The XDAC header must contain a valid XDAC version marker, a dashed separator, and column labels before data.",
+            ("file",),
+            "Restore the XDAC header and label line; do not move observations into the header.",
+        )
+
+    if not _XDAC_MARKER.fullmatch(lines[0]):
+        raise malformed_header()
+    boundary = next((i for i, line in enumerate(lines[1:], 1) if "-------" in line), None)
+    if boundary is None or not _XDAC_SEPARATOR.fullmatch(lines[boundary]) or boundary + 1 >= len(lines):
+        raise malformed_header()
+    if any(_can_be_float(line.split()[0]) for line in lines[1:boundary]):
+        raise malformed_header()
+    labels = tuple(lines[boundary + 1].split())
+    if not labels or not all(_XDAC_LABEL.fullmatch(label) and not _can_be_float(label) for label in labels):
+        raise malformed_header()
+    rows = tuple(tuple(line.split()) for line in lines[boundary + 2:])
+    if not rows:
+        raise WebInputError(
+            "upload_empty", "The XDAC upload contains no data rows.", ("file",),
+            "Upload a non-empty XDAC data table.",
+        )
+    return labels, rows
+
+
 def _validate_tabular_text(
     data: bytes,
     suffix: str,
@@ -147,9 +198,17 @@ def _validate_tabular_text(
             "Save the file as UTF-8 text and upload it again.",
         ) from exc
 
-    expected_fields: int | None = None
+    xdac = _xdac_table(text) if suffix == ".dat" else None
+    expected_fields = len(xdac[0]) if xdac is not None else None
+    if expected_fields is not None and expected_fields > max_columns:
+        raise WebInputError(
+            "upload_too_many_columns",
+            f"Upload exceeds the {max_columns} column limit.", ("file",),
+            "Choose a table with fewer columns.",
+        )
+    rows = xdac[1] if xdac is not None else _tabular_rows(text, suffix)
     point_count = 0
-    for fields in _tabular_rows(text, suffix):
+    for fields in rows:
         values: list[float] = []
         numeric = bool(fields)
         numeric_fields = 0

@@ -1,9 +1,46 @@
 # Athena element/edge enforcement: SC-05 reference
 
-Research only, 2026-09-07. Oracle revision: Demeter
+Research baseline, 2026-09-07. Oracle revision: Demeter
 `06afc8da08a5a7d5a26ee14992170fcf5dc67406`. Findings below distinguish executable
 source, documented intent, and suggested web behavior. No Demeter runtime or
 numerical parity is asserted.
+
+## Implemented web behavior
+
+The later implementation adds [import initialization](../backend/xraylarch_web/athena_import_policy.py)
+and [Energy-menu controls](../frontend/components/athena-edge-policy.tsx).
+The policy is stored in this browser tab's `sessionStorage`, survives refresh,
+and is independent of project state and Undo. Choosing raw files captures one
+immutable policy for that batch, including sample/reference channels and
+retries. Stop changes subsequent batches; a queued batch retains its snapshot.
+Project restore/preview and chi imports do not run the initializer.
+
+For enforced energy data, the initializer resolves automatic pre-edge,
+post-edge, spline and FT limits at the atomic table energy, then iterates the
+fraction calculation from that seed. It preserves explicit recipe fields
+other than E0. The source's `bkg.nnorm=3` is represented as Larch polynomial
+degree 2, following its normalization template. Automatic endpoints can be
+tightened to measured support after refinement; explicit unusable endpoints
+produce an error. The seed recipe and adjustments are recorded in provenance.
+Raw scans ending less than 100 eV after the seed become XANES. Normalized
+inputs retain their unit-step signal. Forced-import failure is atomic, including
+failure in a reference channel, and leaves the upload available for retry.
+
+Each group records its selected identity separately from energy-based inference.
+Native `bkg_z`, `fft_edge` and `bkg_e0_fraction` are read/written as inert group
+metadata. Project provenance cannot activate the recipient's policy. Native
+`H` is treated as the source's inference sentinel; invalid metadata remains
+preserved without being applied.
+
+The [verification record](athena-verification.md) contains executed checks;
+[61 numerical tests](../backend/tests/test_athena_import_policy_science.py),
+[25 store tests](../backend/tests/test_athena_import_policy_store.py), API and
+frontend tests cover the implemented contract. This does not claim every
+Demeter preference or default: personal INI files, signed end-relative/implicit
+keV preference syntax, all scalar defaults, and native reference same/different
+edge controls remain open. The existing native exchange `bkg_nnorm` mapping
+still needs its separate coefficient-count/degree audit. No Demeter runtime
+comparison has been executed.
 
 ## Contract established by the source
 
@@ -150,7 +187,8 @@ enforcement or replace the recipient's preferences.
 
 ## Minimal implementation recommendation for this store
 
-This is a proposal, not a change to the existing API:
+The following is the original research handoff, retained to explain the
+implementation choices above:
 
 1. Keep enforcement `{element, edge}` and default-method/fraction preferences in
    explicit workspace/session state, separate from group `AthenaParameters`.

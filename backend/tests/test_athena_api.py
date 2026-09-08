@@ -56,6 +56,68 @@ def test_edge_catalog_and_e0_batch_through_http(client):
     assert client.get(f"/api/athena/projects/{p['id']}").json() == after
 
 
+def _inspect_edge_policy_data(client, project, energy, mu):
+    output = StringIO()
+    np.savetxt(output, np.column_stack((energy, mu)), header="energy mu")
+    response = client.post(f"/api/athena/projects/{project['id']}/inspect",
+                           files={"file": ("policy-data.dat", output.getvalue().encode())})
+    assert response.status_code == 200, response.text
+    inspection = response.json()
+    columns = {col["name"]: col["column_id"] for col in inspection["columns"]}
+    return {"version": project["version"], "upload_id": inspection["upload_id"],
+            "energy_column": columns["energy"], "numerator": [columns["mu"]]}
+
+
+def test_import_edge_policy_is_request_scoped_and_exported_as_provenance(client, xas_arrays):
+    p = create(client)
+    body = _inspect_edge_policy_data(client, p, *xas_arrays)
+    endpoint = f"/api/athena/projects/{p['id']}/import"
+    first = client.post(endpoint, json=body)
+    assert first.status_code == 200, first.text
+    before = first.json()
+    response = client.post(endpoint, json={**body, "version": before["version"],
+        "edge_policy": {"element": "cu", "edge": "k", "fraction": 0.5}})
+    assert response.status_code == 200, response.text
+    enforced = response.json()
+    assert enforced["groups"][0] == before["groups"][0]
+    group = enforced["groups"][-1]
+    assert group["source"]["edge_identity"] == {"element": "Cu", "edge": "K", "origin": "enforced"}
+    assert group["source"]["edge_policy"] == {"element": "Cu", "edge": "K", "fraction": 0.5}
+    assert group["source"]["e0_selection"]["seed_e0"] == 8979
+    assert group["parameters"]["e0"] == group["result"]["effective"]["e0"]
+    assert group["result"]["effective"]["element"] == "Cu"
+    assert group["parameters"]["energy_shift"] == 0
+    assert "edge_policy" not in enforced
+    assert "edge_policy" not in group["source"]["mapping"]
+    stopped = client.post(endpoint, json={**body, "version": enforced["version"], "edge_policy": None})
+    assert stopped.status_code == 200, stopped.text
+    off = stopped.json()
+    assert off["groups"][:-1] == enforced["groups"]
+    assert off["groups"][-1]["parameters"]["e0"] is None
+    assert "edge_policy" not in off["groups"][-1]["source"]
+    exported = client.get(f"/api/athena/projects/{p['id']}/export", params={"format": "json"})
+    assert exported.status_code == 200
+    assert exported.json()["groups"][1]["source"]["edge_policy"] == group["source"]["edge_policy"]
+    bad_edge = client.post(endpoint, json={**body, "version": off["version"],
+        "edge_policy": {"element": "Fe", "edge": "K"}})
+    assert bad_edge.status_code == 400  # Fe K is outside these Cu scan energies.
+    assert bad_edge.json()["error"]["recovery"]
+    assert client.get(f"/api/athena/projects/{p['id']}").json() == off
+
+
+@pytest.mark.parametrize("policy", [False, [], "Cu K", {}, {"element": "Cu"},
+    {"element": "Cu", "edge": "K", "fraction": True},
+    {"element": "Cu", "edge": "K", "fraction": 0},
+    {"element": "Cu", "edge": "K", "fraction": 1.1},
+    {"element": "Cu", "edge": "K", "unrecognized": "ignore"}])
+def test_invalid_import_edge_policy_is_rejected_before_mutation(client, xas_arrays, policy):
+    p = create(client)
+    body = _inspect_edge_policy_data(client, p, *xas_arrays)
+    response = client.post(f"/api/athena/projects/{p['id']}/import", json={**body, "edge_policy": policy})
+    assert response.status_code == 422, response.text
+    assert client.get(f"/api/athena/projects/{p['id']}").json() == p
+
+
 def test_example_api_all_four_spaces_and_exchange_files(client):
     p = example(client)
     assert len(p["groups"]) == 3

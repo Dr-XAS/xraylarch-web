@@ -309,6 +309,16 @@
       "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/edgestep.demeter_conf",
       "sha256": "877fedaad8bd7c3b3e405fedc5b7292dfc3236f500c6b99260ff02c807e39c92",
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/edgestep.demeter_conf"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/Units.pm",
+      "sha256": "4c03fd790edc3ca30667cb8c6a4f2ff39aae7cf749f930ebe48e9a92db3fad5d",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/Units.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/fft.demeter_conf",
+      "sha256": "53f48f115d58b2b39a84407af2dc533431778f6af09ca70f291dbbe590c0db2b",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/fft.demeter_conf"
     }
   ]
 }

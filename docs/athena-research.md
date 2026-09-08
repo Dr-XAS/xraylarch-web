@@ -118,6 +118,16 @@ alone does not implement enforcement. The [enforcement reference](athena-edge-en
 records the import/default-state contract. The [verification notes](athena-verification.md)
 and coverage matrix retain the numerical limits and remaining work.
 
+Import enforcement now has explicit tab-level enable/stop controls. The raw
+import path captures the current pair/fraction per batch, resolves automatic
+ranges at the table energy, and refines E0 from that seed. Existing groups,
+project imports and chi data bypass that initialization. The numerical tests
+include a noisy pre-edge that misleads derivative finding and measured Cu/Fe
+spectra. Pinned `bkg.nnorm=3` maps to Larch degree 2 for this initializer;
+the older native-project order mapping still requires correction and a
+separate round-trip comparison. The implementation does not yet reproduce
+personal configuration or every native reference-channel option.
+
 ## YouTube discovery and verification limits
 
 The [IXAS video index](https://xafs.xrayabsorption.org/videos.html) lists the following resources. Titles/presenter associations are verified from that index; its approximate duration/count is catalog metadata.

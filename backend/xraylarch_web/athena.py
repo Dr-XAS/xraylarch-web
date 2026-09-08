@@ -298,6 +298,20 @@ def _native_source(record, filename, kind, settings):
     args = _metadata(record.get("args", {}))
     source = {"filename": filename, "raw_arrays": {}, "warnings": [],
               "native": {"format": kind, "id": record["old_group"], "args": args}}
+    identity = _source_edge_identity({"edge_identity": {
+        "element": args.get("bkg_z"), "edge": args.get("fft_edge")}})
+    if identity and identity["element"] == "H":
+        identity = None  # Native Demeter uses H as its inference sentinel.
+    if identity:
+        source["edge_identity"] = {**identity, "origin": "native"}
+    if "bkg_e0_fraction" in args:
+        try:
+            fraction = float(args["bkg_e0_fraction"])
+            if isinstance(args["bkg_e0_fraction"], bool) or not 0 < fraction <= 1:
+                raise ValueError
+            source["e0_fraction"] = fraction
+        except (TypeError, ValueError, OverflowError):
+            source["warnings"].append("Native E₀ fraction is invalid; retained in native metadata without applying it.")
     unsupported = {k: v for k, v in record.items() if k not in ("old_group", "args", "x", "y", *_NATIVE_ARRAYS)}
     if unsupported:
         source["native"]["fields"] = _metadata(unsupported)
@@ -320,11 +334,28 @@ def _native_source(record, filename, kind, settings):
     supported = set(_PARAMETER_MAP.values()) | set(_NATIVE_ALIASES.values()) | {
         "label", "datatype", "is_xmu", "is_xanes", "is_nor", "is_chi", "is_diff", "marked", "frozen",
         "plot_scale", "plot_yoffset", "bkg_flatten", "bkg_fixstep", "bkg_stan", "referencegroup", "reference", "annotation"}
+    if identity:
+        supported.update(("bkg_z", "fft_edge"))
+    if "e0_fraction" in source:
+        supported.add("bkg_e0_fraction")
     unapplied = sorted(set(args) - supported)
     if unapplied:
         source["native"]["unapplied_args"] = unapplied
         source["warnings"].append("Native settings retained but not applied (including any fits or properties): " + ", ".join(unapplied))
     return source
+
+
+def _source_edge_identity(source):
+    """Interpret valid identity metadata without enabling any import policy."""
+    from .athena_e0 import atomic_edge
+    identity = source.get("edge_identity")
+    if not isinstance(identity, dict):
+        return None
+    try:
+        entry = atomic_edge(identity.get("element"), identity.get("edge"))
+        return {key: entry[key] for key in ("element", "edge")}
+    except ValueError:
+        return None  # Unknown native metadata remains preserved and inert.
 
 
 def _perl_literal(value):
@@ -396,6 +427,14 @@ class RestoreUploadRequest(BaseModel):
     group_ids: list[str] | None = Field(default=None, max_length=100)
 
 
+class ImportEdgePolicy(BaseModel):
+    """A per-request copy of the current browser tab's import policy."""
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
+    element: str = Field(min_length=1, max_length=32)
+    edge: str = Field(min_length=1, max_length=3)
+    fraction: float = Field(default=0.5, gt=0, le=1, strict=True)
+
+
 class ImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: int
@@ -409,6 +448,7 @@ class ImportRequest(BaseModel):
     reference_numerator: str | None = None
     reference_denominator: str | None = None
     sort: bool = False
+    edge_policy: ImportEdgePolicy | None = None
 
 
 class Command(BaseModel):
@@ -667,6 +707,13 @@ class AthenaStore:
             group["source"]["e0_selection"] = {
                 **result, "energy_shift": group["parameters"]["energy_shift"], "time": now(),
             }
+            if choice.method == "fraction":
+                group["source"]["e0_fraction"] = choice.fraction
+            elif choice.method == "atomic" and choice.element is not None:
+                group["source"]["edge_identity"] = {
+                    "element": result["element"], "edge": result["edge"], "origin": "selected",
+                }
+                group["result"]["effective"].update(element=result["element"], edge=result["edge"])
         return results, reasons
 
     def tie_reference(self, p, sample, reference):
@@ -746,7 +793,46 @@ class AthenaStore:
         g["result"] = process_spectrum(g["energy"], g["mu"], AthenaParameters.model_validate(g["parameters"]),
                                        data_type=g["data_type"], background_standard=standard)
         g["result"]["effective"]["background_standard_id"] = standard_id
+        identity = _source_edge_identity(g["source"])
+        if identity and g["data_type"] != "chi":
+            g["result"]["effective"].update(identity)
         g["processing_error"] = None
+
+    def make_import_group(self, label, energy, mu, *, data_type="mu", source=None, edge_policy=None):
+        """Initialize raw imports; project restore and derived groups bypass this."""
+        source = copy.deepcopy(source or {})
+        parameters, prepared = None, None
+        if edge_policy is not None and data_type != "chi":
+            from .athena_import_policy import initialize_import
+            policy = ImportEdgePolicy.model_validate(edge_policy)
+            try:
+                prepared = initialize_import(energy, mu, policy=policy.model_dump(), data_type=data_type)
+            except ValueError as exc:
+                fail(f"{label}: {exc}")
+            parameters, data_type = prepared["parameters"], prepared["data_type"]
+            source["edge_identity"] = prepared["edge_identity"]
+            source["edge_policy"] = {**{key: prepared["edge_identity"][key] for key in ("element", "edge")},
+                                     "fraction": policy.fraction}
+            source["e0_fraction"] = policy.fraction
+            source["import_defaults"] = prepared["defaults"]
+            source.setdefault("warnings", []).extend(prepared.get("warnings", []))
+        g = self.make_group(label, energy, mu, parameters=parameters, data_type=data_type, source=source)
+        if prepared is not None:
+            if g["processing_error"]:
+                fail(f"{label}: enforced edge could not be processed. {g['processing_error']}")
+            g["source"]["e0_selection"] = {
+                **prepared["e0_selection"], "group_id": g["id"],
+                "energy_shift": g["parameters"]["energy_shift"], "time": now(),
+            }
+            g["result"]["warnings"].extend(message for message in source.get("warnings", [])
+                                           if message not in g["result"]["warnings"])
+        elif data_type != "chi" and g["result"] and g["result"]["effective"].get("e0") is not None:
+            from .athena_e0 import _infer_atomic
+            entry = _infer_atomic(g["result"]["effective"]["e0"])
+            identity = {key: entry[key] for key in ("element", "edge")}
+            g["source"]["edge_identity"] = {**identity, "origin": "inferred"}
+            g["result"]["effective"].update(identity)
+        return g
 
     def inspect(self, ident, data, filename):
         self.load(ident)
@@ -786,7 +872,7 @@ class AthenaStore:
             if request.sort:
                 order = np.argsort(x, kind="stable")
                 x, y = x[order], y[order]
-            source = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version"}),
+            source = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version", "edge_policy"}),
                       "warnings": metadata.get("warnings", []), "columns": metadata["columns"],
                       "column_arrays": {key: np.asarray(values)[order].tolist() if request.sort else np.asarray(values).tolist()
                                         for key, values in arrays.items()},
@@ -814,7 +900,8 @@ class AthenaStore:
             if len(p["groups"]) + 1 + bool(request.reference_numerator or request.reference_denominator) > 100:
                 fail("A project can contain at most 100 groups.")
             _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
-            g = self.make_group(metadata["display_name"], x, y, data_type=request.data_type, source=source)
+            g = self.make_import_group(metadata["display_name"], x, y, data_type=request.data_type,
+                                       source=source, edge_policy=request.edge_policy)
             if request.reference_numerator or request.reference_denominator:
                 a, b = column(request.reference_numerator), column(request.reference_denominator)
                 if np.any(a <= 0) or np.any(b <= 0):
@@ -827,7 +914,8 @@ class AthenaStore:
                 reference_source["mapping"].update(numerator=[request.reference_numerator],
                     denominator=request.reference_denominator, reference_numerator=None, reference_denominator=None,
                     mode="transmission")
-                reference = self.make_group(g["label"] + " · reference", x, ry, source=reference_source)
+                reference = self.make_import_group(g["label"] + " · reference", x, ry,
+                                                   source=reference_source, edge_policy=request.edge_policy)
                 reference["marked"] = False
                 g["reference_id"] = reference["id"]
                 p["groups"].append(reference)
@@ -1251,6 +1339,12 @@ class AthenaStore:
                     "is_diff": int(g["source"].get("operation") == "difference"),
                     "annotation": g["notes"], "referencegroup": g["reference_id"] or "",
                     "bkg_stan": g.get("background_standard_id") or ""})
+            identity = _source_edge_identity(source)
+            if identity:
+                args.update(bkg_z=identity["element"], fft_edge=identity["edge"])
+            fraction = source.get("e0_fraction")
+            if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and 0 < fraction <= 1:
+                args["bkg_e0_fraction"] = fraction
             for key, target in _PARAMETER_MAP.items():
                 value = params.get(key)
                 if value is None:

@@ -22,6 +22,8 @@ export interface AthenaGroup {
   processing_error: string | null; source: Record<string, unknown>
 }
 export type E0Method = "derivative" | "atomic" | "fraction" | "zero_crossing" | "white_line" | "manual"
+export type EdgePolicy = Readonly<{ element: string; edge: string; fraction: number }>
+export interface EdgeCatalog { element: string; edges: { edge: string; energy: number }[] }
 export type E0Options =
   | { method: "derivative" | "zero_crossing" | "white_line" }
   | { method: "atomic"; element?: string; edge?: string }

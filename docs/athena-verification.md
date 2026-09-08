@@ -313,6 +313,82 @@ was introduced during these checks. This demonstrates the interface workflow
 on copper; it does not establish the chemical suitability of every method for
 every absorption edge.
 
+## Import enforcement and XDAC checkpoint, 2026-09-07
+
+The raw import API now accepts a nullable `edge_policy` with absorber, edge and
+fraction. The Energy menu controls a preference for this browser tab; file
+selection snapshots it for the batch and its retries. Enable/Stop, project
+restore and Undo do not rewrite that preference into existing spectra.
+Forced initialization uses tabulated E0, source-based automatic ranges, then
+fraction refinement. It records the seed, selected identity, final E0 and any
+automatic endpoint adjustments. Samples and references are initialized
+independently before one atomic project save. Invalid coverage or a bad
+reference fails the import with the upload retained for retry.
+
+Executed validation:
+
+- Full backend suite: **944 passed** in 361.52 s. This included all 61 new
+  initializer science cases, 25 import-policy store cases and 10 additional
+  HTTP policy cases, plus the previously separate numerical E0 suite. Five
+  existing NumPy matrix deprecation warnings came from Larch deconvolution.
+- Full frontend suite: **233 passed across ten files** in 276.11 s, using
+  `npm test -- --fileParallelism=false`. `npm run typecheck` and `npm run build`
+  both passed; the production routes include `/`, `/classic` and the API proxy.
+- The XDAC parser change followed full-suite collection. Its focused run of
+  `test_parsing.py` and `test_parsing_xdac.py` passed **84 tests**: 59 new XDAC
+  cases and 25 existing parser regressions. The V1.2 iron fixture retains all
+  511 points, and V1.4 retains all 422 points and 17 columns. Comparisons use
+  original numeric rows and an independent local Larch read, with unchanged
+  source bytes and header metadata. First/middle/final malformed rows,
+  nonfinite values, broken boundaries and resource limits remain rejected.
+- After that parser fix, the combined parsing, classic API, Athena API and
+  import-policy store regression passed **146 tests** in 47.52 s. Command:
+  `backend/.venv/bin/python -m pytest backend/tests/test_parsing.py
+  backend/tests/test_parsing_xdac.py backend/tests/test_api.py
+  backend/tests/test_athena_api.py backend/tests/test_athena_import_policy_store.py -q`.
+  This overlaps the earlier suites and includes the 59 new XDAC cases; it is
+  not another full-suite run. One existing deconvolution warning remained.
+- All **52** files in the expanded primary-source manifest were checked
+  against their SHA-256 values. New source files supply the FT default and
+  energy/k conversion context. This remains static-source evidence, not a
+  Demeter runtime comparison.
+
+Live browser sequence on the local app, with real file chooser uploads:
+
+1. Started with the three marked/unfrozen copper examples at project revision
+   37. Enabled Cu K, fraction 0.5 through Energy → Enforce element and edge,
+   using the real table lookup. The project remained at revision 37.
+2. Imported `examples/xafsdata/cu_rt01.xmu` as direct mu. Revision 38 contained
+   one new, successfully processed group. Table seed was 8979 eV; fractional
+   E0 converged in three iterations to **8986.437276261428 eV**. Seed defaults
+   were pre-edge −150/−30 eV, post-edge 150/1066.86 eV, degree 2, spline kmax
+   17.5 Å⁻¹ and FT kmax 15.5 Å⁻¹. The final automatic spline endpoint tightened
+   to 17.444536537513315 Å⁻¹ as E0 moved, with the adjustment recorded.
+3. Stopped enforcement and selected the original `examples/xafsdata/fe.060`.
+   Inspection initially failed: its XDAC metadata, including ring energy,
+   was incorrectly treated as a malformed table row. Added content-based
+   XDAC header/boundary recognition using the local Larch beamline reader as
+   reference; retried the same file with the actual Retry file inspection
+   control. Its energy/I0/It columns and all 511 points became available.
+4. Selected transmission and I0/It; verified the displayed ln(I0/It) formula.
+   Import produced revision 39 with automatic E0 **7105.50673 eV**, inferred
+   Fe K, zero shift and no enforcement provenance. Stored energy and mu were
+   exactly equal to the original energy column and NumPy ln(I0/It). The
+   original three groups were unchanged, including arrays and recipes. The
+   iron E0 remains its uncalibrated automatic estimate, not a tabulated value.
+5. Two Undo actions removed the temporary imports. Revision 41 exactly
+   restored the original three groups, their recipes, marks and frozen state.
+   Enforcement remained Off.
+
+The implementation uses Larch normalization and its scalar defaults where the
+web recipe already supplies values. It does not read personal INI preferences,
+support every native signed/implicit-keV default expression, or reproduce all
+native reference-channel options. The import initializer correctly converts
+Demeter configuration order 3 to Larch degree 2; the older native exchange
+mapping of `bkg_nnorm` still needs a separate correction and round-trip oracle.
+Absorber/edge metadata editing and preservation across every derived-group
+operation remain further parity work. No requirement row is Verified.
+
 ## Limitations retained for continued work
 
 Full desktop behavior remains broader than the current application. Outstanding
