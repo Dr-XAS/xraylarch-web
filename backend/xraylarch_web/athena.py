@@ -278,6 +278,21 @@ def _native_parameters(args):
     parameters = {}
     for key, native in _PARAMETER_MAP.items():
         raw = args.get(native, args.get(_NATIVE_ALIASES.get(native)))
+        if key == "nnorm":
+            # Demeter's process/larch/normalize.tmpl passes bkg_nnorm - 1.
+            # A missing native preference defaults to three terms, unlike a
+            # web recipe's None, which asks Larch to choose a degree.
+            if raw in ("", None, "None"):
+                parameters[key] = 2
+            elif isinstance(raw, bool):
+                parameters[key] = raw  # Preserve invalid settings for repair.
+            else:
+                try:
+                    order = float(raw)
+                    parameters[key] = order - 1 if np.isfinite(order) else raw
+                except (TypeError, ValueError, OverflowError):
+                    parameters[key] = raw
+            continue
         if raw in ("", None):
             continue
         if key == "fnorm":
@@ -512,7 +527,9 @@ class EdgeIdentityOptions(BaseModel):
 
 
 _PARAMETER_MAP = {
-    "fnorm": "bkg_fnorm",
+    # Demeter explicitly ignores the older bkg_fnorm field on project import.
+    # Its energy-dependent normalization switch is bkg_funnorm.
+    "fnorm": "bkg_funnorm",
     "e0": "bkg_e0", "step": "bkg_step", "pre1": "bkg_pre1", "pre2": "bkg_pre2",
     "norm1": "bkg_nor1", "norm2": "bkg_nor2", "nnorm": "bkg_nnorm",
     "rbkg": "bkg_rbkg", "bkg_kmin": "bkg_spl1", "bkg_kmax": "bkg_spl2",
@@ -1496,6 +1513,10 @@ class AthenaStore:
                 if value is None:
                     value = effective.get("edge_step" if key == "step" else key)
                 if value is not None:
+                    if key == "nnorm" and isinstance(value, (int, float)) and not isinstance(value, bool):
+                        # Keep the web sidecar in degrees; independent Athena
+                        # readers receive the corresponding number of terms.
+                        value += 1
                     args[target] = value
                     if target in _NATIVE_ALIASES:
                         args[_NATIVE_ALIASES[target]] = value

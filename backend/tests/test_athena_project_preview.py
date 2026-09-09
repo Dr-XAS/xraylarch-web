@@ -371,7 +371,7 @@ def test_project_preview_endpoint_contract_and_slash_ids(tmp_path):
 
 @pytest.mark.parametrize("value,expected", [("0", False), ("1", True), (0, False), (1, True)])
 def test_native_fnorm_decodes_boolean_and_survives_prj_exchange(store, native_document, value, expected):
-    native_document["sample/A"]["args"]["bkg_fnorm"] = value
+    native_document["sample/A"]["args"]["bkg_funnorm"] = value
     target = store.create()
     preview = store.preview_project(target["id"], json.dumps(native_document).encode(), "fnorm.prj")
     assert preview["groups"][0]["parameters"]["fnorm"] is expected
@@ -388,7 +388,7 @@ def test_native_fnorm_decodes_boolean_and_survives_prj_exchange(store, native_do
 
 @pytest.mark.parametrize("value", ["2", 2, "falsey"])
 def test_native_fnorm_rejects_non_boolean_numbers_and_strings(store, native_document, value):
-    native_document["sample/A"]["args"]["bkg_fnorm"] = value
+    native_document["sample/A"]["args"]["bkg_funnorm"] = value
     target = store.create()
     with pytest.raises(WebInputError, match="boolean"):
         store.preview_project(target["id"], json.dumps(native_document).encode(), "bad-boolean.prj")

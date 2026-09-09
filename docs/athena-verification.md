@@ -585,11 +585,57 @@ Live checks used the measured copper project `XOmEzrdc6QQOciQUZhJq8-VH`:
    enforcement Off. No preview groups were left in the project.
 
 The native Pt fixture still exposes separate unfinished preprocessing work:
-its zero-width Kaiser background window is rejected, and native polynomial
-order needs correct conversion to Larch degree. Other open requirements include
+its zero-width Kaiser background window is rejected. Native polynomial order
+still needed correction at that checkpoint; the follow-up below records it.
+Other open requirements include
 actual Demeter/Ifeffit runtime comparison, historical native type conventions,
 general provenance remapping and the wider desktop surface. All **107** original
 requirement IDs and their order remain intact; none is marked Verified.
+
+## Native normalization checkpoint, 2026-09-09
+
+Native `bkg_nnorm` now converts term count to Larch degree on import and back
+on export. Missing native order uses the stock three-term default. Web JSON
+and current/historical sidecars retain explicit degrees and automatic `None`.
+Malformed native orders preserve raw spectra and editable processing errors.
+
+This checkpoint also corrects the earlier native functional-normalization
+mapping: the active Demeter field is `bkg_funnorm`, while both pinned native
+loaders ignore `bkg_fnorm`. Obsolete values remain source metadata and cannot
+enable processing. Existing web recipes retain their saved `fnorm` value.
+
+The [source reference](athena-native-normalization-reference.md) records the
+executable templates, Data defaults, native loaders and Ifeffit differences.
+The source manifest now has 64 entries. Newly added NumTypes content matches
+the pinned Demeter Git blob; the two added Ifeffit files match the previously
+hashed 1.2.11d archive. Existing loader and XANES-configuration entries were
+also checked against the pinned tree.
+
+- `test_athena_native_normalization.py`: **76 passed in 7.38s** outside the
+  sandbox. Tests cover native JSON/Perl lazy preview and restore, native-only
+  round trips, automatic/effective order, historical web recipes, malformed
+  input repair and undo, and canonical/obsolete flag combinations. Direct
+  Larch comparisons check arrays and edge steps with relative/absolute
+  tolerance `1e-12`.
+- Final `MPLCONFIGDIR=/tmp/athena-native-mpl backend/.venv/bin/python -m pytest
+  backend/tests -q`: **1,354 passed in 116.99s**, including the new 76 cases.
+  Five NumPy matrix `PendingDeprecationWarning` messages came from existing
+  deconvolution tests; there were no failures.
+- Four measured Pt records compare degree-two normalization to direct Larch,
+  after explicitly changing only their EXAFS taper/range settings. The old
+  cubic result differs by more than `1e-4` for every selected record. The
+  untouched native project still has zero-width Kaiser and saved endpoint
+  compatibility problems; these tests do not establish untouched processing
+  or Ifeffit parity.
+- The existing local backend and frontend returned healthy responses; the
+  frontend returned HTTP 200. The staged Fe2O3 normalized preview rendered in
+  the actual workbench. Closing that temporary dialog returned to the three
+  original copper spectra. A read-only API comparison confirmed the complete
+  project matched the saved pre-check snapshot.
+
+The initial sandbox regression process stalled in its HTTP tests and was
+terminated before the final host run. Frontend code was unchanged. All 107
+requirement IDs and their order remain intact, with no row marked Verified.
 
 ## Limitations retained for continued work
 

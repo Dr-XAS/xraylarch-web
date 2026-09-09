@@ -96,9 +96,11 @@ Demeter/Ifeffit numerical oracle.
 
 The untouched native project currently imports with retained raw data and
 processing errors because its saved Kaiser background window has zero taper
-width. Native `bkg_nnorm` order-to-degree conversion also remains separate
-unfinished work. A comparison using independently specified Larch normalization
-must state that recipe, rather than claiming untouched native processing passed.
+width. The subsequent [native normalization checkpoint](athena-native-normalization-reference.md)
+corrects `bkg_nnorm` order-to-degree conversion and ignores obsolete `bkg_fnorm`.
+Saved spline/FT endpoints also slightly exceed coverage under local Larch
+constants. A comparison using independently specified Larch normalization must
+state that recipe, rather than claiming untouched native processing passed.
 
 Integration bounds must lie within the full STANDARD spline grid; the webapp
 does not extrapolate the integration spline past its endpoints. Disabled

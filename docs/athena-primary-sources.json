@@ -382,6 +382,25 @@
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Difference/diff.pl",
       "git_blob_sha1": "48f53923311f914354e9796ef7ad280c9a929b2c",
       "bytes": 507
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/NumTypes.pm",
+      "sha256": "fa7c8d5dbf39387fc9876e85417b1648b480f45b5d8f19ce71e906d7c817fa76",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/NumTypes.pm",
+      "git_blob_sha1": "d1e823ac8c82ce5ab7cdc92cc859686ef231a6bf",
+      "bytes": 3610
+    },
+    {
+      "source": "https://deb.debian.org/debian/pool/main/i/ifeffit/ifeffit_1.2.11d.orig.tar.gz#ifeffit-1.2.11d/src/lib/preedg.f",
+      "sha256": "973e2099f693f8e42ff4563bf686eda12c2a8b5402e3b7eea12de49861383602",
+      "file": "ifeffit-1.2.11d/src/lib/preedg.f",
+      "bytes": 11148
+    },
+    {
+      "source": "https://deb.debian.org/debian/pool/main/i/ifeffit/ifeffit_1.2.11d.orig.tar.gz#ifeffit-1.2.11d/src/lib/iff_pre_edge.f",
+      "sha256": "dbf03c23812c2cd24642a9074e5d57e9ff7ededf510b0545a6f72e882eab3df7",
+      "file": "ifeffit-1.2.11d/src/lib/iff_pre_edge.f",
+      "bytes": 7515
     }
   ]
 }

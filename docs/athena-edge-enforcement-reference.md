@@ -38,8 +38,8 @@ The [verification record](athena-verification.md) contains executed checks;
 frontend tests cover the implemented contract. This does not claim every
 Demeter preference or default: personal INI files, signed end-relative/implicit
 keV preference syntax, all scalar defaults, and native reference same/different
-edge controls remain open. The existing native exchange `bkg_nnorm` mapping
-still needs its separate coefficient-count/degree audit. No Demeter runtime
+edge controls remain open. The subsequent [native normalization checkpoint](athena-native-normalization-reference.md)
+corrects `bkg_nnorm` term-count/degree exchange separately. No Demeter runtime
 comparison has been executed.
 
 ## Contract established by the source
