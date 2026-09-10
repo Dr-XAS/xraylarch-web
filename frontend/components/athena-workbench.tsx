@@ -1,17 +1,22 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type ReactNode, type SetStateAction } from "react"
 import { Activity, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
-import { apiBase, athenaApi, resources, isDifferenceGroup, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
-import type { InspectionResponse } from "@/lib/contracts"
+import { apiBase, athenaApi, resources, isDifferenceGroup, dataTypeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
+import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot, type Space } from "./athena-plot"
 import { AthenaProjectImport } from "./athena-project-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
-import { columnPayload, type ColumnMapping } from "@/lib/athena-import"
+import { AthenaScanSelection } from './athena-scan-selection'
+import { columnPayload, initialColumnMapping, defaultPreprocessing, defaultRebin, lastImportedSample, type ColumnMapping } from "@/lib/athena-import"
 import { isAthenaProjectFile } from "@/lib/athena-file-types"
 import { EdgePolicyDialog, edgePolicyDescription, useEdgePolicy } from "./athena-edge-policy"
 import { EdgeIdentityDialog, edgeIdentityDescription } from "./athena-edge-identity"
 import { AthenaDifferenceDialog } from "./athena-difference"
+import { AthenaDatatype } from './athena-datatype'
+import { AthenaPluginRegistry } from './athena-plugin-registry'
+import { AthenaRebin } from './athena-rebin'
+import { RebinDefaultsControls, useRebinDefaults } from './athena-rebin-defaults'
 import "@/app/athena-controls.css"
 
 // hbar² / (2 m_e), in eV Å²; same constant as larch.xafs.xafsutils.KTOE.
@@ -68,7 +73,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | "edge_policy" | "edge_identity" | null
+type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | null
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
 
@@ -165,13 +170,19 @@ function E0Dialog({ project, active, busy, error, clearError, selectGroup, close
   </form></Modal>
 }
 
+type ImportFile = File | { name: string; inspection: InspectionResponse }
+function isProjectCandidate(file: ImportFile): file is File { return !('inspection' in file) && isAthenaProjectFile(file) }
+
 export function AthenaWorkbench() {
+  const rebinDefaults = useRebinDefaults()
+  const rebinGrid = { ...defaultRebin, ...rebinDefaults.grid, enabled: true }
   const { policy: edgePolicy, update: updateEdgePolicy, storageError: edgePolicyStorageError } = useEdgePolicy()
   const [batchEdgePolicy, setBatchEdgePolicy] = useState<EdgePolicy | null>(null)
   const inspectionReuseRef = useRef<InspectionResponse | undefined>(undefined)
   const [project, setProject] = useState<AthenaProject | null>(null)
   const projectRef = useRef<AthenaProject | null>(null)
   const skippedCount = useRef(0)
+  const preferenceWarnings = useRef<string[]>([])
   const init = useRef(false)
   const [activeId, setActiveId] = useState("")
   const [busy, setBusy] = useState("")
@@ -179,6 +190,8 @@ export function AthenaWorkbench() {
   const [message, setMessage] = useState("Ready to begin")
   const [modal, setModal] = useState<ModalName>(null)
   const [menu, setMenu] = useState("")
+  const [registryPending, setRegistryPending] = useState(false)
+  const registryReturn = useRef<ModalName>(null)
   const [search, setSearch] = useState("")
   const [space, setSpace] = useState<Space>("E")
   const [energyMode, setEnergyMode] = useState("norm")
@@ -192,10 +205,17 @@ export function AthenaWorkbench() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [analysisVisible, setAnalysisVisible] = useState(false)
   const [inspection, setInspection] = useState<InspectionResponse | null>(null)
-  const [files, setFiles] = useState<File[]>([])
+  const [files, setFiles] = useState<ImportFile[]>([])
+  const [scanSelection, setScanSelection] = useState<ScanInspectionResponse | null>(null)
   const [projectFiles, setProjectFiles] = useState<File[]>([])
   const [reuseMapping, setReuseMapping] = useState(true)
-  const [mapping, setMapping] = useState<ColumnMapping>({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
+  const [mappingState, setMapping] = useState<ColumnMapping>({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
+  const mapping: ColumnMapping = { ...mappingState, rebin: { ...defaultRebin, ...mappingState.rebin, ...rebinDefaults.grid } }
+  function setImportMapping(update: SetStateAction<ColumnMapping>) {
+    const next = typeof update === 'function' ? update(mapping) : update
+    setMapping(next)
+    if (next.rebin) rebinDefaults.edit(next.rebin)
+  }
   const [recent, setRecent] = useState<{ id: string; name: string; updated: string; count: number }[]>([])
   const [options, setOptions] = useState<Record<string, string | number | boolean>>({})
   const [journal, setJournal] = useState("")
@@ -216,6 +236,7 @@ export function AthenaWorkbench() {
   const [standardDrafts, setStandardDrafts] = useState<Record<string, string>>({})
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
   const marked = project?.groups.filter(g => g.marked) ?? []
+  const plotEnergyMode = active?.data_type === "detector" ? "mu" : energyMode
   const parameters = active && (drafts[active.id] ?? active.parameters)
   const dirty = active && parameters && !sameParameters(parameters, active.parameters)
   const selectedGroups = plotMarked && marked.length ? marked : active ? [active] : []
@@ -223,7 +244,7 @@ export function AthenaWorkbench() {
   const backgroundStandard = active ? standardDrafts[active.id] ?? active.background_standard_id ?? "" : ""
   const backgroundStandards = project?.groups.filter(g => g.id !== active?.id && !!g.result?.arrays.chi?.length) ?? []
   const combining = modal === "merge" || modal === "sum"
-  const canCombineMu = marked.length >= 2 && marked.every(g => g.data_type !== "chi")
+  const canCombineMu = marked.length >= 2 && marked.every(g => !["chi", "detector"].includes(g.data_type))
   const canCombineNorm = canCombineMu && marked.every(g => !g.processing_error && !!g.result?.arrays.norm?.length)
   const canCombineChi = hasCommonChi(marked)
   const combinationReady = marked.length >= 2 && (combineArray === "chi" ? canCombineChi : combineArray === "norm" ? canCombineNorm : combineArray === "mu" ? canCombineMu : true)
@@ -300,6 +321,7 @@ export function AthenaWorkbench() {
   }
 
   function accept(p: AthenaProject) {
+    if (p.import_preferences_warning && !preferenceWarnings.current.includes(p.import_preferences_warning)) preferenceWarnings.current.push(p.import_preferences_warning)
     if (projectRef.current?.id !== p.id) setStandardDrafts({})
     projectRef.current = p; setProject(p)
     setAnalysis(p.analyses?.at(-1) ?? null)
@@ -308,8 +330,8 @@ export function AthenaWorkbench() {
   }
   async function task(label: string, work: () => Promise<void>) {
     cancelPick()
-    setBusy(label); setError(""); skippedCount.current = 0
-    try { await work(); setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "")) }
+    setBusy(label); setError(""); skippedCount.current = 0; preferenceWarnings.current = []
+    try { await work(); setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "") + (preferenceWarnings.current.length ? ' · ' + preferenceWarnings.current.join(' ') : '')) }
     catch (e) { setError(e instanceof Error ? e.message : "The operation failed."); setMessage("Action needs attention") }
     finally { setBusy("") }
   }
@@ -333,6 +355,13 @@ export function AthenaWorkbench() {
   function act(action: string, ids = active ? [active.id] : [], opts: Record<string, unknown> = {}) {
     void task(action.replaceAll("_", " "), async () => { await command(action, ids, opts) })
     setMenu("")
+  }
+  function openPluginRegistry() {
+    cancelPick(); registryReturn.current = modal === "import" ? "import" : null
+    setRegistryPending(true); setMenu(""); setModal("plugins")
+  }
+  function closePluginRegistry() {
+    if (!registryPending) { setError(""); setModal(registryReturn.current) }
   }
   function openTool(name: ModalName) {
     cancelPick()
@@ -460,25 +489,43 @@ export function AthenaWorkbench() {
   }
   function optionText(key: string, label: string) { return <label className="ath-field"><span>{label}</span><input value={String(options[key] ?? "")} onChange={e => setOptions(o => ({ ...o, [key]: e.target.value }))} /></label> }
   function selectParameter(key: "window" | "rwindow" | "bkg_window", label: string) { return <label className="ath-field"><span>{label}</span><select value={parameters?.[key]} onChange={e => changeParameter(key, e.target.value)}>{windows.map(w => <option key={w}>{w}</option>)}</select></label> }
-  async function inspectFile(file: File, reuseFrom?: InspectionResponse) {
+  async function inspectFile(file: ImportFile, reuseFrom?: InspectionResponse) {
     const p = projectRef.current
     if (!p) return
     // A failed inspection must not leave an already accepted upload available to import again.
     setInspection(null)
+    setScanSelection(null)
     inspectionReuseRef.current = reuseFrom
-    const form = new FormData(); form.append("file", file)
-    const inspect = await athenaApi<InspectionResponse>(`/projects/${p.id}/inspect`, form)
+    let inspect: InspectionResponse | ScanInspectionResponse
+    if ('inspection' in file) {
+      inspect = await athenaApi<InspectionResponse>(`/projects/${p.id}/uploads/${file.inspection.upload_id}/inspection`)
+    } else {
+      const form = new FormData(); form.append("file", file)
+      inspect = await athenaApi<InspectionResponse | ScanInspectionResponse>(`/projects/${p.id}/inspect`, form)
+    }
+    if ('kind' in inspect && inspect.kind === 'scan_list') {
+      setScanSelection(inspect)
+      return
+    }
+    // Only collection responses carry kind; the remaining response is a
+    // staged column table and follows the existing batch mapping rules.
+    inspect = inspect as InspectionResponse
     setInspection(inspect)
-    const cols = inspect.columns
     if (!reuseMapping || !reuseFrom || !matchingColumns(reuseFrom, inspect)) {
-      setMapping(m => ({ ...m, energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "", numerator: [cols.find(c => c.role_hint === "mu")?.column_id ?? cols[1]?.column_id ?? ""], denominator: cols.find(c => c.role_hint === "i0")?.column_id ?? cols[2]?.column_id ?? "", reference_numerator: "", reference_denominator: "" }))
+      setMapping(m => initialColumnMapping(inspect, m))
+      // Last accepted column choices precede personal grid defaults in Athena.
+      // Adopting even an equal grid prevents a late defaults response replacing it.
+      if (inspect.remembered_columns?.mapping.rebin) rebinDefaults.adopt(inspect.remembered_columns.mapping.rebin)
     }
     return inspect
   }
-  async function queueFiles(incoming: File[]) {
+  async function queueFiles(incoming: ImportFile[]) {
     if (!incoming.length) return
-    if (isAthenaProjectFile(incoming[0])) {
-      setInspection(null); setFiles([]); setProjectFiles(incoming)
+    setScanSelection(null)
+    if (isProjectCandidate(incoming[0])) {
+      // Unopened tail entries are original Files. Scan entries are expanded
+      // only at the head of the queue, before any later project handoff.
+      setInspection(null); setFiles([]); setProjectFiles(incoming as File[])
       setError(""); setMenu(""); setModal("open")
       return
     }
@@ -486,6 +533,8 @@ export function AthenaWorkbench() {
     // A new file choice is a new batch intent. Keep this immutable snapshot for
     // every request and retry, even if enforcement is stopped while it runs.
     setBatchEdgePolicy(edgePolicy ? Object.freeze({ ...edgePolicy }) : null)
+    setMapping(m => ({ ...m, preprocessing: { ...(m.preprocessing ?? defaultPreprocessing), mark: false },
+      ...(m.rebin ? { rebin: { ...m.rebin, enabled: false } } : {}) }))
     setModal("import"); setFiles(incoming)
     await task("Inspecting " + incoming[0].name, async () => { await inspectFile(incoming[0]) })
   }
@@ -496,18 +545,18 @@ export function AthenaWorkbench() {
     await task("Importing spectrum", async () => {
       const p = projectRef.current!
       const next = await athenaApi<AthenaProject>(`/projects/${p.id}/import`, { ...columnPayload(mapping), edge_policy, version: p.version, upload_id: inspection.upload_id })
-      accept(next); setActiveId(next.groups.slice(p.groups.length).findLast(g => g.marked)?.id ?? next.groups.at(-1)!.id)
+      accept(next); setActiveId(lastImportedSample(next.groups.slice(p.groups.length))!.id)
       let remaining = files.slice(1); setFiles(remaining)
       while (remaining.length) {
-        if (isAthenaProjectFile(remaining[0])) {
-          setInspection(null); setFiles([]); remainingProjects = remaining
+        if (isProjectCandidate(remaining[0])) {
+          setInspection(null); setFiles([]); remainingProjects = remaining as File[]
           return
         }
         const inspected = await inspectFile(remaining[0], inspection)
         if (!inspected || !reuseMapping || !matchingColumns(inspection, inspected)) return
         const current = projectRef.current!
         const result = await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspected.upload_id })
-        accept(result); setActiveId(result.groups.slice(current.groups.length).findLast(g => g.marked)?.id ?? result.groups.at(-1)!.id)
+        accept(result); setActiveId(lastImportedSample(result.groups.slice(current.groups.length))!.id)
         remaining = remaining.slice(1); setFiles(remaining)
       }
       setInspection(null); setModal(null)
@@ -515,12 +564,19 @@ export function AthenaWorkbench() {
     // Start the other panel after releasing this task's busy state.
     if (remainingProjects) await queueFiles(remainingProjects)
   }
+  async function reviewScans(selected: InspectionResponse[]) {
+    if (!selected.length || !scanSelection) return
+    const expanded = selected.map(inspection => ({ name: inspection.display_name, inspection }))
+    setFiles([...expanded, ...files.slice(1)])
+    setScanSelection(null)
+    await task('Reading selected scan columns', async () => { await inspectFile(expanded[0], inspectionReuseRef.current) })
+  }
   function importPolicyNotice() {
     return <section className="ath-import-policy" aria-label="Import batch edge policy">
       <p>Next batch: <strong>{edgePolicyDescription(edgePolicy)}</strong>. {edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</p>
-      {!!files.length && <p>This batch: <strong>{edgePolicyDescription(batchEdgePolicy)}</strong>. This snapshot covers every sample and reference channel, including retries. Changing enforcement affects the next batch.</p>}
+      {!!files.length && <p>This batch: <strong>{edgePolicyDescription(batchEdgePolicy)}</strong>. This snapshot covers every sample, including retries. Reference identity follows the Same element option; its E₀ is found independently.</p>}
       <p className="ath-hint">Only subsequent raw-file imports use enforcement; χ(k) ignores it and project restores are unchanged. Choosing new files starts a new batch with the current policy.</p>
-      {!inspection && !!files.length && <button disabled={!!busy} onClick={() => { void task("Inspecting " + files[0].name, async () => { await inspectFile(files[0], inspectionReuseRef.current) }) }}>Retry file inspection</button>}
+      {!inspection && !scanSelection && !!files.length && <button disabled={!!busy} onClick={() => { void task("Inspecting " + files[0].name, async () => { await inspectFile(files[0], inspectionReuseRef.current) }) }}>Retry file inspection</button>}
     </section>
   }
   async function runTool() {
@@ -540,7 +596,6 @@ export function AthenaWorkbench() {
         const ids = ["merge", "sum"].includes(modal) || (modal === "align" && applyMarked) ? marked.map(g => g.id) : [active.id]
         let opts: Record<string, unknown> = { ...options }
         if (modal === "convolve" || modal === "deconvolve") opts.form = options.kind
-        if (modal === "rebin") opts = { e0: options.e0, pre2: options.xanes_start, exafs1: options.xanes_end, pre_step: options.pre_step, xanes_step: options.xanes_step, exafs_kstep: options.exafs_step }
         if (modal === "metadata") opts = { label: options.label, notes: options.notes, multiplier: options.multiplier, offset: options.offset, reference_id: options.reference_id || null }
         const keys: Record<string, string[]> = { calibrate: ["target", "observed"], align: ["reference_id", "xmin", "xmax", "use_reference"],
           merge: [], sum: [], smooth: ["window", "order"], deglitch: ["xmin", "xmax"], truncate: ["xmin", "xmax"],
@@ -573,34 +628,35 @@ export function AthenaWorkbench() {
   const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as ModalName[]
   const fileInput = useRef<HTMLInputElement>(null)
 
-  return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
+  return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>ATHENA <span>WEB</span></h1><p>X-ray absorption spectroscopy</p></div></div>
       <nav aria-label="Main menu">{["File", "Group", "Energy", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
         {label === "Energy" && <><button disabled={!project || !!busy} onClick={() => { cancelPick(); setMenu(""); setError(""); setModal("e0") }}>Select E₀…</button><button disabled={!!busy} onClick={() => { cancelPick(); setMenu(""); setModal("edge_policy") }}>Enforce element and edge…</button><button disabled={!edgePolicy} onClick={stopEdgePolicy}>Stop enforcing element and edge</button></>}
         {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("groups")}>Mark / freeze groups…</button>}
+        {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("datatype")}>Change data type…</button>}
         {label === "Group" && <button disabled={!active || active.frozen || !!busy} onClick={openEdgeIdentity}>Edit absorber and edge…</button>}
         {label === "File" && project && (marked.length ? <a href={`${apiBase}/projects/${project.id}/export?format=prj&marked_only=true`}><Download size={15} />Save marked project (.prj)</a> : <button disabled>Save marked project (.prj)</button>)}
-        {label === "File" && <><button disabled={!!busy} onClick={() => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) }}><Plus size={15} />New project</button><button disabled={!project || !!busy} onClick={() => { setMenu(""); setModal("import") }}><Upload size={15} />Import data…</button><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project…</button><hr />{project && <><a href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save Athena project (.prj)</a><a href={`${apiBase}/projects/${project.id}/export?format=json`}><Download size={15} />Save complete web project</a></>}<button onClick={() => openTool("journal")} disabled={!project}><FileText size={15} />Project journal</button></>}
+        {label === "File" && <><button disabled={!!busy} onClick={() => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) }}><Plus size={15} />New project</button><button disabled={!project || !!busy} onClick={() => { setMenu(""); setModal("import") }}><Upload size={15} />Import data…</button><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project…</button><hr />{project && <><a href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save Athena project (.prj)</a><a href={`${apiBase}/projects/${project.id}/export?format=json`}><Download size={15} />Save complete web project</a></>}<button onClick={() => openTool("journal")} disabled={!project}><FileText size={15} />Project journal</button><hr /><button disabled={!!busy} onClick={openPluginRegistry}>Plugin registry…</button></>}
         {label === "Group" && <><button disabled={!active || !!busy} onClick={() => openTool("metadata")}>Group information…</button><button disabled={!active || !!busy} onClick={() => act("duplicate")}><Copy size={15} />Duplicate current group</button><button disabled={!active || !!busy} onClick={() => act("metadata", [active!.id], { frozen: !active?.frozen })}><LockKeyhole size={15} />{active?.frozen ? "Unfreeze" : "Freeze"} group</button><button disabled={!active || !!busy} onClick={() => act("delete")}><Trash2 size={15} />Remove current group</button><hr /><button disabled={!!busy || marked.length !== 2} onClick={() => act("tie_reference", marked.map(g => g.id))}>Tie marked sample and reference</button><button disabled={!active || !!busy} onClick={() => act("untie_reference")}>Untie current reference</button><p className="ath-hint">Mark exactly two groups: the first in list order is the sample, the second its reference. Tying adopts the sample’s energy shift and keeps both shifts linked when either is edited.</p>{marked.length === 2 && <p className="ath-hint">Sample: {marked[0].label}<br />Reference: {marked[1].label}</p>}</>}
         {(label === "Process" ? toolsMenu : label === "Analysis" ? analysisMenu : []).map(tool => <button disabled={!active || !!busy} key={tool} onClick={() => openTool(tool)}>{toolTitles[tool!]}</button>)}
       </div>}</div>)}</nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><span className="ath-local"><i /> Local workspace</span></header>
     <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : project ? "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" /><button disabled={!project || !!busy} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>{project && <a className="ath-button ath-primary" href={`${apiBase}/projects/${project.id}/export?format=prj`}><Download size={15} />Save project</a>}</div></section>
-    <section className="ath-edge-policy-bar" aria-label="Import edge policy"><span>Import edge enforcement: <strong>{edgePolicyDescription(edgePolicy)}</strong>. New raw-file batches and reference channels only; project restores are unchanged.</span>{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</section>
+    <section className="ath-edge-policy-bar" aria-label="Import edge policy"><span>Import edge enforcement: <strong>{edgePolicyDescription(edgePolicy)}</strong>. Applies to new raw-file samples. References use their own E₀ and can share the sample’s element.</span>{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}
     {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => { const id = projectRef.current?.id ?? localStorage.getItem("athena.project"); if (id) accept(await athenaApi(`/projects/${id}`)); else accept(await athenaApi("/projects", {})) }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
     <div className="ath-workspace">
       <aside className="ath-groups"><div className="ath-panel-heading"><h2>Data groups <span>{project?.groups.length ?? 0}</span></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div><label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><div><button onClick={() => moveGroup(-1)} disabled={!active || !!busy} aria-label="Move group up"><ArrowUp size={13} /></button><button onClick={() => moveGroup(1)} disabled={!active || !!busy} aria-label="Move group down"><ArrowDown size={13} /></button></div></div>
-        <div className="ath-group-list">{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map((g, index) => <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className={`ath-swatch color-${index % 6}`} /><span><strong>{g.label}</strong><small>{isDifferenceGroup(g) ? (g.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : g.data_type === "chi" ? "χ(k)" : "μ(E)"} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title="Unapplied parameters" className="ath-dirty-dot" />}</button></div>)}</div>
+        <div className="ath-group-list">{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map((g, index) => <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className={`ath-swatch color-${index % 6}`} /><span><strong>{g.label}</strong><small>{isDifferenceGroup(g) ? (g.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(g)} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title="Unapplied parameters" className="ath-dirty-dot" />}</button></div>)}</div>
         {!project?.groups.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
         <div className="ath-sidebar-bottom"><button disabled={!!busy || !project} onClick={() => { void task("Loading copper example", async () => { const next = await command("example"); setActiveId(next.groups.at(-3)!.id) }) }}><Activity size={16} />Load copper foil example</button><small>Real spectra · 10 K, 50 K & 300 K</small><div><button onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button><button onClick={() => openTool("journal")} disabled={!project} aria-label="Project journal"><FileText size={15} /></button></div></div>
       </aside>
       <section className="ath-center"><div className="ath-center-heading"><div><p className="ath-eyebrow">SPECTRUM WORKSPACE</p><h2>{active?.label ?? "Explore your XAS data"}</h2></div>{active && <button className="ath-subtle" onClick={() => openTool("metadata")} aria-label="Edit group information"><Settings2 size={16} /></button>}</div>
         {active && <section className="ath-group-identity" aria-label="Current absorber and edge"><span>Absorber / edge: <strong>{edgeIdentityDescription(active)}</strong></span><button disabled={active.frozen || !!busy} onClick={openEdgeIdentity}>Edit absorber and edge…</button></section>}
         <div className="ath-plot-card"><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div><label className="ath-check"><input type="checkbox" checked={plotMarked} onChange={e => setPlotMarked(e.target.checked)} />Plot marked</label></div>
-          <div className="ath-plot-controls">{space === "E" ? <><select aria-label="Energy plot" value={energyMode} onChange={e => setEnergyMode(e.target.value)}><option value="mu">μ(E) · raw</option><option value="norm">μ(E) · normalized</option><option value="flat">μ(E) · flattened</option><option value="dmude">Derivative dμ/dE</option><option value="d2mude">Second derivative d²μ/dE²</option></select><label className="ath-check"><input type="checkbox" checked={background} disabled={energyMode !== "mu"} onChange={e => setBackground(e.target.checked)} />Background lines</label></> : <><span className="ath-chip">k-weight {active?.parameters.kweight ?? 2}</span>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">Real part</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} onChange={e => setOffset(Number(e.target.value))} /></label></div>
+          <div className="ath-plot-controls">{space === "E" ? <><select aria-label="Energy plot" disabled={active?.data_type === "detector"} value={plotEnergyMode} onChange={e => setEnergyMode(e.target.value)}><option value="mu">{active?.data_type === "detector" ? "Detector signal" : "μ(E) · raw"}</option><option value="norm">μ(E) · normalized</option><option value="flat">μ(E) · flattened</option><option value="dmude">Derivative dμ/dE</option><option value="d2mude">Second derivative d²μ/dE²</option></select><label className="ath-check"><input type="checkbox" checked={background} disabled={plotEnergyMode !== "mu" || active?.data_type === "detector"} onChange={e => setBackground(e.target.checked)} />Background lines</label></> : <><span className="ath-chip">k-weight {active?.parameters.kweight ?? 2}</span>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">Real part</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} onChange={e => setOffset(Number(e.target.value))} /></label></div>
           {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes wait for Apply.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
-          <AthenaPlot groups={selectedGroups} active={active} space={space} energyMode={energyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />
+          <AthenaPlot groups={selectedGroups} active={active} space={space} energyMode={plotEnergyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />
           <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div><label>Range <input aria-label="Plot minimum" type="number" placeholder="Auto" value={range[0] ?? ""} onChange={e => setRange([e.target.value === "" ? null : Number(e.target.value), range[1]])} /></label><span>to</span><input aria-label="Plot maximum" type="number" placeholder="Auto" value={range[1] ?? ""} onChange={e => setRange([range[0], e.target.value === "" ? null : Number(e.target.value)])} />{active && project && <a title="Export current group data" href={`${apiBase}/projects/${project.id}/groups/${active.id}/export?space=${space}`}><Download size={14} />CSV</a>}</div></div>
         </div>
         <div className="ath-readouts"><div><span>EDGE ENERGY</span><strong>{typeof active?.result?.effective.e0 === "number" ? active.result.effective.e0.toFixed(2) : "—"}<small> eV</small></strong></div><div><span>EDGE STEP</span><strong>{typeof active?.result?.effective.edge_step === "number" ? active.result.effective.edge_step.toFixed(4) : "—"}</strong></div><div><span>ENERGY RANGE</span><strong>{active && active.data_type !== "chi" ? `${Math.round(active.energy[0] + active.parameters.energy_shift)}–${Math.round(active.energy.at(-1)! + active.parameters.energy_shift)}` : "—"}<small> eV</small></strong></div><div><span>PROCESSING</span><strong className={active?.processing_error ? "ath-warn-text" : "ath-green"}>{active ? active.processing_error ? "Needs attention" : dirty ? "Draft changes" : "Up to date" : "Ready"}</strong></div></div>
@@ -609,27 +665,43 @@ export function AthenaWorkbench() {
         <div className="ath-workflow"><div><span className="ath-step">01</span><span><strong>Import & inspect</strong><small>Choose your detector columns</small></span></div><span>→</span><div><span className="ath-step">02</span><span><strong>Normalize & remove background</strong><small>Refine E₀, edge step, and Rbkg</small></span></div><span>→</span><div><span className="ath-step">03</span><span><strong>Transform & compare</strong><small>Explore k, R, and q space</small></span></div></div>
         <div className="ath-center-note"><BookOpen size={15} /><span>Familiar Athena workflows. Scientific calculations by Larch.</span><button onClick={() => openTool("learn")}>Tutorials & reference <ExternalLink size={12} /></button></div>
       </section>
-      <aside className="ath-parameters"><div className="ath-panel-heading"><h2>Processing parameters</h2><Settings2 size={16} /></div>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong>{active.label}</strong><button aria-label={active.frozen ? "Unfreeze group" : "Freeze group"} disabled={!!busy} onClick={() => act("metadata", [active.id], { frozen: !active.frozen })}><LockKeyhole size={14} />{active.frozen ? "Frozen" : "Freeze"}</button></div><fieldset disabled={active.frozen || !!busy} className="ath-param-fields">
-        <details open><summary>Normalization <small>μ(E)</small></summary><div className="ath-fields">{field("e0", "E₀", "eV", true)}{field("step", "Edge step", undefined, true)}{field("pre1", "Pre-edge start", "eV relative", true)}{field("pre2", "Pre-edge end", "eV relative", true)}{field("norm1", "Post-edge start", "eV relative", true)}{field("norm2", "Post-edge end", "eV relative", true)}<label className="ath-field"><span>Polynomial degree</span><select value={parameters?.nnorm ?? ""} onChange={e => changeParameter("nnorm", e.target.value === "" ? null : Number(e.target.value))}><option value="">Auto</option>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{field("energy_shift", "Energy shift", "eV")}</div><label className="ath-check"><input type="checkbox" checked={parameters?.flatten} onChange={e => changeParameter("flatten", e.target.checked)} />Flatten normalized data</label><p className="ath-hint">Blank fields use values determined from this spectrum.</p></details>
-        <details open><summary>Background removal <small>AUTOBK</small></summary><div className="ath-fields">{field("rbkg", "Rbkg", "Å")}{field("bkg_kweight", "Spline k-weight")}{field("bkg_kmin", "Spline k min", "Å⁻¹")}{field("bkg_kmax", "Spline k max", "Å⁻¹", true)}{splineEnergyField("bkg_kmin", "Spline energy min")}{splineEnergyField("bkg_kmax", "Spline energy max")}{field("clamp_lo", "Low clamp")}{field("clamp_hi", "High clamp")}{field("bkg_dk", "Spline dk", "Å⁻¹")}{field("nclamp", "Clamp points")}{selectParameter("bkg_window", "Spline window")}</div><p className="ath-hint">Spline energy is relative to E₀; energy and k limits update each other. Use ⌖ to pick a plotted x value or type either limit. Apply to process.</p>
+      <aside className="ath-parameters"><div className="ath-panel-heading"><h2>Processing parameters</h2><Settings2 size={16} /></div>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong>{active.label}</strong><button aria-label={`Data type: ${dataTypeLabel(active)}`} title="Change data type; Ctrl+Alt+click toggles μ(E) / XANES while preserving normalization" disabled={!!busy} onClick={event => {
+          if (event.ctrlKey && event.altKey && ['mu', 'xanes', 'norm'].includes(active.data_type)) {
+            void task('Changing data type', async () => { await command('change_datatype', [active.id], { toggle: true }); setSpace('E'); setAnalysisVisible(false) })
+          } else openTool('datatype')
+        }}>{dataTypeLabel(active)}</button><button aria-label={active.frozen ? "Unfreeze group" : "Freeze group"} disabled={!!busy} onClick={() => act("metadata", [active.id], { frozen: !active.frozen })}><LockKeyhole size={14} />{active.frozen ? "Frozen" : "Freeze"}</button></div><fieldset disabled={active.frozen || !!busy} className="ath-param-fields">
+        <details open><summary>Normalization <small>μ(E)</small></summary><fieldset className="ath-e0-fields" disabled={active.data_type === "chi" || active.data_type === "detector"}><div className="ath-fields">{field("e0", "E₀", "eV", true)}{field("step", "Edge step", undefined, true)}{field("pre1", "Pre-edge start", "eV relative", true)}{field("pre2", "Pre-edge end", "eV relative", true)}{field("norm1", "Post-edge start", "eV relative", true)}{field("norm2", "Post-edge end", "eV relative", true)}<label className="ath-field"><span>Polynomial degree</span><select value={parameters?.nnorm ?? ""} onChange={e => changeParameter("nnorm", e.target.value === "" ? null : Number(e.target.value))}><option value="">Auto</option>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{active.data_type !== "detector" && field("energy_shift", "Energy shift", "eV")}</div><label className="ath-check"><input type="checkbox" checked={parameters?.flatten} onChange={e => changeParameter("flatten", e.target.checked)} />Flatten normalized data</label><p className="ath-hint">Blank fields use values determined from this spectrum.</p></fieldset>{active.data_type === "detector" && <div className="ath-fields">{field("energy_shift", "Energy shift", "eV")}</div>}</details>
+        <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "chi" || active.data_type === "detector"}><details open><summary>Background removal <small>AUTOBK</small></summary><div className="ath-fields">{field("rbkg", "Rbkg", "Å")}{field("bkg_kweight", "Spline k-weight")}{field("bkg_kmin", "Spline k min", "Å⁻¹")}{field("bkg_kmax", "Spline k max", "Å⁻¹", true)}{splineEnergyField("bkg_kmin", "Spline energy min")}{splineEnergyField("bkg_kmax", "Spline energy max")}{field("clamp_lo", "Low clamp")}{field("clamp_hi", "High clamp")}{field("bkg_dk", "Spline dk", "Å⁻¹")}{field("nclamp", "Clamp points")}{selectParameter("bkg_window", "Spline window")}</div><p className="ath-hint">Spline energy is relative to E₀; energy and k limits update each other. Use ⌖ to pick a plotted x value or type either limit. Apply to process.</p>
           <label className="ath-check"><input type="checkbox" checked={parameters?.fnorm ?? false} disabled={active.data_type !== "mu"} onChange={e => changeParameter("fnorm", e.target.checked)} />Energy-dependent normalization</label><p className="ath-hint">For low-energy fluorescence EXAFS in raw μ(E) groups, with well-chosen pre/post-edge fits. Affects χ(k), not the energy plot. Apply parameters to process.</p>
           <label className="ath-field"><span>Background removal standard</span><select value={backgroundStandard} onChange={e => { cancelPick(); setStandardDrafts(d => ({ ...d, [active.id]: e.target.value })) }}><option value="">None</option>{backgroundStandard && !backgroundStandards.some(g => g.id === backgroundStandard) && <option disabled value={backgroundStandard}>Unavailable standard</option>}{backgroundStandards.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label><button disabled={backgroundStandard === (active.background_standard_id ?? "")} onClick={() => { void applyBackgroundStandard() }}>Apply standard</button><p className="ath-hint">Uses the standard’s live processed χ(k). Apply standard saves this choice and processes the current group with saved parameters. Parameter copy uses the saved standard, so apply a new choice first. Other parameter drafts wait for Apply parameters. Frozen groups are skipped.</p>
-        </details>
-        <details open><summary>Forward Fourier transform <small>k → R</small></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
+        </details></fieldset>
+        <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "detector"}><details open><summary>Forward Fourier transform <small>k → R</small></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
         <details><summary>Backward Fourier transform <small>R → q</small></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
-        <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details>
+        <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details></fieldset>
       </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" checked={applyMarked} disabled={!!busy} onChange={e => setApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label>{applyMarked && <p className="ath-hint">Frozen groups are skipped. Energy shifts are preserved.</p>}<button className="ath-primary" disabled={!!busy || (applyMarked ? !marked.some(g => !g.frozen) : active.frozen)} onClick={() => { void applyParameters() }}><Check size={16} />{busy === "Processing spectra" ? "Processing…" : "Apply parameters"}</button><button disabled={!!busy} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => setDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== active.id)))}>Discard parameter changes</button>}</div></>}</aside>
     </div>
     <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
 
+    {modal === 'datatype' && project && <Modal title="Change data type" close={() => { if (!busy) setModal(null) }}><AthenaDatatype project={project} activeId={active?.id ?? ''} selectGroup={setActiveId} busy={!!busy} error={error} clearError={() => setError('')} close={() => setModal(null)} apply={async (ids, type) => {
+      let saved: AthenaProject | null = null
+      await task('Changing data type', async () => { saved = await command('change_datatype', ids, { data_type: type }); setSpace('E'); setAnalysisVisible(false) })
+      return saved
+    }} /></Modal>}
     {modal === "edge_policy" && <EdgePolicyDialog policy={edgePolicy} apply={policy => { updateEdgePolicy(policy); setMessage(`Import edge enforcement · ${edgePolicyDescription(policy)}`) }} close={() => setModal(null)} />}
     {modal === "edge_identity" && active && <EdgeIdentityDialog key={`${project?.id}:${active.id}`} group={active} busy={!!busy} error={error} clearError={() => setError("")} save={saveEdgeIdentity} close={() => setModal(null)} />}
+    {modal === 'rebin' && project && <Modal title="Rebin data" wide close={() => { if (!busy) setModal(null) }}>
+      <AthenaRebin key={project.id} project={project} activeId={activeId} selectGroup={setActiveId}
+        grid={rebinGrid} setGrid={rebinDefaults.edit} setBusy={setBusy}
+        defaultsControls={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />}
+        saved={next => { accept(next); setMessage('Rebinned groups saved') }} />
+    </Modal>}
     {modal === "difference" && project && <AthenaDifferenceDialog key={project.id} project={project} activeId={activeId} getProject={() => projectRef.current} selectData={id => { setActiveId(id); setAnalysisVisible(false) }} onSaved={next => {
       accept(next)
       const added = next.last_operation?.difference_results
       setActiveId(added?.at(-1)?.group_id ?? next.groups.at(-1)?.id ?? activeId)
       setMessage(`Difference groups saved · ${added?.length ?? next.groups.length - project.groups.length} created`)
     }} onBusyChange={setBusy} close={() => setModal(null)} disabled={!!busy} />}
+    {modal === "plugins" && <Modal title="Plugin registry" close={closePluginRegistry}><div className="ath-modal-body"><AthenaPluginRegistry onPendingChange={setRegistryPending} /><div className="ath-modal-actions"><button disabled={registryPending} onClick={closePluginRegistry}>{registryReturn.current === "import" ? "Return to import" : "Close registry"}</button></div></div></Modal>}
     {modal === "e0" && <E0Dialog key={`${project?.id}:${active?.id}`} project={project} active={active} busy={!!busy} error={error} clearError={() => setError("")} selectGroup={id => { setActiveId(id); setAnalysisVisible(false) }} close={() => setModal(null)} apply={applySelectedE0} />}
     {modal === "groups" && <Modal title="Mark / freeze groups" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body ath-group-controls">
       <p className="ath-hint">Actions use the full group list, including groups hidden by search, and keep the current group selected. Frozen groups can still be marked or unfrozen.</p>
@@ -664,10 +736,10 @@ export function AthenaWorkbench() {
     </div></Modal>}
 
     {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}
-    {modal === "import" && <Modal title="Import spectra" wide close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}{!inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU, Athena .prj · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</p></> : <AthenaColumnSelection key={inspection.upload_id} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setMapping} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={() => { void importCurrent() }} />}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "import" && <Modal title="Import spectra" wide close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}<div className="ath-modal-actions"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0]) }) }}>Reinspect selected file</button>}</div>{inspection?.file_plugin && <p className="ath-hint">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</p>}{scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</p></> : <AthenaColumnSelection key={inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={() => { void importCurrent() }} />}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport initialFiles={projectFiles} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
-    {modal && modal !== "difference" && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
+    {modal && modal !== "difference" && modal !== "rebin" && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
       {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes</span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}</div><label className="ath-field"><span>Reference group</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>
       {modal === "calibrate" && <><p>Assign a known energy to the observed edge. This sets the energy shift and E₀ together.</p><div className="ath-fields">{optionNumber("observed", "Observed edge (unshifted)", "eV")}{optionNumber("target", "Calibrated energy", "eV")}</div></>}
       {modal === "align" && <><p>Fit the derivative of the current scan to a reference over the selected energy interval.</p><label className="ath-field"><span>Alignment standard</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}>{project?.groups.filter(g => g.id !== active?.id).map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label><div className="ath-fields">{optionNumber("xmin", "Alignment minimum", "eV")}{optionNumber("xmax", "Alignment maximum", "eV")}</div><label className="ath-check"><input type="checkbox" checked={applyMarked} onChange={e => setApplyMarked(e.target.checked)} />Align all marked groups</label><label className="ath-check"><input type="checkbox" checked={Boolean(options.use_reference)} onChange={e => setOptions(o => ({ ...o, use_reference: e.target.checked }))} />Use linked reference channels</label></>}
@@ -676,7 +748,6 @@ export function AthenaWorkbench() {
       {modal === "deglitch" && <p>Replace points within the selected interval by interpolation between the surrounding valid points.</p>}
       {modal === "truncate" && <p>Keep only data inside this interval in a new group.</p>}
       {modal === "smooth" && <><p>Savitzky–Golay smoothing creates a derived spectrum. Window size is an odd number of data points.</p><div className="ath-fields">{optionNumber("window", "Window length", "points")}{optionNumber("order", "Polynomial order")}</div></>}
-      {modal === "rebin" && <><p>Rebin across pre-edge, XANES, and EXAFS regions.</p><div className="ath-fields">{optionNumber("e0", "Edge energy", "eV")}{optionNumber("pre_step", "Pre-edge step", "eV")}{optionNumber("xanes_step", "XANES step", "eV")}{optionNumber("exafs_step", "EXAFS step", "Å⁻¹")}{optionNumber("xanes_start", "XANES start", "eV relative")}{optionNumber("xanes_end", "XANES end", "eV relative")}</div></>}
       {["convolve", "deconvolve"].includes(modal) && <><p>{modal === "convolve" ? "Broaden the spectrum with the selected line shape." : "Remove instrumental broadening over the selected energy interval using Larch’s deconvolution. The input is normalized first. This can amplify noise; inspect the derived spectrum."}</p><div className="ath-fields">{optionNumber("width", options.kind === "gaussian" ? "Gaussian sigma" : "Lorentzian HWHM", "eV")}<label className="ath-field"><span>Line shape</span><select value={String(options.kind)} onChange={e => setOptions(o => ({ ...o, kind: e.target.value }))}><option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option></select></label></div></>}
       {modal === "self_absorption" && <><p>Larch’s thick, homogeneous sample approximation for fluorescence self-absorption. Provide composition and geometry appropriate to your measurement. The derived group contains the corrected normalized signal.</p><div className="ath-fields">{optionText("formula", "Sample formula")}{optionText("element", "Absorbing element")}{optionText("edge", "Absorption edge")}{optionNumber("angle_in", "Incident angle", "degrees")}{optionNumber("angle_out", "Exit angle", "degrees")}</div></>}
       {modal === "dispersive" && <><p>Convert a pixel axis using E = offset + linear × pixel + quadratic × pixel².</p><div className="ath-fields">{optionNumber("offset", "Offset", "eV")}{optionNumber("linear", "Linear coefficient")}{optionNumber("quadratic", "Quadratic coefficient")}</div></>}

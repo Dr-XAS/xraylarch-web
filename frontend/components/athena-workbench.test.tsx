@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Parameters, type E0Method } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
-import type { InspectionResponse } from "@/lib/contracts"
+import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./athena-plot"
 import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
@@ -19,6 +19,12 @@ vi.setConfig({ testTimeout: 15000 })
 vi.mock("@/lib/athena", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/athena")>(),
   athenaApi: vi.fn(),
+}))
+// Preferences use their own service boundary and have real-store/browser coverage.
+// Keep the scientific API request assertions below independent of that service.
+vi.mock('@/lib/athena-preferences', () => ({
+  loadRebinDefaults: async () => ({ version: 0, grid: { emin: -30, emax: 50, pre: 10, xanes: .5, exafs: .05, width: 3 } }),
+  saveRebinDefaults: async (value: { version: number; grid: unknown }) => ({ ...value, version: value.version + 1 }),
 }))
 
 // Observe the workbench's data handoff without loading Plotly or testing its internals.
@@ -227,6 +233,9 @@ function chooseFluorescenceMapping(dialog: HTMLElement) {
 }
 
 const fluorescenceMapping = {
+  rebin: null,
+  rebin_grid: { emin: -30, emax: 50, pre: 10, xanes: .5, exafs: .05, width: 3 },
+  preprocessing: { mark: false, standard_id: null, copy_parameters: false, align: false },
   edge_policy: null,
   energy_column: "col_0", numerator: ["col_3", "col_4"], denominator: "col_2",
   mode: "fluorescence", units: "keV", data_type: "xanes",
@@ -645,6 +654,43 @@ describe("AthenaWorkbench import edge policy", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     expect(importCalls().at(-1)?.[1]).toEqual({ ...fluorescenceMapping, edge_policy: copperPolicy, version: afterFirst.version, upload_id: second.upload_id })
     expect(importCalls()).toHaveLength(2)
+  })
+
+  it('reinspects the original file with current reader settings while retaining the batch policy and tail', async () => {
+    sessionStorage.setItem(edgePolicyStorageKey, JSON.stringify(copperPolicy))
+    const project = await openSaved()
+    const first = inspectionFixture('first.dat'), tail = inspectionFixture('tail.dat')
+    const { dialog, files } = await chooseImportFiles([first, tail])
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Stop enforcing element and edge' }))
+    const next = { ...first, upload_id: 'reinspected-upload' }
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reinspect selected file' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    const call = api.mock.calls.at(-1)!
+    expect(call[0]).toBe(`/projects/${project.id}/inspect`)
+    expect((call[1] as FormData).get('file')).toBe(files[0])
+    expect(importCalls()).toHaveLength(0)
+    const afterFirst = importedProject(project, first.display_name)
+    api.mockResolvedValueOnce(afterFirst).mockResolvedValueOnce(tail).mockResolvedValueOnce(importedProject(afterFirst, tail.display_name))
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)).toEqual([next.upload_id, tail.upload_id])
+    expect(importCalls().map(([, body]) => (body as { edge_policy: unknown }).edge_policy)).toEqual([copperPolicy, copperPolicy])
+  })
+
+  it('removes the old import action if reinspection fails and retries the same file', async () => {
+    await openSaved()
+    const inspected = inspectionFixture('retry.dat')
+    const { dialog, files } = await chooseImportFiles([inspected])
+    api.mockRejectedValueOnce(new Error('Reader configuration needs correction'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reinspect selected file' }))
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('configuration needs correction')
+    expect(within(dialog).queryByRole('button', { name: 'Import spectrum' })).not.toBeInTheDocument()
+    api.mockResolvedValueOnce({ ...inspected, upload_id: 'retry-upload' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry file inspection' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    expect((api.mock.calls.at(-1)![1] as FormData).get('file')).toBe(files[0])
+    expect(importCalls()).toHaveLength(0)
   })
 
   it("includes the policy snapshot in a single χ(k) import so the backend can ignore it by data type", async () => {
@@ -1323,10 +1369,175 @@ describe("AthenaWorkbench bulk marking and freezing", () => {
   })
 })
 
+describe('AthenaWorkbench multi-scan files', () => {
+  function collection(): ScanInspectionResponse {
+    return { kind: 'scan_list', display_name: 'multiple.spec',
+      file_plugin: { id: 'SPEC', description: 'ESRF SPEC', source_sha256: 'hash', total_points: 6, skipped_scans: [] },
+      scans: ['first-scan', 'second-scan'].map(name => ({ ...inspectionFixture(name),
+        athena_suggestion: { energy_column: 'col_0', numerator: ['col_2'], denominator: 'col_1', mode: 'transmission', units: 'eV', data_type: 'mu' } })) }
+  }
+  async function openCollection(value = collection(), tail: File[] = []) {
+    api.mockResolvedValueOnce(value)
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const dialog = await screen.findByRole('dialog', { name: /import spectra/i })
+    fireEvent.change(within(dialog).getByLabelText('Choose data files'), { target: { files: [new File(['SPEC'], 'multiple.spec'), ...tail] } })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Review selected scans' })).toBeEnabled())
+    return dialog
+  }
+  it('reviews a selected subset without uploading scan bytes or importing excluded scans', async () => {
+    const p = await openSaved(); const value = collection(); const dialog = await openCollection(value)
+    fireEvent.click(within(dialog).getByLabelText('Include Scan 1 · entry 1'))
+    api.mockResolvedValueOnce(value.scans[1])
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected scans' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    expect(importCalls()).toHaveLength(0)
+    expect(api.mock.calls.at(-1)?.[0]).toBe(`/projects/${p.id}/uploads/${value.scans[1].upload_id}/inspection`)
+    api.mockResolvedValueOnce(importedProject(p, 'second-scan')); submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls()).toHaveLength(1)
+    expect(importCalls()[0][1]).toMatchObject({ upload_id: value.scans[1].upload_id, version: p.version })
+    expect(api.mock.calls.filter(([path]) => path.endsWith('/inspect'))).toHaveLength(1)
+  })
+  it('reuses explicit detector choices for compatible staged scans with fresh project versions', async () => {
+    const p = await openSaved(); const value = collection(); const dialog = await openCollection(value)
+    api.mockResolvedValueOnce(value.scans[0]); fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected scans' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    fireEvent.click(within(dialog).getByLabelText('Invert signal'))
+    const first = importedProject(p, 'first'); const second = importedProject(first, 'second')
+    api.mockResolvedValueOnce(first).mockResolvedValueOnce(value.scans[1]).mockResolvedValueOnce(second)
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls().map(([, body]) => body)).toMatchObject([
+      { upload_id: value.scans[0].upload_id, version: p.version, invert: true },
+      { upload_id: value.scans[1].upload_id, version: first.version, invert: true } ])
+  })
+  it('can retry a staged inspection failure without importing the first scan again', async () => {
+    const p = await openSaved(); const value = collection(); const dialog = await openCollection(value)
+    api.mockResolvedValueOnce(value.scans[0]); fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected scans' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    const first = importedProject(p, 'first')
+    api.mockResolvedValueOnce(first).mockRejectedValueOnce(new Error('Temporary staged inspection failure'))
+    submitImport(dialog)
+    await within(dialog).findByRole('alert')
+    expect(importCalls()).toHaveLength(1)
+    api.mockResolvedValueOnce(value.scans[1]); fireEvent.click(within(dialog).getByRole('button', { name: 'Retry file inspection' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    api.mockResolvedValueOnce(importedProject(first, 'second')); submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)).toEqual(value.scans.map(scan => scan.upload_id))
+  })
+  it('pauses on changed scan columns even when reuse is enabled', async () => {
+    const p = await openSaved(); const value = collection()
+    value.scans[1] = inspectionFixture('different', ['Energy', 'I0', 'It', 'Ir'])
+    const dialog = await openCollection(value)
+    api.mockResolvedValueOnce(value.scans[0]); fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected scans' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    api.mockResolvedValueOnce(importedProject(p, 'first')).mockResolvedValueOnce(value.scans[1]); submitImport(dialog)
+    await within(dialog).findByText('different')
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    expect(importCalls()).toHaveLength(1)
+  })
+  it('hands the remaining original project files to the project panel after selected scans finish', async () => {
+    const p = await openSaved(); const value = collection(); const tail = [new File(['PRJ'], 'next.prj'), new File(['raw'], 'last.dat')]
+    const dialog = await openCollection(value, tail)
+    fireEvent.click(within(dialog).getByLabelText('Include Scan 2 · entry 2'))
+    api.mockResolvedValueOnce(value.scans[0]); fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected scans' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    api.mockResolvedValueOnce(importedProject(p, 'first')); submitImport(dialog)
+    await screen.findByTestId('project-import-panel')
+    expect(projectImport.mock.calls.at(-1)?.[0].initialFiles).toEqual(tail)
+    expect(importCalls()).toHaveLength(1)
+  })
+})
+
 describe("AthenaWorkbench batch import", () => {
+  it('restores remembered choices into the actual controls and sends them with the live revision', async () => {
+    const project = await openSaved()
+    const inspected = inspectionFixture('remembered.dat')
+    inspected.remembered_columns = { version: 5, matching_columns: true, warnings: [], mapping: {
+      energy_column: 'col_0', numerator: ['col_3', 'col_4'], denominator: ['col_1', 'col_2'],
+      mode: 'fluorescence', units: 'keV', data_type: 'xanes', reference_numerator: 'col_1', reference_denominator: 'col_5',
+      reference_log: false, reference_same_element: false, sort: true, individual_channels: true,
+      signal_multiplier: 2, invert: true, preprocessing: { mark: true, standard_id: null, copy_parameters: false, align: false },
+      rebin: { enabled: true, e0: null, emin: -20, emax: 60, pre: 7, xanes: .2, exafs: .1, width: 4 },
+    } }
+    const { dialog } = await chooseImportFiles([inspected])
+    const view = within(dialog)
+    expect(view.getByRole('region', { name: 'Remembered import choices' })).toHaveTextContent('previous successful import')
+    expect(view.getByLabelText('Numerator If1')).toBeChecked()
+    expect(view.getByLabelText('Denominator It')).toBeChecked()
+    fireEvent.click(view.getByText('Rebin quick scans', { exact: true }))
+    expect(view.getByLabelText('Perform rebinning')).toBeChecked()
+    expect(view.getByLabelText('Rebin pre-edge step · eV')).toHaveValue(7)
+    fireEvent.click(view.getByText('Preprocess imported groups', { exact: true }))
+    expect(view.getByLabelText('Mark each imported sample')).toBeChecked()
+    api.mockResolvedValueOnce({ ...importedProject(project, 'remembered.dat'),
+      import_preferences_warning: 'Spectra imported, but column choices could not be remembered for the next import.' })
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls()).toHaveLength(1)
+    expect(importCalls()[0][1]).toMatchObject({ version: project.version, numerator: ['col_3', 'col_4'],
+      denominator: ['col_1', 'col_2'], rebin: { pre: 7, e0: null }, rebin_grid: { pre: 7 }, preprocessing: { mark: true } })
+    expect(screen.getByRole('status')).toHaveTextContent('Spectra imported, but column choices could not be remembered')
+    expect(plotProps().active?.label).toBe('remembered.dat')
+  })
+
+  it('lets file suggestions replace remembered choices without importing or changing saved groups', async () => {
+    const project = await openSaved()
+    const inspected = inspectionFixture('suggested.dat')
+    inspected.athena_suggestion = { energy_column: 'col_0', numerator: ['col_2'], denominator: 'col_1', mode: 'transmission', units: 'eV', data_type: 'mu' }
+    inspected.remembered_columns = { version: 1, matching_columns: true, warnings: ['Previous standard unavailable.'], mapping: {
+      energy_column: 'col_0', numerator: ['col_3'], denominator: 'col_2', mode: 'fluorescence', units: 'keV', data_type: 'xanes',
+      reference_numerator: 'col_2', reference_denominator: 'col_5', sort: false,
+      preprocessing: { mark: true, standard_id: null, copy_parameters: false, align: false },
+      rebin: { enabled: true, e0: null, emin: -30, emax: 50, pre: 7, xanes: .5, exafs: .05, width: 3 },
+    } }
+    const { dialog } = await chooseImportFiles([inspected]); const view = within(dialog)
+    expect(view.getByText('Previous standard unavailable.')).toBeInTheDocument()
+    fireEvent.click(view.getByRole('button', { name: 'Use suggested columns' }))
+    expect(view.getByRole('combobox', { name: 'Measurement' })).toHaveValue('transmission')
+    expect(view.getByLabelText('Numerator I0')).toBeChecked()
+    fireEvent.click(view.getByText('Rebin quick scans', { exact: true }))
+    expect(view.getByLabelText('Perform rebinning')).not.toBeChecked()
+    expect(importCalls()).toHaveLength(0)
+    expect(plotProps().active?.id).toBe(project.groups[0].id)
+  })
+
+  it('retains rebin choices through a matching batch failure and retries the failed file', async () => {
+    const project = await openSaved()
+    const inspections = ['quick-1.dat', 'quick-2.dat'].map(name => inspectionFixture(name))
+    const { dialog } = await chooseImportFiles(inspections)
+    fireEvent.click(within(dialog).getByText('Rebin quick scans', { exact: true }))
+    fireEvent.click(within(dialog).getByLabelText('Perform rebinning'))
+    fireEvent.change(within(dialog).getByLabelText('Rebin smoothing width · points'), { target: { value: '4' } })
+    fireEvent.change(within(dialog).getByLabelText('Rebin grid E₀ · eV'), { target: { value: '8980' } })
+    const first = importedProject(project, inspections[0].display_name)
+    const second = importedProject(first, inspections[1].display_name)
+    api.mockResolvedValueOnce(first).mockResolvedValueOnce(inspections[1]).mockRejectedValueOnce(new Error('Temporary import failure'))
+    submitImport(dialog)
+    await within(dialog).findByText('Temporary import failure')
+    expect(importCalls()).toHaveLength(2)
+    expect(within(dialog).getByLabelText('Perform rebinning')).toBeChecked()
+    expect(within(dialog).getByLabelText('Rebin smoothing width · points')).toHaveValue(4)
+    api.mockResolvedValueOnce(second)
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const calls = importCalls()
+    expect(calls[1]).toEqual(calls[2])
+    for (const [, payload] of calls) expect(payload).toMatchObject({ rebin: { e0: 8980, width: 4, pre: 10, xanes: .5, exafs: .05 } })
+    const next = await chooseImportFiles([inspectionFixture('new-selection.dat')])
+    expect(within(next.dialog).getByLabelText('Perform rebinning')).not.toBeChecked()
+    expect(within(next.dialog).getByLabelText('Rebin smoothing width · points')).toHaveValue(4)
+  })
+
   it("reuses the chosen detector and reference mapping for matching layouts with each accepted revision", async () => {
     const project = await openSaved()
     const inspections = ["scan-1.dat", "scan-2.dat", "scan-3.dat"].map(name => inspectionFixture(name))
+    // Recommendations on later matching files must not override the
+    // mapping explicitly chosen for this batch (including its keV units).
+    for (const inspected of inspections.slice(1)) inspected.athena_suggestion = {
+      energy_column: "col_0", numerator: ["col_2"], denominator: "col_1", mode: "transmission", units: "eV", data_type: "mu",
+    }
     const { dialog, files } = await chooseImportFiles(inspections)
     chooseFluorescenceMapping(dialog)
     expect(within(dialog).getByRole("checkbox", { name: /reuse this mapping/i })).toBeChecked()
@@ -2494,5 +2705,161 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     expect(plotProps().active).toEqual(project.groups[1])
     expect(plotProps().groups).toEqual(project.groups.filter(g => g.marked))
     expect(localStorage.getItem(storageKey)).toBe(project.id)
+  })
+})
+
+
+describe("AthenaWorkbench import preprocessing", () => {
+  it("retains standard choices and marking across a failed batch retry, then resets marking for a new selection", async () => {
+    const project = await openSaved()
+    const inspections = ['one.dat', 'two.dat'].map(name => inspectionFixture(name))
+    const { dialog } = await chooseImportFiles(inspections)
+    fireEvent.change(within(dialog).getByLabelText('Preprocessing standard'), { target: { value: 'foil' } })
+    fireEvent.click(within(dialog).getByLabelText('Set parameters to the standard'))
+    fireEvent.click(within(dialog).getByLabelText('Align to the standard'))
+    fireEvent.click(within(dialog).getByLabelText('Mark each imported sample'))
+    const afterFirst = importedProject(project, 'one.dat'), afterSecond = importedProject(afterFirst, 'two.dat')
+    api.mockResolvedValueOnce(afterFirst).mockResolvedValueOnce(inspections[1]).mockRejectedValueOnce(new Error('Alignment needs overlap'))
+    submitImport(dialog)
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Alignment needs overlap')
+    expect(within(dialog).getByLabelText('Mark each imported sample')).toBeChecked()
+    expect(within(dialog).getByLabelText('Preprocessing standard')).toHaveValue('foil')
+    api.mockResolvedValueOnce(afterSecond)
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    const expected = { standard_id: 'foil', copy_parameters: true, align: true, mark: true }
+    expect(importCalls()).toHaveLength(3)
+    for (const [, body] of importCalls()) expect(body).toMatchObject({ preprocessing: expected })
+    expect(importCalls()[1]).toEqual(importCalls()[2])
+    const fresh = await chooseImportFiles([inspectionFixture('fresh.dat')])
+    expect(within(fresh.dialog).getByLabelText('Mark each imported sample')).not.toBeChecked()
+    expect(within(fresh.dialog).getByLabelText('Preprocessing standard')).toHaveValue('foil')
+    expect(within(fresh.dialog).getByLabelText('Set parameters to the standard')).toBeChecked()
+    expect(within(fresh.dialog).getByLabelText('Align to the standard')).toBeChecked()
+  })
+})
+
+describe('Athena data-type correction', () => {
+  async function dialog() {
+    openGroupMenu()
+    fireEvent.click(screen.getByRole('button', { name: 'Change data type…' }))
+    return screen.findByRole('dialog', { name: 'Change data type' })
+  }
+  it.each([
+    ['current', ['foil']], ['marked', ['sample', 'oxide']], ['all', ['foil', 'sample', 'oxide', 'unused']],
+  ] as const)('changes %s groups with the saved recipe and preserves dirty drafts', async (scope, ids) => {
+    const p = await openSaved()
+    editNumber(/^Rbkg/, 1.9)
+    const next = nextProject(p, Object.fromEntries(ids.map(id => [id, { data_type: 'xanes' }])))
+    api.mockResolvedValueOnce(next)
+    const panel = await dialog()
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type for' }), { target: { value: scope } })
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type to' }), { target: { value: 'xanes' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Change data type' }))
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${p.id}/command`, {
+      version: p.version, action: 'change_datatype', group_ids: [...ids], options: { data_type: 'xanes' },
+    }))
+    await waitFor(() => expect(within(panel).getByRole('button', { name: 'Close' })).toBeEnabled())
+    fireEvent.click(within(panel).getByRole('button', { name: 'Close' }))
+    expect(screen.getByRole('spinbutton', { name: /^Rbkg/ })).toHaveValue(1.9)
+    expect(plotProps().active?.data_type).toBe(scope === 'marked' ? 'mu' : 'xanes')
+    expect(plotProps().space).toBe('E')
+  })
+  it.each(['xanes', 'chi'] as const)('disables only the parameter sections unavailable for %s', async type => {
+    const p = projectFixture(); p.groups[0].data_type = type
+    await openSaved(p)
+    const e0 = screen.getByRole('spinbutton', { name: /^E₀/ })
+    const rbkg = screen.getByRole('spinbutton', { name: /^Rbkg/ })
+    const kmin = screen.getByRole('spinbutton', { name: /^FT k min/ })
+    if (type === 'chi') { expect(e0).toBeDisabled(); expect(kmin).toBeEnabled() }
+    else { expect(e0).toBeEnabled(); expect(kmin).toBeDisabled() }
+    expect(rbkg).toBeDisabled()
+  })
+  it('cancels without writes and lets the user choose another current group', async () => {
+    await openSaved()
+    const panel = await dialog(); const calls = api.mock.calls.length
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Current group' }), { target: { value: 'sample' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }))
+    expect(api).toHaveBeenCalledTimes(calls)
+    expect(plotProps().active?.id).toBe('sample')
+  })
+  it('lists unsupported groups, blocks empty scopes, and includes frozen energy records', async () => {
+    const p = projectFixture(); p.groups[0].data_type = 'chi'; p.groups[1].data_type = 'xmudat'
+    p.groups.forEach(g => { g.marked = false }); p.groups[2].frozen = true
+    await openSaved(p); const panel = await dialog()
+    const apply = within(panel).getByRole('button', { name: 'Change data type' })
+    expect(apply).toBeDisabled()
+    expect(within(panel).getByText(/skipped: χ\(k\) and FEFF/)).toBeVisible()
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type for' }), { target: { value: 'marked' } })
+    expect(apply).toBeDisabled()
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type for' }), { target: { value: 'all' } })
+    expect(within(panel).getByText('2 eligible of 4 selected groups')).toBeVisible()
+    expect(apply).toBeEnabled()
+  })
+  it('shows a rejected request and retains the form for correction', async () => {
+    await openSaved(); api.mockRejectedValueOnce(new Error('Project changed; reload first.'))
+    const panel = await dialog()
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type to' }), { target: { value: 'norm' } })
+    fireEvent.click(within(panel).getByRole('button', { name: 'Change data type' }))
+    expect(await within(panel).findByRole('alert')).toHaveTextContent('Project changed; reload first.')
+    expect(within(panel).getByRole('combobox', { name: 'Change data type to' })).toHaveValue('norm')
+    expect(plotProps().active?.data_type).toBe('mu')
+  })
+  it('reports dependent processing errors and prevents duplicate writes while processing', async () => {
+    const p = await openSaved(); const response = deferred<AthenaProject>(); api.mockReturnValueOnce(response.promise)
+    const panel = await dialog(); const button = within(panel).getByRole('button', { name: 'Change data type' })
+    const before = api.mock.calls.length
+    fireEvent.click(button); fireEvent.click(button)
+    expect(api).toHaveBeenCalledTimes(before + 1)
+    expect(within(panel).getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    const next = nextProject(p, { foil: { data_type: 'xanes' } })
+    next.last_operation = { action: 'change_datatype', skipped_group_ids: [],
+      datatype_results: [{ group_id: 'foil', label: 'Foil scan', previous_type: 'mu', data_type: 'xanes', is_normalized: false }],
+      processing_errors: { sample: 'Background standard Foil scan has no usable chi(k).' } }
+    await act(async () => response.resolve(next))
+    expect(within(panel).getByText(/Sample scan: Background standard/)).toBeVisible()
+  })
+  it('Ctrl+Alt-click toggles a frozen normalized record without discarding its recipe', async () => {
+    const p = projectFixture(); p.groups[0].data_type = 'norm'; p.groups[0].is_normalized = true; p.groups[0].frozen = true
+    localStorage.setItem(storageKey, p.id); api.mockResolvedValueOnce(p)
+    render(<AthenaWorkbench />)
+    const label = await screen.findByRole('button', { name: 'Data type: Normalized μ(E)' })
+    await waitFor(() => expect(label).toBeEnabled())
+    api.mockResolvedValueOnce(nextProject(p, { foil: { data_type: 'xanes', is_normalized: true } }))
+    fireEvent.click(label, { ctrlKey: true, altKey: true })
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${p.id}/command`, {
+      version: p.version, action: 'change_datatype', group_ids: ['foil'], options: { toggle: true },
+    }))
+    expect(await screen.findByRole('button', { name: 'Data type: Normalized XANES' })).toBeVisible()
+    expect(plotProps().active?.frozen).toBe(true)
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('Legacy detector records in the workbench', () => {
+  it('uses raw count plots and keeps energy shifts editable without exposing absorption controls', async () => {
+    const p = projectFixture(); p.groups[0].data_type = 'detector'
+    p.groups[0].result = { arrays: { energy: p.groups[0].energy, mu: p.groups[0].mu }, effective: { e0: null, edge_step: null }, warnings: [] }
+    await openSaved(p)
+    expect(screen.getByRole('button', { name: 'Data type: Detector signal' })).toBeVisible()
+    expect(screen.getByRole('combobox', { name: 'Energy plot' })).toHaveValue('mu')
+    expect(screen.getByRole('combobox', { name: 'Energy plot' })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: /^E₀/ })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: /^Rbkg/ })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: /^FT k min/ })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: /^Energy shift/ })).toBeEnabled()
+    expect(plotProps().energyMode).toBe('mu')
+    selectGroup('Sample scan')
+    expect(screen.getByRole('combobox', { name: 'Energy plot' })).toHaveValue('norm')
+    expect(plotProps().energyMode).toBe('norm')
+  })
+  it('offers energy-type correction for a detector while retaining the three native destinations', async () => {
+    const p = projectFixture(); p.groups[0].data_type = 'detector'; await openSaved(p)
+    fireEvent.click(screen.getByRole('button', { name: 'Data type: Detector signal' }))
+    const panel = await screen.findByRole('dialog', { name: 'Change data type' })
+    expect(within(panel).getByText('1 eligible of 1 selected groups')).toBeVisible()
+    expect(within(panel).getByRole('button', { name: 'Change data type' })).toBeEnabled()
+    const select = within(panel).getByRole('combobox', { name: 'Change data type to' })
+    expect(within(select).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['mu', 'xanes', 'norm'])
   })
 })

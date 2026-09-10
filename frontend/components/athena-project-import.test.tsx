@@ -248,3 +248,17 @@ describe("Athena project batches and recovery", () => {
     expect(imports()).toHaveLength(0)
   })
 })
+
+describe('Detector project preview', () => {
+  it('previews counts with a detector axis label and no normalization or derivative options', async () => {
+    const data = preview('detector', ['counts']); data.groups[0].data_type = 'detector'
+    api.mockResolvedValueOnce(data); setup(); choose(['detector']); await ready('detector')
+    const select = screen.getByRole('combobox', { name: 'Preview signal' }) as HTMLSelectElement
+    expect([...select.options].map(option => option.text)).toEqual(['Detector signal'])
+    await waitFor(() => expect(plot).toHaveBeenCalled())
+    const props = plot.mock.calls.at(-1)![0]
+    expect(props.data[0].y).toEqual(data.groups[0].y)
+    expect(props.layout.yaxis).toEqual({ title: { text: 'Detector signal' }, automargin: true })
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+})

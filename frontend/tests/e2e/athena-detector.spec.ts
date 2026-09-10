@@ -1,0 +1,76 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { expect, test, type Locator } from '@playwright/test'
+
+test.use({ actionTimeout: 10000 })
+async function curve(region: Locator) {
+  await expect(region.locator('.js-line').first()).toBeAttached()
+  return region.locator('.js-plotly-plot').evaluate(node => {
+    const trace = (node as HTMLElement & { data: { x: number[]; y: number[] }[] }).data[0]
+    return { x: [...trace.x], y: [...trace.y] }
+  })
+}
+
+test('native detector probe previews measured counts, corrects type, and survives PRJ exchange', async ({ page }, info) => {
+  test.setTimeout(90000)
+  const path = fileURLToPath(new URL('../../../backend/tests/fixtures/athena-detector-probe.prj', import.meta.url))
+  const record = JSON.parse(readFileSync(path, 'utf8')).counts
+  const y = record.y.map(Number)
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Open project', exact: true }).click()
+  await expect(page.getByLabel('Open project file', { exact: true })).toBeEnabled()
+  await page.getByLabel('Open project file', { exact: true }).setInputFiles(path)
+  const dialog = page.getByRole('dialog', { name: 'Open a project' })
+  await expect(dialog.getByLabel('Preview signal').locator('option')).toHaveText(['Detector signal'])
+  const expectedX = record.x.map((v: string) => Number(v) + Number(record.args.bkg_eshift ?? 0))
+  await expect.poll(() => curve(dialog)).toEqual({ x: expectedX, y })
+  const savedResponse = page.waitForResponse(r => r.url().endsWith('/restore-upload'), { timeout: 30000 })
+  await dialog.getByRole('button', { name: 'Import all groups', exact: true }).click()
+  const response = await savedResponse; expect(response.ok()).toBe(true)
+  const p = await response.json(); const g = p.groups[0]
+  expect(g.data_type).toBe('detector'); expect(g.processing_error).toBeNull()
+  expect(g.result.effective.e0).toBeNull(); expect(g.result.arrays.norm).toEqual([])
+  expect(g.mu).toEqual(y)
+  await expect(dialog).not.toBeVisible()
+  await expect(page.getByRole('combobox', { name: 'Energy plot' })).toHaveValue('mu')
+  await expect(page.getByRole('combobox', { name: 'Energy plot' })).toBeDisabled()
+  await expect(page.getByRole('spinbutton', { name: /^E₀/ })).toBeDisabled()
+  await expect(page.getByRole('spinbutton', { name: /^Rbkg/ })).toBeDisabled()
+  await expect(page.getByRole('spinbutton', { name: /^Energy shift/ })).toBeEnabled()
+  const plot = page.getByLabel('E-space spectrum plot', { exact: true })
+  await expect.poll(() => curve(plot)).toEqual({ x: expectedX, y })
+  await expect(plot.getByText('Detector signal', { exact: true })).toBeVisible()
+  await plot.screenshot({ path: info.outputPath('detector-counts.png') })
+  await page.getByRole('tab', { name: 'k EXAFS', exact: true }).click()
+  await expect(page.getByText('No data in this plot space', { exact: true })).toBeVisible()
+  await page.getByRole('tab', { name: 'E Energy', exact: true }).click()
+  await page.getByRole('button', { name: 'Data type: Detector signal', exact: true }).click()
+  const type = page.getByRole('dialog', { name: 'Change data type', exact: true })
+  await expect(type.getByText('1 eligible of 1 selected groups')).toBeVisible()
+  await type.getByRole('combobox', { name: 'Change data type to', exact: true }).selectOption('norm')
+  const changing = page.waitForResponse(r => r.url().endsWith('/command'))
+  await type.getByRole('button', { name: 'Change data type', exact: true }).click()
+  const normalized = await (await changing).json()
+  expect(normalized.groups[0].data_type).toBe('norm')
+  expect(normalized.groups[0].mu).toEqual(y)
+  await type.getByRole('button', { name: 'Close', exact: true }).click()
+  const undo = page.waitForResponse(r => r.url().endsWith('/command'))
+  await page.getByRole('button', { name: 'Undo', exact: true }).click(); await undo
+  await expect(page.getByRole('button', { name: 'Data type: Detector signal', exact: true })).toBeVisible()
+  const downloading = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Save project', exact: true }).click()
+  const exported = info.outputPath('detector-roundtrip.prj'); await (await downloading).saveAs(exported)
+  await page.getByRole('button', { name: 'Open project', exact: true }).click()
+  await expect(page.getByLabel('Open project file', { exact: true })).toBeEnabled()
+  await page.getByLabel('Open project file', { exact: true }).setInputFiles(exported)
+  await expect(dialog.getByLabel('Preview signal').locator('option')).toHaveText(['Detector signal'])
+  const reopening = page.waitForResponse(r => r.url().endsWith('/restore-upload'), { timeout: 30000 })
+  await dialog.getByRole('button', { name: 'Import all groups', exact: true }).click()
+  const reopened = await (await reopening).json()
+  expect(reopened.groups[1].data_type).toBe('detector')
+  expect(reopened.groups[1].result.arrays).toEqual(g.result.arrays)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Data type: Detector signal', exact: true })).toBeVisible()
+  expect(errors).toEqual([])
+})

@@ -39,6 +39,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const xKey = { E: "energy", k: "k", R: "r", q: "q" }[space]
   const yKey = { E: energyMode, k: "weighted_chi", R: `chir_${component}`, q: `chiq_${component}` }[space]
   const displayed = groups.flatMap((g, index) => {
+    if (g.data_type === 'detector' && (space !== 'E' || energyMode !== 'mu')) return []
     const rawChi = !g.result && g.data_type === "chi"
     const arrays: Record<string, number[]> = g.result?.arrays ?? (rawChi
       ? { k: g.energy, chi: g.mu }
@@ -55,6 +56,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const energyTitle = ({ mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", d2mude: "d²μ/dE² (eV⁻²)" } as Record<string, string>)[energyMode]
   const differenceTitle = energyMode === "dmude" ? "d(difference)/dE (eV⁻¹)" : energyMode === "d2mude" ? "d²(difference)/dE² (eV⁻²)" : "Difference signal"
   const energyForm = (group: AthenaGroup) => {
+    if (group.data_type === 'detector') return 'Detector signal'
     if (!isDifferenceGroup(group)) return energyTitle
     const label = group.source.y_label
     return ["mu", "norm", "flat"].includes(energyMode) && typeof label === "string" && label.trim() ? label : differenceTitle

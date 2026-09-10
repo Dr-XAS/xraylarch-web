@@ -1,0 +1,102 @@
+import { expect, test, type Page } from '@playwright/test'
+
+test.use({ actionTimeout: 10000 })
+
+async function command(page: Page, action: () => Promise<unknown>) {
+  const response = page.waitForResponse(r => r.url().endsWith('/command') && r.request().method() === 'POST', { timeout: 30000 })
+  await action(); const saved = await response; expect(saved.ok()).toBe(true)
+  const project = await saved.json()
+  await expect(page.locator('footer.ath-status')).toContainText(`revision ${project.version}`)
+  return project
+}
+async function openTypes(page: Page) {
+  await page.getByRole('navigation', { name: 'Main menu' }).getByRole('button', { name: 'Group', exact: true }).click()
+  await page.getByRole('button', { name: 'Change data type…', exact: true }).click()
+  return page.getByRole('dialog', { name: 'Change data type', exact: true })
+}
+async function energyCurve(page: Page) {
+  const plot = page.getByLabel('E-space spectrum plot', { exact: true })
+  await expect(plot.locator('.js-line').first()).toBeAttached()
+  return plot.locator('.js-plotly-plot').evaluate(node => {
+    const curve = (node as HTMLElement & { data: { x: number[]; y: number[] }[] }).data[0]
+    return { x: [...curve.x], y: [...curve.y] }
+  })
+}
+
+test('real copper type correction: current, frozen, marked, all, drafts and plot arrays', async ({ page }, info) => {
+  test.setTimeout(90000)
+  const errors: string[] = []; page.on('pageerror', e => errors.push(e.message))
+  await page.goto('/')
+  const initial = await command(page, () => page.getByRole('button', { name: 'Load copper foil example', exact: true }).click())
+  const [first, second, third] = initial.groups
+  await page.getByLabel('Plot marked', { exact: true }).uncheck()
+  await page.getByRole('spinbutton', { name: /^Rbkg/ }).fill('1.9')
+  await command(page, () => page.getByRole('button', { name: 'Freeze group', exact: true }).click())
+  let panel = await openTypes(page)
+  await panel.getByRole('combobox', { name: 'Change data type to', exact: true }).selectOption('norm')
+  let saved = await command(page, () => panel.getByRole('button', { name: 'Change data type', exact: true }).click())
+  expect(saved.groups[0].data_type).toBe('norm'); expect(saved.groups[0].frozen).toBe(true)
+  expect(saved.groups[0].parameters).toEqual(first.parameters)
+  expect(saved.groups[0].mu).toEqual(first.mu)
+  expect(saved.groups.slice(1)).toEqual(initial.groups.slice(1))
+  await panel.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect(page.getByRole('spinbutton', { name: /^Rbkg/ })).toHaveValue('1.9')
+  await expect.poll(() => energyCurve(page)).toEqual({ x: saved.groups[0].result.arrays.energy, y: first.mu })
+  saved = await command(page, () => page.getByRole('button', { name: 'Data type: Normalized μ(E)', exact: true }).click({ modifiers: ['Control', 'Alt'] }))
+  expect(saved.groups[0].data_type).toBe('xanes'); expect(saved.groups[0].is_normalized).toBe(true)
+  expect(saved.groups[0].result.arrays.chi).toEqual([])
+  await expect.poll(() => energyCurve(page)).toEqual({ x: saved.groups[0].result.arrays.energy, y: first.mu })
+  await command(page, () => page.getByRole('button', { name: 'Undo', exact: true }).click())
+  await expect(page.getByRole('button', { name: 'Data type: Normalized μ(E)', exact: true })).toBeVisible()
+  await command(page, () => page.getByRole('button', { name: 'Redo', exact: true }).click())
+  await expect(page.getByRole('button', { name: 'Data type: Normalized XANES', exact: true })).toBeVisible()
+  await command(page, () => page.getByLabel(`Mark ${third.label}`, { exact: true }).click())
+  await expect(page.getByLabel(`Mark ${third.label}`, { exact: true })).not.toBeChecked()
+  panel = await openTypes(page)
+  await panel.getByRole('combobox', { name: 'Change data type for', exact: true }).selectOption('marked')
+  await panel.getByRole('combobox', { name: 'Change data type to', exact: true }).selectOption('xanes')
+  saved = await command(page, () => panel.getByRole('button', { name: 'Change data type', exact: true }).click())
+  expect(saved.last_operation.datatype_results.map((g: { group_id: string }) => g.group_id)).toEqual([first.id, second.id])
+  expect(saved.groups.map((g: { data_type: string }) => g.data_type)).toEqual(['xanes', 'xanes', 'mu'])
+  expect(saved.groups[0].is_normalized).toBe(false)
+  await panel.screenshot({ path: info.outputPath('datatype-marked.png') })
+  await panel.getByRole('combobox', { name: 'Change data type for', exact: true }).selectOption('all')
+  await panel.getByRole('combobox', { name: 'Change data type to', exact: true }).selectOption('mu')
+  saved = await command(page, () => panel.getByRole('button', { name: 'Change data type', exact: true }).click())
+  expect(saved.groups.map((g: { data_type: string }) => g.data_type)).toEqual(['mu', 'mu', 'mu'])
+  expect(saved.groups[0].result.arrays.chi).toEqual(first.result.arrays.chi)
+  await panel.getByRole('button', { name: 'Close', exact: true }).click()
+  await expect.poll(() => energyCurve(page)).toEqual({ x: first.result.arrays.energy, y: first.result.arrays.norm })
+  await expect(page.getByRole('spinbutton', { name: /^Rbkg/ })).toHaveValue('1.9')
+  expect(errors).toEqual([])
+})
+
+test('normalized XANES survives downloaded .prj and reopened plots', async ({ page }, info) => {
+  test.setTimeout(90000)
+  await page.goto('/')
+  await command(page, () => page.getByRole('button', { name: 'Load copper foil example', exact: true }).click())
+  const panel = await openTypes(page)
+  await panel.getByRole('combobox', { name: 'Change data type to', exact: true }).selectOption('norm')
+  await command(page, () => panel.getByRole('button', { name: 'Change data type', exact: true }).click())
+  await panel.getByRole('button', { name: 'Close', exact: true }).click()
+  const saved = await command(page, () => page.getByRole('button', { name: 'Data type: Normalized μ(E)', exact: true }).click({ modifiers: ['Control', 'Alt'] }))
+  const download = page.waitForEvent('download')
+  await page.getByRole('link', { name: 'Save project', exact: true }).click()
+  const path = info.outputPath('normalized-xanes.prj'); await (await download).saveAs(path)
+  await page.getByRole('button', { name: 'Open project', exact: true }).click()
+  await page.getByLabel('Open project file', { exact: true }).setInputFiles(path)
+  const open = page.getByRole('dialog', { name: 'Open a project', exact: true })
+  await expect(open.getByRole('button', { name: 'Import all groups', exact: true })).toBeEnabled()
+  const response = page.waitForResponse(r => r.url().endsWith('/restore-upload'), { timeout: 30000 })
+  await open.getByRole('button', { name: 'Import all groups', exact: true }).click()
+  const accepted = await response; expect(accepted.ok()).toBe(true)
+  await expect(open).not.toBeVisible()
+  // The import panel may append to this project; select the imported copy.
+  const next = await accepted.json(); const actual = next.groups.at(-3)
+  expect(actual.data_type).toBe('xanes'); expect(actual.is_normalized).toBe(true)
+  expect(actual.result.arrays.norm).toEqual(saved.groups[0].mu)
+  await page.reload()
+  await page.getByLabel('Plot marked', { exact: true }).uncheck()
+  await expect(page.getByRole('button', { name: 'Data type: Normalized XANES', exact: true })).toBeVisible()
+  await expect.poll(() => energyCurve(page)).toEqual({ x: actual.result.arrays.energy, y: saved.groups[0].mu })
+})

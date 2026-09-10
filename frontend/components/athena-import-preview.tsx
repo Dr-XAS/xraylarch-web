@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic"
 import { useEffect, useState } from "react"
 import { athenaApi } from "@/lib/athena"
-import { columnPayload, type ColumnMapping, type ColumnPreview } from "@/lib/athena-import"
+import { columnPayload, columnProblem, type ColumnMapping, type ColumnPreview } from "@/lib/athena-import"
 import styles from "./athena-column-selection.module.css"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false })
@@ -16,10 +16,12 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
   const [showReference, setShowReference] = useState(true)
   const [retry, setRetry] = useState(0)
   const [state, setState] = useState<{ key: string; value?: ColumnPreview; error?: string } | null>(null)
+  const problem = columnProblem(mapping)
+  const [showOriginal, setShowOriginal] = useState(true)
   const key = JSON.stringify({ projectId, version, uploadId, mapping: columnPayload(mapping) })
   const [manualKey, setManualKey] = useState("")
   useEffect(() => {
-    if (disabled || (paused && manualKey !== key) || !mapping.numerator.length) return
+    if (disabled || (paused && manualKey !== key) || problem) return
     const controller = new AbortController()
     let current = true
     const timeout = setTimeout(() => {
@@ -31,36 +33,40 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
     return () => { current = false; clearTimeout(timeout); controller.abort() }
     // key contains the complete immutable request; changing any column cancels stale work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, paused, manualKey, retry, disabled])
+  }, [key, paused, manualKey, retry, disabled, problem])
   const isCurrent = state?.key === key
-  const value = isCurrent ? state?.value : paused ? state?.value : undefined
-  const error = isCurrent ? state?.error : undefined
-  const traces = value?.traces.filter(t => showReference || t.role !== "reference") ?? []
-  const hasReference = !!(mapping.reference_numerator && mapping.reference_denominator)
+  const value = problem ? undefined : isCurrent ? state?.value : paused ? state?.value : undefined
+  const error = problem ?? (isCurrent ? state?.error : undefined)
+  const traces = value?.traces.filter(t => (showReference || t.role !== "reference") && (showOriginal || t.stage !== 'original')) ?? []
+  const hasReference = !!(mapping.reference_numerator || mapping.reference_denominator)
+  const plottedReference = traces.some(t => t.role === "reference")
   return <section className={styles.previewPanel} aria-label="Column selection preview">
     <div className={styles.previewTools}><strong>Preview selected columns</strong>
       <label className="ath-check"><input type="checkbox" checked={paused} onChange={e => { setPaused(e.target.checked); setManualKey("") }} />Pause plotting</label>
-      <button type="button" disabled={disabled || !mapping.numerator.length} onClick={() => { setManualKey(key); setRetry(n => n + 1); setState(null) }}>Replot</button>
+      <button type="button" disabled={disabled || !!problem} onClick={() => { setManualKey(key); setRetry(n => n + 1); setState(null) }}>Replot</button>
       {hasReference && <label className="ath-check"><input type="checkbox" checked={showReference} onChange={e => setShowReference(e.target.checked)} />Plot reference</label>}
+      {mapping.rebin?.enabled && <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Plot original data</label>}
     </div>
     <p className="ath-hint">The selected detector signals before normalization or background removal.</p>
-    {paused && <p role="status">Plotting paused{!isCurrent ? " — the displayed curve uses the previous column selection." : "."} Replot updates once.</p>}
-    <div className={styles.plot} aria-label="Imported signal preview plot" aria-busy={!paused && !isCurrent && !!mapping.numerator.length}>
+    {paused && <p role="status">Plotting paused{value && !isCurrent ? " — the displayed curve uses the previous column selection." : "."} Replot updates once.</p>}
+    <div className={styles.plot} aria-label="Imported signal preview plot" aria-busy={!paused && !isCurrent && !problem}>
       {value ? <Plot data={traces.map((trace, index) => ({ x: trace.x.slice(), y: trace.y.slice(), name: trace.label,
-        type: "scatter", mode: "lines", line: { color: trace.role === "reference" ? "#b96342" : colors[index % colors.length], dash: trace.role === "reference" ? "dash" : "solid", width: 1.8 },
+        type: "scatter", mode: "lines", opacity: trace.stage === 'original' ? .45 : 1,
+        line: { color: trace.role === "reference" ? "#b96342" : colors[index % colors.length], dash: trace.stage === 'original' ? 'dot' : trace.role === "reference" ? "dash" : "solid", width: 1.8 },
         yaxis: trace.role === "reference" ? "y2" : "y", hovertemplate: "%{x:.4f}, %{y:.6g}<extra>%{fullData.name}</extra>" }))}
-        layout={{ autosize: true, margin: { l: 60, r: hasReference && showReference ? 60 : 25, t: 15, b: 65 },
+        layout={{ autosize: true, margin: { l: 60, r: plottedReference ? 60 : 25, t: traces.length > 1 ? 65 : 15, b: 60 },
           paper_bgcolor: "white", plot_bgcolor: "white", font: { family: "Arial, sans-serif", size: 11, color: "#43513d" },
           xaxis: { title: { text: value.x_label }, zeroline: false }, yaxis: { title: { text: value.y_label }, zeroline: false },
           yaxis2: { title: { text: "Reference" }, overlaying: "y", side: "right", showgrid: false, zeroline: false },
-          showlegend: traces.length > 1, legend: { orientation: "h", y: -0.25 },
-          uirevision: key, hovermode: "closest" }}
+          showlegend: traces.length > 1, legend: { orientation: "h", x: 0, y: 1.12, xanchor: "left", yanchor: "bottom" },
+          uirevision: state?.key, hovermode: "closest" }}
         config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ["select2d", "lasso2d"], toImageButtonOptions: { filename: "athena-column-preview" } }}
         style={{ width: "100%", height: "100%" }} useResizeHandler />
-        : <p>{!mapping.numerator.length ? "Select at least one numerator channel to preview." : error ? "Correct the selection or use Replot to retry." : paused ? "Choose Replot to display the selected columns." : "Updating preview…"}</p>}
+        : <p>{error ? "Correct the selection or use Replot to retry." : paused ? "Choose Replot to display the selected columns." : "Updating preview…"}</p>}
     </div>
     {error && <p role="alert" className="ath-error">{error}</p>}
-    {value && <p className="ath-hint">{value.points.toLocaleString()} source points{value.traces.some(t => t.x.length < value.points) ? " · display preserves local minima and maxima; every point is imported." : " · all points displayed."}</p>}
+    {value && <p className="ath-hint">{value.points.toLocaleString()} source points{value.rebin_results ? " · rebinned spectra will be imported; original data are retained." : value.traces.some(t => t.x.length < value.points) ? " · display preserves local minima and maxima; every point is imported." : " · all points displayed."}</p>}
+    {value?.rebin_results?.map(result => <p className="ath-hint" key={result.id}>{result.label}: {result.source_points.toLocaleString()} → {result.output_points.toLocaleString()} points · grid E₀ {result.e0.toFixed(3)} eV</p>)}
     {value?.warnings.map(note => <p key={note} className="ath-warning">{note}</p>)}
   </section>
 }

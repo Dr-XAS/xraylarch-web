@@ -1,0 +1,7 @@
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 24px; }
+.controls { min-width: 0; border: 0; padding: 0; margin: 0; }
+.preview { min-width: 0; }
+.plot { width: 100%; height: 410px; margin: 14px 0; border: 1px solid #d8e1ce; border-radius: 4px; overflow: hidden; }
+.plot > p { padding: 24px; }
+.actions { display: grid; gap: 8px; margin-top: 16px; }
+@media (max-width: 760px) { .layout { grid-template-columns: minmax(0, 1fr); } .preview { grid-row: 1; } .plot { height: 350px; } }

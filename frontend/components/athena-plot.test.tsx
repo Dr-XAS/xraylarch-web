@@ -431,3 +431,23 @@ describe("AthenaPlot failed processing and analysis axes", () => {
     }
   })
 })
+
+describe('Detector signal plots', () => {
+  it('labels detector counts distinctly from absorption and applies presentation scaling only', () => {
+    const detector = group('I0'); detector.data_type = 'detector'; detector.multiplier = 2; detector.offset = 3
+    freeze(detector)
+    show({ groups: [detector, group('Absorption')], active: detector, offset: 0 })
+    const props = handoff()
+    expect(props.layout.yaxis.title.text).toBe('Signal (forms in legend)')
+    expect(props.data[0].name).toBe('I0 (Detector signal)')
+    expect(props.data[0].y).toEqual([5, 7, 9])
+    expect(props.data[1].name).toBe('Absorption (μ(E))')
+  })
+  it.each(['norm','flat','dmude','d2mude','k','R','q'])('does not render a detector as %s even if stale arrays are present', mode => {
+    const detector = group('I0'); detector.data_type = 'detector'
+    const space = ['k','R','q'].includes(mode) ? mode as Space : 'E'
+    show({ groups: [detector], active: detector, space, energyMode: space === 'E' ? mode : 'mu' })
+    expect(plotly).not.toHaveBeenCalled()
+    expect(screen.getByText('No data in this plot space')).toBeVisible()
+  })
+})
