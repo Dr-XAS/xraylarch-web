@@ -31,7 +31,7 @@ export default defineConfig({
     {
       command: "npm run dev -- --hostname 127.0.0.1 --port 13004",
       cwd: frontendRoot,
-      env: { BACKEND_URL: "http://127.0.0.1:18006" },
+      env: { BACKEND_URL: "http://127.0.0.1:18006", NEXT_BUILD_DIR: ".next-e2e" },
       url: "http://127.0.0.1:13004",
       reuseExistingServer: false,
     },

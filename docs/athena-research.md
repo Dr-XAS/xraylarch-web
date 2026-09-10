@@ -1,5 +1,7 @@
 # Athena research notes
 
+Current follow-up: [2026-09-09 real-project import compatibility](athena-prj-compatibility.md) supersedes the earlier zero-width Kaiser/native-endpoint limitation and distinguishes Larch-written normalization degrees from Demeter term counts.
+
 Research date: 2026-09-07. Shared branch: `Athena`.
 
 The objective remains to seek XAS Athena tutorials and YouTube material and duplicate Athena into the webapp. This document supports that objective; it does not reduce it to a first release or certify implementation. The companion [full parity matrix](athena-parity.md) records requirements, unresolved coverage, and proposed evidence. Every implementation status starts **Pending**, for the parent to update from concrete implementation files and relevant passing checks.

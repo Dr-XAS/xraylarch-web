@@ -74,8 +74,9 @@ export interface Analysis {
   result: Record<string, unknown>
 }
 export const apiBase = "/api/backend/api/athena"
-export async function athenaApi<T>(path: string, body?: unknown, method?: string): Promise<T> {
+export async function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(apiBase + path, {
+    signal,
     method: method ?? (body === undefined ? "GET" : "POST"),
     ...(body instanceof FormData ? { body } : body !== undefined ? {
       headers: { "content-type": "application/json" }, body: JSON.stringify(body),

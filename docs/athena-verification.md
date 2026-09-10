@@ -637,6 +637,57 @@ The initial sandbox regression process stalled in its HTTP tests and was
 terminated before the final host run. Frontend code was unchanged. All 107
 requirement IDs and their order remain intact, with no row marked Verified.
 
+## Real-project import checkpoint, 2026-09-09
+
+The [compatibility report](athena-prj-compatibility.md) supersedes the earlier
+zero-width background Kaiser/native-endpoint limitation. Eight newly downloaded
+official projects (57 spectra) pass staging, normalized previews, full processing
+and both web JSON/PRJ round trips. Their bytes match pinned Git blobs; the
+retained [fixture manifest](../backend/tests/fixtures/athena-official-manifest.json)
+records the source and hashes. Direct Larch normalization/FFT comparisons and
+real singular-covariance/zero-beta cases are now regression tests.
+
+The [complete corpus](athena-project-corpus-results.json) contains 83 files.
+All 82 normal projects import with 1,067 raw spectra preserved. Of those,
+1,015 process and 52 retain explicit errors, listed individually. The executable
+upstream danger.prj is correctly rejected. A repeatable audit script uses an
+isolated temporary store and never edits source files.
+
+- Project compatibility, project service and preview checks: **253 passed**
+  after malformed-value recovery and legacy-window log-ratio consistency fixes.
+- Final complete backend suite: **1,464 passed in 142.52s**. Five existing
+  NumPy matrix deprecation warnings come from deconvolution tests; no failures.
+- Frontend unit/integration suite: **326 passed in 36.89s**, 13 files.
+- Full Chromium suite: **8 passed in 36.2s**. Four new cases cover three official
+  project formats through ordinary upload, normalized preview, E/k/R/q plot
+  rendering, real browser download, reupload, exact arrays/recipes and refresh;
+  the fourth checks raw → project → raw batch order. Four existing classic
+  workbench cases also pass.
+- Type checking and production build: **passed**, using `.next-verify` so the
+  development server stays available. Browser servers use `.next-e2e` and a
+  temporary data directory.
+- Native browser control independently imported the downloaded cu.prj and
+  displayed its normalized and Fourier curves. The original copper project was
+  restored in the UI afterward; a read-only API check confirmed revision 63,
+  the same three copper group labels, and no processing errors. Both local
+  services returned HTTP 200.
+
+Initial test failures exposed stale assumptions that any native out-of-range
+outer fit bound must fail, and that every yb_iron spectrum should calculate.
+The tests now distinguish Larch's supported outer-bound clipping from wholly
+unusable ranges, and retain yb_iron .003's actual nonpositive fitted-step error.
+Additional malformed-limit tests found and fixed an early float-conversion
+failure that otherwise prevented recovery of raw spectra.
+
+Playwright's browser was initially absent. Its bundled version has no Ubuntu
+26-specific package, so the supported Ubuntu 24 Chromium package was downloaded
+to `/tmp/athena-playwright`, selected with `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE`.
+Tests then ran successfully. No desktop Demeter execution is claimed.
+
+All 107 parity IDs and their order are retained; no full row is marked Verified.
+The primary-source manifest has 66 entries, including the pinned clamp
+configuration and hashed Ifeffit window implementation.
+
 ## Limitations retained for continued work
 
 Full desktop behavior remains broader than the current application. Outstanding

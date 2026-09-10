@@ -125,7 +125,7 @@ class AthenaParameters(BaseModel):
         for window, width, name in ((self.window, self.dk, "dk"),
                                     (self.rwindow, self.dr, "dr"),
                                     (self.bkg_window, self.bkg_dk, "bkg_dk")):
-            if window in ("gaussian", "kaiser") and width <= 0:
+            if window == "gaussian" and width <= 0:
                 raise ValueError(f"{window} requires a positive taper width ({name}).")
         return self
 
@@ -221,13 +221,29 @@ def _fft_capacity(kmax, p):
         raise ScientificError("The transform window creates an oversized grid; reduce dk or increase kstep.")
 
 
+def _larch_window(window, width, warnings):
+    # Ifeffit window.f permits beta=0: I0(0)/I0(0)=1 strictly inside
+    # the window. Larch calls that implementation 'bessel'; its newer
+    # 'kaiser' formula instead degenerates to an all-zero array at beta=0.
+    if window == "kaiser" and width == 0:
+        note = "Zero-width Kaiser uses Larch's legacy Bessel window (the rectangular limit)."
+        if note not in warnings:
+            warnings.append(note)
+        return "bessel"
+    return window
+
+
 def _transforms(group, p, effective, warnings):
     available = float(group.k[-1])
     kmin = p.kmin
     if p.kmax is not None:
         kmax = p.kmax
-        if kmax > available + 1e-10:
-            raise ScientificError(f"kmax exceeds available k={available:.4g}; lower kmax or extend the data.")
+        # AUTOBK's uniform output grid stops at the last full kstep, while
+        # its measured support can extend a fraction of a step beyond it.
+        # Larch xftf accepts a window ending within that physical support.
+        support = max(available, float(getattr(getattr(group, "autobk_details", None), "kmax", available)))
+        if kmax > support + 1e-10:
+            raise ScientificError(f"kmax exceeds available k={support:.4g}; lower kmax or extend the data.")
     else:
         if available <= kmin + max(4 * p.kstep, p.dk):
             if p.kmin != AthenaParameters.model_fields["kmin"].default:
@@ -238,9 +254,9 @@ def _transforms(group, p, effective, warnings):
         kmax = available - min(1.0, (available - kmin) / 4)
     if kmin < group.k[0] - 1e-10 or kmax - kmin < 2 * p.kstep:
         raise ScientificError("The FT range must contain at least three measured k points; adjust kmin/kmax.")
-    if p.dk > 2 * (kmax - kmin):
+    if p.window not in ("kaiser", "gaussian") and p.dk > 2 * (kmax - kmin):
         raise ScientificError("dk is too wide for the selected k range; reduce dk or widen kmin/kmax.")
-    if p.dr > 2 * (p.rmax - p.rmin):
+    if p.rwindow not in ("kaiser", "gaussian") and p.dr > 2 * (p.rmax - p.rmin):
         raise ScientificError("dr is too wide for the selected R range; reduce dr or widen rmin/rmax.")
     _fft_capacity(available, p)
     rstep = np.pi / (p.nfft * p.kstep)
@@ -253,10 +269,10 @@ def _transforms(group, p, effective, warnings):
     # implements real exponents without modifying Larch or truncating them.
     group.weighted_chi = group.chi * group.k ** p.kweight
     xftf(group.k, group.weighted_chi, group=group, kmin=kmin, kmax=kmax,
-         kweight=0, dk=p.dk, window=p.window, nfft=p.nfft,
+         kweight=0, dk=p.dk, window=_larch_window(p.window, p.dk, warnings), nfft=p.nfft,
          kstep=p.kstep, rmax_out=rmax_out)
     xftr(group.r, group.chir, group=group, rmin=p.rmin, rmax=p.rmax,
-         dr=p.dr, window=p.rwindow, nfft=p.nfft, kstep=p.kstep,
+         dr=p.dr, window=_larch_window(p.rwindow, p.dr, warnings), nfft=p.nfft, kstep=p.kstep,
          qmax_out=available)
     # Preserve 2*pi phase equivalence to the actual complex transforms. The
     # local Larch complex_phase helper can also remove odd multiples of pi.
@@ -471,7 +487,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                         raise ScientificError("The requested EXAFS range is too short; widen it or select xanes.")
                     warnings.append("Insufficient post-edge data for EXAFS; returning normalization only.")
                 else:
-                    if p.bkg_dk > 2 * (bmax - p.bkg_kmin):
+                    if p.bkg_window not in ("kaiser", "gaussian") and p.bkg_dk > 2 * (bmax - p.bkg_kmin):
                         raise ScientificError("bkg_dk is too wide for the background k range; reduce it or widen bkg_kmin/bkg_kmax.")
                     nkout = int(1.01 + bmax / p.kstep)
                     if p.nclamp > nkout:
@@ -489,11 +505,15 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     if len(set(knot_indices)) < nspl:
                         raise ScientificError("Too few distinct points for AUTOBK spline knots; lower rbkg or use denser data.")
                     bkg_options = dict(ek0=e0, rbkg=p.rbkg, kmin=p.bkg_kmin, kmax=bmax,
-                                       kweight=p.bkg_kweight, dk=p.bkg_dk, win=p.bkg_window,
+                                       kweight=p.bkg_kweight, dk=p.bkg_dk,
+                                       win=_larch_window(p.bkg_window, p.bkg_dk, warnings),
                                        nclamp=p.nclamp, clamp_lo=p.clamp_lo, clamp_hi=p.clamp_hi,
-                                       nfft=p.nfft, kstep=p.kstep)
+                                       nfft=p.nfft, kstep=p.kstep, calc_uncertainties=False)
                     autobk(x, y, group=group, edge_step=group.edge_step, **bkg_options,
                            **_standard_arguments(standard, bmax, p.kstep, group.edge_step))
+                    effective["background_covariance_available"] = group.autobk_details.covar is not None
+                    if group.autobk_details.covar is None:
+                        warnings.append("Background fit covariance is unavailable; fitted curves are shown without an uncertainty estimate.")
                     if p.fnorm:
                         corrected_mu, scale = _functional_normalization(x, y, group.pre_edge, group.post_edge, e0)
                         corrected = Group()

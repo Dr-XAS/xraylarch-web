@@ -607,12 +607,13 @@ def test_copy_series_later_invalid_setting_cannot_save_partial_copies(store, two
     assert store.load(two_groups["id"]) == two_groups
 
 
-def test_identical_copper_spectra_have_zero_log_amplitude_and_phase(store):
+@pytest.mark.parametrize("rwindow", ["hanning", "kaiser"])
+def test_identical_copper_spectra_have_zero_log_amplitude_and_phase(store, rwindow):
     p = command(store, store.create(), "example")
     copper = p["groups"][0]
     p = command(store, p, "duplicate", [copper["id"]])
     ids = [copper["id"], p["groups"][-1]["id"]]
-    p = command(store, p, "parameters", ids, e0=copper["result"]["effective"]["e0"], kmax=8)
+    p = command(store, p, "parameters", ids, e0=copper["result"]["effective"]["e0"], kmax=8, rwindow=rwindow, dr=0)
     analysis = store.analyze(p["id"], Command(version=p["version"], action="log_ratio", group_ids=ids,
         options={"kmin": 3, "kmax": 7, "array": "norm"}))
     assert analysis["kind"] == "log_ratio"

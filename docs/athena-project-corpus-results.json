@@ -1,0 +1,823 @@
+{
+  "generated_at": "2026-09-10T04:44:05.538322+00:00",
+  "method": "Full import and processing using saved native recipes; original files are never edited. Parsed raw spectra remain available when a recipe fails. danger.prj deliberately contains executable code and must be rejected.",
+  "summary": {
+    "files": 83,
+    "imported": 82,
+    "groups": 1067,
+    "processed": 1015,
+    "processing_errors": {
+      "The fitted edge step is not positive; check mu, e0 and normalization windows.": 24,
+      "1 validation error for AthenaParameters\npre1\n  Input should be less than 0 [type=less_than, input_value=0.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/less_than": 1,
+      "1 validation error for AthenaParameters\n  Value error, norm2 must be greater than norm1. [type=value_error, input_value={'e0': 8981.099748, 'step...t': 2048, 'kstep': 0.05}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/value_error": 1,
+      "1 validation error for AthenaParameters\n  Value error, norm2 must be greater than norm1. [type=value_error, input_value={'e0': 9145.796207, 'step...t': 2048, 'kstep': 0.05}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/value_error": 1,
+      "1 validation error for AthenaParameters\n  Value error, norm2 must be greater than norm1. [type=value_error, input_value={'e0': 9095.676817, 'step...t': 2048, 'kstep': 0.05}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/value_error": 1,
+      "Background standard must cover the complete AUTOBK grid from k=0 to 17.95 inverse angstroms; extend the standard or lower bkg_kmax. No extrapolation is performed.": 1,
+      "dk is too wide for the selected k range; reduce dk or widen kmin/kmax.": 7,
+      "Supply positive energies in eV no greater than 1e7 after energy_shift.": 11,
+      "1 validation error for AthenaParameters\nkmin\n  Input should be greater than or equal to 0 [type=greater_than_equal, input_value=-0.024, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/greater_than_equal": 1,
+      "1 validation error for AthenaParameters\nbkg_kweight\n  Input should be less than or equal to 4 [type=less_than_equal, input_value=15.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/less_than_equal": 1,
+      "2 validation errors for AthenaParameters\nbkg_kmax\n  Input should be greater than 0 [type=greater_than, input_value=0.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/greater_than\nkmax\n  Input should be greater than 0 [type=greater_than, input_value=-2.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/greater_than": 1,
+      "e0 must lie inside the shifted energy range, with data on both sides.": 2
+    }
+  },
+  "files": [
+    {
+      "file": "backend/tests/fixtures/demeter-athena-json.prj",
+      "sha256": "0ae47681394bb2bd3d3e44092a886bec073fb5b37e8390a996cb6a14b926259f",
+      "groups": 17,
+      "processed": 17,
+      "errors": []
+    },
+    {
+      "file": "examples/pca/cyanobacteria.prj",
+      "sha256": "3c9c65d731f9304cf06791ef9d6b743d6cfdeb353f7ade9267bb50372f8e88d7",
+      "groups": 17,
+      "processed": 17,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Ag.prj",
+      "sha256": "5c67bde20b3d55d611fa66602b2892391b495b435260a4ebc64c1ffd22750cce",
+      "groups": 21,
+      "processed": 21,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/AgAu_merged.prj",
+      "sha256": "f78ecfcae4b80c3dbafb17554a837f9ef77eeabae134792a7461a55c6fc1a049",
+      "groups": 10,
+      "processed": 10,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/AgL3_CAMD.prj",
+      "sha256": "e89d72d4288992890878a71933b29bb72064790444528b425fb71986ea19dbf5",
+      "groups": 29,
+      "processed": 29,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/As.prj",
+      "sha256": "679e450879b41004ed95cea38ac614685759f72badd81e94c3f0780548d3953d",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/AsKa.prj",
+      "sha256": "cf9877ed323b4036af434df14daf445bb53c98b03d3da252694b12480c943da5",
+      "groups": 13,
+      "processed": 13,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/AsKa_standards.prj",
+      "sha256": "83c3beefe758620eb45dba92f6b35ec491fb4d0c1d4ffcbbe25f046667dd6d54",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/AsScorodite.prj",
+      "sha256": "18641c71bc9ba7b0904fd28fb55ba9855c8c082eee7358d149714d52e79ddd7f",
+      "groups": 32,
+      "processed": 31,
+      "errors": [
+        {
+          "label": "EHC2_9-11_As_XAFS.mrg",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/AsXAFS_a.prj",
+      "sha256": "fb9fbf7915f17aef362247b48277aaa92f662b51884e3e01c5d4140e4a5383c3",
+      "groups": 46,
+      "processed": 46,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/As_XAFS_fulldataset2.prj",
+      "sha256": "32ae0f9dfa021d3bbd7506e715962e98512c218ad5b93520e0d1ae9cafd4ac83",
+      "groups": 69,
+      "processed": 69,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Au.prj",
+      "sha256": "6789a5f472270a840e011f89e211ee12c456cc7d2ada560c8c988a9795391524",
+      "groups": 14,
+      "processed": 14,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Aunano.prj",
+      "sha256": "cb7b416517e96d03ca11f2997af1f9e6bf8b81b62719b24ba04b7ebd08c7089a",
+      "groups": 5,
+      "processed": 5,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Br.prj",
+      "sha256": "53977dbb2d6e5d64ed857cbfe2548e88aca0091fdd4276a5760f0128b2e63e9c",
+      "groups": 5,
+      "processed": 5,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Cd.prj",
+      "sha256": "b845f0ff879cf586e81aed72420c895d139fe2acd44af3b31ee468441810a23a",
+      "groups": 11,
+      "processed": 11,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Ce.prj",
+      "sha256": "623835f2e40aaea8fe0ea76dd0c22000b7798919f7b23d9c076fafdb5229d5a9",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Cl_CAMD.prj",
+      "sha256": "9c77f7b1c492e5e9ac207f6423878f3a2768c19f03631fd976a5f85a9010d7e9",
+      "groups": 7,
+      "processed": 7,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Copper.prj",
+      "sha256": "d9f4dbc8f1daa95366faf674774a398b245608e53fff3e7592899985de0a6bbb",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/CuHERFD_samples.prj",
+      "sha256": "e023b0a31695885c855d9a9f76add073f7076fd059b7918b992244366de41289",
+      "groups": 94,
+      "processed": 74,
+      "errors": [
+        {
+          "label": "CuHERFD_5sec_KS08-11-R1-MX2-spot1.006",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_KS08-11-R1-MX2-spot1.009",
+          "error": "1 validation error for AthenaParameters\npre1\n  Input should be less than 0 [type=less_than, input_value=0.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/less_than"
+        },
+        {
+          "label": "CuHERFD_5sec_KS08-11-R1-MI2-spot1.004",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_KS08-11-R1-MI2-spot1.005",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_KS08-11-R1-MI2-spot1.008",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_74220-266-bead2-spot2.001",
+          "error": "1 validation error for AthenaParameters\n  Value error, norm2 must be greater than norm1. [type=value_error, input_value={'e0': 8981.099748, 'step...t': 2048, 'kstep': 0.05}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/value_error"
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.001",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.002",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.004",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.006",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.007",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.008",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.009",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_BORG-01-31-spot1.010",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_MGVF-Jld-28-M1-spot3.004",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_MGVF-Jld-28-M1-spot3.006",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_MGVF-Jld-27-M1-spot1.002",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_MGVF-Jld-27-M1-spot1.003",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "CuHERFD_5sec_MGVF-Jld-27-M1-spot1.008",
+          "error": "1 validation error for AthenaParameters\n  Value error, norm2 must be greater than norm1. [type=value_error, input_value={'e0': 9145.796207, 'step...t': 2048, 'kstep': 0.05}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/value_error"
+        },
+        {
+          "label": "CuHERFD_5sec_MGVF-Jld-27-M1-spot1.009",
+          "error": "1 validation error for AthenaParameters\n  Value error, norm2 must be greater than norm1. [type=value_error, input_value={'e0': 9095.676817, 'step...t': 2048, 'kstep': 0.05}, input_type=dict]\n    For further information visit https://errors.pydantic.dev/2.11/v/value_error"
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/CuHERFD_standards.prj",
+      "sha256": "59269dd9a6cee8a679b03753fe7a06b9f2d2538a969b59bed79f2b49fb1266cc",
+      "groups": 39,
+      "processed": 39,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/ESRF_Athena0920.prj",
+      "sha256": "f0ef00ca5deb184beee6fe5620c0d13e6e6bac0c8abf2e6f9050ecd6f4e81a24",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/ESRF_Athena0926.prj",
+      "sha256": "bff5752d1db2131e6ab1f381b8c0172d79b5c1a8ab96590642a6e7b631d8210b",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Eu_standards_athena.prj",
+      "sha256": "92ac2a2b8a7c56f6254d42a718a242daacf8dd533d39f4756e64cd568b3ef69c",
+      "groups": 10,
+      "processed": 10,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Fe-K-ALS-10.3.2.prj",
+      "sha256": "d15db783b619d9336286eeb7b3de13d28a3c9a29fc4e5c9139d5305ffd5ed5ff",
+      "groups": 8,
+      "processed": 8,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Fe.prj",
+      "sha256": "0501c54d20a664b2929ae0263041af50de7556bc9284d22ed84b6c301ef48b76",
+      "groups": 5,
+      "processed": 5,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/FeDem.prj",
+      "sha256": "0501c54d20a664b2929ae0263041af50de7556bc9284d22ed84b6c301ef48b76",
+      "groups": 5,
+      "processed": 5,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/FeFoil_QXAFS_Compare.prj",
+      "sha256": "1bf859c93f7a74bf1915484fccdaeca0cf202ff75b0afa7b356ba204cc29182a",
+      "groups": 4,
+      "processed": 4,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/FeO.prj",
+      "sha256": "fdcfa349bd61f3eb224b11fd5fbb7b6d41a1d1b2b46e5cad6a52b44984e8da66",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/FeS2.prj",
+      "sha256": "65c114bbc4e09edaaa445ccebe1e99b2d647d36d5c4950da6315888a5c387f38",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/FeS2_ex.prj",
+      "sha256": "27fe4638b15d9aacc70c9dda2b6fd58e6b43c42fdd54556d19fbcc546e011c43",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/FeXAFS_Glasses.prj",
+      "sha256": "c792c0c5a67cd571300cf848ca1bd2ef0d677224e0a90e0db35ac5c59222b851",
+      "groups": 8,
+      "processed": 8,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Ge.prj",
+      "sha256": "df84cdb2ae06dff2702dc7bf2912a8401b1ff4118ae374d1f8571b7963f4e1ec",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Hg.prj",
+      "sha256": "8ab0af7aef5141415a4f99e2300044e37bea759664920cb484cb798413db90e4",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/HgDNA_data.prj",
+      "sha256": "ede960a374bebe0473cbf58375001bb041b45ec1a5c686f53d7e34ad6faa1e92",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/LaCoO3.prj",
+      "sha256": "9b5e126dad2514252beff52630a8a961b239aa47739b3eecdbe2c42260a8d0a2",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Mn.prj",
+      "sha256": "81a7cfd1251edd4d3d75040b557f7cf1ad8e01f9d9bfe8bf649e1bd9c9c6eead",
+      "groups": 14,
+      "processed": 14,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/MnO_bv.prj",
+      "sha256": "3cae2957c48d6ed2ffe3fc5ccf737bbd92cb92858693dd1a2840a7a75592a6dc",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Mn_all.prj",
+      "sha256": "78c3d4f5e08711e2320d6b678c062eef6944cc2c2da051bc47deb424a73b709e",
+      "groups": 11,
+      "processed": 11,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/MoO3-tutorial.prj",
+      "sha256": "ad7e542b8e80eaa20318646b948922597e689837126750ea4f34498d3b47c83b",
+      "groups": 5,
+      "processed": 4,
+      "errors": [
+        {
+          "label": "moo3-th",
+          "error": "Background standard must cover the complete AUTOBK grid from k=0 to 17.95 inverse angstroms; extend the standard or lower bkg_kmax. No extrapolation is performed."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/NiO.prj",
+      "sha256": "b9cc332f65dcaaf78fc3ea8b578de9d4e7fd8d610aa948d87cee5a862f20993a",
+      "groups": 24,
+      "processed": 24,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Ni_FeNiS20_RT.prj",
+      "sha256": "f3c3bd09b81eaa03bf966634edd21148006ebf8d96940e41fe19f489d247f2b1",
+      "groups": 8,
+      "processed": 8,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/P_CAMD.prj",
+      "sha256": "174acba7e6d80342bea65e3deb3c37305b67842d69e73f9772d18a0c6f48742f",
+      "groups": 15,
+      "processed": 8,
+      "errors": [
+        {
+          "label": "H3PO4 solution 1 M",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        },
+        {
+          "label": "DietCoke (phosphoric acid solution 4mM",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        },
+        {
+          "label": "AlPO4",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        },
+        {
+          "label": "random plant leaf",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        },
+        {
+          "label": "random plant root",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        },
+        {
+          "label": "Plant with Pb leaf",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        },
+        {
+          "label": "Plant with Pb root",
+          "error": "dk is too wide for the selected k range; reduce dk or widen kmin/kmax."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/PbL3_CAMD.prj",
+      "sha256": "daddd6c453d7410eeb8f6ce3719b8b178b2b6f00c446aaae4c17a2baa29c9c97",
+      "groups": 27,
+      "processed": 26,
+      "errors": [
+        {
+          "label": "Pb(IV)acetate",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/PtData.prj",
+      "sha256": "45f17f7ad7b2cf0db3d133f2ef050b4b61b03ffe84a38c0c1c6944b07c524e84",
+      "groups": 6,
+      "processed": 6,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/S_CAMD.prj",
+      "sha256": "303a3831e856b03009ce8819c660880a33303a0ad3ade9efda175d0afb0ed983",
+      "groups": 22,
+      "processed": 22,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Se_Standards.prj",
+      "sha256": "3fd66c6f12f38b4caa0f779a721febd2eae23d1eb32c9d1197107cb20be3ce82",
+      "groups": 9,
+      "processed": 9,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Sn.prj",
+      "sha256": "2c912f265cc0675951a9b3e4814ee22b790373948c94ef2ff002f0f9623df9c8",
+      "groups": 5,
+      "processed": 5,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/U.prj",
+      "sha256": "90fa6b5f281315b1487a3daf01df7d19b172b0c0f948e3b08e59a9f3bb5c55a6",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Vathena.prj",
+      "sha256": "8a60849e906beceac93727d857b8cf2c68a1a8b116713493cdf01fa016ce6a2d",
+      "groups": 88,
+      "processed": 82,
+      "errors": [
+        {
+          "label": "V_XANES_Moore_Andseite_WD-3A_spot1.001",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "V_XANES_WD7A_run2.001",
+          "error": "1 validation error for AthenaParameters\nkmin\n  Input should be greater than or equal to 0 [type=greater_than_equal, input_value=-0.024, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/greater_than_equal"
+        },
+        {
+          "label": "V_XANES_Moore_Pantellerite_DT-19_spot1.001",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "V_XANES_Moore_Pantellerite_H2O-66_spot1.001",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "V_XANES_NYA07-5-grain4_V_olv1.001",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "V_XANES_NYA07-5-grain8_V_olv2.001",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/Xe.prj",
+      "sha256": "147938c23471815dc3bcb3d8688009607a5778e551e7c93306fbd83092d7d0ff",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/abc.prj",
+      "sha256": "c31aae6b221663d943e2fa9b87f0451bc088ea10c9a3002bc89946d31c67cca8",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/align_merge.prj",
+      "sha256": "aef04f82595390bb3fe023853f951a9d342235083368c7706e6f4849e8668352",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/athena1.prj",
+      "sha256": "96ad6f9cc17ff8c434d5ad2261d14d011f1b8193e41580f0490acdf4db118ecc",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/athena2.prj",
+      "sha256": "a2d4c3fd6074b8c8752dee3fe79c586320644dd69ffd3d73775dab24682c0e0e",
+      "groups": 10,
+      "processed": 10,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/athena3.prj",
+      "sha256": "056ea5d3ede07913a8f97e25ec38f87b877ee07a452ba733baf0e04c0c84b01d",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/athena4.prj",
+      "sha256": "97e6b500c35ee4a5a03ffccce7f56ff7fd7241529056df488520738e7bd8699f",
+      "groups": 21,
+      "processed": 21,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/athena_As_FullDataset.prj",
+      "sha256": "925dd329df7ee25b7109117007f764d6e552df6550f8bf16935a08fc1a8100fe",
+      "groups": 46,
+      "processed": 46,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/athena_MN.prj",
+      "sha256": "83502be1b151cf2a73e9dc7db1a9a003ff5ac27309c527337da013078f4e12a6",
+      "groups": 14,
+      "processed": 11,
+      "errors": [
+        {
+          "label": "MI5",
+          "error": "1 validation error for AthenaParameters\nbkg_kweight\n  Input should be less than or equal to 4 [type=less_than_equal, input_value=15.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/less_than_equal"
+        },
+        {
+          "label": "fe_foil.003",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        },
+        {
+          "label": "Peak AII_45",
+          "error": "2 validation errors for AthenaParameters\nbkg_kmax\n  Input should be greater than 0 [type=greater_than, input_value=0.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/greater_than\nkmax\n  Input should be greater than 0 [type=greater_than, input_value=-2.0, input_type=float]\n    For further information visit https://errors.pydantic.dev/2.11/v/greater_than"
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/bal3ybco.prj",
+      "sha256": "207258c6f62469bb4362ba2d343f9b6e9a9e498fc6157080dc892bd0fb72445d",
+      "groups": 16,
+      "processed": 16,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/bromoadamantane.prj",
+      "sha256": "d1835b9f909b8058df4330f5c05e5d2db9c8c667faa0ad4077ba882d40c11281",
+      "groups": 18,
+      "processed": 18,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/cu.prj",
+      "sha256": "1efbacc1b8489438f77539668e5db7c2c843bc0af0c83b1f2108986b938f0525",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/cu_ex.prj",
+      "sha256": "ab255e78ca7057350ea586974e551de268506232252cb9f34d7999f9032f0452",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/cuybco.prj",
+      "sha256": "d9e5d94d0bcfa871036bf0f9ac4e44e7474ffe4370145c91be6f1291ac03705c",
+      "groups": 16,
+      "processed": 16,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/cyanobacteria.prj",
+      "sha256": "e7f64387d8f25de247254caddc2ddd6dfb1ea9fd7ccaf2cb9ffb0c9c6104211c",
+      "groups": 17,
+      "processed": 17,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/danger.prj",
+      "sha256": "5fe0c0aa234cdf62cefdafd18b0f5fc2ed514a9a864acfe8d802b97474540b19",
+      "import_error": "Native projects may contain literal data, not executable expressions."
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/diff.prj",
+      "sha256": "e1516304435669fb46cc523334328e6e967562aebfce9b84dbef676a8fd1033a",
+      "groups": 21,
+      "processed": 21,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/diff_ex.prj",
+      "sha256": "c7152007277746e19cbe6a8ea5805fd06d58477535e4265c4853ae109e83a9a7",
+      "groups": 21,
+      "processed": 21,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/dispersive.prj",
+      "sha256": "d3aa1fc4a52cfccc19661a2b0ba69f338c7e3425f79adc8c128107e082af3701",
+      "groups": 12,
+      "processed": 2,
+      "errors": [
+        {
+          "label": "cu_08_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_01_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_02_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_03_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_04_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_05_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_06_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_07_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_08_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        },
+        {
+          "label": "cus2_10_pixel",
+          "error": "Supply positive energies in eV no greater than 1e7 after energy_shift."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/eutio3.prj",
+      "sha256": "1e42ceebf0318caaf20a478c9a8ed0d7bc3876542ea791515fee752229522100",
+      "groups": 20,
+      "processed": 20,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/fbo.prj",
+      "sha256": "1e5d40437b0139382cd9f6d999f131f01ccf73eb6efadb076ab00830e96fe603",
+      "groups": 1,
+      "processed": 1,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/json_unzipped.prj",
+      "sha256": "14a47fbcdb997ac6a6141837d60d83ad7c32ea80e339483d14c9d9374cd5310f",
+      "groups": 4,
+      "processed": 4,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/methyltin.prj",
+      "sha256": "894ff6612d770d8a7dd7f0d55366fd2aba9b41eb181265a49c914bf9e5f55a73",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/pbaq.prj",
+      "sha256": "048333e148b567a4ef97a3863bba98e5e43e1e2ee9236d4dc38ee94c1f271a74",
+      "groups": 2,
+      "processed": 2,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/per-Bruce.prj",
+      "sha256": "5494bcf506edc30136f4f063ce1a4c9571ea4d1670f132830f9bffbdb504c8a4",
+      "groups": 7,
+      "processed": 7,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/sf6.prj",
+      "sha256": "628f975bbbdda1e040807f099e0c6778a3392ed44f2072b7a8fbb3beeab3ee16",
+      "groups": 3,
+      "processed": 1,
+      "errors": [
+        {
+          "label": "undistorted",
+          "error": "e0 must lie inside the shifted energy range, with data on both sides."
+        },
+        {
+          "label": "distorted",
+          "error": "e0 must lie inside the shifted energy range, with data on both sides."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/stacked_plot.prj",
+      "sha256": "2abe632a234434218ffeccfca1e58fdb113eba26e38c4e0180cd88cfcb0dc397",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/sulfate.prj",
+      "sha256": "14a0dda070be7d9535ea1c68572d683c7822d2854dae6d9d25cde415d70bb3bf",
+      "groups": 6,
+      "processed": 6,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/tipb.prj",
+      "sha256": "7022e418262e4bf33f6a965e517e0161eeb1d338df0622fd57becb1bafed6f3c",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/yb_iron.prj",
+      "sha256": "e6a669b0d684c85109f5d65921e75eadc12197adcdfa165bce1c4e691ce00766",
+      "groups": 13,
+      "processed": 12,
+      "errors": [
+        {
+          "label": "yb_iron_yb_l2_xafs.003",
+          "error": "The fitted edge step is not positive; check mu, e0 and normalization windows."
+        }
+      ]
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/zirconolite.prj",
+      "sha256": "521bcd8a5e31a1fd5d22e34e518dc186b85d416d8a8baad9f731085bdb0609e2",
+      "groups": 9,
+      "processed": 9,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/AthenaProjectFiles/zn_solution.prj",
+      "sha256": "2ff1d1dc80062bd73514c64130b6d04cb4f45199dd27782f84f5f9f15e2c6987",
+      "groups": 9,
+      "processed": 9,
+      "errors": []
+    },
+    {
+      "file": "examples/xafsdata/fe_athena.prj",
+      "sha256": "e4a6e8f53378df6e1115427731359e9b0c81a174b483241ae3ca93850a5a5478",
+      "groups": 3,
+      "processed": 3,
+      "errors": []
+    },
+    {
+      "file": "examples/xanes/Vglasses.prj",
+      "sha256": "21cf35371411d55107ce71ab57c6c733944c8fe5e9312783ae356f4b73bdbf55",
+      "groups": 28,
+      "processed": 28,
+      "errors": []
+    }
+  ]
+}

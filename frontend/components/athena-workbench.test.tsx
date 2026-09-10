@@ -26,6 +26,8 @@ vi.mock("./athena-plot", () => ({
   AthenaPlot: vi.fn(() => <div data-testid="athena-plot" />),
 }))
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
+// Live arithmetic and stale-response behavior have dedicated preview tests.
+vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div data-testid="column-preview" /> }))
 // The standalone panel tests own preview/import interactions; verify its host contract here.
 vi.mock("./athena-project-import", () => ({
   AthenaProjectImport: vi.fn(() => <div data-testid="project-import-panel" />),
@@ -1552,6 +1554,22 @@ describe("AthenaWorkbench project loading", () => {
 })
 
 describe("AthenaWorkbench project import integration", () => {
+  it.each(["file picker", "drag and drop"])("routes .prj files from %s to project preview, preserving the queue", async entry => {
+    await openSaved()
+    const files = [new File(["project"], "copper.PRJ"), new File(["data"], "scan.xmu")]
+    if (entry === "file picker") {
+      fireEvent.click(screen.getByRole("button", { name: "Import data" }))
+      fireEvent.change(screen.getByLabelText("Choose data files"), { target: { files } })
+    } else {
+      fireEvent.drop(screen.getByRole("main"), { dataTransfer: { files } })
+    }
+    expect(await screen.findByRole("dialog", { name: "Open a project" })).toBeVisible()
+    const panelProps = () => projectImport.mock.calls.at(-1)![0]
+    expect(panelProps().initialFiles).toBeDefined()
+    expect(panelProps().initialFiles).toEqual(files)
+    expect(api.mock.calls.some(([path]) => path.endsWith("/inspect"))).toBe(false)
+  })
+
   it("passes the latest accepted project to the panel and guards closing while imports are busy", async () => {
     const project = await openSaved()
     api.mockResolvedValueOnce([])

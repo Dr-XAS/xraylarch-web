@@ -207,7 +207,11 @@ def autobk(energy, mu=None, group=None, rbkg=1, nknots=None, e0=None, ek0=None,
     chisqr = ((_resid(best, *userargs))**2).sum()
     redchi = chisqr / (2*irbkg+2*nclamp - nspl)
 
-    coefs_std = np.array([np.sqrt(redchi*covar[i, i]) for i in range(nspl)])
+    # A singular covariance does not invalidate the fitted spline itself.
+    # Preserve its curves; uncertainty propagation below already requires
+    # an available covariance matrix.
+    coefs_std = (None if covar is None else
+                 np.array([np.sqrt(redchi*covar[i, i]) for i in range(nspl)]))
     bkg, chi = spline_eval(kraw[:iemax-iek0+1], mu[iek0:iemax+1],
                            knots, final_coefs, order, kout)
     obkg = mu[:]*1.0

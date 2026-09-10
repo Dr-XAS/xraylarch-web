@@ -6,6 +6,9 @@ import { apiBase, athenaApi, resources, isDifferenceGroup, type AthenaGroup, typ
 import type { InspectionResponse } from "@/lib/contracts"
 import { AthenaPlot, type Space } from "./athena-plot"
 import { AthenaProjectImport } from "./athena-project-import"
+import { AthenaColumnSelection } from "./athena-column-selection"
+import { columnPayload, type ColumnMapping } from "@/lib/athena-import"
+import { isAthenaProjectFile } from "@/lib/athena-file-types"
 import { EdgePolicyDialog, edgePolicyDescription, useEdgePolicy } from "./athena-edge-policy"
 import { EdgeIdentityDialog, edgeIdentityDescription } from "./athena-edge-identity"
 import { AthenaDifferenceDialog } from "./athena-difference"
@@ -69,10 +72,10 @@ type ModalName = "import" | "open" | "journal" | "learn" | "calibrate" | "align"
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
 
-function Modal({ title, children, close }: { title: string; children: ReactNode; close: () => void }) {
+function Modal({ title, children, close, wide = false }: { title: string; children: ReactNode; close: () => void; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => { ref.current?.showModal(); return () => ref.current?.close() }, [])
-  return <dialog className="ath-modal" ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-label={title}><header><h2>{title}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
+  return <dialog className={`ath-modal${wide ? " ath-modal-wide" : ""}`} ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-label={title}><header><h2>{title}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
 }
 
 function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any", pick }: {
@@ -190,8 +193,9 @@ export function AthenaWorkbench() {
   const [analysisVisible, setAnalysisVisible] = useState(false)
   const [inspection, setInspection] = useState<InspectionResponse | null>(null)
   const [files, setFiles] = useState<File[]>([])
+  const [projectFiles, setProjectFiles] = useState<File[]>([])
   const [reuseMapping, setReuseMapping] = useState(true)
-  const [mapping, setMapping] = useState({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
+  const [mapping, setMapping] = useState<ColumnMapping>({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
   const [recent, setRecent] = useState<{ id: string; name: string; updated: string; count: number }[]>([])
   const [options, setOptions] = useState<Record<string, string | number | boolean>>({})
   const [journal, setJournal] = useState("")
@@ -350,6 +354,7 @@ export function AthenaWorkbench() {
       setCombineArray("")
     }
     if (name === "journal") { setJournal(project?.journal ?? ""); setProjectName(project?.name ?? "") }
+    if (name === "open") setProjectFiles([])
     if (name === "open") void task("Loading recent projects", async () => { setRecent(await athenaApi("/projects")) })
     if (name === "metadata") setOptions({ label: active?.label ?? "", notes: active?.notes ?? "", multiplier: active?.multiplier ?? 1, offset: active?.offset ?? 0, reference_id: active?.reference_id ?? "" })
   }
@@ -472,6 +477,12 @@ export function AthenaWorkbench() {
   }
   async function queueFiles(incoming: File[]) {
     if (!incoming.length) return
+    if (isAthenaProjectFile(incoming[0])) {
+      setInspection(null); setFiles([]); setProjectFiles(incoming)
+      setError(""); setMenu(""); setModal("open")
+      return
+    }
+    setProjectFiles([])
     // A new file choice is a new batch intent. Keep this immutable snapshot for
     // every request and retry, even if enforcement is stopped while it runs.
     setBatchEdgePolicy(edgePolicy ? Object.freeze({ ...edgePolicy }) : null)
@@ -481,21 +492,28 @@ export function AthenaWorkbench() {
   async function importCurrent() {
     if (!inspection || !projectRef.current) return
     const edge_policy = batchEdgePolicy
+    let remainingProjects: File[] | null = null
     await task("Importing spectrum", async () => {
       const p = projectRef.current!
-      const next = await athenaApi<AthenaProject>(`/projects/${p.id}/import`, { ...mapping, edge_policy, denominator: mapping.denominator || null, reference_numerator: mapping.reference_numerator || null, reference_denominator: mapping.reference_denominator || null, version: p.version, upload_id: inspection.upload_id })
-      accept(next); setActiveId(next.groups.at(-1)!.id)
+      const next = await athenaApi<AthenaProject>(`/projects/${p.id}/import`, { ...columnPayload(mapping), edge_policy, version: p.version, upload_id: inspection.upload_id })
+      accept(next); setActiveId(next.groups.slice(p.groups.length).findLast(g => g.marked)?.id ?? next.groups.at(-1)!.id)
       let remaining = files.slice(1); setFiles(remaining)
       while (remaining.length) {
+        if (isAthenaProjectFile(remaining[0])) {
+          setInspection(null); setFiles([]); remainingProjects = remaining
+          return
+        }
         const inspected = await inspectFile(remaining[0], inspection)
         if (!inspected || !reuseMapping || !matchingColumns(inspection, inspected)) return
         const current = projectRef.current!
-        const result = await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...mapping, edge_policy, denominator: mapping.denominator || null, reference_numerator: mapping.reference_numerator || null, reference_denominator: mapping.reference_denominator || null, version: current.version, upload_id: inspected.upload_id })
-        accept(result); setActiveId(result.groups.at(-1)!.id)
+        const result = await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspected.upload_id })
+        accept(result); setActiveId(result.groups.slice(current.groups.length).findLast(g => g.marked)?.id ?? result.groups.at(-1)!.id)
         remaining = remaining.slice(1); setFiles(remaining)
       }
       setInspection(null); setModal(null)
     })
+    // Start the other panel after releasing this task's busy state.
+    if (remainingProjects) await queueFiles(remainingProjects)
   }
   function importPolicyNotice() {
     return <section className="ath-import-policy" aria-label="Import batch edge policy">
@@ -646,8 +664,8 @@ export function AthenaWorkbench() {
     </div></Modal>}
 
     {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}
-    {modal === "import" && <Modal title="Import spectra" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}{!inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">For an Athena .prj or saved web project, use File → Open project.</p></> : <><p><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{files.length > 1 ? ` · ${files.length} files remaining` : ""}</span></p><div className="ath-fields"><label className="ath-field"><span>Data type</span><select value={mapping.data_type} onChange={e => setMapping(m => ({ ...m, data_type: e.target.value }))}><option value="mu">μ(E) · absorption</option><option value="xanes">XANES · short energy range</option><option value="norm">Normalized μ(E)</option><option value="chi">χ(k) · extracted EXAFS</option></select></label><label className="ath-field"><span>Measurement</span><select value={mapping.mode} onChange={e => setMapping(m => ({ ...m, mode: e.target.value }))}><option value="mu">Direct signal</option><option value="transmission">Transmission · ln(I₀ / It)</option><option value="fluorescence">Fluorescence · If / I₀</option></select></label><label className="ath-field"><span>{mapping.data_type === "chi" ? "k column" : "Energy column"}</span><select value={mapping.energy_column} onChange={e => setMapping(m => ({ ...m, energy_column: e.target.value }))}>{inspection.columns.map(c => <option key={c.column_id} value={c.column_id}>{c.name} · column {c.index + 1}</option>)}</select></label><label className="ath-field"><span>Energy units</span><select value={mapping.units} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, units: e.target.value }))}><option>eV</option><option>keV</option></select></label></div><div className="ath-column-table"><table><thead><tr><th>Numerator</th><th>Denominator</th><th>Column</th><th>First values</th></tr></thead><tbody>{inspection.columns.map(c => <tr key={c.column_id}><td><input type="checkbox" aria-label={`Numerator ${c.name}`} checked={mapping.numerator.includes(c.column_id)} onChange={e => setMapping(m => ({ ...m, numerator: e.target.checked ? [...m.numerator, c.column_id] : m.numerator.filter(v => v !== c.column_id) }))} /></td><td><input type="radio" aria-label={`Denominator ${c.name}`} name="denominator" disabled={mapping.mode === "mu"} checked={mapping.denominator === c.column_id} onChange={() => setMapping(m => ({ ...m, denominator: c.column_id }))} /></td><td>{c.name}</td><td>{c.preview.slice(0, 3).map(v => v.toPrecision(5)).join(", ")}</td></tr>)}</tbody></table></div><p className="ath-formula">μ = {mapping.mode === "transmission" ? "ln(" : ""}({mapping.numerator.map(id => inspection.columns.find(c => c.column_id === id)?.name).join(" + ") || "…"}){mapping.mode !== "mu" && ` / ${inspection.columns.find(c => c.column_id === mapping.denominator)?.name ?? "…"}`}{mapping.mode === "transmission" ? ")" : ""}</p><details><summary>Reference channel & ordering</summary><p className="ath-hint">Optional downstream transmission reference: ln(reference numerator / reference denominator).</p><div className="ath-fields">{(["reference_numerator", "reference_denominator"] as const).map(key => <label key={key} className="ath-field"><span>{key.replaceAll("_", " ")}</span><select value={mapping[key]} onChange={e => setMapping(m => ({ ...m, [key]: e.target.value }))}><option value="">None</option>{inspection.columns.map(c => <option value={c.column_id} key={c.column_id}>{c.name}</option>)}</select></label>)}</div><label className="ath-check"><input type="checkbox" checked={mapping.sort} onChange={e => setMapping(m => ({ ...m, sort: e.target.checked }))} />Sort ascending by energy (duplicate energies still require repair)</label></details>{inspection.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}{files.length > 1 && <label className="ath-check"><input type="checkbox" checked={reuseMapping} onChange={e => setReuseMapping(e.target.checked)} />Reuse this mapping for remaining files with matching column labels</label>}<div className="ath-modal-actions"><button disabled={!!busy} onClick={() => { setInspection(null); setFiles([]) }}>Choose another file</button><button className="ath-primary" disabled={!!busy || !mapping.numerator.length} onClick={() => { void importCurrent() }}>{busy ? "Importing…" : "Import spectrum"}</button></div></>}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
-    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "import" && <Modal title="Import spectra" wide close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}{!inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU, Athena .prj · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</p></> : <AthenaColumnSelection key={inspection.upload_id} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setMapping} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={() => { void importCurrent() }} />}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport initialFiles={projectFiles} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
     {modal && modal !== "difference" && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
       {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes</span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}</div><label className="ath-field"><span>Reference group</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>

@@ -401,6 +401,19 @@
       "sha256": "dbf03c23812c2cd24642a9074e5d57e9ff7ededf510b0545a6f72e882eab3df7",
       "file": "ifeffit-1.2.11d/src/lib/iff_pre_edge.f",
       "bytes": 7515
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/clamp.demeter_conf",
+      "sha256": "9d5d84cd3c3febeead6588ec885b1028088af3b98899fa5643b6bb25d26d3063",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/clamp.demeter_conf",
+      "git_blob_sha1": "c89099ec53a7024531e20a3e1fd0ed51aa4c2a83",
+      "bytes": 2819
+    },
+    {
+      "source": "https://deb.debian.org/debian/pool/main/i/ifeffit/ifeffit_1.2.11d.orig.tar.gz#ifeffit-1.2.11d/src/lib/window.f",
+      "sha256": "98444e983bc5f281eeff413e913d9b3b19cefeb1e268796af7bb1f0b5115be52",
+      "file": "ifeffit-1.2.11d/src/lib/window.f",
+      "bytes": 8871
     }
   ]
 }

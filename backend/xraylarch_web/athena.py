@@ -5,7 +5,6 @@ derived groups; processing parameters are recorded separately from source data.
 """
 from __future__ import annotations
 
-import ast
 import copy
 import csv
 import gzip
@@ -43,40 +42,12 @@ def fail(message: str, code: str = "athena_invalid"):
     raise WebInputError(code, message, recovery="Review the selected groups and values, then retry.")
 
 
-class _PerlUndefined(ast.NodeTransformer):
-    """Translate only the literal Perl undef token, never quoted text or code."""
-    def visit_Name(self, node):
-        return ast.Constant(value=None) if node.id == "undef" else node
-
-
-def _project_literal(value):
-    if len(value) > 8_000_000:
-        fail("A native project literal exceeds 8 MB; split or rebin the project.")
-    # Perl's => separates hash key/value literals. Translate it only outside
-    # quoted strings; e.g. an annotation containing 'a=>b' stays unchanged.
-    pieces, quote, escaped, i = [], None, False, 0
-    while i < len(value):
-        char = value[i]
-        if quote:
-            pieces.append(char)
-            if escaped:
-                escaped = False
-            elif char == "\\":
-                escaped = True
-            elif char == quote:
-                quote = None
-        elif char in ("'", '"'):
-            quote = char
-            pieces.append(char)
-        elif value[i:i + 2] == "=>":
-            pieces.append(",")
-            i += 1
-        else:
-            pieces.append(char)
-        i += 1
-    value = "".join(pieces)
-    tree = ast.parse(value.strip().removesuffix(";"), mode="eval")
-    return ast.literal_eval(_PerlUndefined().visit(tree))
+def _project_literal(value, *, legacy_strings=False):
+    from .athena_literals import project_literal
+    try:
+        return project_literal(value, legacy_strings=legacy_strings)
+    except (ValueError, SyntaxError, RecursionError) as exc:
+        fail(str(exc))
 
 
 # Exchange limits apply before any project mutation. The configured upload
@@ -230,7 +201,9 @@ def _native_perl_document(text):
     if not text.startswith("# Athena project file --"):
         fail("This file is not an Athena project.")
     records, record, sidecar, metadata, journal = [], {}, {}, {}, ""
-    for raw in text.splitlines():
+    from .athena_literals import project_statements
+    legacy_strings = "# Exported by Athena Web / XrayLarch" in text.splitlines()[:4]
+    for raw in project_statements(text):
         line = raw.strip()
         if line.startswith("# Athena-Web "):
             sidecar = _project_json(line[len("# Athena-Web "):])
@@ -244,7 +217,7 @@ def _native_perl_document(text):
             key = key.strip().lstrip("@$%")
             # Unknown assignments are retained as inert literal data too;
             # calls, attributes and comprehensions still fail literal_eval.
-            value = _project_literal(value)
+            value = _project_literal(value, legacy_strings=legacy_strings)
             if line.startswith("%"):
                 if not isinstance(value, (list, tuple)) or len(value) % 2:
                     fail("Native hash properties must contain literal key/value pairs.")
@@ -271,10 +244,26 @@ def _native_perl_document(text):
                 fail("Native args keys must be unique strings.")
             args[key] = value
         record["args"] = args
+    # Desktop Athena assigns fresh group identities when old names collide.
+    # Keep every spectrum and the original ID; ambiguous links use the first.
+    if not sidecar:
+        reserved = {r.get("old_group") for r in records if isinstance(r.get("old_group"), str)}
+        seen = set()
+        for record in records:
+            original = record.get("old_group")
+            if isinstance(original, str) and original in seen:
+                suffix = 2
+                while f"{original}__{suffix}" in reserved:
+                    suffix += 1
+                record["original_group_id"] = original
+                record["old_group"] = f"{original}__{suffix}"
+                reserved.add(record["old_group"])
+            if isinstance(original, str):
+                seen.add(original)
     return records, journal, sidecar, _metadata(metadata)
 
 
-def _native_parameters(args):
+def _native_parameters(args, *, larch_writer=False):
     parameters = {}
     for key, native in _PARAMETER_MAP.items():
         raw = args.get(native, args.get(_NATIVE_ALIASES.get(native)))
@@ -283,13 +272,13 @@ def _native_parameters(args):
             # A missing native preference defaults to three terms, unlike a
             # web recipe's None, which asks Larch to choose a degree.
             if raw in ("", None, "None"):
-                parameters[key] = 2
+                parameters[key] = None if larch_writer else 2
             elif isinstance(raw, bool):
                 parameters[key] = raw  # Preserve invalid settings for repair.
             else:
                 try:
                     order = float(raw)
-                    parameters[key] = order - 1 if np.isfinite(order) else raw
+                    parameters[key] = order - (0 if larch_writer else 1) if np.isfinite(order) else raw
                 except (TypeError, ValueError, OverflowError):
                     parameters[key] = raw
             continue
@@ -299,20 +288,82 @@ def _native_parameters(args):
             parameters[key] = _native_flag(raw)
             continue
         if key in ("clamp_lo", "clamp_hi"):
-            raw = {"None": 0, "Slight": 0.1, "Weak": 0.1, "Strong": 1}.get(str(raw), raw)
+            raw = {"none": 0, "slight": 3, "weak": 6, "medium": 12, "strong": 24, "rigid": 96}.get(str(raw).lower(), raw)
         elif raw == "None":
             continue
-        parameters[key] = str(raw) if key in ("window", "rwindow", "bkg_window") else float(raw)
+        try:
+            parameters[key] = str(raw) if key in ("window", "rwindow", "bkg_window") else float(raw)
+        except (TypeError, ValueError, OverflowError):
+            # Keep the spectrum importable and the saved recipe inspectable;
+            # scientific validation reports this field on processing.
+            parameters[key] = raw
     if not _native_flag(args.get("bkg_fixstep")):
         parameters["step"] = None
     parameters["flatten"] = _native_flag(args.get("bkg_flatten"), True)
     return parameters
 
 
+def _native_processing_limits(parameters, energy, data_type, source):
+    """Resolve native limits against measured support, retaining original args.
+
+    Demeter's Larch AUTOBK template changes a zero Kaiser width to 0.1.
+    Larch pre_edge/autobk clip outer limits to measured coverage. Record these
+    resolutions explicitly so the web controls show the recipe actually used.
+    """
+    changes, resolved = [], {}
+
+    def numeric(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and np.isfinite(value)
+
+    def resolve(key, value, reason):
+        original = parameters.get(key)
+        if original != value:
+            parameters[key] = value
+            resolved[key] = value
+            shown = f"{value:.10g}" if isinstance(value, (int, float)) else str(value)
+            changes.append(f"{key}: {original} → {shown} ({reason})")
+
+    if data_type == "chi":
+        # Native chi records carry unused mu-processing placeholders such as
+        # e0=0 and norm2=-20. They must not block their actual Fourier data.
+        defaults = AthenaParameters().model_dump()
+        for key in parameters.copy():
+            if key.startswith("bkg_") or key in {"e0", "step", "pre1", "pre2", "norm1", "norm2", "nnorm", "rbkg", "nclamp", "clamp_lo", "clamp_hi", "fnorm", "flatten", "energy_shift"}:
+                resolve(key, defaults[key], "inactive for chi(k)")
+        if numeric(parameters.get("kmax")) and parameters["kmax"] > energy[-1]:
+            resolve("kmax", float(energy[-1]), "measured chi(k) coverage")
+
+    if str(parameters.get("bkg_window", "")).lower() in ("kaiser", "kaiser-bessel") and parameters.get("bkg_dk") == 0:
+        resolve("bkg_dk", 0.1, "Demeter Larch Kaiser convention")
+    e0 = parameters.get("e0")
+    shift = parameters.get("energy_shift", 0)
+    if data_type != "chi" and numeric(e0) and numeric(shift):
+        lo, hi = float(energy[0] + shift - e0), float(energy[-1] + shift - e0)
+        if lo < 0 < hi:
+            if numeric(parameters.get("pre1")) and parameters["pre1"] < lo:
+                resolve("pre1", lo, "first measured energy")
+            if numeric(parameters.get("norm2")) and parameters["norm2"] > hi:
+                resolve("norm2", hi, "last measured energy")
+            from larch.xafs.xafsutils import ETOK
+            available = float(np.sqrt(ETOK * hi))
+            if numeric(parameters.get("bkg_kmax")) and parameters["bkg_kmax"] > available:
+                resolve("bkg_kmax", available, "measured post-edge coverage")
+            background_max = parameters.get("bkg_kmax")
+            support = min(available, background_max) if numeric(background_max) and background_max > 0 else available
+            if numeric(parameters.get("kmax")) and parameters["kmax"] > support:
+                resolve("kmax", support, "available background coverage")
+    if changes:
+        source.setdefault("warnings", []).append("Native settings resolved for Larch; original values remain in source metadata: " + "; ".join(changes))
+        source["native"]["resolved_parameters"] = resolved
+
+
 def _native_source(record, filename, kind, settings):
     args = _metadata(record.get("args", {}))
     source = {"filename": filename, "raw_arrays": {}, "warnings": [],
               "native": {"format": kind, "id": record["old_group"], "args": args}}
+    if "original_group_id" in record:
+        source["native"]["id"] = record["original_group_id"]
+        source["warnings"].append(f"Repeated native group ID {record['original_group_id']!r}: preserved as a separate spectrum; links to that old ID resolve to its first occurrence.")
     identity = _source_edge_identity({"edge_identity": {
         "element": args.get("bkg_z"), "edge": args.get("fft_edge")}})
     if identity and identity["element"] == "H":
@@ -497,6 +548,9 @@ class ImportRequest(BaseModel):
     data_type: Literal["mu", "xanes", "norm", "chi"] = "mu"
     reference_numerator: str | None = None
     reference_denominator: str | None = None
+    reference_log: bool = Field(default=True, strict=True)
+    reference_same_element: bool = Field(default=True, strict=True)
+    individual_channels: bool = Field(default=False, strict=True)
     sort: bool = False
     edge_policy: ImportEdgePolicy | None = None
 
@@ -901,8 +955,12 @@ class AthenaStore:
                               max_points=self.settings.max_points, max_columns=self.settings.max_columns)
         upload = uid()
         self.storage.write_arrays(ident, f"upload-{upload}.npz", parsed.arrays)
-        self.storage.write_json(ident, f"upload-{upload}.json", parsed.inspection().model_dump())
-        return parsed.inspection().model_dump() | {"upload_id": upload}
+        inspection = parsed.inspection().model_dump()
+        snippet = data[:32_000].decode("utf-8-sig", errors="replace")
+        inspection.update(source_preview="\n".join(snippet.splitlines()[:120]),
+                          source_preview_truncated=len(data) > 32_000 or len(snippet.splitlines()) > 120)
+        self.storage.write_json(ident, f"upload-{upload}.json", inspection)
+        return inspection | {"upload_id": upload}
 
     def import_data(self, ident, request: ImportRequest):
         with self.storage.lock(ident):
@@ -912,28 +970,17 @@ class AthenaStore:
             self.storage._validate_id(request.upload_id)
             arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
             metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
+            from .athena_columns import map_columns
+            mapped = map_columns(arrays, request)
+            x, order = mapped["x"], mapped["order"]
+            nnew = len(mapped["samples"]) * (2 if mapped["reference"] is not None else 1)
+            if len(p["groups"]) + nnew > 100:
+                fail("A project can contain at most 100 groups.")
             def column(key):
                 if key not in arrays:
                     fail("Choose columns from the inspected file.")
                 return np.asarray(arrays[key], dtype=float)
-            x = column(request.energy_column) * (1000 if request.units == "keV" and request.data_type != "chi" else 1)
-            if len(set(request.numerator)) != len(request.numerator):
-                fail("Select each numerator channel only once.")
-            numerator = np.sum([column(c) for c in request.numerator], axis=0)
-            y = numerator.copy()
-            if request.mode != "mu":
-                denominator = column(request.denominator)
-                if np.any(denominator == 0):
-                    fail("The denominator contains zero detector counts.")
-                y = numerator / denominator
-                if request.mode == "transmission":
-                    if np.any(y <= 0):
-                        fail("Transmission requires a positive incident/transmitted ratio at every point.")
-                    y = np.log(y)
-            if request.sort:
-                order = np.argsort(x, kind="stable")
-                x, y = x[order], y[order]
-            source = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version", "edge_policy"}),
+            source_base = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version", "edge_policy"}),
                       "warnings": metadata.get("warnings", []), "columns": metadata["columns"],
                       "column_arrays": {key: np.asarray(values)[order].tolist() if request.sort else np.asarray(values).tolist()
                                         for key, values in arrays.items()},
@@ -942,47 +989,73 @@ class AthenaStore:
             # all retained columns follow the group row order; row_order maps
             # those rows back to the uploaded table.
             if request.sort:
-                source["row_order"] = order.tolist()
+                source_base["row_order"] = order.tolist()
             def aligned(values):
                 return (values[order] if request.sort else values).tolist()
-            if request.mode == "transmission":
-                source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(denominator))
-            elif request.mode == "fluorescence":
-                source["raw_arrays"].update(i0=aligned(denominator), signal=aligned(numerator))
-            else:
-                source["raw_arrays"]["signal"] = aligned(numerator)
-                i0_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() == "i0"]
-                if len(i0_columns) == 1:
-                    source["raw_arrays"]["i0"] = aligned(column(i0_columns[0]))
-            stddev_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() in ("stddev", "mu_stddev")]
-            if len(stddev_columns) == 1:
-                source["raw_arrays"]["stddev"] = aligned(column(stddev_columns[0]))
-            source = _exchange_source(source, len(x), self.settings)
-            if len(p["groups"]) + 1 + bool(request.reference_numerator or request.reference_denominator) > 100:
-                fail("A project can contain at most 100 groups.")
-            _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
-            g = self.make_import_group(metadata["display_name"], x, y, data_type=request.data_type,
-                                       source=source, edge_policy=request.edge_policy)
-            if request.reference_numerator or request.reference_denominator:
-                a, b = column(request.reference_numerator), column(request.reference_denominator)
-                if np.any(a <= 0) or np.any(b <= 0):
-                    fail("Reference transmission channels must contain positive counts.")
-                ry = np.log(a / b)
-                if request.sort:
-                    ry = ry[order]
-                reference_source = copy.deepcopy(source)
-                reference_source["raw_arrays"] = {"i0": aligned(a), "signal": aligned(b)}
-                reference_source["mapping"].update(numerator=[request.reference_numerator],
-                    denominator=request.reference_denominator, reference_numerator=None, reference_denominator=None,
-                    mode="transmission")
-                reference = self.make_import_group(g["label"] + " · reference", x, ry,
-                                                   source=reference_source, edge_policy=request.edge_policy)
-                reference["marked"] = False
-                g["reference_id"] = reference["id"]
-                p["groups"].append(reference)
-            p["groups"].append(g)
+            names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
+            for sample in mapped["samples"]:
+                source = copy.deepcopy(source_base)
+                source["mapping"]["numerator"] = sample["columns"]
+                numerator, denominator = sample["numerator"], mapped["denominator"]
+                y = sample["y"][order]
+                if request.mode == "transmission":
+                    source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(denominator))
+                elif request.mode == "fluorescence":
+                    source["raw_arrays"].update(i0=aligned(denominator), signal=aligned(numerator))
+                else:
+                    source["raw_arrays"]["signal"] = aligned(numerator)
+                    i0_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() == "i0"]
+                    if len(i0_columns) == 1:
+                        source["raw_arrays"]["i0"] = aligned(column(i0_columns[0]))
+                stddev_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() in ("stddev", "mu_stddev")]
+                if len(stddev_columns) == 1:
+                    source["raw_arrays"]["stddev"] = aligned(column(stddev_columns[0]))
+                source = _exchange_source(source, len(x), self.settings)
+                _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
+                label = metadata["display_name"]
+                if request.individual_channels:
+                    label += " · " + names[sample["columns"][0]]
+                g = self.make_import_group(label, x, y, data_type=request.data_type,
+                                          source=source, edge_policy=request.edge_policy)
+                p["groups"].append(g)
+                if mapped["reference"] is not None:
+                    ref = mapped["reference"]
+                    reference_source = copy.deepcopy(source)
+                    reference_source["raw_arrays"] = ({"i0": aligned(ref["numerator"]), "signal": aligned(ref["denominator"])}
+                        if request.reference_log else {"i0": aligned(ref["denominator"]), "signal": aligned(ref["numerator"])})
+                    reference_source["mapping"].update(numerator=[request.reference_numerator],
+                        denominator=request.reference_denominator, reference_numerator=None, reference_denominator=None,
+                        individual_channels=False, data_type="mu", mode="transmission" if request.reference_log else "fluorescence")
+                    reference = self.make_import_group(g["label"] + " · reference", x, ref["y"][order],
+                        source=reference_source, edge_policy=request.edge_policy if request.reference_same_element else None)
+                    reference["marked"] = False
+                    g["reference_id"] = reference["id"]
+                    p["groups"].append(reference)
             _exchange_budget(p["groups"], self.settings)
-            return self.save(p, old, f"Imported {g['label']} ({len(x)} points)")
+            return self.save(p, old, f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
+
+    def preview_columns(self, ident, request: ImportRequest):
+        from .athena_columns import map_columns, preview_trace
+        self.check(self.load(ident), request.version)
+        self.storage._validate_id(request.upload_id)
+        arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
+        metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
+        mapped = map_columns(arrays, request)
+        x, order = mapped["x"], mapped["order"]
+        if not np.isfinite(x).all():
+            fail("The selected horizontal axis contains non-finite values after unit conversion.")
+        warnings = list(metadata.get("warnings", []))
+        if np.any(np.diff(x) <= 0):
+            warnings.append("The horizontal axis is not strictly increasing. Choose the energy column or sort the rows; duplicate energies must be repaired before import.")
+        names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
+        traces = [preview_trace(x, sample["y"][order], label=names[sample["columns"][0]] if request.individual_channels else "Sample",
+                  role="sample", ident="sample:" + "+".join(sample["columns"])) for sample in mapped["samples"]]
+        if mapped["reference"] is not None:
+            traces.append(preview_trace(x, mapped["reference"]["y"][order], label="Reference", role="reference", ident="reference"))
+        self.check(self.load(ident), request.version)
+        return {"filename": metadata["display_name"], "points": len(x), "traces": traces, "warnings": warnings,
+                "x_label": "k (Å⁻¹)" if request.data_type == "chi" else "Energy (eV)",
+                "y_label": "χ(k)" if request.data_type == "chi" else "μ(E)"}
 
     def command(self, ident, request: Command):
         with self.storage.lock(ident):
@@ -1373,21 +1446,24 @@ class AthenaStore:
             from larch import Group
             from larch.xafs import xftr
             from .athena_operations import log_ratio
+            from .athena_science import _larch_window
             if len(groups) != 2 or not all(g["result"] and g["result"]["arrays"]["r"] for g in groups):
                 fail("Choose two processed EXAFS groups: target first, reference second.")
             keys = ("e0", "kmin", "kmax", "dk", "window", "kweight", "rmin", "rmax", "dr", "rwindow", "nfft", "kstep")
             if any(groups[0]["result"]["effective"].get(k) != groups[1]["result"]["effective"].get(k) for k in keys):
                 fail("Log-ratio analysis requires the same E₀, FT and shell-filter windows for both groups. Set explicit common limits first.")
             filtered = []
+            window_warnings = []
             for g in groups:
                 a, params = g["result"]["arrays"], g["parameters"]
                 out = Group()
                 chir = np.asarray(a["chir_re"]) + 1j * np.asarray(a["chir_im"])
                 xftr(np.asarray(a["r"]), chir, group=out, rmin=params["rmin"], rmax=params["rmax"], dr=params["dr"],
-                     window=params["rwindow"], nfft=params["nfft"], kstep=params["kstep"], qmax_out=min(g["result"]["effective"]["available_kmax"] for g in groups))
+                     window=_larch_window(params["rwindow"], params["dr"], window_warnings), nfft=params["nfft"], kstep=params["kstep"], qmax_out=min(g["result"]["effective"]["available_kmax"] for g in groups))
                 filtered.append(out)
             opts = {key: value for key, value in o.items() if key in ("kmin", "kmax", "amplitude_min", "phase_offset", "fit_cumulants", "max_cumulant")}
             result = log_ratio(filtered[0].q, filtered[1].chiq, filtered[0].chiq, opts)
+            result.setdefault("warnings", []).extend(window_warnings)
             result["labels"] = [g["label"] for g in groups]
             return self._persist_analysis(ident, {"kind": request.action, "project_version": p["version"], "group_ids": request.group_ids, "options": opts, "result": result})
         def spectrum(g):
@@ -1568,8 +1644,14 @@ class AthenaStore:
         sidecar, native_project = {}, None
         import_warnings = []
         web = False
+        # Larch's own writer uses a Demeter header but stores nnorm as degree.
+        # A Demeter header mentioning its Larch backend is a different case.
+        larch_writer = any(line.startswith("# Using Larch version ") for line in text.splitlines()[:4])
         if text.lstrip().startswith("{"):
             document = _project_json(text)
+            larch_writer = any(isinstance(document.get(f"_____header{i}"), str)
+                               and document[f"_____header{i}"].startswith("# Using Larch version ")
+                               for i in range(1, 5))
             web = document.get("format") == "athena-web"
             if web:
                 if document.get("schema_version") != 1:
@@ -1629,7 +1711,9 @@ class AthenaStore:
                           _native_source(record, filename, native_project["format"] if native_project else "athena-perl", self.settings))
                 params = meta.get("parameters")
                 if params is None:
-                    params = _native_parameters(args)
+                    params = _native_parameters(args, larch_writer=larch_writer)
+                    if larch_writer:
+                        source["native"]["producer"] = "larch"
                 dtype = next((kind for kind, key in (("chi", "is_chi"), ("norm", "is_nor"), ("xanes", "is_xanes"))
                               if _native_flag(args.get(key))), {"chi": "chi", "xanes": "xanes"}.get(args.get("datatype"), "mu"))
                 is_difference = _native_flag(args.get("is_diff"))
@@ -1652,6 +1736,8 @@ class AthenaStore:
                 marked = _native_flag(args.get("marked", args.get("project_marked")), True)
                 frozen = _native_flag(args.get("frozen"))
                 multiplier, offset = args.get("plot_scale", 1), args.get("plot_yoffset", 0)
+                if "parameters" not in meta:
+                    _native_processing_limits(params, x, dtype, source)
             if dtype not in ("mu", "norm", "xanes", "chi"):
                 fail("Unsupported data type in project.")
             if reference not in (None, "", 0, "0"):
@@ -1944,6 +2030,10 @@ def build_athena_router(settings: Settings):
     @router.post("/projects/{ident}/import")
     def import_data(ident: str, request: ImportRequest):
         return guarded(lambda: store.import_data(ident, request))
+
+    @router.post("/projects/{ident}/preview-columns")
+    def preview_columns(ident: str, request: ImportRequest):
+        return guarded(lambda: store.preview_columns(ident, request))
 
     @router.post("/projects/{ident}/command")
     def command(ident: str, request: Command):

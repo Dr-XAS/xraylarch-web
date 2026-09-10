@@ -29,6 +29,8 @@ export interface InspectionResponse {
   columns: ColumnInfo[]
   warnings: string[]
   issues: FieldIssue[]
+  source_preview?: string
+  source_preview_truncated?: boolean
 }
 
 export interface SourceMetadata extends InspectionResponse {

@@ -69,12 +69,13 @@ def ftwindow(x, xmin=None, xmax=None, dx=1, dx2=None,
         gaussian             Gaussian (normal) function window
         sine                 sine function window
         kaiser               Kaiser-Bessel function-derived window
+        bessel               legacy Ifeffit Kaiser-Bessel window
 
     """
     if window is None:
         window = FT_WINDOWS_SHORT[0]
     nam = window.strip().lower()[:3]
-    if nam not in FT_WINDOWS_SHORT:
+    if nam not in FT_WINDOWS_SHORT and nam != 'bes':
         raise RuntimeError("invalid window name %s" % window)
 
     dx1 = dx

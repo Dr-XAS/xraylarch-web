@@ -48,6 +48,9 @@ backend/.pytest_cache/
 backend/*.egg-info/
 frontend/node_modules/
 frontend/.next/
+frontend/.next-e2e/
+frontend/.next-verify/
+!backend/tests/fixtures/demeter-athena-json.prj
 frontend/next-env.d.ts
 frontend/*.tsbuildinfo
 frontend/playwright-report/

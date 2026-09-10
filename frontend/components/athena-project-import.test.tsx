@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest"
+import { StrictMode, type ComponentProps } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { athenaApi, type AthenaProject } from "@/lib/athena"
@@ -16,13 +17,13 @@ function preview(name = "first", ids = ["a", "b", "c"]) {
       data_type: "mu", points: 1201, x: [8970, 8980, 8990], y: [index, index + .5, index + 1],
       notes: `Notes for ${id}`, reference_id: index === 0 ? ids[1] : null}))}
 }
-function setup() {
+function setup(extra: Partial<ComponentProps<typeof AthenaProjectImport>> = {}) {
   let current: AthenaProject = {id: "workspace", version: 0, name: "Existing project", groups: [],
     journal: "Keep", updated: "2026-09-07", history: [], undo: [], redo: []}
   const imported = vi.fn((next: AthenaProject) => { current = next })
   const complete = vi.fn(), busy = vi.fn()
   const result = (version: number) => ({...current, version})
-  render(<AthenaProjectImport getProject={() => current} onImported={imported} onComplete={complete} onBusyChange={busy} />)
+  render(<StrictMode><AthenaProjectImport getProject={() => current} onImported={imported} onComplete={complete} onBusyChange={busy} {...extra} /></StrictMode>)
   return {imported, complete, busy, result}
 }
 function choose(names = ["first"]) {
@@ -38,6 +39,29 @@ beforeEach(() => { api.mockReset(); api.mockRejectedValue(new Error("Unexpected 
 afterEach(cleanup)
 
 describe("Athena project preview and selection", () => {
+  it("consumes a batch forwarded from Import data exactly once in StrictMode", async () => {
+    const initialFiles = [new File(["project"], "first.PRJ")]
+    api.mockResolvedValueOnce(preview())
+    setup({ initialFiles }); await ready()
+    expect(api).toHaveBeenCalledTimes(1)
+    expect((api.mock.calls[0][1] as FormData).get("file")).toBe(initialFiles[0])
+  })
+
+  it("hands a mixed batch back to raw import after releasing its busy state", async () => {
+    const remaining = [new File(["data"], "scan.xmu"), new File(["project"], "last.prj")]
+    const handoff = vi.fn()
+    api.mockResolvedValueOnce(preview())
+    const state = setup({ initialFiles: [new File(["project"], "first.prj"), ...remaining], onRemainingFiles: handoff })
+    await ready()
+    handoff.mockImplementation(() => { expect(state.busy).toHaveBeenLastCalledWith("") })
+    api.mockResolvedValueOnce(state.result(1))
+    fireEvent.click(screen.getByRole("button", { name: "Import all groups" }))
+    await waitFor(() => expect(handoff).toHaveBeenCalledWith(remaining))
+    expect(state.imported).toHaveBeenCalledOnce()
+    expect(state.complete).not.toHaveBeenCalled()
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
   it("rejects a mismatched preview signal instead of labelling raw values as normalized", async () => {
     setup(); api.mockResolvedValueOnce(preview()); choose(); await ready()
     api.mockResolvedValueOnce({mode: "mu", data_type: "mu", label: "Sample", x: [8970, 8980, 8990], y: [1, 2, 3], warnings: []})
