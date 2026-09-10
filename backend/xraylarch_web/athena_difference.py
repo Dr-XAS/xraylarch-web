@@ -121,7 +121,7 @@ def _curve(group, form, role):
     label = group.get("label", ident)
     if not isinstance(label, str) or len(label) > 2000:
         raise ScientificError(f"{role} label must be text of at most 2000 characters.")
-    if group.get("data_type") not in ("mu", "xanes", "norm"):
+    if group.get("data_type") not in ("mu", "xanes", "norm", "xmudat"):
         raise ScientificError(f"{label}: difference forms require energy data (mu, xanes or norm), not chi(k).")
     parameters = _mapping(group.get("parameters", {}), f"{label} parameters")
     result = _mapping(group.get("result") or {}, f"{label} result")

@@ -177,7 +177,13 @@ def test_absorption_transforms_keep_identity_without_claiming_parent_detector_ar
     assert_identity(child, parent)
     assert child["source"]["operation"] == action
     assert child["source"]["parent"] == parent["id"]
-    assert "raw_arrays" not in child["source"] and "columns" not in child["source"]
+    if action == 'rebin':
+        assert child['source']['rebin_original']['raw_arrays'] == parent['source']['raw_arrays']
+        assert child['source']['rebin_original']['column_arrays'] == parent['source']['column_arrays']
+        for array in child['source']['raw_arrays'].values():
+            assert len(array) == len(child['energy'])
+    else:
+        assert "raw_arrays" not in child["source"] and "columns" not in child["source"]
     # An inherited material identity is not a new import-policy execution.
     for key in ("edge_policy", "import_defaults", "e0_selection"):
         assert key not in child["source"]

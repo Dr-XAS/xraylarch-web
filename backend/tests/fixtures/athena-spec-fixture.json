@@ -1,0 +1,21 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "file": {
+    "path": "t/filetypes/snbl.dat",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/snbl.dat",
+    "sha256": "6006a10d25e93f3242901c1380f4be011e06363c4610b0e5ec55c427ea12c62a",
+    "git_blob_sha1": "61c4b40e6224c773d6accbdc2dbb4bd483ee389b",
+    "bytes": 118015,
+    "file": "demeter-snbl.dat"
+  },
+  "reference": {
+    "file": "athena-spec-native.json.gz",
+    "sha256": "0e790921a34b766ce797e3e442cf97f16181181d549f5868a8e924dc34792ef7",
+    "harness_sha256": "4223c9992c667347042ce487b50ac4880faff84a4a2fe827a762675ecacf8a1f",
+    "converted_sha256": [
+      "1118008cf0c3964547e94d35cd09a4d2c1367856e0e3ab8d76e73301c731bb37",
+      "88128e76af055c1ed138253695acf60b13439cffdefe9476b66cd9c57e85b3f8"
+    ],
+    "method": "Unchanged native SPEC fix/suggest/clean methods with accessor-only Perl harness. No desktop execution."
+  }
+}

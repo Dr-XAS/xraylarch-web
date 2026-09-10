@@ -210,7 +210,9 @@ def test_transform_dialog_payloads_create_a_finite_derived_group(client, action,
     next = response.json()
     assert len(next["groups"]) == 4
     assert next["groups"][0] == original
-    derived = next["groups"][-1]
+    derived = next["groups"][1 if action == 'rebin' else -1]
+    if action == 'rebin':
+        assert next['groups'][2:] == p['groups'][1:]
     assert derived["source"]["operation"] == action
     assert np.isfinite(derived["energy"]).all() and np.isfinite(derived["mu"]).all()
     assert derived["processing_error"] is None, derived["processing_error"]

@@ -1,0 +1,73 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "files": [
+    {
+      "path": "t/filetypes/ssrla.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/ssrla.dat",
+      "sha256": "0a5c2a759b970693a2d7411b2862177d78aa99740fe435ba84afdc850d0c4a19",
+      "git_blob_sha1": "38f45322593794d7c09a8f86eb98670a5e8a5f29",
+      "bytes": 31074,
+      "file": "demeter-ssrla.dat"
+    },
+    {
+      "path": "t/filetypes/ssrlb.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/ssrlb.dat",
+      "sha256": "ca06971fcecd2080fc9d620929d73ceaa8098d157226fb0f7c99f8bbad795466",
+      "git_blob_sha1": "a172fcaa787e228c2d15e8ba09e5581eeb001c90",
+      "bytes": 16384,
+      "file": "demeter-ssrlb.dat"
+    },
+    {
+      "path": "t/filetypes/ssrlmicro.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/ssrlmicro.dat",
+      "sha256": "deba396ba0434b8770d2bd09609414ac59f6cd2e6c866171519bb889e7a035a0",
+      "git_blob_sha1": "b2ddd7fefb61eae927dafb35143f5d806912f646",
+      "bytes": 142689,
+      "file": "demeter-ssrlmicro.dat"
+    }
+  ],
+  "references": [
+    {
+      "reader": "SSRLA",
+      "file": "demeter-ssrla-native.npz",
+      "sha256": "d085f0351f8ace590e1cd7e1354a0f856f6cc26c3e3e9e70edda8542511b2de0",
+      "shape": [
+        455,
+        6
+      ],
+      "reference": "Unchanged native fix/suggest/helper subroutines run in an isolated Perl harness; Moose accessors replaced with fixed fixture paths/version. No desktop execution.",
+      "harness_sha256": "d0a5707a159689374c072d9377d6605c0229ea4e9678a63239b0e0077c259c9c",
+      "converted_sha256": "fea80ab9df7fdbecc3444fd8f00471bae976887b0ccec3ad7f1ef0e0af450518",
+      "browser_file": "ssrla-native-columns.json.gz",
+      "browser_sha256": "5e021f8fbad30f6368930651d684c25d9ee85c04dfc37806d167561b294d90fa"
+    },
+    {
+      "reader": "SSRLB",
+      "file": "demeter-ssrlb-native.npz",
+      "sha256": "6d101144c410336d6e9cc9eb83d93244b6e70bd81b30cfc8482788a7707b000b",
+      "shape": [
+        635,
+        6
+      ],
+      "reference": "Unchanged native fix/suggest/helper subroutines run in an isolated Perl harness; Moose accessors replaced with fixed fixture paths/version. No desktop execution.",
+      "harness_sha256": "2756255f88cb95128470f3a16d626a97331891dbbb026c88effcf8ac39096ce1",
+      "converted_sha256": "26376c2e395d26b2bfebc80344d82eba66e46b3ff857054990defe4330281e54",
+      "browser_file": "ssrlb-native-columns.json.gz",
+      "browser_sha256": "644653afcac716d5b56b97ce10d37486c39c37b340b0b18c5cb24bd04ff107d2"
+    },
+    {
+      "reader": "SSRLmicro",
+      "file": "demeter-ssrlmicro-native.npz",
+      "sha256": "e2cb9f6ad1e6477a1c74b838d9ca32c7e5247a8074a189d12897ee27bdee5564",
+      "shape": [
+        296,
+        37
+      ],
+      "reference": "Unchanged native fix/suggest/helper subroutines run in an isolated Perl harness; Moose accessors replaced with fixed fixture paths/version. No desktop execution.",
+      "harness_sha256": "04ab988c071116b2b86717f1a67c1c33051047a87ba9396c846fac46d336af8a",
+      "converted_sha256": "5af7d3836e1306413fc6598d6831a99c886ebc0f911a4888de499011d72eb67f",
+      "browser_file": "ssrlmicro-native-columns.json.gz",
+      "browser_sha256": "60537d09df4edfdf6a17bc6cedf1b5341c19a661d636360c3415e6d507d69b3f"
+    }
+  ]
+}

@@ -142,7 +142,7 @@ def test_fluorescence_sums_selected_detector_channels_before_division(store, xas
     assert p["groups"][0]["processing_error"] is None
 
 
-@pytest.mark.parametrize("invalid", ["zero_denominator", "negative_transmission", "duplicate_numerator", "bad_reference"])
+@pytest.mark.parametrize("invalid", ["zero_denominator", "zero_numerator", "duplicate_numerator", "bad_reference"])
 def test_invalid_detector_mapping_leaves_project_unchanged(store, xas_arrays, invalid):
     x, y = xas_arrays
     p = store.create()
@@ -150,8 +150,8 @@ def test_invalid_detector_mapping_leaves_project_unchanged(store, xas_arrays, in
     ir = it * np.exp(-0.5 * y)
     if invalid == "zero_denominator":
         it[50] = 0
-    elif invalid == "negative_transmission":
-        it[50] = -1
+    elif invalid == "zero_numerator":
+        i0[50] = 0
     elif invalid == "bad_reference":
         ir[50] = 0
     inspection, ids = inspect_columns(store, p, energy=x, i0=i0, it=it, ir=ir)
@@ -361,7 +361,10 @@ def test_delete_reference_clears_links_and_undo_restores_them(store, xas_arrays)
 def exchange_project(store, xas_arrays):
     x, y = xas_arrays
     p, _ = import_detectors(store, store.create(), x, y)
-    reference, sample = p["groups"]
+    sample, reference = p["groups"]
+    # This roundtrip fixture deliberately exercises automatic reference
+    # parameters as well as the explicitly configured sample below.
+    p = command(store, p, "parameters", [reference["id"]], e0=None)
     p = command(store, p, "parameters", [sample["id"]], e0=8982.5, energy_shift=2.5,
         step=0.85, pre1=-200, pre2=-40, norm1=35, norm2=300, nnorm=1,
         flatten=False, rbkg=1.2, bkg_kmin=0.5, bkg_kmax=9, bkg_kweight=1,
@@ -691,7 +694,7 @@ def test_real_native_json_preserves_arrays_and_independent_larch_values(store, t
 def test_detector_counts_and_uploaded_columns_survive_exchange(store, xas_arrays, tmp_path, format):
     x, y = xas_arrays
     p, _ = import_detectors(store, store.create(), x, y, reverse=True)
-    reference, sample = p["groups"]
+    sample, reference = p["groups"]
     columns = {c["name"]: c["column_id"] for c in sample["source"]["columns"]}
     saved = sample["source"]["column_arrays"]
     np.testing.assert_allclose(saved[columns["energy"]], x / 1000)

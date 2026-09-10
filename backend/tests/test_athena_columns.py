@@ -1,5 +1,4 @@
 """Column previews must represent the same full-data arithmetic as import."""
-from copy import deepcopy
 from io import StringIO
 
 import numpy as np
@@ -37,7 +36,6 @@ def test_preview_equals_import_for_all_detector_modes_and_sorted_kev(store, xas_
     request = ImportRequest(version=0, upload_id=inspected["upload_id"], energy_column=ids["energy"],
         numerator=[ids["a"], ids["b"]], denominator=ids["i0"], mode=mode, units="keV", sort=reverse,
         individual_channels=individual)
-    original_files = {path.name: path.read_bytes() for path in store.storage.root.joinpath(p["id"]).glob('*') if path.is_file()} if hasattr(store.storage, 'root') else None
     preview = store.preview_columns(p["id"], request)
     assert store.load(p["id"]) == p
     assert preview["x_label"] == "Energy (eV)"
@@ -94,12 +92,12 @@ def test_large_preview_preserves_single_point_glitches_and_endpoints():
     assert trace["y"][trace["x"].index(87654)] == -200
 
 
-@pytest.mark.parametrize("bad", ["zero", "negative", "unknown", "reference", "duplicate", "overflow"])
+@pytest.mark.parametrize("bad", ["zero", "zero_numerator", "unknown", "reference", "duplicate", "overflow"])
 def test_preview_and_import_reject_bad_arithmetic_even_at_unsampled_rows(store, bad):
     x = np.linspace(8900, 9400, 10_000)
     a, b = np.full(len(x), 2.), np.ones(len(x))
     if bad == "zero": b[4567] = 0
-    if bad == "negative": a[4567] = -1
+    if bad == "zero_numerator": a[4567] = 0
     if bad == "overflow": a[4567], b[4567] = 1e300, 1e-300
     p = store.create()
     inspected, ids = upload(store, p, x, a=a, b=b)
@@ -107,7 +105,7 @@ def test_preview_and_import_reject_bad_arithmetic_even_at_unsampled_rows(store, 
         numerator=[ids["a"]], denominator=ids["b"], mode="transmission")
     if bad == "unknown": request.numerator = ["not-this-file"]
     if bad == "duplicate": request.numerator *= 2
-    if bad == "reference": request.reference_numerator = ids["a"]
+    if bad == "reference": request.reference_numerator = "missing-reference-column"
     for method in (store.preview_columns, store.import_data):
         with pytest.raises(ValueError): method(p["id"], request)
     assert store.load(p["id"]) == p
@@ -128,3 +126,91 @@ def test_preview_http_does_not_create_groups_history_or_undo(tmp_path, xas_array
         assert client.post(endpoint, json={**body, "individual_channels": "yes"}).status_code == 422
     after = {str(path): path.read_bytes() for path in tmp_path.rglob('*') if path.is_file()}
     assert before == after
+
+@pytest.mark.parametrize('data_type', ['mu', 'xanes', 'norm'])
+@pytest.mark.parametrize('shift', [12., 80.])
+def test_same_element_reference_keeps_type_identity_and_corrects_distant_e0(store, xas_arrays, data_type, shift):
+    from xraylarch_web.athena_e0 import compute_e0, atomic_edge
+    from xraylarch_web.athena_science import AthenaParameters
+    x, sample_mu = xas_arrays
+    reference_mu = .2 + 1 / (1 + np.exp(-(x - 8980 - shift) / 2.5))
+    if shift == 80:
+        # A real same-element edge plus a sharp detector glitch that fools
+        # derivative edge finding; the native safeguard should recover it.
+        reference_mu = sample_mu + 2 * np.exp(-((x - 9060) / 3) ** 2)
+    p = store.create()
+    inspected, ids = upload(store, p, x, sample=sample_mu, ref=np.exp(reference_mu), one=np.ones(len(x)))
+    request = ImportRequest(version=0, upload_id=inspected['upload_id'], energy_column=ids['energy'],
+        numerator=[ids['sample']], data_type=data_type, reference_numerator=ids['ref'], reference_denominator=ids['one'])
+    imported = store.import_data(p['id'], request)
+    sample, ref = imported['groups']
+    assert ref['data_type'] == data_type
+    assert ref['source']['mapping']['data_type'] == data_type
+    assert ref['source']['edge_identity']['element'] == sample['source']['edge_identity']['element']
+    assert ref['source']['edge_identity']['edge'] == sample['source']['edge_identity']['edge']
+    assert ref['source']['edge_identity']['origin'] == 'reference_sample'
+    assert ref['processing_error'] is None
+    if shift == 12:
+        assert ref['parameters']['e0'] == compute_e0(x, reference_mu, AthenaParameters())['e0']
+        assert ref['source']['e0_selection']['method'] == 'derivative'
+    else:
+        identity = sample['source']['edge_identity']
+        assert ref['parameters']['e0'] == atomic_edge(identity['element'], identity['edge'])['energy']
+        assert ref['source']['e0_selection']['method'] == 'atomic'
+        assert any('more than 25 eV' in w for w in ref['result']['warnings'])
+
+
+def test_different_element_reference_uses_own_derivative_despite_sample_enforcement(store):
+    x = np.arange(8100., 9800.)
+    sample_mu = .2 + 1 / (1 + np.exp(-(x - 8979) / 2.5))
+    reference_mu = .2 + 1 / (1 + np.exp(-(x - 8333) / 2.5))
+    p = store.create()
+    inspected, ids = upload(store, p, x, sample=sample_mu, ref=np.exp(reference_mu), one=np.ones(len(x)))
+    request = ImportRequest(version=0, upload_id=inspected['upload_id'], energy_column=ids['energy'],
+        numerator=[ids['sample']], data_type='xanes', reference_numerator=ids['ref'], reference_denominator=ids['one'],
+        reference_same_element=False, edge_policy={'element': 'Cu', 'edge': 'K'})
+    sample, ref = store.import_data(p['id'], request)['groups']
+    assert sample['source']['edge_policy']['element'] == 'Cu'
+    assert 'edge_policy' not in ref['source']
+    assert ref['source']['edge_identity']['element'] == 'Ni'
+    assert ref['source']['e0_selection']['method'] == 'derivative'
+    assert abs(ref['parameters']['e0'] - 8333) < 2
+    assert sample['reference_id'] == ref['id']
+
+
+def test_separate_channels_keep_separate_reference_pairs_and_undo_as_one_import(store, xas_arrays):
+    from xraylarch_web.athena import Command
+    x, mu = xas_arrays
+    p = store.create()
+    inspected, ids = upload(store, p, x, a=mu, b=mu * 2, ref=np.exp(mu), one=np.ones(len(x)))
+    request = ImportRequest(version=0, upload_id=inspected['upload_id'], energy_column=ids['energy'],
+        numerator=[ids['a'], ids['b']], individual_channels=True, reference_numerator=ids['ref'], reference_denominator=ids['one'])
+    imported = store.import_data(p['id'], request)
+    a, ar, b, br = imported['groups']
+    assert a['reference_id'] == ar['id'] and b['reference_id'] == br['id']
+    assert [g['marked'] for g in imported['groups']] == [True, False, True, False]
+    assert ar['mu'] == br['mu'] and ar['id'] != br['id']
+    undone = store.command(p['id'], Command(version=imported['version'], action='undo'))
+    assert undone['groups'] == []
+
+
+def test_invalid_later_detector_leaves_all_groups_unimported(store, xas_arrays):
+    x, mu = xas_arrays
+    bad = np.ones(len(x)); bad[100] = 0
+    p = store.create()
+    inspected, ids = upload(store, p, x, a=np.exp(mu), b=bad, one=np.ones(len(x)))
+    request = ImportRequest(version=0, upload_id=inspected['upload_id'], energy_column=ids['energy'],
+        numerator=[ids['a'], ids['b']], denominator=ids['one'], mode='transmission', individual_channels=True)
+    with pytest.raises(ValueError, match='nonzero'):
+        store.import_data(p['id'], request)
+    assert store.load(p['id']) == p
+
+
+def test_inspection_includes_bounded_original_file_contents(store, synthetic_xmu_bytes):
+    p = store.create()
+    full = b'# Beamline log: inspect these detector names\n' + synthetic_xmu_bytes
+    result = store.inspect(p['id'], full, 'raw.dat')
+    assert result['source_preview'].startswith('# Beamline log: inspect these detector names\n# energy mu')
+    assert result['source_preview_truncated'] is True
+    assert len(result['source_preview'].splitlines()) == 120
+    assert store.load(p['id']) == p

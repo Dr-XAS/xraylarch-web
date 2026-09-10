@@ -1,0 +1,148 @@
+{
+  "revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "files": [
+    {
+      "path": "t/filetypes/cmc.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/cmc.dat",
+      "sha256": "fd298c8c327c7c8efae2c5e6639f8f27185905b92551351424fac14b3c003e7e",
+      "git_blob_sha1": "0c9ba1600df678ff2c8aaa064b3cfeca07175226",
+      "bytes": 56585,
+      "file": "demeter-cmc.dat"
+    },
+    {
+      "path": "t/filetypes/hxma.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/hxma.dat",
+      "sha256": "db91876a3fab9bf459f489b0fb6a5dccc7f7a17a0a470eca0a989add4735949e",
+      "git_blob_sha1": "6462d459b89e5643945e6c519a7fd10ae194dc75",
+      "bytes": 45099,
+      "file": "demeter-hxma.dat"
+    },
+    {
+      "path": "t/filetypes/lnls.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/lnls.dat",
+      "sha256": "e40350c900d7511f8de9db7ce4b57c158ecabc4d2db9a53e120cbfb77b0cb801",
+      "git_blob_sha1": "d3ddc4ea2120661297418b83d9286dad5d7e3044",
+      "bytes": 87197,
+      "file": "demeter-lnls.dat"
+    }
+  ],
+  "references": [
+    {
+      "file": "cmc-native-columns.json.gz",
+      "sha256": "cdaaa12635755f67dc093f24264c770f5318644dc4d11d595f617e048f5a462f",
+      "sample": "cmc",
+      "reader": "CMC",
+      "shape": [
+        258,
+        13
+      ],
+      "native": {
+        "default": {
+          "ln": 1,
+          "numerator": "$2",
+          "denominator": "$3",
+          "energy": "$1"
+        },
+        "fluorescence": {
+          "ln": 0,
+          "energy": "$1",
+          "denominator": "$2",
+          "numerator": "$7+$8+$9+$10+$11+$13"
+        },
+        "transmission": {
+          "ln": 1,
+          "energy": "$1",
+          "denominator": "$3",
+          "numerator": "$2"
+        },
+        "attrs": {
+          "is_transmission": 0,
+          "is_datetime": 0,
+          "beamline": ""
+        },
+        "recognized": true
+      },
+      "harness_sha256": "c9d912f5db015b01fa49c0cd96178387242f9306665af3d74b6a734f942ba9e7"
+    },
+    {
+      "file": "hxma-native-columns.json.gz",
+      "sha256": "3a0a3a51a1e5e9b503c5ecbf497b216926813cdf883cd45dee891af415582b22",
+      "sample": "hxma",
+      "reader": "HXMA",
+      "shape": [
+        414,
+        5
+      ],
+      "native": {
+        "fluorescence": {
+          "denominator": "$2",
+          "numerator": "$5",
+          "ln": 0,
+          "energy": "$1"
+        },
+        "transmission": {
+          "energy": "$1",
+          "ln": 1,
+          "numerator": "$2",
+          "denominator": "$3"
+        },
+        "recognized": 1,
+        "attrs": {
+          "is_datetime": 0,
+          "is_transmission": 0,
+          "beamline": "HXMA"
+        },
+        "default": {
+          "energy": "$1",
+          "ln": 1,
+          "numerator": "$2",
+          "denominator": "$3"
+        }
+      },
+      "harness_sha256": "dc613caae577cbc0041215fef29e11550ac26bcc6e404d58c1991dad3e21eab1"
+    },
+    {
+      "file": "lnls-native-columns.json.gz",
+      "sha256": "22cba91aa25e10f94b65ad519a3f9497851aca8ac7d802692cf41daf4515937a",
+      "sample": "lnls",
+      "reader": "LNLS",
+      "shape": [
+        999,
+        8
+      ],
+      "native": {
+        "fluorescence": {
+          "energy": "$1",
+          "numerator": "$5",
+          "ln": 0,
+          "denominator": "$2"
+        },
+        "recognized": 1,
+        "attrs": {
+          "is_transmission": 0,
+          "is_datetime": 1,
+          "beamline": ""
+        },
+        "transmission": {
+          "denominator": "$3",
+          "numerator": "$2",
+          "ln": 1,
+          "energy": "$1"
+        },
+        "default": {
+          "energy": "$1",
+          "numerator": "$5",
+          "ln": 0,
+          "denominator": "$2"
+        }
+      },
+      "harness_sha256": "4a6215ee7af65467eef13dd3b30fa3102a650867f14d641697f84a345845251d"
+    }
+  ],
+  "probes": {
+    "file": "scalar-native-probes.json.gz",
+    "sha256": "6bf4cbae6869887b0f34cedecf815e6629603d74fae375adb5227ee93c9b05af",
+    "count": 12,
+    "scope": "Constructed format conformance inputs; not additional measured acquisitions"
+  }
+}

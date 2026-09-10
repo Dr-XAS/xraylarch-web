@@ -51,6 +51,7 @@ frontend/.next/
 frontend/.next-e2e/
 frontend/.next-verify/
 !backend/tests/fixtures/demeter-athena-json.prj
+!backend/tests/fixtures/athena-detector-probe.prj
 frontend/next-env.d.ts
 frontend/*.tsbuildinfo
 frontend/playwright-report/

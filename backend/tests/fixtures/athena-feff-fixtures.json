@@ -1,0 +1,21 @@
+{
+  "repository": "xraypy/feff85exafs",
+  "fixtures": [
+    {
+      "file": "feff-copper-xmu.dat",
+      "source": "https://raw.githubusercontent.com/xraypy/feff85exafs/ec8dcb07ca8ee034d0fa7431782074f0f65357a5/tests/Copper/baseline/withSCF/xmu.dat",
+      "revision": "ec8dcb07ca8ee034d0fa7431782074f0f65357a5",
+      "git_blob_sha1": "73372745db293f5ef5955b2d82611fd7129d1d21",
+      "sha256": "d10ea9076c9a0c39a22a8ea64b8bc2e01bef1a3fc6ed7404d71d18373b25e0d4",
+      "bytes": 29998
+    },
+    {
+      "file": "feff-nio-xmu.dat",
+      "source": "https://raw.githubusercontent.com/xraypy/feff85exafs/ec8dcb07ca8ee034d0fa7431782074f0f65357a5/tests/NiO/baseline/withSCF/xmu.dat",
+      "revision": "ec8dcb07ca8ee034d0fa7431782074f0f65357a5",
+      "git_blob_sha1": "2397357db74ffe25164b11c70c8d14698bf14214",
+      "sha256": "aa460357eee65b1b0bf1719327dec959bd0b20b96cda30387bd3c0b05e28037a",
+      "bytes": 33914
+    }
+  ]
+}

@@ -229,7 +229,7 @@ def _white_line_e0(x, y, p, seed, data_type):
     if count > MAX_WHITE_LINE_POINTS:
         raise ScientificError("White-line 0.02 eV refinement exceeds 100000 grid points; supply more closely sampled edge data or use manual E0.")
     grid = x[lo] + WHITE_LINE_GRID * np.arange(count)
-    flattened = y if data_type == "norm" else _normalized(x, y, p, seed, flat=True)
+    flattened = y if data_type in ("norm", "xmudat") else _normalized(x, y, p, seed, flat=True)
     interpolated = CubicSpline(x, flattened, bc_type="natural", extrapolate=False)(grid)
     if not np.isfinite(interpolated).all():
         raise ScientificError("White-line spline is not finite within measured support; inspect the data or use manual E0.")
@@ -247,7 +247,7 @@ def _fraction_e0(x, y, p, seed, fraction, data_type):
     """E0.pm fraction interpolation with fresh scalar normalization each pass."""
     e0 = seed
     for iteration in range(1, MAX_ITERATIONS + 1):
-        if data_type == "norm":
+        if data_type in ("norm", "xmudat"):
             normalized = y  # supplied dimensionless signal, unit edge step
         else:
             normalized = _normalized(x, y, p, e0)
@@ -269,7 +269,7 @@ def _fraction_e0(x, y, p, seed, fraction, data_type):
 
 def compute_e0(energy, mu, parameters: AthenaParameters | Mapping | None, *,
                method="derivative", fraction=0.5, element=None, edge=None,
-               value=None, seed_e0=None, data_type="mu"):
+               value=None, seed_e0=None, data_type="mu", _for_rebin=False):
     """Select E0 without mutating the spectrum, recipe, or energy calibration.
 
     Return JSON {method, e0, seed_e0, element, edge, tabulated_e0, iterations,
@@ -306,16 +306,22 @@ def compute_e0(energy, mu, parameters: AthenaParameters | Mapping | None, *,
     """
     if not isinstance(method, str) or method not in METHODS:
         raise ScientificError("Unknown E0 method; choose " + ", ".join(METHODS) + ".")
-    if data_type not in ("mu", "xanes", "norm"):
-        raise ScientificError("E0 selection requires mu, xanes or norm energy data; chi(k) is not an absorption edge.")
+    if data_type not in ("mu", "xanes", "norm", "xmudat"):
+        raise ScientificError("E0 selection requires mu, xanes, norm or xmudat energy data; chi(k) is not an absorption edge.")
     if parameters is not None and not isinstance(parameters, (AthenaParameters, Mapping)):
         raise ScientificError("parameters must be an AthenaParameters recipe or a mapping.")
     p = parameters if isinstance(parameters, AthenaParameters) else AthenaParameters.model_validate(parameters or {})
-    x, y = _pair(energy, mu, name="E0 spectrum", minimum=8)
+    # Only the import rebin planner can use the dense original grid here.
+    # Fraction crossing needs no derivative or FFT and supports equal energies.
+    # Public E0 operations retain their existing strict processed-grid contract.
+    if _for_rebin and (method != 'fraction' or data_type != 'norm' or seed_e0 is None):
+        raise ScientificError('Original-grid E0 refinement requires normalized fraction selection with an explicit seed.')
+    x, y = _pair(energy, mu, name="E0 spectrum", minimum=8,
+                 **({'maximum': 250_000, 'allow_equal': True} if _for_rebin else {}))
     x += p.energy_shift
     if x[0] <= 0 or x[-1] > 1e7:
         raise ScientificError("Supply positive energies in eV no greater than 1e7 after energy_shift.")
-    if np.any(np.diff(x) < TINY_ENERGY):
+    if not _for_rebin and np.any(np.diff(x) < TINY_ENERGY):
         raise ScientificError("Energy spacing is below Larch's 0.0005 eV limit; rebin close points.")
     try:
         with np.errstate(over="raise", invalid="raise"):

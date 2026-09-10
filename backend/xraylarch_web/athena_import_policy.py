@@ -77,7 +77,7 @@ def _at_e0(x, base, automatic, e0, data_type):
     recipe = dict(base, e0=float(e0))
     if not x[1] <= e0 <= x[-2]:
         raise ScientificError("Enforced/fractional E0 needs measured data on both sides in the shifted energy range.")
-    if data_type != "norm":
+    if data_type not in ("norm", "xmudat"):
         start, end = float(x[0] - e0), float(x[-1] - e0)
         if "pre1" in automatic:
             recipe["pre1"] = max(recipe["pre1"], start)
@@ -126,7 +126,7 @@ def _seed_defaults(x, p, seed, data_type):
     output_type = "xanes" if data_type == "mu" and short else data_type
     if output_type != "mu" and p.fnorm:
         raise ScientificError("fnorm requires raw mu with EXAFS support; disable fnorm for this import or provide a longer mu scan.")
-    if output_type != "norm":
+    if output_type not in ("norm", "xmudat"):
         values = {"pre1": -150.0, "pre2": _pre2_default(seed), "nnorm": 2,
                   "norm1": 15.0 if output_type == "xanes" else 150.0,
                   "norm2": float(x[-1] - seed - (0 if output_type == "xanes" else 100))}
@@ -157,7 +157,7 @@ def _seed_defaults(x, p, seed, data_type):
     return resolved, automatic, output_type, short, available
 
 
-def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu"):
+def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", _for_rebin=False):
     """Initialize one ordinary import without modifying arrays or policy state.
 
     policy is {element, edge, fraction=0.5}, with 0<f<=1. Return parameters
@@ -191,8 +191,8 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu"):
     recipe values rather than creating invalid/inactive numeric FT ranges.
     The caller performs final processing once and owns atomic persistence.
     """
-    if data_type not in ("mu", "xanes", "norm", "chi"):
-        raise ScientificError("Import data_type must be mu, xanes, norm or chi.")
+    if data_type not in ("mu", "xanes", "norm", "chi", "xmudat"):
+        raise ScientificError("Import data_type must be mu, xanes, norm, chi or xmudat.")
     if parameters is not None and not isinstance(parameters, (Mapping, AthenaParameters)):
         raise ScientificError("parameters must be an AthenaParameters recipe or mapping.")
     p = parameters if isinstance(parameters, AthenaParameters) else AthenaParameters.model_validate(parameters or {})
@@ -202,11 +202,15 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu"):
         return result
     atom, fraction = _policy(policy)
     seed = atom["energy"]
-    raw_x, y = _pair(energy, mu, name="Enforced import", minimum=10)
+    # Rebin planning performs scalar normalization/fraction selection on all
+    # original readings, before the final processed grid exists. Larch pre_edge
+    # internally handles duplicates; retain the supplied arrays unchanged.
+    raw_x, y = _pair(energy, mu, name="Enforced import", minimum=10,
+                     **({'maximum': 250_000, 'allow_equal': True} if _for_rebin else {}))
     x = raw_x + p.energy_shift
     if x[0] <= 0 or x[-1] > 1e7:
         raise ScientificError("Enforced import needs positive energies in eV no greater than 1e7 after energy_shift.")
-    if np.any(np.diff(x) < TINY_ENERGY):
+    if not _for_rebin and np.any(np.diff(x) < TINY_ENERGY):
         raise ScientificError("Enforced import energy spacing is below 0.0005 eV; rebin close points.")
     if not x[1] <= seed <= x[-2]:
         raise ScientificError(f"Enforced {atom['element']} {atom['edge']} E0={seed:g} eV needs measured data on both sides in the shifted energy range; select the correct edge or extend the scan.")
@@ -216,10 +220,10 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu"):
             current = seed
             for iteration in range(1, MAX_ITERATIONS + 1):
                 recipe = _at_e0(x, seed_recipe, automatic, current, output_type)
-                normalized = y if output_type == "norm" else _normalized(x, y, AthenaParameters(**recipe), current)
+                normalized = y if output_type in ("norm", "xmudat") else _normalized(x, y, AthenaParameters(**recipe), current)
                 # x is already shifted, so the selector must receive shift=0.
                 selection = compute_e0(x, normalized, {}, method="fraction", fraction=fraction,
-                                       seed_e0=seed, data_type="norm")
+                                       seed_e0=seed, data_type="norm", _for_rebin=_for_rebin)
                 next_e0 = selection["e0"]
                 converged = abs(next_e0 - current) <= E0_TOLERANCE
                 current = next_e0

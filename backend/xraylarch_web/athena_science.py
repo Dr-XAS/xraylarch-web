@@ -130,7 +130,7 @@ class AthenaParameters(BaseModel):
         return self
 
 
-def _pair(x, y, *, name="Spectrum", minimum=2):
+def _pair(x, y, *, name="Spectrum", minimum=2, maximum=MAX_POINTS, allow_equal=False):
     try:
         if np.iscomplexobj(x) or np.iscomplexobj(y):
             raise ValueError("Complex spectra require an explicit real representation.")
@@ -139,11 +139,11 @@ def _pair(x, y, *, name="Spectrum", minimum=2):
         raise ScientificError(f"{name}: supply real numeric coordinate and signal arrays.") from exc
     if xa.ndim != 1 or ya.ndim != 1 or xa.size != ya.size:
         raise ScientificError(f"{name}: supply one-dimensional arrays of equal length.")
-    if not minimum <= xa.size <= MAX_POINTS:
-        raise ScientificError(f"{name}: supply {minimum} to {MAX_POINTS} points.")
+    if not minimum <= xa.size <= maximum:
+        raise ScientificError(f"{name}: supply {minimum} to {maximum} points.")
     if not np.isfinite(xa).all() or not np.isfinite(ya).all():
         raise ScientificError(f"{name}: remove NaN and infinite values before processing.")
-    if np.any(np.diff(xa) <= 0):
+    if np.any(np.diff(xa) < 0 if allow_equal else np.diff(xa) <= 0):
         raise ScientificError(f"{name}: coordinates must be strictly increasing; sort and merge duplicates.")
     return xa.copy(), ya.copy()
 
@@ -352,11 +352,14 @@ def _standard_arguments(standard, kmax, kstep, edge_step):
 
 
 def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, data_type="mu", *,
-                     background_standard: Mapping | None = None) -> dict:
+                     background_standard: Mapping | None = None, is_normalized: bool = False) -> dict:
     """Return {effective, arrays, warnings}; every ARRAY_NAMES key is present.
 
     mu: normalize, subtract AUTOBK background, forward FT and reverse FT.
     xanes: normalize only, regardless of the amount of post-edge data.
+    is_normalized preserves the independent native is_nor flag for energy
+    records, including XANES reached by the main-page type toggle. It skips
+    pre_edge fitting while retaining the type's EXAFS eligibility.
     norm: preserve input as norm/flat (edge_step=1), then AUTOBK and FTs.
     chi: arguments are k and chi; resample to kstep and run FTs only. Energy
          arrays are empty and energy_shift must be zero.
@@ -399,8 +402,8 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
     standard scaling. effective.background_standard records whether applied;
     background_standard_kmin/kmax/points describe its supplied support.
 
-    fnorm rejects norm/xanes/chi input because no raw-mu EXAFS correction can
-    be performed there. Standards support mu/norm, and reject xanes/chi.
+    fnorm rejects norm/xanes/chi/xmudat input because no raw-mu EXAFS correction
+    can be performed there. Standards support mu/norm/xmudat, and reject xanes/chi.
     Explicit requests reject insufficient EXAFS support instead of ignoring
     the option. A standard is applied to both raw and corrected AUTOBK runs
     when fnorm is enabled. The caller owns standard selection/persistence;
@@ -411,16 +414,18 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
             if isinstance(parameters, AthenaParameters) else ({} if parameters is None else parameters))
     except ValidationError as exc:
         raise ScientificError(f"Invalid Athena parameters: {exc}") from exc
-    if data_type not in ("mu", "xanes", "norm", "chi"):
-        raise ScientificError("data_type must be mu, xanes, norm, or chi.")
+    if data_type not in ("mu", "xanes", "norm", "chi", "xmudat", "detector"):
+        raise ScientificError("data_type must be mu, xanes, norm, chi, xmudat, or detector.")
     standard = _background_standard(background_standard)
-    if p.fnorm and data_type != "mu":
+    if not isinstance(is_normalized, bool) or (is_normalized and data_type in ("chi", "detector")):
+        raise ScientificError("is_normalized is a boolean flag for energy spectra.")
+    if p.fnorm and (data_type != "mu" or is_normalized):
         raise ScientificError("fnorm requires raw mu input with EXAFS support; use data_type='mu' and supply the original fluorescence mu(E).")
-    if standard is not None and data_type not in ("mu", "norm"):
+    if standard is not None and data_type not in ("mu", "norm", "xmudat"):
         raise ScientificError("background_standard requires mu or norm input with AUTOBK processing; xanes and chi do not remove a background.")
-    x, y = _pair(energy, mu, minimum=10 if data_type != "chi" else 4)
+    x, y = _pair(energy, mu, minimum=3 if data_type == "detector" else 4 if data_type == "chi" else 10)
     effective = p.model_dump()
-    effective.update(data_type=data_type, edge_step=None, exafs=False,
+    effective.update(data_type=data_type, is_normalized=is_normalized or data_type in ("norm", "xmudat"), edge_step=None, exafs=False,
                      fnorm_edge_step=None, fnorm_scale=None, background_standard=standard is not None,
                      background_standard_kmin=None if standard is None else float(standard[0][0]),
                      background_standard_kmax=None if standard is None else float(standard[0][-1]),
@@ -429,7 +434,14 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
     warnings = []
     group = Group()
     try:
-        if data_type == "chi":
+        if data_type == "detector":
+            x += p.energy_shift
+            if x[0] <= 0 or x[-1] > 1e7:
+                raise ScientificError("Supply positive detector energies in eV no greater than 1e7 after energy_shift.")
+            group.energy, group.mu = x, y
+            effective.update({key: None for key in p.model_dump() if key != "energy_shift"})
+            warnings.append("Detector signal: counts are shown without edge finding, normalization, background removal, or Fourier transforms.")
+        elif data_type == "chi":
             if p.energy_shift != 0:
                 raise ScientificError("energy_shift cannot be applied to chi(k); supply an unshifted k axis.")
             if x[0] < 0 or x[-1] > 100:
@@ -454,7 +466,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                 raise ScientificError("Energy spacing is below Larch's 0.0005 eV limit; rebin close points before processing.")
             group.energy, group.mu = x, y
             e0 = _edge(x, y, p.e0)
-            if data_type == "norm":
+            if is_normalized or data_type in ("norm", "xmudat"):
                 group.e0, group.edge_step = e0, 1.0
                 group.norm, group.flat = y.copy(), y.copy()
                 group.pre_edge, group.post_edge = np.zeros_like(y), np.ones_like(y)

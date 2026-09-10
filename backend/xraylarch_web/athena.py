@@ -24,6 +24,11 @@ from .athena_science import (AthenaParameters, process_spectrum, calibrate_shift
                              align_shift, merge_spectra, combine_spectra, linear_combination,
                              principal_components)
 from .config import Settings
+from .athena_preprocessing import ImportPreprocessing
+from .athena_rebin import ImportRebin, PostRebin, RebinPlan, prepare_rebin, rebin_unavailable
+from .athena_preferences import AthenaPreferences, RebinDefaults, RebinGrid
+from .athena_plugin_registry import PluginRegistry, registry_view, decode_registry, encode_registry, MAX_REGISTRY_BYTES
+from .athena_plugin_config import PluginConfigurations, ConfigurationRequest
 from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
@@ -140,6 +145,24 @@ def _exchange_source(source, npoints, settings):
             arrays[name] = _exchange_array(values, name, settings)
             if len(arrays[name]) != npoints:
                 fail(f"Source {name} must match the group's {npoints} data points.")
+    if 'rebin_original' in source:
+        original = source['rebin_original']
+        allowed = {'energy', 'mu', 'raw_arrays', 'column_arrays', 'row_order', 'column_order'}
+        if not isinstance(original, dict) or set(original) - allowed or not {'energy', 'mu'} <= set(original):
+            fail('Rebin original data must contain energy/mu and known source arrays.')
+        original['energy'] = _exchange_array(original['energy'], 'original energy', settings)
+        original['mu'] = _exchange_array(original['mu'], 'original mu', settings)
+        count = len(original['energy'])
+        if len(original['mu']) != count or count < 10 or np.any(np.diff(original['energy']) < 0):
+            fail('Rebin original data need paired, nondecreasing energy values.')
+        kept = _exchange_source({key: original[key] for key in ('raw_arrays', 'column_arrays') if key in original}, count, settings)
+        original.update(kept)
+        if 'column_order' in original and original['column_order'] != 'group':
+            fail('Rebin original columns must follow the retained original energy row order.')
+        if 'row_order' in original:
+            order = original['row_order']
+            if not isinstance(order, list) or len(order) != count or any(type(i) is not int for i in order) or sorted(order) != list(range(count)):
+                fail('Rebin original row order must be a permutation of the source rows.')
     return source
 
 
@@ -153,9 +176,13 @@ def _exchange_budget(groups, settings):
         source = g.get("source", {})
         for key in ("raw_arrays", "column_arrays"):
             total += sum(len(a) for a in source.get(key, {}).values())
+        original = source.get('rebin_original', {})
+        total += len(original.get('energy', [])) + len(original.get('mu', []))
+        for key in ('raw_arrays', 'column_arrays'):
+            total += sum(len(a) for a in original.get(key, {}).values())
         total += sum(len(a) for a in source.get("native", {}).get("unaligned_arrays", {}).values() if a is not None)
         if total > _EXCHANGE_MAX_VALUES:
-            fail("Project exceeds 2,000,000 retained data values; reduce columns, groups, or rebin scans.")
+            fail("Project exceeds 2,000,000 retained data values; reduce columns, groups, or scan lengths.")
 
 
 def _journal(value):
@@ -310,6 +337,8 @@ def _native_processing_limits(parameters, energy, data_type, source):
     Larch pre_edge/autobk clip outer limits to measured coverage. Record these
     resolutions explicitly so the web controls show the recipe actually used.
     """
+    if data_type == "detector":
+        return  # Absorption/EXAFS settings are dormant, not limits on counts.
     changes, resolved = [], {}
 
     def numeric(value):
@@ -398,7 +427,7 @@ def _native_source(record, filename, kind, settings):
             source["native"].setdefault("unaligned_arrays", {})[key] = values
             source["warnings"].append(f"Native {key} has {0 if values is None else len(values)} values for {npoints} points; retained without treating it as pointwise data.")
     supported = set(_PARAMETER_MAP.values()) | set(_NATIVE_ALIASES.values()) | {
-        "label", "datatype", "is_xmu", "is_xanes", "is_nor", "is_chi", "is_diff", "marked", "frozen",
+        "label", "datatype", "is_xmu", "is_xanes", "is_nor", "is_chi", "is_xmudat", "is_diff", "marked", "frozen",
         "plot_scale", "plot_yoffset", "bkg_flatten", "bkg_fixstep", "bkg_stan", "referencegroup", "reference", "annotation"}
     if identity:
         supported.update(("bkg_z", "fft_edge"))
@@ -438,7 +467,7 @@ def _ensure_edge_identity(group):
     """Populate missing identity from an existing result, without processing."""
     source = group["source"]
     effective = (group.get("result") or {}).get("effective", {})
-    if "edge_identity" not in source and group["data_type"] != "chi" and not _is_difference(group):
+    if "edge_identity" not in source and group["data_type"] not in ("chi", "detector") and not _is_difference(group):
         value = effective.get("e0")
         if isinstance(value, (int, float)) and not isinstance(value, bool) and np.isfinite(value) and value > 0:
             from .athena_e0 import _infer_atomic
@@ -541,11 +570,13 @@ class ImportRequest(BaseModel):
     version: int
     upload_id: str
     energy_column: str
-    numerator: list[str] = Field(min_length=1, max_length=64)
-    denominator: str | None = None
+    numerator: list[str] = Field(max_length=64)
+    denominator: str | list[str] | None = Field(default=None, max_length=64)
+    signal_multiplier: float = Field(default=1, strict=True, allow_inf_nan=False)
+    invert: bool = Field(default=False, strict=True)
     mode: Literal["mu", "transmission", "fluorescence"] = "mu"
     units: Literal["eV", "keV"] = "eV"
-    data_type: Literal["mu", "xanes", "norm", "chi"] = "mu"
+    data_type: Literal["mu", "xanes", "norm", "chi", "xmudat"] = "mu"
     reference_numerator: str | None = None
     reference_denominator: str | None = None
     reference_log: bool = Field(default=True, strict=True)
@@ -553,6 +584,9 @@ class ImportRequest(BaseModel):
     individual_channels: bool = Field(default=False, strict=True)
     sort: bool = False
     edge_policy: ImportEdgePolicy | None = None
+    preprocessing: ImportPreprocessing | None = None
+    rebin: ImportRebin | None = None
+    rebin_grid: RebinGrid | None = None
 
 
 class Command(BaseModel):
@@ -605,6 +639,7 @@ _PARAMETER_SECTIONS = {
 
 class AthenaStore:
     def __init__(self, settings: Settings):
+        self.plugin_configurations = PluginConfigurations(settings)
         self.settings = settings
         self.storage = WorkspaceStorage(settings.data_root / "athena")
 
@@ -766,11 +801,13 @@ class AthenaStore:
                     if not isinstance(standard_id, str):
                         fail("Choose a background-standard group or None.")
                     self.group(p, standard_id)
-                    if group["data_type"] not in ("mu", "norm"):
+                    if group["data_type"] not in ("mu", "norm", "xmudat"):
                         fail("Background standards apply to energy spectra with EXAFS processing.")
                 standard_links[ident] = standard_id
             previous = group["parameters"]
             recipe = AthenaParameters.model_validate(previous | patch)
+            if patch.get("fnorm") is True and (group["data_type"] != "mu" or group.get("is_normalized", False)):
+                fail("fnorm requires raw mu input with EXAFS support.")
             # E0 uses the shifted energy axis. Apply the delta once, after
             # merging every explicit edit, so calibration targets take priority.
             if "energy_shift" in patch and "e0" not in patch and recipe.e0 is not None:
@@ -804,12 +841,12 @@ class AthenaStore:
             if self._frozen_background_dependents(p, [ident]):
                 reasons[ident] = "The group or a group using it as a background standard is frozen."
                 continue
-            if group["data_type"] == "chi" or _is_difference(group):
+            if group["data_type"] in ("chi", "detector") or _is_difference(group):
                 reasons[ident] = "E₀ requires an absorption spectrum on an energy axis."
                 continue
             try:
                 result = compute_e0(group["energy"], group["mu"], group["parameters"],
-                                    data_type=group["data_type"], **choice.model_dump())
+                                    data_type="norm" if group.get("is_normalized") else group["data_type"], **choice.model_dump())
             except ValueError as exc:
                 fail(f"{group['label']}: {exc}")
             updates[ident] = {"e0": result["e0"]}
@@ -862,13 +899,17 @@ class AthenaStore:
         return x, y
 
     def make_group(self, label, energy, mu, *, parameters=None, data_type="mu", source=None,
-                   background_standard_id=None, project=None, is_difference=None):
+                   background_standard_id=None, project=None, is_difference=None, is_normalized=None):
         x, y = self.raw_arrays(energy, mu)
-        if data_type not in ("mu", "xanes", "norm", "chi"):
+        if data_type not in ("mu", "xanes", "norm", "chi", "xmudat", "detector"):
             fail("Unsupported data type.")
+        if is_normalized is not None and (not isinstance(is_normalized, bool) or
+                (data_type in ("chi", "detector") and is_normalized) or (data_type in ("norm", "xmudat") and not is_normalized)):
+            fail("Supply a boolean normalization flag consistent with the data type.")
         params = AthenaParameters.model_validate(parameters or {})
         g = {"id": uid(), "label": str(label)[:200], "energy": x.tolist(), "mu": y.tolist(),
-             "data_type": data_type, "parameters": params.model_dump(), "marked": True,
+             "data_type": data_type, "is_normalized": data_type in ("norm", "xmudat") if is_normalized is None else is_normalized,
+             "parameters": params.model_dump(), "marked": True,
              "frozen": False, "multiplier": 1.0, "offset": 0.0, "notes": "", "reference_id": None,
              "background_standard_id": background_standard_id,
              "source": source or {}, "result": None, "processing_error": None}
@@ -884,7 +925,9 @@ class AthenaStore:
 
     def process(self, g, project=None):
         standard_id, standard = g.get("background_standard_id"), None
-        if standard_id:
+        # Native XANES keeps the EXAFS recipe and standard selection dormant.
+        # Switching back restores them; it must not consume an old cached chi.
+        if standard_id and g["data_type"] not in ("xanes", "detector"):
             if project is None:
                 fail("Resolve the background standard in its project before processing this group.")
             if standard_id == g["id"]:
@@ -896,7 +939,7 @@ class AthenaStore:
             if _is_difference(g):
                 fail("A difference spectrum cannot use a background-removal standard.")
             standard = {"k": arrays["k"], "chi": arrays["chi"]}
-        if _is_difference(g) and g["data_type"] != "chi":
+        if _is_difference(g) and g["data_type"] not in ("chi", "detector"):
             from .athena_science import ARRAY_NAMES
             x = np.asarray(g["energy"]) + g["parameters"]["energy_shift"]
             y = np.asarray(g["mu"])
@@ -907,11 +950,54 @@ class AthenaStore:
             g["processing_error"] = None
             _ensure_edge_identity(g)
             return
-        g["result"] = process_spectrum(g["energy"], g["mu"], AthenaParameters.model_validate(g["parameters"]),
-                                       data_type=g["data_type"], background_standard=standard)
+        recipe = (AthenaParameters(energy_shift=g["parameters"].get("energy_shift", 0)) if g["data_type"] == "detector"
+                  else AthenaParameters.model_validate(g["parameters"]))
+        normalized = g.get("is_normalized", g["data_type"] in ("norm", "xmudat"))
+        if g["data_type"] in ("xanes", "norm", "xmudat", "detector") or normalized:
+            recipe = recipe.model_copy(update={"fnorm": False})
+        g["result"] = process_spectrum(g["energy"], g["mu"], recipe,
+                                       data_type=g["data_type"], background_standard=standard,
+                                       is_normalized=normalized)
         g["result"]["effective"]["background_standard_id"] = standard_id
         _ensure_edge_identity(g)
         g["processing_error"] = None
+
+    def change_datatype(self, project, groups, options):
+        """Athena Group dialog and Main::quick_change_type, without reimporting."""
+        toggle = options.get("toggle", False)
+        if not isinstance(toggle, bool) or set(options) - {"data_type", "toggle"}:
+            fail("Choose a data type or the current-group type toggle.")
+        destination = options.get("data_type")
+        if toggle:
+            if destination is not None or len(groups) != 1:
+                fail("Toggle the type of exactly one current group, without a destination.")
+            if groups[0]["data_type"] == "detector":
+                fail("The quick toggle applies only to μ(E)/XANES; choose a destination in Change data type for detector counts.")
+        elif destination not in ("mu", "xanes", "norm"):
+            fail("Choose μ(E), XANES, or normalized μ(E).")
+        changed, reasons = [], {}
+        for group in groups:
+            previous = group["data_type"]
+            if previous not in ("mu", "xanes", "norm", "detector") or (toggle and previous == "detector"):
+                reasons[group["id"]] = "χ(k) and FEFF data cannot be changed to an energy record type."
+                continue
+            normalized = group.get("is_normalized", previous == "norm")
+            target = ("norm" if normalized else "mu") if previous == "xanes" else "xanes"
+            if not toggle:
+                target, normalized = destination, destination == "norm"
+            group.update(data_type=target, is_normalized=normalized)
+            changed.append({"group_id": group["id"], "label": group["label"],
+                            "previous_type": previous, "data_type": target, "is_normalized": normalized})
+        if not changed:
+            fail("Select energy groups: χ(k) and FEFF types cannot be changed by this dialog.")
+        # Native type correction includes frozen groups and retains recipes,
+        # raw arrays, reference links and difference identity. Rebuild results
+        # and dependent standards; failed science remains explicitly repairable.
+        self._process_groups(project, [item["group_id"] for item in changed], tolerate_errors=True)
+        errors = {g["id"]: g["processing_error"] for g in project["groups"]
+                  if g["id"] in self.background_dependents(project, [item["group_id"] for item in changed])
+                  and g.get("processing_error")}
+        return {"datatype_results": changed, "skipped_reasons": reasons, "processing_errors": errors}
 
     def make_import_group(self, label, energy, mu, *, data_type="mu", source=None, edge_policy=None):
         """Initialize raw imports; project restore and derived groups bypass this."""
@@ -949,29 +1035,247 @@ class AthenaStore:
             g["result"]["effective"].update(identity)
         return g
 
+    def make_reference_group(self, sample, energy, mu, *, source, same_element):
+        """Demeter Athena IO.pm: independent derivative E0, shared identity,
+        and the rebin.use_atomic=25 eV safeguard for a same-edge reference.
+        The sample's fractional-E0 import policy does not apply to its foil.
+        """
+        from .athena_e0 import atomic_edge, compute_e0
+        source = copy.deepcopy(source)
+        identity = _source_edge_identity(sample["source"]) if same_element else None
+        if identity:
+            source["edge_identity"] = {**identity, "origin": "reference_sample"}
+        selection, parameters = None, None
+        warnings = []
+        try:
+            selection = compute_e0(energy, mu, AthenaParameters(), data_type=sample["data_type"], method="derivative")
+            sample_e0 = (sample.get("result") or {}).get("effective", {}).get("e0")
+            if identity and sample_e0 is not None and abs(sample_e0 - selection["e0"]) > 25:
+                atom = atomic_edge(identity["element"], identity["edge"])
+                # Keep the measured curve inspectable if its tabulated edge
+                # lies outside the scan, just as for other failed recipes.
+                if energy[0] < atom["energy"] < energy[-1]:
+                    previous = selection["e0"]
+                    selection = compute_e0(energy, mu, AthenaParameters(), data_type=sample["data_type"],
+                        method="atomic", element=identity["element"], edge=identity["edge"])
+                    warnings.append(f"Reference derivative E0 ({previous:g} eV) differs from the sample by more than 25 eV; using the {identity['element']} {identity['edge']} tabulated edge ({selection['e0']:g} eV).")
+                else:
+                    warnings.append("The same-element reference edge is outside this scan; kept its measured derivative E0. Check the selected columns or clear Same element.")
+            parameters = {"e0": selection["e0"]}
+        except ValueError as exc:
+            warnings.append(f"Reference E0 could not be initialized: {exc}")
+        source.setdefault("warnings", []).extend(warnings)
+        reference = self.make_group(sample["label"] + " · reference", energy, mu,
+            data_type=sample["data_type"], source=source, parameters=parameters)
+        reference["marked"] = False
+        if selection:
+            reference["source"]["e0_selection"] = {**selection, "group_id": reference["id"],
+                "energy_shift": reference["parameters"]["energy_shift"], "time": now()}
+        if reference["result"]:
+            reference["result"]["warnings"].extend(warnings)
+        return reference
+
     def inspect(self, ident, data, filename):
-        self.load(ident)
-        parsed = parse_upload(data, filename, max_bytes=self.settings.max_upload_bytes,
-                              max_points=self.settings.max_points, max_columns=self.settings.max_columns)
-        upload = uid()
+        project = self.load(ident)
+        from .athena_file_plugins import prepare_file, PreparedCollection
+        from .parsing import _safe_display_name
+        prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
+                                max_points=self.settings.max_points, max_columns=self.settings.max_columns,
+                                enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
+                                read_configuration=self.plugin_configurations.read)
+        display_name = _safe_display_name(filename)
+        if isinstance(prepared, PreparedCollection):
+            # Parse every scan before staging any result. A damaged later
+            # scan must not leave a partial collection available to import.
+            parsed_scans = [parse_upload(scan.data, display_name + '.dat',
+                max_bytes=self.settings.max_upload_bytes, max_points=self.settings.max_points,
+                max_columns=self.settings.max_columns) for scan in prepared.scans]
+            source_upload = uid(); written = [f'upload-{source_upload}.source']; scans = []
+            try:
+                self.storage.write_bytes(ident, written[0], data)
+                for scan, parsed in zip(prepared.scans, parsed_scans, strict=True):
+                    upload = uid()
+                    written.extend(f'upload-{upload}.{ext}' for ext in ('npz', 'converted', 'json'))
+                    scan_name = _safe_display_name(f'{display_name}.scan-{scan.metadata["scan"]["ordinal"]}')
+                    scans.append(self._inspect_table(ident, project, data, scan_name, scan, parsed=parsed,
+                        upload=upload, source_upload=source_upload, source_name=display_name))
+            except BaseException:
+                for name in written:
+                    self.storage.path(ident, name).unlink(missing_ok=True)
+                raise
+            return {'kind': 'scan_list', 'display_name': display_name, 'file_plugin': prepared.metadata, 'scans': scans}
+        return self._inspect_table(ident, project, data, display_name, prepared)
+
+    def _inspect_table(self, ident, project, data, display_name, prepared, *, parsed=None, upload=None,
+                       source_upload=None, source_name=None):
+        if parsed is None:
+            parsed = parse_upload(prepared.data if prepared else data, display_name + '.dat' if prepared else display_name,
+                max_bytes=self.settings.max_upload_bytes, max_points=self.settings.max_points, max_columns=self.settings.max_columns)
+        upload = upload or uid()
         self.storage.write_arrays(ident, f"upload-{upload}.npz", parsed.arrays)
         inspection = parsed.inspection().model_dump()
+        inspection['display_name'] = display_name
+        from .athena_columns import suggest_columns
+        suggestion, column_units = suggest_columns(inspection['columns'], inspection['display_name'])
+        if prepared:
+            ids = [c['column_id'] for c in inspection['columns']]
+            plugin_suggestions = {}
+            if prepared.suggestions is not None:
+                for mode, choice in prepared.suggestions.items():
+                    chosen = dict(choice, energy_column=ids[choice['energy_column']],
+                        numerator=[ids[i] for i in choice['numerator']], denominator=ids[choice['denominator']])
+                    plugin_suggestions[mode] = chosen
+                    column_units[chosen['energy_column']] = chosen['units']
+                if plugin_suggestions:
+                    suggestion = next(iter(plugin_suggestions.values()))
+            elif max(prepared.numerator, prepared.denominator) < len(ids):
+                suggestion = dict(energy_column=ids[0], numerator=[ids[prepared.numerator]],
+                                  denominator=ids[prepared.denominator], mode='transmission', units='eV', data_type='mu')
+                plugin_suggestions['transmission'] = suggestion
+            if prepared.fluorescence:
+                n, d = prepared.fluorescence
+                plugin_suggestions['fluorescence'] = dict(suggestion, numerator=[ids[n]], denominator=ids[d], mode='fluorescence')
+            inspection['plugin_suggestions'] = plugin_suggestions
+            if prepared.suggestions is None:
+                column_units[ids[0]] = 'eV'
+            converted = prepared.data.decode('utf-8')
+            inspection.update(file_plugin=prepared.metadata, converted_preview='\n'.join(converted.splitlines()[:120]),
+                              converted_preview_truncated=len(converted.splitlines()) > 120)
+            self.storage.write_bytes(ident, f'upload-{upload}.converted', prepared.data)
+        if source_upload:
+            inspection.update(source_upload_id=source_upload, source_display_name=source_name)
+        else:
+            self.storage.write_bytes(ident, f'upload-{upload}.source', data)
+        inspection.update(athena_suggestion=suggestion, column_units=column_units)
         snippet = data[:32_000].decode("utf-8-sig", errors="replace")
         inspection.update(source_preview="\n".join(snippet.splitlines()[:120]),
                           source_preview_truncated=len(data) > 32_000 or len(snippet.splitlines()) > 120)
+        if prepared and prepared.metadata.get('binary'):
+            inspection.update(source_preview='\n'.join(f'{i:08x}  ' + data[i:i + 16].hex(' ')
+                                                       for i in range(0, min(len(data), 512), 16)),
+                              source_preview_format='hex', source_preview_truncated=len(data) > 512)
         self.storage.write_json(ident, f"upload-{upload}.json", inspection)
-        return inspection | {"upload_id": upload}
+        return self._remembered_inspection(inspection | {'upload_id': upload}, project)
+
+    def _remembered_inspection(self, inspection, project):
+        try:
+            remembered = AthenaPreferences(self.settings).column_choices(inspection, project)
+            if remembered is not None:
+                inspection['remembered_columns'] = remembered
+        except (ValueError, OSError, KeyError, TypeError):
+            inspection['warnings'] = [*inspection['warnings'], 'Remembered column choices could not be read. Review the suggested columns; saved choices were left unchanged.']
+        return inspection
+
+    def inspected_columns(self, ident, upload_id):
+        project = self.load(ident)
+        self.storage._validate_id(upload_id)
+        try:
+            inspection = self.storage.read_json(ident, f'upload-{upload_id}.json')
+        except FileNotFoundError:
+            fail('These inspected columns are unavailable. Select the original file again.')
+        return self._remembered_inspection(inspection | {'upload_id': upload_id}, project)
+
+    def inspected_file(self, ident, upload_id, variant):
+        self.load(ident)
+        self.storage._validate_id(upload_id)
+        if variant not in ('source', 'converted'):
+            fail('Choose the original or converted source file.')
+        try:
+            metadata = self.storage.read_json(ident, f'upload-{upload_id}.json')
+            source_id = metadata.get('source_upload_id', upload_id) if variant == 'source' else upload_id
+            self.storage._validate_id(source_id)
+            content = self.storage.path(ident, f'upload-{source_id}.{variant}').read_bytes()
+        except FileNotFoundError:
+            fail('This source file is unavailable. Select the original file again.')
+        return content, (metadata.get('source_display_name', metadata['display_name']) if variant == 'source'
+                         else metadata['display_name'] + '.converted.dat')
+
+    def import_standard(self, project, request):
+        choice = request.preprocessing
+        if choice is None or not (choice.copy_parameters or choice.align):
+            return None
+        if request.data_type == 'chi':
+            fail('Import-time parameter copying and alignment require energy data, not chi(k).')
+        standard = self.group(project, choice.standard_id)
+        if standard['data_type'] in ('chi', 'detector') or _is_difference(standard):
+            fail('Choose an absorption spectrum as the preprocessing standard.')
+        if standard.get('processing_error') or not standard.get('result'):
+            fail(f"{standard['label']}: repair the preprocessing standard before importing.")
+        return standard
+
+    def preprocess_import(self, project, sample, standard, choice):
+        """Apply only to new groups; the enclosing import owns the transaction."""
+        if choice is None:
+            return  # Compatibility with saved/older clients.
+        sample['marked'] = choice.mark
+        record = choice.model_dump()
+        sample['source']['import_preprocessing'] = record
+        if standard is None:
+            return
+        record.update(standard_label=standard['label'], standard_version=project['version'])
+        if choice.copy_parameters:
+            patch = {key: value for key, value in standard['parameters'].items() if key != 'energy_shift'}
+            patch['background_standard_id'] = standard.get('background_standard_id')
+            self.parameter_updates(project, {sample['id']: patch})
+            sample['multiplier'], sample['offset'] = standard['multiplier'], standard['offset']
+            if 'edge_identity' in standard['source']:
+                sample['source']['edge_identity'] = copy.deepcopy(standard['source']['edge_identity'])
+                _ensure_edge_identity(sample)
+            record['copied_parameters'] = copy.deepcopy(patch)
+
+    def align_import(self, project, sample, reference, standard, choice, shared_alignment):
+        if choice is not None and choice.align:
+            record = sample['source']['import_preprocessing']
+            from .athena_preprocessing import import_alignment
+            # Native MED imports share the first detector's fitted shift.
+            # Use paired references only when both spectra have one.
+            if shared_alignment is None:
+                family = self.reference_family(project, standard['id'])
+                standard_reference = next((g for g in family if g['id'] != standard['id']), None)
+                use_reference = reference is not None and standard_reference is not None
+                moving, fixed = (reference, standard_reference) if use_reference else (sample, standard)
+                shared_alignment = import_alignment(moving, fixed) | {
+                    'used_references': use_reference, 'moving_id': moving['id'], 'standard_id': fixed['id']}
+            patch = {'energy_shift': shared_alignment['energy_shift']}
+            if choice.copy_parameters:
+                # E0 copied from a calibrated standard is already on the final
+                # energy axis. A tied reference keeps its own edge plus shift.
+                patch['e0'] = sample['parameters']['e0']
+            self.parameter_updates(project, {sample['id']: patch})
+            record['alignment'] = copy.deepcopy(shared_alignment)
+        return shared_alignment
+
+    def rebinned_source(self, source, x, y, plan):
+        if plan is None:
+            return source, x, y
+        source = copy.deepcopy(source)
+        original = {'energy': np.asarray(x).tolist(), 'mu': np.asarray(y).tolist()}
+        for key in ('raw_arrays', 'column_arrays', 'row_order', 'column_order'):
+            if key in source:
+                original[key] = source.pop(key)
+        source['rebin_original'] = original
+        source['raw_arrays'] = {key: (plan.uncertainty(values) if key == 'stddev' else plan.apply(values)).tolist()
+                                for key, values in original.get('raw_arrays', {}).items()}
+        source['rebin'] = copy.deepcopy(plan.details)
+        source.setdefault('warnings', []).extend(plan.details['warnings'])
+        if 'stddev' in source['raw_arrays']:
+            source['rebin']['uncertainty'] = 'independent-input linear propagation, including shared smoothing observations'
+        source = _exchange_source(source, len(plan.energy), self.settings)
+        return source, plan.energy, plan.apply(y)
 
     def import_data(self, ident, request: ImportRequest):
         with self.storage.lock(ident):
             old = self.load(ident)
             self.check(old, request.version)
             p = copy.deepcopy(old)
+            standard = self.import_standard(p, request)
+            shared_alignment = None
             self.storage._validate_id(request.upload_id)
             arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
             metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
             from .athena_columns import map_columns
             mapped = map_columns(arrays, request)
+            prepare_rebin(mapped, request, standard)
             x, order = mapped["x"], mapped["order"]
             nnew = len(mapped["samples"]) * (2 if mapped["reference"] is not None else 1)
             if len(p["groups"]) + nnew > 100:
@@ -981,10 +1285,12 @@ class AthenaStore:
                     fail("Choose columns from the inspected file.")
                 return np.asarray(arrays[key], dtype=float)
             source_base = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version", "edge_policy"}),
-                      "warnings": metadata.get("warnings", []), "columns": metadata["columns"],
+                      "warnings": list(metadata.get("warnings", [])) + mapped["warnings"], "columns": metadata["columns"],
                       "column_arrays": {key: np.asarray(values)[order].tolist() if request.sort else np.asarray(values).tolist()
                                         for key, values in arrays.items()},
                       "column_order": "group", "raw_arrays": {}}
+            if metadata.get('file_plugin'):
+                source_base['file_plugin'] = copy.deepcopy(metadata['file_plugin'])
             # Preserve original units/column IDs. When sorting was requested,
             # all retained columns follow the group row order; row_order maps
             # those rows back to the uploaded table.
@@ -996,66 +1302,179 @@ class AthenaStore:
             for sample in mapped["samples"]:
                 source = copy.deepcopy(source_base)
                 source["mapping"]["numerator"] = sample["columns"]
+                if request.data_type == 'chi':
+                    source['mapping'].update(mode='mu', denominator=None, signal_multiplier=1., invert=False)
                 numerator, denominator = sample["numerator"], mapped["denominator"]
                 y = sample["y"][order]
-                if request.mode == "transmission":
-                    source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(denominator))
-                elif request.mode == "fluorescence":
-                    source["raw_arrays"].update(i0=aligned(denominator), signal=aligned(numerator))
+                if mapped["mode"] == "transmission":
+                    source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(mapped['scale'] * denominator))
+                elif mapped["mode"] == "fluorescence":
+                    source["raw_arrays"].update(i0=aligned(denominator), signal=aligned(mapped['scale'] * numerator))
                 else:
-                    source["raw_arrays"]["signal"] = aligned(numerator)
+                    source["raw_arrays"]["signal"] = aligned(mapped['scale'] * numerator)
                     i0_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() == "i0"]
                     if len(i0_columns) == 1:
                         source["raw_arrays"]["i0"] = aligned(column(i0_columns[0]))
                 stddev_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() in ("stddev", "mu_stddev")]
                 if len(stddev_columns) == 1:
-                    source["raw_arrays"]["stddev"] = aligned(column(stddev_columns[0]))
+                    source["raw_arrays"]["stddev"] = aligned(abs(mapped['scale']) * column(stddev_columns[0]))
                 source = _exchange_source(source, len(x), self.settings)
                 _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
                 label = metadata["display_name"]
-                if request.individual_channels:
-                    label += " · " + names[sample["columns"][0]]
-                g = self.make_import_group(label, x, y, data_type=request.data_type,
-                                          source=source, edge_policy=request.edge_policy)
+                if request.individual_channels and sample["columns"]:
+                    label += " · " + names.get(sample["columns"][0], "Constant 1")
+                group_source, group_x, group_y = self.rebinned_source(source, x, y, sample.get('rebin'))
+                g = self.make_import_group(label, group_x, group_y, data_type=request.data_type,
+                                          source=group_source, edge_policy=request.edge_policy)
                 p["groups"].append(g)
+                self.preprocess_import(p, g, standard, request.preprocessing)
+                reference = None
                 if mapped["reference"] is not None:
                     ref = mapped["reference"]
                     reference_source = copy.deepcopy(source)
                     reference_source["raw_arrays"] = ({"i0": aligned(ref["numerator"]), "signal": aligned(ref["denominator"])}
                         if request.reference_log else {"i0": aligned(ref["denominator"]), "signal": aligned(ref["numerator"])})
-                    reference_source["mapping"].update(numerator=[request.reference_numerator],
+                    reference_source["mapping"].update(numerator=[request.reference_numerator] if request.reference_numerator else [],
                         denominator=request.reference_denominator, reference_numerator=None, reference_denominator=None,
-                        individual_channels=False, data_type="mu", mode="transmission" if request.reference_log else "fluorescence")
-                    reference = self.make_import_group(g["label"] + " · reference", x, ref["y"][order],
-                        source=reference_source, edge_policy=request.edge_policy if request.reference_same_element else None)
-                    reference["marked"] = False
+                        individual_channels=False, signal_multiplier=1., invert=False,
+                        preprocessing=ImportPreprocessing().model_dump() if request.preprocessing is not None else None,
+                        data_type=g["data_type"], mode="transmission" if request.reference_log else "fluorescence")
+                    reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
+                    reference = self.make_reference_group(g, ref_x, ref_y,
+                        source=reference_source, same_element=request.reference_same_element)
                     g["reference_id"] = reference["id"]
                     p["groups"].append(reference)
+                shared_alignment = self.align_import(p, g, reference, standard,
+                                                     request.preprocessing, shared_alignment)
             _exchange_budget(p["groups"], self.settings)
-            return self.save(p, old, f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
+            saved = self.save(p, old, f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
+            try:
+                AthenaPreferences(self.settings).remember_columns(metadata, request, old)
+            except (ValueError, OSError, KeyError, TypeError):
+                # The spectrum has already been accepted. Do not report a
+                # failed import (and invite duplicate imports) for a prefs error.
+                return saved | {'import_preferences_warning': 'Spectra imported, but column choices could not be remembered for the next import.'}
+            return saved
 
     def preview_columns(self, ident, request: ImportRequest):
         from .athena_columns import map_columns, preview_trace
-        self.check(self.load(ident), request.version)
+        project = self.load(ident)
+        self.check(project, request.version)
+        standard = self.import_standard(project, request)
         self.storage._validate_id(request.upload_id)
         arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
         metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
         mapped = map_columns(arrays, request)
+        prepare_rebin(mapped, request, standard)
         x, order = mapped["x"], mapped["order"]
         if not np.isfinite(x).all():
             fail("The selected horizontal axis contains non-finite values after unit conversion.")
-        warnings = list(metadata.get("warnings", []))
-        if np.any(np.diff(x) <= 0):
+        warnings = list(metadata.get("warnings", [])) + mapped["warnings"]
+        if request.preprocessing is not None and request.preprocessing.align:
+            warnings.append('This preview shows the selected columns on the original energy axis. Standard alignment is applied when importing.')
+        if request.rebin is None and np.any(np.diff(x) <= 0):
             warnings.append("The horizontal axis is not strictly increasing. Choose the energy column or sort the rows; duplicate energies must be repaired before import.")
         names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
-        traces = [preview_trace(x, sample["y"][order], label=names[sample["columns"][0]] if request.individual_channels else "Sample",
+        traces = [preview_trace(x, sample["y"][order], label=names.get(sample["columns"][0], 'Constant 1') if request.individual_channels and sample["columns"] else "Sample",
                   role="sample", ident="sample:" + "+".join(sample["columns"])) for sample in mapped["samples"]]
         if mapped["reference"] is not None:
             traces.append(preview_trace(x, mapped["reference"]["y"][order], label="Reference", role="reference", ident="reference"))
+        rebin_results = []
+        if request.rebin is not None:
+            for trace in traces:
+                trace.update(stage='original', label=trace['label'] + ' · original')
+            for i, sample in enumerate(mapped['samples']):
+                label = names.get(sample['columns'][0], 'Constant 1') if request.individual_channels and sample['columns'] else 'Sample'
+                for key, y, role, title in [('rebin', sample['y'][order], 'sample', label),
+                    ('reference_rebin', mapped['reference']['y'][order] if mapped['reference'] else None, 'reference', 'Reference · ' + label)]:
+                    plan = sample.get(key)
+                    if plan is None:
+                        continue
+                    trace = preview_trace(plan.energy, plan.apply(y), label=title + ' · rebinned', role=role, ident=f'{key}:{i}')
+                    traces.append(trace | {'stage': 'rebinned'})
+                    rebin_results.append({'id': trace['id'], 'label': title, 'role': role, **plan.details})
+                    warnings.extend(plan.details['warnings'])
         self.check(self.load(ident), request.version)
-        return {"filename": metadata["display_name"], "points": len(x), "traces": traces, "warnings": warnings,
+        return {"filename": metadata["display_name"], "points": len(x), "traces": traces, "warnings": list(dict.fromkeys(warnings)),
+                **({'rebin_results': rebin_results} if request.rebin is not None else {}),
                 "x_label": "k (Å⁻¹)" if request.data_type == "chi" else "Energy (eV)",
                 "y_label": "χ(k)" if request.data_type == "chi" else "μ(E)"}
+
+    def _rebin_results(self, project, request: Command):
+        """Build derived groups without persistence, using accepted recipes."""
+        if request.action != 'rebin' or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Choose rebin and distinct source groups.')
+        choice = PostRebin.model_validate(request.options)
+        selected = {gid: self.group(project, gid) for gid in request.group_ids}
+        results, skipped = [], {}
+        # Native derived groups follow their originals in list order.
+        for parent in project['groups']:
+            if parent['id'] not in selected:
+                continue
+            reason = rebin_unavailable(parent)
+            if reason:
+                if not choice.skip_ineligible:
+                    fail(f"{parent['label']}: {reason}")
+                skipped[parent['id']] = reason
+                continue
+            x = np.asarray(parent['energy']) + parent['parameters']['energy_shift']
+            e0 = choice.e0 or parent['parameters']['e0'] or (parent.get('result') or {}).get('effective', {}).get('e0')
+            if e0 is None:
+                fail(f"{parent['label']}: set a valid edge energy before rebinning.")
+            plan = RebinPlan(x, choice, e0, 'manual' if choice.e0 is not None else 'saved-group-e0')
+            source = _derived_source(parent, 'rebin', options=choice.model_dump(),
+                parent_energy_shift=parent['parameters']['energy_shift'], parent_parameters=copy.deepcopy(parent['parameters']))
+            for key in ('filename', 'columns', 'column_arrays', 'column_order', 'row_order', 'raw_arrays'):
+                if key in parent['source']:
+                    source[key] = copy.deepcopy(parent['source'][key])
+            # Calibrated energies are materialized once. The pinned template
+            # mixes shifted grid energies with unshifted interpolation inputs;
+            # preserve the accepted calibration instead of duplicating that bug.
+            source, energy, mu = self.rebinned_source(source, x, parent['mu'], plan)
+            params = dict(parent['parameters'], energy_shift=0, e0=None)
+            if _is_difference(parent):
+                params['e0'] = e0  # A signed difference has no new absorption edge.
+            derived = self.make_group(parent['label'] + ' rebinned', energy, mu,
+                parameters=params, data_type=parent['data_type'], source=source,
+                background_standard_id=parent.get('background_standard_id'), project=project,
+                is_difference=_is_difference(parent), is_normalized=parent.get('is_normalized'))
+            for key in ('notes', 'multiplier', 'offset'):
+                derived[key] = copy.deepcopy(parent[key])
+            # Explicit web list state. Native InsertData starts unchecked, but
+            # AddData inherits the cloned marked flag; see the parity reference.
+            derived['marked'] = False
+            results.append((parent, derived))
+        if not results:
+            fail('No eligible energy groups are selected for rebinning.')
+        return choice, results, skipped
+
+    def preview_rebin(self, ident, request: Command):
+        from .athena_columns import preview_trace
+        project = self.load(ident)
+        self.check(project, request.version)
+        choice, prepared, skipped = self._rebin_results(project, request)
+        results = []
+        for parent, child in prepared:
+            traces, errors = [], []
+            for role, group in [('original', parent), ('rebinned', child)]:
+                if choice.plot_space == 'E':
+                    x = np.asarray(group['energy']) + group['parameters']['energy_shift']
+                    y = group['mu']
+                else:
+                    arrays = (group.get('result') or {}).get('arrays', {})
+                    x, y = arrays.get('k', []), arrays.get('weighted_chi', [])
+                    if group.get('processing_error') or not len(x) or len(x) != len(y):
+                        errors.append(f"{group['label']}: {group.get('processing_error') or 'No EXAFS data for a k-space preview.'}")
+                        continue
+                traces.append(preview_trace(np.asarray(x), np.asarray(y), label=parent['label'] + ' · ' + role,
+                    role=role, ident=parent['id'] + ':' + role))
+            results.append({'source_group_id': parent['id'], 'label': parent['label'],
+                'details': child['source']['rebin'], 'traces': traces, 'errors': errors,
+                'processing_error': child['processing_error'], 'parameters': child['parameters'],
+                'kweight': parent['parameters']['kweight']})
+        self.check(self.load(ident), request.version)
+        return {'version': project['version'], 'options': choice.model_dump(), 'results': results,
+                'skipped_reasons': skipped}
 
     def command(self, ident, request: Command):
         with self.storage.lock(ident):
@@ -1102,9 +1521,22 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("metadata", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
+                if action not in ("change_datatype", "metadata", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "rebin", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
-                if action == "selection":
+                if action == 'rebin':
+                    choice, prepared, reasons = self._rebin_results(p, request)
+                    created = {parent['id']: child for parent, child in prepared}
+                    p['groups'] = [item for parent in p['groups'] for item in
+                                   ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
+                    _exchange_budget(p['groups'], self.settings)
+                    skipped = list(reasons)
+                    operation_details = {'skipped_reasons': reasons, 'rebin_results': [
+                        {'source_group_id': parent['id'], 'group_id': child['id'], 'label': child['label']}
+                        for parent, child in prepared]}
+                elif action == "change_datatype":
+                    operation_details = self.change_datatype(p, groups, options)
+                    skipped = list(operation_details["skipped_reasons"])
+                elif action == "selection":
                     field, mode = options.get("field", "marked"), options.get("mode", "invert")
                     if field not in ("marked", "frozen") or mode not in ("all", "none", "invert"):
                         fail("Choose marked or frozen groups and all, none, or invert.")
@@ -1224,6 +1656,8 @@ class AthenaStore:
                             g.update(result=None, processing_error="A background standard was removed. Apply parameters to recalculate this group and its dependents.")
                 elif action in ("calibrate", "align"):
                     reference = self.group(p, options.get("reference_id")) if action == "align" else None
+                    if reference and reference["data_type"] == "detector":
+                        fail("Choose an absorption spectrum as the alignment reference, not detector counts.")
                     fixed = {g["id"] for g in self.reference_family(p, reference["id"])} if reference else set()
                     updated_families = set()
                     for g in groups:
@@ -1236,12 +1670,16 @@ class AthenaStore:
                             continue
                         if g["data_type"] == "chi":
                             fail("Energy calibration and alignment need energy data.")
+                        if g["data_type"] == "detector" and (action != "calibrate" or options.get("observed") is None):
+                            fail("Detector counts have no absorption edge; provide an observed calibration energy or an explicit energy shift.")
                         if action == "calibrate":
                             shift = calibrate_shift(g["energy"], g["mu"], float(options["target"]), options.get("observed"))
                             e0 = float(options["target"])
                         else:
                             own = self.group(p, g["reference_id"]) if options.get("use_reference") and g["reference_id"] else g
                             ref = self.group(p, reference["reference_id"]) if options.get("use_reference") and reference["reference_id"] else reference
+                            if own["data_type"] == "detector" or ref["data_type"] == "detector":
+                                fail("Tied detector counts cannot supply an absorption alignment reference.")
                             ref_x = np.asarray(ref["energy"]) + ref["parameters"]["energy_shift"]
                             shift = align_shift(own["energy"], own["mu"], ref_x, ref["mu"], options.get("xmin"), options.get("xmax"))
                             e0 = reference["result"]["effective"]["e0"]
@@ -1275,6 +1713,9 @@ class AthenaStore:
                     array = options.get("array") if action != "difference" else None
                     if array not in (None, "mu", "norm", "chi"):
                         fail("Choose raw mu, normalized mu, or chi for the combination.")
+                    if any(g["data_type"] == "detector" for g in groups) and (
+                            array is not None or action == "difference" or any(g["data_type"] != "detector" for g in groups)):
+                        fail("Combine detector counts only with other detector groups using Original data; correct the type before absorption-spectrum operations.")
                     if array is None and len({g["data_type"] for g in groups}) != 1:
                         fail("Combine groups of the same data type.")
                     if array == "mu" and any(g["data_type"] == "chi" for g in groups):
@@ -1328,7 +1769,6 @@ class AthenaStore:
                     allowed_options = {
                         "smooth": ("window", "order"), "deglitch": ("xmin", "xmax", "indices", "points"),
                         "truncate": ("xmin", "xmax"),
-                        "rebin": ("e0", "pre1", "pre2", "pre_step", "xanes_step", "exafs1", "exafs2", "exafs_kstep", "method"),
                         "convolve": ("form", "width"),
                         "deconvolve": ("form", "esigma", "width", "eshift", "smooth", "sgwindow", "sgorder"),
                         "self_absorption": ("formula", "element", "edge", "line", "angle_in", "angle_out", "e0", "pre1", "pre2", "norm1", "norm2", "nnorm"),
@@ -1342,6 +1782,8 @@ class AthenaStore:
                         x = np.asarray(g["energy"]) + (0 if action == "dispersive" else g["parameters"]["energy_shift"])
                         if g["data_type"] == "chi" and action not in ("smooth", "deglitch", "truncate"):
                             fail("This operation requires energy-valued data.")
+                        if g["data_type"] == "detector" and action not in ("smooth", "deglitch", "truncate", "convolve", "dispersive"):
+                            fail("This operation requires an absorption spectrum; correct the detector data type first.")
                         y = g["mu"]
                         if action == "deconvolve":
                             if not g["result"] or not g["result"]["arrays"]["norm"]:
@@ -1365,13 +1807,14 @@ class AthenaStore:
                         derived = self.make_group(g["label"] + " · " + action, transformed["energy"], transformed["mu"],
                             parameters=params, data_type=dtype, source=_derived_source(g, action, options=operation_options, details=transformed["details"]),
                             background_standard_id=g.get("background_standard_id") if dtype in ("mu", "norm") else None,
-                            project=p, is_difference=_is_difference(g))
+                            project=p, is_difference=_is_difference(g),
+                            is_normalized=g.get("is_normalized") if dtype == g["data_type"] else None)
                         if action == "deconvolve":
                             derived["source"]["energy_interval"] = [float(x[0]), float(x[-1])]
                         p["groups"].append(derived)
             message = f"{action.replace('_', ' ').capitalize()} · {len(groups)} selected groups" if groups else action.capitalize()
             if skipped:
-                message += (f" · skipped {len(skipped)} groups" if action == "set_e0" else
+                message += (f" · skipped {len(skipped)} groups" if action in ('set_e0', 'rebin', 'change_datatype') else
                             f" · skipped {len(skipped)} frozen groups or reference pairs")
             p["last_operation"] = {"action": action, "skipped_group_ids": skipped, **operation_details}
             return self.save(p, old, message)
@@ -1570,15 +2013,19 @@ class AthenaStore:
             # Native scalar/list metadata survives independent readers. Complex
             # properties and fits remain inert in the web sidecar.
             args = {key: value for key, value in args.items() if not isinstance(value, dict)}
-            args.update({"label": g["label"], "is_xmu": int(g["data_type"] == "mu"),
+            args.update({"label": g["label"], "datatype": "xmu" if g["data_type"] in ("mu", "norm") else g["data_type"],
+                    "is_xmu": int(g["data_type"] in ("mu", "norm", "xmudat")),
+                    "is_xmudat": int(g["data_type"] == "xmudat"),
                     "is_xanes": int(g["data_type"] == "xanes"),
-                    "is_nor": int(g["data_type"] == "norm" or (_is_difference(g) and g["data_type"] != "chi")),
+                    "is_nor": int(g.get("is_normalized", g["data_type"] in ("norm", "xmudat")) or (_is_difference(g) and g["data_type"] != "chi")),
                     "is_chi": int(g["data_type"] == "chi"), "marked": int(g["marked"]), "frozen": int(g["frozen"]),
                     "plot_scale": g["multiplier"], "plot_yoffset": g["offset"], "bkg_flatten": int(params["flatten"]),
                     "is_diff": int(_is_difference(g)),
                     "annotation": g["notes"], "referencegroup": g["reference_id"] or "",
                     "bkg_stan": g.get("background_standard_id") or ""})
             identity = _source_edge_identity(source)
+            if source.get('rebin') or source.get('operation') == 'rebin':
+                args['rebinned'] = 1
             if identity:
                 args.update(bkg_z=identity["element"], fft_edge=identity["edge"])
             fraction = source.get("e0_fraction")
@@ -1624,6 +2071,8 @@ class AthenaStore:
         for meta, g in zip(sidecar["groups"], p["groups"]):
             meta["parameters"] = _exchange_recipe(g["parameters"], g.get("result"))
             meta["is_difference"] = _is_difference(g)
+            meta["data_type"] = g["data_type"]
+            meta["is_normalized"] = g.get("is_normalized", g["data_type"] in ("norm", "xmudat"))
         lines.insert(2, "# Athena-Web " + json.dumps(sidecar, ensure_ascii=True, allow_nan=False))
         payload = "\n".join(lines).encode()
         if len(payload) > self.settings.max_upload_bytes:
@@ -1698,6 +2147,9 @@ class AthenaStore:
                 source = _exchange_source(record.get("source", {}), len(x), self.settings)
                 params = _exchange_recipe(record["parameters"], record.get("result"))
                 label, dtype = record["label"], record["data_type"]
+                normalized = record.get("is_normalized", dtype in ("norm", "xmudat"))
+                if not isinstance(normalized, bool):
+                    fail("The normalized input flag must be boolean.")
                 is_difference = _is_difference(record)
                 notes, reference = str(record.get("notes", "")), record.get("reference_id")
                 standard = record.get("background_standard_id")
@@ -1714,12 +2166,19 @@ class AthenaStore:
                     params = _native_parameters(args, larch_writer=larch_writer)
                     if larch_writer:
                         source["native"]["producer"] = "larch"
-                dtype = next((kind for kind, key in (("chi", "is_chi"), ("norm", "is_nor"), ("xanes", "is_xanes"))
-                              if _native_flag(args.get(key))), {"chi": "chi", "xanes": "xanes"}.get(args.get("datatype"), "mu"))
+                dtype = next((kind for kind, key in (("xmudat", "is_xmudat"), ("chi", "is_chi"), ("xanes", "is_xanes"), ("norm", "is_nor"))
+                              if _native_flag(args.get(key))), {"chi": "chi", "xanes": "xanes", "xmudat": "xmudat"}.get(args.get("datatype"), "mu"))
+                if args.get('datatype') == 'xmudat':
+                    # is_nor is also true for FEFF data; it must not erase the
+                    # specific type in native records that use datatype alone.
+                    dtype = 'xmudat'
+                elif args.get('datatype') in ('xanes', 'detector'):
+                    dtype = args['datatype']
+                normalized = dtype not in ("chi", "detector") and (_native_flag(args.get("is_nor")) or dtype in ("norm", "xmudat"))
                 is_difference = _native_flag(args.get("is_diff"))
                 if "is_difference" in meta and _is_difference(meta) != is_difference:
                     fail("Native and web-sidecar difference-spectrum flags disagree.")
-                if is_difference:
+                if is_difference and dtype != "detector":
                     # is_nor is independent of the native xmu/xanes type. A
                     # signed XANES difference must retain both flags on exchange.
                     if _native_flag(args.get("is_xanes")):
@@ -1727,6 +2186,19 @@ class AthenaStore:
                     elif _native_flag(args.get("is_xmu")):
                         dtype = "mu"
                     source.setdefault("operation", "difference")
+                if "data_type" in meta:
+                    # Native xmu/is_nor plus is_diff cannot distinguish the
+                    # web's mu/norm difference categories. The sidecar retains
+                    # that distinction, but must not reinterpret a native axis.
+                    native_family = lambda kind: "xmu" if kind in ("mu", "norm") else kind
+                    if native_family(meta["data_type"]) != native_family(dtype):
+                        fail("Native and web-sidecar data types disagree.")
+                    dtype = meta["data_type"]
+                if "is_normalized" in meta:
+                    flag = meta["is_normalized"]
+                    if not isinstance(flag, bool) or (flag != normalized and not is_difference):
+                        fail("Native and web-sidecar normalized input flags disagree.")
+                    normalized = flag
                 label = args.get("label", old_id)
                 notes = str(meta.get("notes", args.get("annotation", "")))
                 reference = meta.get("reference_id", args.get("referencegroup", args.get("reference")))
@@ -1738,8 +2210,10 @@ class AthenaStore:
                 multiplier, offset = args.get("plot_scale", 1), args.get("plot_yoffset", 0)
                 if "parameters" not in meta:
                     _native_processing_limits(params, x, dtype, source)
-            if dtype not in ("mu", "norm", "xanes", "chi"):
+            if dtype not in ("mu", "norm", "xanes", "chi", "xmudat", "detector"):
                 fail("Unsupported data type in project.")
+            if (dtype in ("chi", "detector") and normalized) or (dtype in ("norm", "xmudat") and not normalized):
+                fail("The normalized input flag disagrees with the data type.")
             if reference not in (None, "", 0, "0"):
                 if not isinstance(reference, (str, int)):
                     fail("Project reference IDs must be strings or integer native IDs.")
@@ -1762,7 +2236,8 @@ class AthenaStore:
             except ValidationError as exc:
                 if (web or "parameters" in meta) and not source.get("native"):
                     raise
-                recipe_error = "Native processing settings need repair: " + str(exc)
+                recipe_error = ("Dormant detector settings need repair before absorption processing: " if dtype == "detector" else
+                                "Native processing settings need repair: ") + str(exc)
                 import_warnings.append(f"{label}: {recipe_error}")
             messages = source.get("warnings", [])
             if not isinstance(messages, list) or not all(isinstance(message, str) for message in messages):
@@ -1773,7 +2248,7 @@ class AthenaStore:
                 fail("Invalid plot values in project.")
             provisional.append({"old_id": old_id, "energy": x, "mu": y, "source": source,
                                 "parameters": params, "label": label, "data_type": dtype,
-                                "is_difference": is_difference,
+                                "is_difference": is_difference, "is_normalized": normalized,
                                 "notes": notes, "reference_id": reference, "marked": marked,
                                 "background_standard_id": standard,
                                 "frozen": frozen, "multiplier": multiplier, "offset": offset,
@@ -1822,7 +2297,7 @@ class AthenaStore:
         return {"id": ident or uid(), "label": str(record["label"])[:200],
                 "energy": record["energy"], "mu": record["mu"], "parameters": params,
                 "data_type": record["data_type"], "source": record["source"],
-                "is_difference": record["is_difference"],
+                "is_difference": record["is_difference"], "is_normalized": record["is_normalized"],
                 "notes": record["notes"][:20_000], "result": None, "processing_error": record["recipe_error"],
                 **{key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id", "background_standard_id")}}
 
@@ -1989,6 +2464,7 @@ class AthenaStore:
 def build_athena_router(settings: Settings):
     router = APIRouter(prefix="/api/athena")
     store = AthenaStore(settings)
+    preferences = AthenaPreferences(settings)
 
     def guarded(call):
         try:
@@ -2004,6 +2480,40 @@ def build_athena_router(settings: Settings):
             fail("; ".join(messages))
         except (ValueError, KeyError, TypeError, IndexError, OSError, SyntaxError, RecursionError) as exc:
             fail(str(exc) or "The requested operation could not be completed.")
+
+    @router.get('/preferences/rebin')
+    def rebin_defaults():
+        return guarded(preferences.read)
+
+    @router.put('/preferences/rebin')
+    def save_rebin_defaults(request: RebinDefaults):
+        return guarded(lambda: preferences.save(request))
+
+    @router.get('/preferences/plugins')
+    def file_plugins():
+        return guarded(lambda: registry_view(preferences.read_plugins()))
+
+    @router.get('/preferences/plugins/{reader}/configuration')
+    def file_plugin_configuration(reader: str):
+        return guarded(lambda: store.plugin_configurations.read(reader))
+
+    @router.put('/preferences/plugins/{reader}/configuration')
+    def apply_file_plugin_configuration(reader: str, request: ConfigurationRequest):
+        return guarded(lambda: store.plugin_configurations.apply(reader, request))
+
+    @router.put('/preferences/plugins')
+    def save_file_plugins(request: PluginRegistry):
+        return guarded(lambda: registry_view(preferences.save_plugins(request)))
+
+    @router.get('/preferences/plugins/export')
+    def export_file_plugins():
+        return Response(guarded(lambda: encode_registry(preferences.read_plugins())), media_type='application/x-yaml',
+                        headers={'Content-Disposition': 'attachment; filename="athena.plugin_registry"'})
+
+    @router.post('/preferences/plugins/import')
+    async def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
+        data = await _read_bounded_upload(file, MAX_REGISTRY_BYTES)
+        return guarded(lambda: registry_view(preferences.save_plugins(PluginRegistry(version=version, enabled=decode_registry(data)))))
 
     @router.get("/projects")
     def list_projects():
@@ -2031,6 +2541,16 @@ def build_athena_router(settings: Settings):
     def import_data(ident: str, request: ImportRequest):
         return guarded(lambda: store.import_data(ident, request))
 
+    @router.get('/projects/{ident}/uploads/{upload_id}/inspection')
+    def inspected_columns(ident: str, upload_id: str):
+        return guarded(lambda: store.inspected_columns(ident, upload_id))
+
+    @router.get('/projects/{ident}/uploads/{upload_id}/file')
+    def inspected_file(ident: str, upload_id: str, variant: Literal['source', 'converted'] = 'source'):
+        content, name = guarded(lambda: store.inspected_file(ident, upload_id, variant))
+        return Response(content, media_type='application/octet-stream',
+                        headers={'Content-Disposition': f'attachment; filename="{name}"'})
+
     @router.post("/projects/{ident}/preview-columns")
     def preview_columns(ident: str, request: ImportRequest):
         return guarded(lambda: store.preview_columns(ident, request))
@@ -2046,6 +2566,10 @@ def build_athena_router(settings: Settings):
     @router.post("/projects/{ident}/difference/preview")
     def preview_difference(ident: str, request: Command):
         return guarded(lambda: store.preview_difference(ident, request))
+
+    @router.post('/projects/{ident}/rebin/preview')
+    def preview_rebin(ident: str, request: Command):
+        return guarded(lambda: store.preview_rebin(ident, request))
 
     @router.post("/projects/{ident}/restore")
     async def restore(ident: str, version: int, file: UploadFile = File(...)):
@@ -2103,7 +2627,7 @@ def build_athena_router(settings: Settings):
                         columns.append(label)
         output = io.StringIO()
         writer = csv.writer(output)
-        writer.writerow(columns)
+        writer.writerow(["detector_signal" if key == "mu" and g["data_type"] == "detector" else key for key in columns])
         writer.writerows(zip(*(a[key] for key in columns), strict=True))
         return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="athena-{space}.csv"'})
 

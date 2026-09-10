@@ -1,0 +1,214 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "files": [
+    {
+      "path": "t/filetypes/srs9.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/srs9.dat",
+      "sha256": "a06a60f34f707d8b32318a84c6e7d6c7e4466f1ff8e520eefb4734d283102dc6",
+      "git_blob_sha1": "7c1213b1314e472b71c6e7fd00eff21bbd4f8280",
+      "bytes": 82426,
+      "file": "demeter-srs9.dat"
+    },
+    {
+      "path": "t/filetypes/srs32.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/srs32.dat",
+      "sha256": "6b97363d46a6ad3ae00a7a4ab6e9489731a8485ec95b200a95721a84f1fc0bd2",
+      "git_blob_sha1": "c6d815f8d151d068443ff402ef738b446e2189a4",
+      "bytes": 189102,
+      "file": "demeter-srs32.dat"
+    },
+    {
+      "path": "t/filetypes/srsc.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/srsc.dat",
+      "sha256": "44fb11de6e440abcb2c210dc3e97b9bc1de2bc5d04e6886a384ae2b064c9d890",
+      "git_blob_sha1": "8ce711b583bfd20c12d9444e6659ce9fd0fb7c88",
+      "bytes": 19508,
+      "file": "demeter-srsc.dat"
+    },
+    {
+      "path": "t/filetypes/dubble.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/dubble.dat",
+      "sha256": "01d63df3015ef54161e7a2f7292d0c8a921ae46b7317a910814bcb770ba5d17d",
+      "git_blob_sha1": "0538373b2c21ece47a40c130fb9f6ef57c42551d",
+      "bytes": 78286,
+      "file": "demeter-dubble.dat"
+    },
+    {
+      "path": "t/filetypes/pfbl12c.dat",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/pfbl12c.dat",
+      "sha256": "66c9ec11cf82958a0b65a9587439f7a86fafbbac580e8298d0e6e6fd7bfd0b39",
+      "git_blob_sha1": "07681df2d472637458a1ce199e8f3c40dca74f5d",
+      "bytes": 42751,
+      "file": "demeter-pfbl12c.dat"
+    }
+  ],
+  "references": [
+    {
+      "reader": "SRS",
+      "sample": "srs9",
+      "file": "srs9-native-columns.json.gz",
+      "sha256": "35267ceae1dc31b09afdc9480db5b9b08e7c50d9022cf23890b19b4f65d627c1",
+      "shape": [
+        397,
+        15
+      ],
+      "harness_sha256": "f6bb0271538f41c927861df6c58a49137f4181a5bf2e18ace8e9705c064a7f35",
+      "converted_sha256": "0924cfa8d49dbaefe3104f432689e1e57f4d1125d1b256da685e5d92f2c81a56",
+      "native": {
+        "transmission": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$3",
+          "numerator": "$7+$8+$9"
+        },
+        "recognized": true,
+        "attrs": {
+          "is_med": 3,
+          "nelements": 9,
+          "xaxis": "encoder",
+          "is_dubble": 0
+        },
+        "fluorescence": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$3",
+          "numerator": "$7+$8+$9"
+        }
+      }
+    },
+    {
+      "reader": "SRS",
+      "sample": "srs32",
+      "file": "srs32-native-columns.json.gz",
+      "sha256": "4f50619dd973a0821d18292ce0f83107b90d3275d9db7fb9a496fcdc0ceba9c1",
+      "shape": [
+        353,
+        38
+      ],
+      "harness_sha256": "f6bb0271538f41c927861df6c58a49137f4181a5bf2e18ace8e9705c064a7f35",
+      "converted_sha256": "c63a378993f31125dc2a602c39eef1cfc0eb40c2a75a379ba96297ef7a3d1135",
+      "native": {
+        "transmission": {
+          "numerator": "$7+$9+$10+$11+$12+$13+$14+$15+$16+$17+$18+$19+$24+$25+$30+$31+$32+$33",
+          "ln": 0,
+          "energy": "$1",
+          "denominator": "$3"
+        },
+        "fluorescence": {
+          "denominator": "$3",
+          "energy": "$1",
+          "ln": 0,
+          "numerator": "$7+$9+$10+$11+$12+$13+$14+$15+$16+$17+$18+$19+$24+$25+$30+$31+$32+$33"
+        },
+        "recognized": true,
+        "attrs": {
+          "nelements": 32,
+          "xaxis": "encoder",
+          "is_dubble": 0,
+          "is_med": 8
+        }
+      }
+    },
+    {
+      "reader": "DUBBLE",
+      "sample": "dubble",
+      "file": "dubble-native-columns.json.gz",
+      "sha256": "0c3eae05150ca85aab967c39c179a3ef8149a4c9b8fee955ed186e773b67f8de",
+      "shape": [
+        377,
+        15
+      ],
+      "harness_sha256": "adc493db0a94103dff79866919ef97232db2a28672fb65bc6fa8387e6874ad10",
+      "converted_sha256": "65d85a35028d5c8426ffc32452a7ae7292ed5e403c2088d650bd8995c2744d1f",
+      "native": {
+        "recognized": true,
+        "attrs": {
+          "nelements": 0,
+          "is_med": 3,
+          "is_dubble": 0,
+          "xaxis": "encoder"
+        },
+        "fluorescence": {
+          "energy": "$1",
+          "numerator": "$8+$9+$10+$11+$12+$13+$14+$15",
+          "ln": 0,
+          "denominator": "$3"
+        },
+        "transmission": {
+          "denominator": "$3",
+          "numerator": "$8+$9+$10+$11+$12+$13+$14+$15",
+          "ln": 0,
+          "energy": "$1"
+        }
+      }
+    },
+    {
+      "reader": "PFBL12C",
+      "sample": "pfbl12c",
+      "file": "pfbl12c-native-columns.json.gz",
+      "sha256": "8aafbbfd0b4f325f2381b560acc684edaba691130d8c68461f11173c4f88e2c8",
+      "shape": [
+        818,
+        5
+      ],
+      "harness_sha256": "2b145b8ae61a182d592ef2c1cfebb3f69068bff7ccf92dba57ca726427cd5819",
+      "converted_sha256": "928a35b72d56b4f93a811f24db5eb9b3061e6b244a2e1f0eafbf0addc4f17a6b",
+      "native": {
+        "fluorescence": {},
+        "attrs": {
+          "is_med": 0,
+          "is_dubble": 0,
+          "xaxis": "encoder",
+          "nelements": 0
+        },
+        "transmission": {
+          "energy": "$2",
+          "denominator": "$5",
+          "ln": 1,
+          "numerator": "$4"
+        },
+        "recognized": 1
+      }
+    }
+  ],
+  "srsc_native_failure": {
+    "exit_code": 25,
+    "error": "Illegal division by zero on the first indented C comment after &END.",
+    "harness_sha256": "f6bb0271538f41c927861df6c58a49137f4181a5bf2e18ace8e9705c064a7f35",
+    "reference": "Source-declared ENERGY/TIME columns and independent raw row extraction; no native converted array exists."
+  },
+  "dubble_srs_fallback": {
+    "native": {
+      "fluorescence": {
+        "numerator": "$8+$9+$10+$11+$12+$13+$15",
+        "energy": "$1",
+        "denominator": "$3",
+        "ln": 0
+      },
+      "transmission": {
+        "energy": "$1",
+        "numerator": "$8+$9+$10+$11+$12+$13+$15",
+        "denominator": "$3",
+        "ln": 0
+      },
+      "recognized": true,
+      "attrs": {
+        "xaxis": "encoder",
+        "nelements": 9,
+        "is_med": 3,
+        "is_dubble": 1
+      }
+    },
+    "converted_sha256": "06ee0ba1ba564e4a6adb2f4c0fc56f8ab0ad62660bee2dfd23137fd8bdba1c09"
+  },
+  "pf_missing_spacing": {
+    "method": "Constructed header substitution removes D=  3.13551 A; unchanged native PFBL12C fix uses default 2D = 1 angstrom.",
+    "file": "pfbl12c-default-spacing-native.json.gz",
+    "sha256": "1b1c8d30f90cf49d2e7a61641a0b88bfd9be24b417d5fc8db01ce90c6b1320f3",
+    "converted_sha256": "02ff9917770bf2b658e128c9b7d7f33af3e4664b8e2d5fb934940d357c775893",
+    "shape": [
+      818,
+      2
+    ]
+  }
+}
