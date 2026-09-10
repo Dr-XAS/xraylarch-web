@@ -36,6 +36,61 @@ Open [http://localhost:3004](http://localhost:3004) using the local commands
 below, then import spectra or load the measured copper foil example. The
 earlier single-spectrum interface is at `/classic`.
 
+The Athena import dialog shows a live plot while selecting columns. It also
+recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`
+while preserving the supplied normalization. Detector choices and previewed
+signals can be reviewed before import; successful import choices are remembered
+for subsequent matching files.
+
+Use **Group → Change data type** to correct current, marked, or all energy
+groups after import. The type button next to Freeze also supports Athena's
+Ctrl+Alt-click μ(E)/XANES toggle, preserving the normalized-input flag. Legacy
+project records explicitly typed as detector signals display their counts
+without normalization or EXAFS processing.
+
+Athena import also recognizes native NSLS X10C, Lytle encoder, SSRL ASCII,
+SSRL binary, SSRL MicroEXAFS and SPEC zapline mono files. It converts them before column selection
+and offers the reader's transmission/fluorescence channel suggestions. The
+live preview shows the selected signal; original and converted files can both
+be downloaded. For MicroEXAFS without a transmission detector, use the
+fluorescence suggestion and select additional SCA columns to sum channels.
+
+For multi-scan SPEC files, choose the scans and preview each before reviewing
+the detector columns. Selected scans import in file order and can reuse a
+mapping when their columns match. Check the energy axis and signal polarity
+in the preview; the official SNBL sample needs **Invert signal** with its
+Ion1/Ion2 suggestion. See the [SPEC contract](docs/athena-spec-reference.md)
+for the source/sample differences and tested import flow.
+
+**SRS**, **DUBBLE** and **PFBL12C** readers handle multi-line detector records
+and monochromator angle conversion. Their converted columns are available in
+the same live preview. Photon Factory files distinguish requested and attained
+energy; SRS files explicitly labelled ENERGY retain their supplied axis.
+See the [angle-reader contract](docs/athena-angle-readers-reference.md) for
+native channel defaults, geometry fallbacks and measured verification.
+
+**CMC**, **HXMA** and **LNLS** handle dark-current correction, named CLS detector
+columns and date/time-prefixed measurements. Their converted values and native
+channel suggestions appear in the same live preview. For the official CMC
+sample, the transmission denominator is zero: choose **Use fluorescence
+columns** and **Data type → XANES · short energy range**. See the
+[scalar-reader contract](docs/athena-scalar-readers-reference.md) for examples,
+native numerical comparisons and retained source metadata.
+
+**X15B** binary files and **X23A2MED** Vortex detector files have working
+**Configure** forms in the plugin registry. Apply changes the current server
+session; Apply and Save also persists the reader settings. After editing
+source columns, deadtimes or integration time, return to import and choose
+**Reinspect selected file** to update the columns and live preview. The
+[configured-reader contract](docs/athena-configured-readers-reference.md)
+records native defaults, official examples and numerical comparisons.
+
+Enable these readers in **File → Plugin registry…** before importing; Athena's
+initial registry leaves plugins unchecked. Switches persist across sessions.
+The registry provides documentation and imports/exports native
+`athena.plugin_registry` settings. **File plugins…** in the import panel lets
+you enable a reader and retry the selected file.
+
 See [Athena research and tutorials](docs/athena-research.md),
 [implementation and validation](docs/athena-verification.md), and the
 [remaining full-parity work](docs/athena-parity.md). This branch is under active
