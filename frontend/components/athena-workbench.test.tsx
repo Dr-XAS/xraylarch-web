@@ -2896,3 +2896,66 @@ it('stops raw batch reuse at a native project and forwards only the unimported t
   expect(importCalls()).toHaveLength(1)
   expect(props.disabled).toBe(false)
 })
+
+describe('Athena ZIP queue', () => {
+  const archive = { kind: 'archive_list', upload_id: 'zip-upload', display_name: 'source.zip',
+    file_plugin: { id: 'Zip', expanded_bytes: 30, directory_count: 0 },
+    members: [{ index: 0, name: 'ignore.dat', bytes: 10, sha256: 'a' },
+      { index: 1, name: 'projects/chosen.prj', bytes: 20, sha256: 'b' }] }
+  async function choose(value = archive, tail: File[] = []) {
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    api.mockResolvedValueOnce(value)
+    fireEvent.change(screen.getByLabelText('Choose data files'), { target: { files: [new File(['zip'], 'source.zip'), ...tail] } })
+    const dialog = screen.getByRole('dialog', { name: 'Import spectra' })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Review selected files' })).toBeEnabled())
+    return dialog
+  }
+  it('downloads only chosen members, in archive order, and hands projects and the external tail to group preview', async () => {
+    const project = await openSaved(), tail = new File(['tail'], 'later.dat')
+    const download = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('project'))
+    try {
+      const dialog = await choose(archive, [tail])
+      fireEvent.click(within(dialog).getByLabelText('Include ignore.dat · entry 1'))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected files' }))
+      await screen.findByTestId('project-import-panel')
+      expect(download).toHaveBeenCalledTimes(1)
+      expect(download.mock.calls[0][0]).toContain(`/projects/${project.id}/archives/zip-upload/members/1`)
+      const props = projectImport.mock.calls.at(-1)![0]
+      expect(props.initialFiles?.map(f => f.name)).toEqual(['projects/chosen.prj', tail.name])
+      expect(props.initialFiles?.[1]).toBe(tail)
+      expect(props.disabled).toBe(false)
+      expect(importCalls()).toHaveLength(0)
+    } finally { download.mockRestore() }
+  })
+  it('retains selection after a failed member download and never stages a partially downloaded batch', async () => {
+    await openSaved()
+    const download = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('first')).mockResolvedValueOnce(new Response('', { status: 400 }))
+    try {
+      const dialog = await choose()
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected files' }))
+      await within(dialog).findByRole('alert')
+      expect(within(dialog).getByLabelText('Include ignore.dat · entry 1')).toBeChecked()
+      expect(within(dialog).getByRole('button', { name: 'Review selected files' })).toBeEnabled()
+      expect(api.mock.calls.filter(([p]) => p.endsWith('/inspect'))).toHaveLength(1)
+      expect(importCalls()).toHaveLength(0)
+      fireEvent.click(within(dialog).getByLabelText('Include ignore.dat · entry 1'))
+      download.mockResolvedValueOnce(new Response('project'))
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected files' }))
+      await screen.findByTestId('project-import-panel')
+      expect(projectImport.mock.calls.at(-1)![0].initialFiles?.map(f => f.name)).toEqual(['projects/chosen.prj'])
+    } finally { download.mockRestore() }
+  })
+  it('skips a failed raw file while keeping the following project and raw file', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const files = [new File(['notes'], 'readme.txt'), new File(['prj'], 'data.prj'), new File(['raw'], 'last.dat')]
+    api.mockRejectedValueOnce(new Error('No numeric observations'))
+    fireEvent.change(screen.getByLabelText('Choose data files'), { target: { files } })
+    const dialog = screen.getByRole('dialog', { name: 'Import spectra' })
+    await within(dialog).findByRole('alert')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Skip this file' }))
+    await screen.findByTestId('project-import-panel')
+    expect(projectImport.mock.calls.at(-1)![0].initialFiles).toEqual(files.slice(1))
+    expect(importCalls()).toHaveLength(0)
+  })
+})

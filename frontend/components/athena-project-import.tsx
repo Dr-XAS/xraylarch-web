@@ -88,6 +88,10 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
   }
   async function choose(incoming: File[], staged?: ProjectPreview | null) {
     if (!incoming.length) return
+    if (!staged && /\.zip$/i.test(incoming[0].name) && onRemainingFiles) {
+      onRemainingFiles(incoming)
+      return
+    }
     setFiles(incoming); setPreview(null); setTrace(null)
     setConfigurationOpen(false)
     if (staged) acceptPreview(staged)

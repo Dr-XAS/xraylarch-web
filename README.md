@@ -116,6 +116,11 @@ XrayLarch Web is a local browser workbench for one XAS spectrum at a time. It
 keeps parsing, processing, revisions, and stored arrays in the FastAPI backend;
 the frontend only sends validated choices and renders server-produced traces.
 
+ZIP archives can be opened from Import data, drag and drop, or Open project after
+enabling **Zip** in the plugin registry. Select archive members, then review
+their normal column, scan or project previews. Original downloads, nested ZIPs
+and mixed queues are supported; see the [ZIP reader contract](docs/athena-zip-reference.md).
+
 ### Run locally
 
 Create the backend environment from `backend/requirements.txt` before starting

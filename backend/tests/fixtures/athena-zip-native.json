@@ -1,0 +1,30 @@
+{
+  "archive_zip_version": "1.68",
+  "cleaned": 1,
+  "members": [
+    {
+      "bytes": 22365,
+      "name": "fe.060",
+      "sha256": "92f698464e3f27390ed554ce65ebb3aa7734cce0844fc1cd7fd7c8d04aae85b4"
+    },
+    {
+      "bytes": 22365,
+      "name": "fe.061",
+      "sha256": "79ec765bcb1b71969fc364cf1b0d6b2045b193c3d7268c06e3fe5bd6a69e4abb"
+    },
+    {
+      "bytes": 22365,
+      "name": "fe.062",
+      "sha256": "f37c416977164943cdea96b8d57c0dc319915221e7ddd997920b90dcac503f28"
+    }
+  ],
+  "recognized": 1,
+  "suggestion": {},
+  "project_classification": {
+    "data": 1,
+    "order": -1,
+    "gds.yaml": -2,
+    "HORAE": -3,
+    "notes/order": 1
+  }
+}

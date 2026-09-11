@@ -87,14 +87,16 @@ recovers the blocked X10C upload, displays its plot, imports it, changes setting
 without editing the project, tests a second browser window and exchanges the
 native registry. Results and screenshot review are in [verification](athena-verification.md).
 
-The catalog now contains eighteen implemented converters, including the
+The catalog now contains nineteen implemented converters, including the
 [SSRL readers](athena-ssrl-reference.md), [SPEC scan lists](athena-spec-reference.md)
 and [SRS/DUBBLE/PFBL12C angle readers](athena-angle-readers-reference.md),
 plus [CMC/HXMA/LNLS scalar readers](athena-scalar-readers-reference.md) and
 [X15B/X23A2MED configured readers](athena-configured-readers-reference.md) and
 [X23A2/10BM multichannel projects](athena-multichannel-reference.md), plus
-[B18/BM23 column readers](athena-header-readers-reference.md), with the remaining native collection
-still required. System/user extension discovery, remaining readers, configuration for other plugins and the broader preferences tree/INI exchange remain required.
+[B18/BM23 column readers](athena-header-readers-reference.md) and the
+[Zip list reader](athena-zip-reference.md). System/user extension discovery,
+remaining readers, configuration for other plugins and the broader preferences
+tree/INI exchange remain required.
 Source browsing, other Athena processing/analysis/UI workflows and desktop
 replay remain in the full matrix. The registry checkpoint recorded 98 unique sources, including configuration
 and the exact YAML reference library. The SSRL checkpoint adds six pinned

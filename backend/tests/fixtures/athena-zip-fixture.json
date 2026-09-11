@@ -1,0 +1,18 @@
+{
+  "file": "demeter-data.zip",
+  "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/data/data.zip",
+  "revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "sha256": "be5bc1ac050a7b8979351bee343e9cc4b1c3d36017d773dd215f7e0babe5242c",
+  "git_blob_sha1": "deb91d16fe96ce12a90665c4fc713b6659362f9d",
+  "bytes": 19766,
+  "plugin_sha256": "d6b36a2b0396b613734e2d4ecacff6919bdeaa8ddcdea2f56f25928de8bc856d",
+  "oracle": "athena-zip-native.json",
+  "oracle_sha256": "76fa3af336faf9f8af10115173bc309a671a98f0f4ba373d98b887244932562c",
+  "harness_sha256": "9ef8793479eb14a19bcd4d060f77975cdf31204b073c2a480d5d08157e3074cc",
+  "archive_zip_source": "https://cpan.metacpan.org/authors/id/P/PH/PHRED/Archive-Zip-1.68.tar.gz",
+  "archive_zip_sha256": "984e185d785baf6129c6e75f8eb44411745ac00bf6122fb1c8e822a3861ec650",
+  "classification_source": {
+    "path": "lib/Demeter/Files.pm",
+    "sha256": "fc9a180aad64575dc47a599bf0f149248fc29d142c9590e6dd1e40e20cd96af9"
+  }
+}

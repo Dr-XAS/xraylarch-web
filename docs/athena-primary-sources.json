@@ -990,6 +990,20 @@
       "git_blob_sha1": "02b842ba74958bad45cd0e3e5e431e7602fc6694",
       "bytes": 502,
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/sort.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/data/data.zip",
+      "sha256": "be5bc1ac050a7b8979351bee343e9cc4b1c3d36017d773dd215f7e0babe5242c",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/data/data.zip",
+      "git_blob_sha1": "deb91d16fe96ce12a90665c4fc713b6659362f9d",
+      "bytes": 19766
+    },
+    {
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Files.pm",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Files.pm",
+      "sha256": "fc9a180aad64575dc47a599bf0f149248fc29d142c9590e6dd1e40e20cd96af9",
+      "git_blob_sha1": "c1c7e56318156e06466af97fec05109017fa496c",
+      "bytes": 10562
     }
   ]
 }

@@ -1483,3 +1483,110 @@ route output all passed. The prior sandbox failure and rejected attempt above
 remain recorded as failed/not-run attempts; the build limitation is resolved.
 Live frontend/proxy health is OK and the existing Copper foil temperature
 series remains version 67 with three groups.
+
+
+## B18/BM23 header readers, 2026-09-10
+
+The [header-reader contract](athena-header-readers-reference.md) adds B18's
+native Larch retention of all 36-channel observations and BM23's native
+first-column keV-to-eV conversion. BM23 multi-scan selection is a documented
+web integration extension. Retained inputs are explicitly constructed probes,
+not measured B18/BM23 acquisitions. Native `is/fix/suggest` bodies execute for
+both B18 backend branches and BM23; all native columns/labels/suggestions
+match (`/tmp/athena-header-reproduced.log`).
+
+- Full backend: **2,306 passed**, **328 warnings**, **221.89 seconds**, exit 0
+  (`/tmp/athena-header-backend-full.log`). After collection, four additional
+  scan-whitespace/count tests were added. The final header suite passed all
+  **38 tests**, **2.84 seconds**, exit 0 (`/tmp/athena-header-extra.log`).
+- Dedicated Chromium: **3 passed**, **24.4 seconds**, exit 0
+  (`/tmp/athena-header-browser.log`). Both native detector previews, edits,
+  E/k/R/q, source/converted downloads, PRJ exchange, reload and BM23 scan
+  selection pass. All three screenshots were inspected.
+- Full Chromium initially finished **45 passed / 1 failed**, **6.7 minutes**,
+  exit 1 (`/tmp/athena-header-browser-full.log`). The failing registry test
+  still classified B18 as unavailable after this checkpoint implemented it.
+  It now checks that B18 is available and uses the synthetic
+  `UserReaderFixture` entry to test unknown-reader preservation. The revised
+  complete registry flow passes alongside ZIP tests below. This initial full
+  run is not reported as a pass.
+- TypeScript passed (`/tmp/athena-header-typecheck.log`). Explicit converted eV
+  metadata prevents a second factor of 1,000 even with a retained `e_kev`
+  source label and fewer columns than the native transmission suggestion.
+  Original files, malformed-row atomicity and total scan point limits remain
+  covered. The independent primary-data search found no suitable committed
+  B18/BM23 acquisition in the inspected Demeter, openGDA or ixdat trees.
+
+Eighteen readers were available at this checkpoint. Four top-level readers
+and four nested Beamlines helpers remained, together with the wider Athena
+matrix. These counts are historical; the following ZIP checkpoint adds one.
+
+## ZIP list-output import, 2026-09-10
+
+The [ZIP contract](athena-zip-reference.md) adds member selection and forwards
+selected files into the existing live column, scan and project previews. The
+queue handles nested archives and mixed inputs; a failed raw-file inspection
+can be skipped without losing its unimported tail. Downloads preserve native
+member bytes and archive bytes. Archive parsing never writes a member path.
+
+Executed native `Zip.pm` methods with real Archive::Zip 1.68 reproduce all
+three official iron-foil member sizes/hashes/order, empty suggestions and
+cleanup (`/tmp/athena-zip-reproduced.log`). The retained 19,766-byte ZIP has
+67,095 expanded bytes and three 511-point measured scans. The CPAN archive,
+native source, fixture Git blob, harness and oracle identities are recorded
+and checked. This is native plugin execution, not full Athena desktop replay.
+
+- Initial focused backend + registry: **52 passed**, **2.58 seconds**, exit 0
+  (`/tmp/athena-zip-focused.log`). A subsequent compression audit found that
+  Python's `LZMAError` is not an `OSError`; it is now explicitly translated to
+  a recoverable upload error. After checking the native project-type gate, the final ZIP suite passed
+  **28 tests**, **2.64 seconds**, exit 0 (`/tmp/athena-zip-final-focused.log`), including four corrupted or
+  unsupported compression methods, the native fitting-project exclusions and
+  the real HTTP import boundary.
+- Dedicated Chromium: **3 passed**, **29.6 seconds**, exit 0
+  (`/tmp/athena-zip-browser.log`): official ZIP subset, actual changed preview
+  coordinates, E/k/R/q, source downloads, PRJ save/reopen and reload; mixed
+  project/scans/nested ZIP with non-data skip; and the corrected complete
+  registry/two-window/YAML flow. Screenshots of mobile selection, column
+  preview and the imported mixed workspace were inspected.
+- Initial focused frontend: **181 passed / 1 failed**. An overly broad Open
+  project handoff intercepted multichannel-source reinspection. The new
+  handoff is now limited to `.zip`, preserving the native project-reader retry.
+  Final full frontend: **475 passed**, **23 files**, **54.17 seconds**, exit 0
+  (`/tmp/athena-zip-frontend-full.log`). This includes the original failing test
+  and selected-member queue, failed-download retry and non-data skip tests.
+- Production build passed compilation, TypeScript, page generation and route
+  output, exit 0 (`/tmp/athena-zip-build.log`); separate type generation and
+  TypeScript also passed (`/tmp/athena-zip-typecheck.log`). Build and browser
+  output directories are separate from the running development app.
+
+Final complete regression results:
+
+- Full backend: **2,331 passed**, **328 warnings**, **232.15 seconds**, terminal
+  exit 0 (`/tmp/athena-zip-backend-full.log`). Seven subsequently added cases
+  (compression damage and native fitting-project markers) are included in the
+  final 28-case ZIP run above; these overlapping totals are not additive.
+  The final native-source/oracle identity and project-boundary check also
+  passed (`/tmp/athena-zip-final-identities.log`).
+- Full Chromium: **48 passed**, **5.7 minutes**, terminal exit 0
+  (`/tmp/athena-zip-browser-full.log`). All prior header, multichannel, configured,
+  scalar, angle, SPEC, SSRL, column and project flows pass with the two new ZIP
+  flows and the corrected registry test. The final mobile test activates
+  Review selected files at 390 pixels before returning to desktop width.
+- The native reproducer also executes `Files::is_zipproj('guess')`, confirming
+  the three exact root markers rejected by Athena IO.pm; ordinary and nested
+  names are accepted. All method and classification outputs match the retained
+  oracle (`/tmp/athena-zip-reproduced.log`).
+- The primary catalog now contains **152 unique entries**. New source and ZIP
+  identities, retained fixtures, native harness/oracles, documentation links,
+  all **107 matrix IDs/order** and no-Verified invariant pass. Nineteen readers
+  are available. Remaining top-level readers are **BL8Ar, SLRIBL4 and
+  SpecFileLongLine**, plus four nested Beamlines helpers and the broader
+  preferences, extension, analysis, processing and UI requirements.
+- Live proxy health is OK. The existing Copper foil temperature-series project
+  remains **version 67 / three groups**. The live registry is still **version 0
+  / empty enabled map**, with 19 available readers. Browser tests used separate
+  ports 13004/18006 and temporary project storage; local development stays on
+  3004/8006. No commit, push or deployment was performed by this checkpoint.
+  The shared checkout moved to master externally during the work; existing
+  commits were retained. The full Athena goal remains unfinished and active.

@@ -1,0 +1,12 @@
+.layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.15fr); gap: 24px; }
+.controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+.previews { min-width: 0; }
+.plot { height: 340px; width: 100%; min-width: 0; background: #fff; border: 1px solid #dce3dd; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+.actions button { white-space: normal; }
+.table { max-height: 230px; overflow: auto; }
+.table table { width: 100%; font-size: 12px; }
+.table th, .table td { text-align: left; padding: 6px; }
+.previews pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow: auto; }
+.controls h3 { font-size: 14px; overflow-wrap: anywhere; }
+@media (max-width: 750px) { .layout { grid-template-columns: minmax(0,1fr); } .plot { height: 300px; } }

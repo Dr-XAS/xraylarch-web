@@ -11,6 +11,7 @@ import struct
 from typing import Callable
 
 from .errors import WebInputError
+from .athena_zip import PreparedArchive, read_archive, recognize as recognize_zip
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,11 @@ def _b18(data, max_points, max_columns):
 def _bm23(data, max_points, max_columns):
     from .athena_header_files import bm23
     return bm23(data, max_points, max_columns)
+
+
+def _slribl4(data,max_points,max_columns,calibration):
+    from .athena_dispersive import slribl4
+    return slribl4(data,max_points,max_columns,calibration)
 
 
 def _multichannel(data, max_points, max_columns, configuration=None):
@@ -352,7 +358,7 @@ class FilePlugin:
     description: str
     documentation: str
     signature: re.Pattern
-    transform: Callable[..., PreparedFile | PreparedCollection | PreparedProject]
+    transform: Callable[..., PreparedFile | PreparedCollection | PreparedProject | PreparedArchive]
     recognize: Callable[[bytes], bool] | None = None
     configurable: bool = False
     configured_recognize: Callable[[bytes, dict], bool] | None = None
@@ -417,6 +423,11 @@ _PLUGINS = (
         'from the header and Athena’s conversion constant and precision. Transmission uses attained energy '
         'and ln(abs(I0 / I1)); offsets are preserved without subtraction.',
         re.compile(rb'^.*9809\s+(?:KEK-PF|SPring-8|SAGA-LS|AichiSR)\s+(?:BL\d+|NW\d+|\d+\w+\d*)'), _pfbl12c),
+    FilePlugin('SLRIBL4', '0.1', 'Dispersive pixel/stripe data',
+        'Converts pixel and signal columns using the saved athena.dxas coefficients. Establish the calibration '
+        'in Dispersive energy calibration with a conventional and pixel standard, then inspect the file again. '
+        'The native pixel/stripe signature also occurs in ESRF ID24 data; it does not identify a facility uniquely.',
+        re.compile(rb'(?=.*pixel)(?=.*stripe).*'), _slribl4),
     FilePlugin('SPEC', '0.1', 'ESRF SPEC · multiple scans',
         'Splits zapline mono scans into separate column tables in their original order. '
         'Choose scans and preview each before reviewing detector columns. All scalar columns and the original '
@@ -473,6 +484,12 @@ _PLUGINS = (
         'import or tie a reference channel. Original detector columns and source bytes are retained.',
         re.compile(rb'^\s*XDAC'), _multichannel,
         lambda data: _recognize_multichannel(data, 'X23A2MultiChannel')),
+    FilePlugin('Zip', '0.1', 'ZIP archive of data files',
+        'Lists the archive’s files in their original order. Select entries and review each through '
+        'the usual live column, scan or project preview. Each member keeps its original bytes. '
+        'Directories are omitted from selection. Expanded data shares the upload byte limit; '
+        'up to 1,000 entries are supported. Password-protected archives and links are not supported.',
+        re.compile(rb'.*'), read_archive, recognize_zip),
 )
 
 
@@ -484,7 +501,7 @@ def plugin_catalog():
             for p in _PLUGINS]
 
 
-def prepare_file(data, *, max_bytes, max_points, max_columns, enabled=None, read_configuration=None):
+def prepare_file(data, *, max_bytes, max_points, max_columns, enabled=None, read_configuration=None, read_dispersive=None):
     if len(data) > max_bytes:
         _fail(f'Upload exceeds the {max_bytes} byte limit.', 'upload_too_large')
     first = data.removeprefix(b'\xef\xbb\xbf').split(b'\n', 1)[0]
@@ -501,6 +518,10 @@ def prepare_file(data, *, max_bytes, max_points, max_columns, enabled=None, read
                 disabled.append(plugin)
                 continue
             try:
+                if plugin.name == 'SLRIBL4':
+                    return plugin.transform(data, max_points, max_columns, read_dispersive() if read_dispersive else None)
+                if plugin.name == 'Zip':
+                    return plugin.transform(data, max_bytes=max_bytes)
                 if plugin.configurable:
                     from .athena_plugin_config import default_configuration
                     configuration = configuration or (read_configuration or default_configuration)(plugin.name)

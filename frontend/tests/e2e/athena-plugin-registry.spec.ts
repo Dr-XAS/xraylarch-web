@@ -73,12 +73,13 @@ test('plugin switches recover a blocked import, persist across windows, and exch
   } finally { await context.close() }
   const imported = page.waitForResponse(r => r.url().includes('/preferences/plugins/import?'))
   await panel.getByLabel('Import Athena plugin registry file').setInputFiles({ name: 'athena.plugin_registry', mimeType: 'application/x-yaml',
-    buffer: Buffer.from('---\nDemeter::Plugins::X10C: 0\nDemeter::Plugins::Lytle: 1\nDemeter::Plugins::B18: 1\n') })
+    buffer: Buffer.from('---\nDemeter::Plugins::X10C: 0\nDemeter::Plugins::Lytle: 1\nDemeter::Plugins::B18: 1\nDemeter::Plugins::UserReaderFixture: 1\n') })
   expect((await imported).ok()).toBe(true)
   await expect(panel.getByRole('checkbox', { name: 'Enable X10C' })).not.toBeChecked()
   await expect(panel.getByRole('checkbox', { name: 'Enable Lytle' })).toBeChecked()
+  await expect(panel.getByRole('checkbox', { name: 'Enable B18', exact: true })).toBeChecked()
   await panel.getByText('Settings for 1 unavailable plugins', { exact: true }).click()
-  await expect(panel.getByText('B18 · saved as enabled')).toBeVisible()
+  await expect(panel.getByText('UserReaderFixture · saved as enabled')).toBeVisible()
   const download = page.waitForEvent('download')
   await panel.getByRole('link', { name: 'Export Athena registry', exact: true }).click()
   const savedPath = info.outputPath('athena.plugin_registry'); await (await download).saveAs(savedPath)
@@ -86,6 +87,7 @@ test('plugin switches recover a blocked import, persist across windows, and exch
   expect(yaml).toContain('Demeter::Plugins::X10C: 0')
   expect(yaml).toContain('Demeter::Plugins::Lytle: 1')
   expect(yaml).toContain('Demeter::Plugins::B18: 1')
+  expect(yaml).toContain('Demeter::Plugins::UserReaderFixture: 1')
   // Changing registry preferences never edits the spectrum or its history.
   const unchanged = await (await page.request.get(`/api/backend/api/athena/projects/${project.id}`)).json()
   expect(unchanged).toEqual(project)

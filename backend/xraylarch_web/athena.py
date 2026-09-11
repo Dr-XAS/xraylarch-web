@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import csv
 import gzip
+import hashlib
 import io
 import json
 import secrets
@@ -29,6 +30,7 @@ from .athena_rebin import ImportRebin, PostRebin, RebinPlan, prepare_rebin, rebi
 from .athena_preferences import AthenaPreferences, RebinDefaults, RebinGrid
 from .athena_plugin_registry import PluginRegistry, registry_view, decode_registry, encode_registry, MAX_REGISTRY_BYTES
 from .athena_plugin_config import PluginConfigurations, ConfigurationRequest
+from .athena_dispersive import DispersiveRequest, DispersiveDefaults, PixelNormalization
 from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
@@ -1077,13 +1079,27 @@ class AthenaStore:
 
     def inspect(self, ident, data, filename):
         project = self.load(ident)
-        from .athena_file_plugins import prepare_file, PreparedCollection, PreparedProject
+        from .athena_file_plugins import prepare_file, PreparedCollection, PreparedProject, PreparedArchive
         from .parsing import _safe_display_name
         prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
                                 max_points=self.settings.max_points, max_columns=self.settings.max_columns,
                                 enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
-                                read_configuration=self.plugin_configurations.read)
+                                read_configuration=self.plugin_configurations.read,
+                                read_dispersive=lambda: AthenaPreferences(self.settings).read_dispersive()['coefficients'])
         display_name = _safe_display_name(filename)
+        if isinstance(prepared, PreparedArchive):
+            upload = uid()
+            inspection = dict(kind='archive_list', upload_id=upload, display_name=display_name,
+                              file_plugin=prepared.metadata, members=prepared.members)
+            written = [f'upload-{upload}.source', f'upload-{upload}.json']
+            try:
+                self.storage.write_bytes(ident, written[0], data)
+                self.storage.write_json(ident, written[1], inspection)
+            except BaseException:
+                for name in written:
+                    self.storage.path(ident, name).unlink(missing_ok=True)
+                raise
+            return inspection
         if isinstance(prepared, PreparedProject):
             return {'kind': 'project', 'preview': self.preview_project(ident, data, display_name, prepared=prepared)}
         if isinstance(prepared, PreparedCollection):
@@ -1125,7 +1141,7 @@ class AthenaStore:
             if prepared.suggestions is not None:
                 for mode, choice in prepared.suggestions.items():
                     chosen = dict(choice, energy_column=ids[choice['energy_column']],
-                        numerator=[ids[i] for i in choice['numerator']], denominator=ids[choice['denominator']])
+                        numerator=[ids[i] for i in choice['numerator']], denominator=ids[choice['denominator']] if choice['denominator'] is not None else '')
                     plugin_suggestions[mode] = chosen
                     column_units[chosen['energy_column']] = chosen['units']
                 if plugin_suggestions:
@@ -1172,6 +1188,91 @@ class AthenaStore:
             inspection['warnings'] = [*inspection['warnings'], 'Remembered column choices could not be read. Review the suggested columns; saved choices were left unchanged.']
         return inspection
 
+    def inspect_dispersive(self,ident,data,filename):
+        # Calibration must inspect unconverted pixels even when SLRIBL4 is
+        # enabled. The same Larch table parser validates every original row.
+        from .parsing import _safe_display_name
+        from .athena_dispersive import parse_pixels
+        parsed=parse_pixels(data,filename,self.settings.max_upload_bytes,self.settings.max_points,self.settings.max_columns)
+        return self._inspect_table(ident,self.load(ident),data,_safe_display_name(filename),None,parsed=parsed)
+
+    def _dispersive_inputs(self,ident,request):
+        from .athena_columns import map_columns
+        from .athena_science import _pair
+        p=self.load(ident);self.check(p,request.version)
+        self.storage._validate_id(request.upload_id)
+        arrays=self.storage.read_arrays(ident,f'upload-{request.upload_id}.npz')
+        metadata=self.storage.read_json(ident,f'upload-{request.upload_id}.json')
+        choice=request.columns
+        mapped=map_columns(arrays,ImportRequest(version=request.version,upload_id=request.upload_id,
+            energy_column=choice.pixel_column,numerator=choice.numerator,denominator=choice.denominator,
+            mode='transmission' if choice.logarithm else 'fluorescence',invert=choice.invert,sort=choice.sort))
+        x=mapped['x'];y=mapped['samples'][0]['y'][mapped['order']]
+        if choice.reverse_signal:y=y[::-1]
+        x,y=_pair(x,y,name='Pixel spectrum',minimum=8)
+        if x[0]<0:fail('Pixel coordinates must be nonnegative.')
+        standard=None
+        if request.standard_id:
+            standard=self.group(p,request.standard_id)
+            if standard['data_type'] in ('chi','detector') or _is_difference(standard):
+                fail('Choose a conventional absorption spectrum as the calibration standard.')
+        return p,x,y,standard,metadata,arrays,mapped['warnings'],mapped['order']
+
+    def dispersive(self,ident,request,action='preview'):
+        from .athena_dispersive import normalize,guess,refine,apply
+        from .athena_columns import preview_trace
+        p,x,y,standard,metadata,arrays,warnings,order=self._dispersive_inputs(ident,request)
+        c=request.coefficients
+        result=dict(version=p['version'],upload_id=request.upload_id,columns=request.columns.model_dump(),
+                    standard_id=request.standard_id,coefficients=c.model_dump(),warnings=list(warnings),
+                    pixel=preview_trace(x,y,label=metadata['display_name'],role='pixel',ident='pixel'),points=len(x))
+        if action=='columns':return result
+        ex=sy=sn=None
+        if standard is not None:
+            ex=np.asarray(standard['energy'])+standard['parameters']['energy_shift'];sy=np.asarray(standard['mu'])
+            sn=PixelNormalization(**{k:v for k,v in standard['parameters'].items() if k in PixelNormalization.model_fields and (k!='nnorm' or v is not None)})
+        if action in ('guess','refine'):
+            if standard is None:fail('Select a conventional calibration standard first.')
+            if action=='guess':c,details=guess(x,y,ex,sy,request.normalization,sn,c.quadratic)
+            else:c,details=refine(x,y,ex,sy,c,request.nsmooth)
+            result.update(details=details,coefficients=c.model_dump())
+            result['warnings'].extend(details['warnings'])
+        elif action!='preview':fail('Choose a dispersive preview, initial guess or refinement.')
+        converted=apply(x,y,c);cx=np.asarray(converted['energy']);cy=np.asarray(converted['mu'])
+        result['calibrated']=preview_trace(cx,cy,label=metadata['display_name']+' · calibrated',role='calibrated',ident='calibrated')
+        result['reversed']=converted['details']['reversed']
+        if standard is not None:
+            normalized=normalize(cx,cy,PixelNormalization())
+            conventional=normalize(ex,sy,sn,standard['parameters']['e0'])
+            result['normalized']=preview_trace(cx,normalized.norm,label=metadata['display_name']+' · calibrated',role='calibrated',ident='calibrated_norm')
+            result['standard']=preview_trace(ex,conventional.norm,label=standard['label'],role='standard',ident=standard['id'])
+            result['plot_range']=[float(conventional.e0)-100,float(conventional.e0)+400]
+        return result
+
+    def make_dispersive(self,ident,request):
+        from .athena_dispersive import apply
+        with self.storage.lock(ident):
+            old,x,y,standard,metadata,arrays,warnings,order=self._dispersive_inputs(ident,request)
+            if len(old['groups'])>=100:fail('A project can contain at most 100 groups.')
+            converted=apply(x,y,request.coefficients)
+            if converted['details']['reversed']:
+                order=order[::-1]
+            source=dict(kind='dispersive',filename=metadata['display_name'],operation='dispersive',
+                calibration=request.coefficients.model_dump(),pixel_columns=request.columns.model_dump(),
+                standard_id=request.standard_id,standard_label=standard['label'] if standard else None,
+                column_arrays={k:np.asarray(v)[order].tolist() for k,v in arrays.items()},
+                column_order='group',row_order=order.tolist(),columns=metadata['columns'],
+                source_sha256=hashlib.sha256(self.storage.path(ident,f'upload-{request.upload_id}.source').read_bytes()).hexdigest(),
+                warnings=list(metadata.get('warnings',[]))+warnings)
+            source=_exchange_source(source,len(x),self.settings)
+            _exchange_budget([*old['groups'],dict(energy=converted['energy'],mu=converted['mu'],source=source)],self.settings)
+            new=self.make_group(metadata['display_name']+' · calibrated',converted['energy'],converted['mu'],source=source)
+            new['marked']=False
+            p=copy.deepcopy(old)
+            index=p['groups'].index(standard)+1 if standard is not None else len(p['groups'])
+            p['groups'].insert(index,new)
+            return self.save(p,old,'Dispersive calibration · '+metadata['display_name'])
+
     def inspected_columns(self, ident, upload_id):
         project = self.load(ident)
         self.storage._validate_id(upload_id)
@@ -1179,7 +1280,24 @@ class AthenaStore:
             inspection = self.storage.read_json(ident, f'upload-{upload_id}.json')
         except FileNotFoundError:
             fail('These inspected columns are unavailable. Select the original file again.')
+        if inspection.get('kind') == 'archive_list':
+            fail('Choose files from the ZIP before inspecting columns.')
         return self._remembered_inspection(inspection | {'upload_id': upload_id}, project)
+
+    def archive_member(self, ident, upload_id, member_index):
+        self.load(ident)
+        self.storage._validate_id(upload_id)
+        try:
+            inspection = self.storage.read_json(ident, f'upload-{upload_id}.json')
+            data = self.storage.path(ident, f'upload-{upload_id}.source').read_bytes()
+        except FileNotFoundError:
+            fail('This ZIP is unavailable. Select the original archive again.')
+        if inspection.get('kind') != 'archive_list':
+            fail('Choose a staged ZIP archive.')
+        from .athena_zip import read_archive
+        from .parsing import _safe_display_name
+        content, name = read_archive(data, self.settings.max_upload_bytes, member_index)
+        return content, _safe_display_name(name)
 
     def inspected_file(self, ident, upload_id, variant):
         self.load(ident)
@@ -2315,7 +2433,8 @@ class AthenaStore:
             prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
                 max_points=self.settings.max_points, max_columns=self.settings.max_columns,
                 enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
-                read_configuration=self.plugin_configurations.read)
+                read_configuration=self.plugin_configurations.read,
+                                read_dispersive=lambda: AthenaPreferences(self.settings).read_dispersive()['coefficients'])
         original = None
         if isinstance(prepared, PreparedProject):
             original = data
@@ -2591,6 +2710,39 @@ def build_athena_router(settings: Settings):
         data = await _read_bounded_upload(file, settings.max_upload_bytes)
         return guarded(lambda: store.inspect(ident, data, file.filename or "data.dat"))
 
+    @router.post('/projects/{ident}/dispersive/inspect')
+    async def inspect_dispersive(ident: str,file: UploadFile=File(...)):
+        data=await _read_bounded_upload(file,settings.max_upload_bytes)
+        return guarded(lambda: store.inspect_dispersive(ident,data,file.filename or 'pixels.dat'))
+
+    @router.post('/projects/{ident}/dispersive/make')
+    def make_dispersive(ident: str,request: DispersiveRequest):
+        return guarded(lambda: store.make_dispersive(ident,request))
+
+    @router.post('/projects/{ident}/dispersive/{action}')
+    def dispersive(ident: str,action: Literal['columns','preview','guess','refine'],request: DispersiveRequest):
+        return guarded(lambda: store.dispersive(ident,request,action))
+
+    @router.get('/preferences/dispersive')
+    def dispersive_defaults():
+        return guarded(lambda: AthenaPreferences(settings).read_dispersive())
+
+    @router.put('/preferences/dispersive')
+    def save_dispersive_defaults(request: DispersiveDefaults):
+        return guarded(lambda: AthenaPreferences(settings).save_dispersive(request))
+
+    @router.get('/preferences/dispersive/file')
+    def dispersive_file():
+        from .athena_dispersive import encode_calibration
+        content=guarded(lambda: encode_calibration(AthenaPreferences(settings).read_dispersive()['coefficients']))
+        return Response(content,media_type='application/x-yaml',headers={'Content-Disposition':'attachment; filename="athena.dxas"'})
+
+    @router.post('/preferences/dispersive/import')
+    async def import_dispersive_defaults(version: int=Query(...,ge=0),file: UploadFile=File(...)):
+        from .athena_dispersive import decode_calibration
+        data=await _read_bounded_upload(file,4096)
+        return guarded(lambda: AthenaPreferences(settings).save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
+
     @router.post("/projects/{ident}/import")
     def import_data(ident: str, request: ImportRequest):
         return guarded(lambda: store.import_data(ident, request))
@@ -2608,6 +2760,12 @@ def build_athena_router(settings: Settings):
     @router.post("/projects/{ident}/preview-columns")
     def preview_columns(ident: str, request: ImportRequest):
         return guarded(lambda: store.preview_columns(ident, request))
+
+    @router.get('/projects/{ident}/archives/{upload_id}/members/{member_index}')
+    def archive_member(ident: str, upload_id: str, member_index: int):
+        content, name = guarded(lambda: store.archive_member(ident, upload_id, member_index))
+        return Response(content, media_type='application/octet-stream',
+                        headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @router.post("/projects/{ident}/command")
     def command(ident: str, request: Command):

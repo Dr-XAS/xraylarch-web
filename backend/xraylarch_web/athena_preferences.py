@@ -84,6 +84,27 @@ class AthenaPreferences:
         except FileNotFoundError:
             return RebinDefaults().model_dump()
 
+    def read_dispersive(self):
+        from .athena_dispersive import DispersiveDefaults
+        try:
+            return DispersiveDefaults.model_validate(self.storage.read_json(self.ident,'dispersive.json')).model_dump()
+        except FileNotFoundError:
+            return DispersiveDefaults().model_dump()
+
+    def save_dispersive(self,request):
+        from .athena_dispersive import DispersiveDefaults
+        request=DispersiveDefaults.model_validate(request)
+        with self.storage.lock(self.ident):
+            previous=self.read_dispersive()
+            if previous['version']!=request.version:
+                raise WebInputError('stale_revision','Dispersive calibration changed in another window.',
+                    recovery='Load the saved calibration, review the coefficients and save again.')
+            if request.coefficients is None:
+                raise ValueError('Supply all three calibration coefficients.')
+            value=dict(version=previous['version']+1,coefficients=request.coefficients.model_dump())
+            self.storage.write_json(self.ident,'dispersive.json',value)
+            return value
+
     def read_plugins(self):
         try:
             return PluginRegistry.model_validate(self.storage.read_json(self.ident, 'plugins.json')).model_dump()

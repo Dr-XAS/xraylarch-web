@@ -1,0 +1,37 @@
+{
+  "revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "files": [
+    {
+      "file": "demeter-dxas-cu-pixels.dat",
+      "path": "examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08",
+      "bytes": 16574,
+      "sha256": "d263d9e75434f516b205c2ccf074454e7da47e0e2ebecce45957d21b624ab760",
+      "git_blob_sha1": "8911d2a57b198835cf024026001c14b5a4dd7a59"
+    },
+    {
+      "file": "demeter-dxas-cu-standard.dat",
+      "path": "examples/recipes/Dispersive/ESRF_ID24/cus2/cufoil_rt.txt",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cufoil_rt.txt",
+      "bytes": 13092,
+      "sha256": "1187dbb84d7de5e20df635ecb205bf508aded3561f46dd276d5c226dcc8fa8ae",
+      "git_blob_sha1": "b288567a2e1dd734ab165c86ac1c1cd5a2b58cc7"
+    },
+    {
+      "file": "demeter-dxas-pd-pixels.csv",
+      "path": "examples/recipes/Dispersive/PhotonFactory/Pd_foil.CSV",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/PhotonFactory/Pd_foil.CSV",
+      "bytes": 17639,
+      "sha256": "4ad6d98318c9f438ac3a1f46611aa3790c74b065908eb1b6460159fb8e3a204d",
+      "git_blob_sha1": "90f745ef1bdf110d42d438446e04c33c1e9ca06c"
+    },
+    {
+      "file": "demeter-dxas-pd-standard.dat",
+      "path": "examples/recipes/Dispersive/PhotonFactory/Pd_foil_ref.txt",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/PhotonFactory/Pd_foil_ref.txt",
+      "bytes": 12045,
+      "sha256": "8fd8db5896517392ad7d6dca4a76e3d8290a64e687246bca9e9ed9357693049a",
+      "git_blob_sha1": "14cf153ab4120c8944d445447980d50fc8f1f02e"
+    }
+  ]
+}
