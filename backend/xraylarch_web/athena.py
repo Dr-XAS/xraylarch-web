@@ -1230,10 +1230,10 @@ class AthenaStore:
         ex=sy=sn=None
         if standard is not None:
             ex=np.asarray(standard['energy'])+standard['parameters']['energy_shift'];sy=np.asarray(standard['mu'])
-            sn=PixelNormalization(**{k:v for k,v in standard['parameters'].items() if k in PixelNormalization.model_fields and (k!='nnorm' or v is not None)})
+            sn=AthenaParameters.model_validate(standard['parameters'])
         if action in ('guess','refine'):
             if standard is None:fail('Select a conventional calibration standard first.')
-            if action=='guess':c,details=guess(x,y,ex,sy,request.normalization,sn,c.quadratic)
+            if action=='guess':c,details=guess(x,y,ex,sy,request.normalization,sn,c.quadratic,standard_normalized=standard['is_normalized'])
             else:c,details=refine(x,y,ex,sy,c,request.nsmooth)
             result.update(details=details,coefficients=c.model_dump())
             result['warnings'].extend(details['warnings'])
@@ -1243,7 +1243,7 @@ class AthenaStore:
         result['reversed']=converted['details']['reversed']
         if standard is not None:
             normalized=normalize(cx,cy,PixelNormalization())
-            conventional=normalize(ex,sy,sn,standard['parameters']['e0'])
+            conventional=normalize(ex,sy,sn,standard['parameters']['e0'],normalized=standard['is_normalized'])
             result['normalized']=preview_trace(cx,normalized.norm,label=metadata['display_name']+' · calibrated',role='calibrated',ident='calibrated_norm')
             result['standard']=preview_trace(ex,conventional.norm,label=standard['label'],role='standard',ident=standard['id'])
             result['plot_range']=[float(conventional.e0)-100,float(conventional.e0)+400]

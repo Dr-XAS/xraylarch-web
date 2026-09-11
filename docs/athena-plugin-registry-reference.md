@@ -23,7 +23,9 @@ inside import opens the same panel while retaining selected files, column
 mapping and batch state. Returning restores import; a disabled-file failure
 can then use **Retry file inspection** without reselection.
 
-CMC, DUBBLE, HXMA, LNLS, Lytle, PFBL12C, SPEC, SRS, SSRLA, SSRLB, SSRLmicro, X10C, X15B and X23A2MED show descriptions, versions, ordered system-reader entries,
+The 20 available readers (10BMMultiChannel, B18, BM23, CMC, DUBBLE, HXMA,
+LNLS, Lytle, PFBL12C, SLRIBL4, SPEC, SRS, SSRLA, SSRLB, SSRLmicro, X10C, X15B,
+X23A2MED, X23A2MultiChannel and Zip) show descriptions, versions, ordered system-reader entries,
 local documentation and original source links. Switches save immediately to
 local server preferences. Unlike the earlier always-on converter checkpoint,
 fresh settings now match Athena's unchecked default. Enable the formats needed
@@ -119,3 +121,10 @@ The import panel can reinspect the original selected file after configuration
 changes; returning alone retains the staged preview. See the
 [configuration contract](athena-configured-readers-reference.md) for the two
 native numerical oracles, internal JSON persistence and remaining INI scope.
+
+The [dispersive calibration checkpoint](athena-dispersive-reference.md) adds
+SLRIBL4 and native `athena.dxas` settings, bringing the unique primary-source
+catalog to 167 entries. Pixel/stripe source inspection requires a saved
+calibration; calibration-tool inspection always reads the original pixels.
+The official ESRF file exercises the broad native signature, with no claim
+that it is an SLRI acquisition. Exact native writer formatting remains open.

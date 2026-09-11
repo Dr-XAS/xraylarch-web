@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 import yaml
 import re
 
-from .athena_science import ScientificError, _pair, _edge
+from .athena_science import AthenaParameters, ScientificError, _pair, _edge, _normalization_ranges
 from .athena_operations import transform_spectrum
 from .errors import WebInputError
 
@@ -91,22 +91,26 @@ def encode_calibration(coefficients):
     return ('---\n'+''.join(f'{key}: {value:.17g}\n' for key,value in values.items())).encode()
 
 
-def normalize(x,y,settings,e0=None):
+def normalize(x,y,settings,e0=None,*,normalized=False):
     e0=_edge(x,y,e0)
+    if normalized:
+        return Group(e0=e0,edge_step=1.,norm=np.array(y,copy=True))
     # Native dispersive.bkg_nor2=1000 is an upper limit, clipped by Larch to
     # the measured post-edge range. Expose the actual resolved windows.
-    g=Group(); pre_edge(x,y,group=g,e0=e0,make_flat=True,**settings.model_dump())
+    options=(dict(step=settings.step,**_normalization_ranges(x,e0,settings))
+             if isinstance(settings,AthenaParameters) else settings.model_dump())
+    g=Group(); pre_edge(x,y,group=g,e0=e0,make_flat=True,**options)
     if not np.isfinite(g.edge_step) or g.edge_step<=0 or not np.isfinite(g.norm).all():
         raise ScientificError('Dispersive normalization needs a positive edge step. Review columns, signal direction and windows.')
     return g
 
 
-def fractions(x,y,settings):
-    seed=_edge(x,y); results=[]
+def fractions(x,y,settings,*,normalized=False):
+    seed=_edge(x,y,getattr(settings,'e0',None)); results=[]
     for fraction in (.1,.9):
         e0=seed; converged=False
         for iteration in range(1,6):
-            g=normalize(x,y,settings,e0)
+            g=normalize(x,y,settings,e0,normalized=normalized)
             hits=np.flatnonzero(g.norm>=fraction)
             if not hits.size or hits[0]==0:
                 raise ScientificError('The 10%/90% edge levels are not bracketed. Check the signal direction and normalization windows.')
@@ -118,10 +122,10 @@ def fractions(x,y,settings):
     return results
 
 
-def guess(pixel,signal,energy,standard,pixel_norm,standard_norm,quadratic=0.):
+def guess(pixel,signal,energy,standard,pixel_norm,standard_norm,quadratic=0.,*,standard_normalized=False):
     pixel,signal=_pair(pixel,signal,minimum=8)
     energy,standard=_pair(energy,standard,minimum=8)
-    p=fractions(pixel,signal,pixel_norm);s=fractions(energy,standard,standard_norm)
+    p=fractions(pixel,signal,pixel_norm);s=fractions(energy,standard,standard_norm,normalized=standard_normalized)
     width=p[1]['position']-p[0]['position']
     if width<=0 or s[1]['position']<=s[0]['position']:
         raise ScientificError('The standard and pixel edges must rise through 10% then 90%. Review the signal direction.')

@@ -1004,6 +1004,81 @@
       "sha256": "fc9a180aad64575dc47a599bf0f149248fc29d142c9590e6dd1e40e20cd96af9",
       "git_blob_sha1": "c1c7e56318156e06466af97fec05109017fa496c",
       "bytes": 10562
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/Pixel.pm",
+      "sha256": "a9bf72010b8870431c7b6a18954a1ddad7032fcb3b255e97441d2d96f513b3bb",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/Pixel.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Dispersive.pm",
+      "sha256": "64fd686f856699d921b1dfce413a0e015814d39571a6cd16369b90f78ef304ee",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Dispersive.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/dispersive.demeter_conf",
+      "sha256": "937ab85cda42fe43163b1c1b71e671997810fc0c84f976f7940cd9b4a3943084",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/dispersive.demeter_conf"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/share/xdi/slribl4.ini",
+      "sha256": "9f5c4e2a16a682e577d580ed40b0e39af98714731880cb7b3a06b11cae614231",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/share/xdi/slribl4.ini"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/pixel_setup.tmpl",
+      "sha256": "e78b1dc5d00c29bb6ca1ca78be3947d65e193dda22f02c813be1acd86e4d2fa9",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/pixel_setup.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/pixel_fit.tmpl",
+      "sha256": "03afc8f33b2d2c8f69ddf91c43afce58a54655aa617a0d048869d9fe9ef08ba5",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/pixel_fit.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/pixel_set.tmpl",
+      "sha256": "a2191a3fd363061ab04194d5e1c8bc23a134dda54ed0281fb17cdb3780d69401",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/pixel_set.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/cus2.pl",
+      "sha256": "72a3905b5b59dd8aabf9df854d24d52e7a3f24d4d8c5325429c440c1ecfac2ed",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/cus2.pl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/gete.pl",
+      "sha256": "fb436e9805e03c9167b287b090be2eacddd701c894dc5f0b124f49631f26edb6",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/gete.pl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/pf.pl",
+      "sha256": "d1e6d1a8409e7ef7e74752afc5c10a883580401d415f9e75746fa9a51fc0a393",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/pf.pl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08.calib",
+      "sha256": "b659b2015ac357bd6a469c31767385946989247ef29d4b7652d635e1e343b317",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08.calib"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08",
+      "sha256": "d263d9e75434f516b205c2ccf074454e7da47e0e2ebecce45957d21b624ab760",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cufoil_rt.txt",
+      "sha256": "1187dbb84d7de5e20df635ecb205bf508aded3561f46dd276d5c226dcc8fa8ae",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cufoil_rt.txt"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/PhotonFactory/Pd_foil.CSV",
+      "sha256": "4ad6d98318c9f438ac3a1f46611aa3790c74b065908eb1b6460159fb8e3a204d",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/PhotonFactory/Pd_foil.CSV"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/PhotonFactory/Pd_foil_ref.txt",
+      "sha256": "8fd8db5896517392ad7d6dca4a76e3d8290a64e687246bca9e9ed9357693049a",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/PhotonFactory/Pd_foil_ref.txt"
     }
   ]
 }

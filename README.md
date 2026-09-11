@@ -105,6 +105,13 @@ The registry provides documentation and imports/exports native
 `athena.plugin_registry` settings. **File plugins…** in the import panel lets
 you enable a reader and retry the selected file.
 
+**Process → Dispersive energy calibration** compares an uploaded pixel standard
+with a conventional scan. Review the live pixel-column plot, estimate or refine
+the energy calibration, then make a new processed group. Native `athena.dxas`
+settings can be saved, loaded and exchanged; the **SLRIBL4** reader uses the
+saved calibration for pixel/stripe files. See the [dispersive contract](docs/athena-dispersive-reference.md)
+for the official Cu/Pd examples and remaining native-equivalence work.
+
 See [Athena research and tutorials](docs/athena-research.md),
 [implementation and validation](docs/athena-verification.md), and the
 [remaining full-parity work](docs/athena-parity.md). This branch is under active

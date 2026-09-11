@@ -32,6 +32,14 @@
       "bytes": 12045,
       "sha256": "8fd8db5896517392ad7d6dca4a76e3d8290a64e687246bca9e9ed9357693049a",
       "git_blob_sha1": "14cf153ab4120c8944d445447980d50fc8f1f02e"
+    },
+    {
+      "file": "demeter-dxas-cu-published-calibration.dat",
+      "path": "examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08.calib",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Dispersive/ESRF_ID24/cus2/cu_08.calib",
+      "bytes": 21843,
+      "sha256": "b659b2015ac357bd6a469c31767385946989247ef29d4b7652d635e1e343b317",
+      "git_blob_sha1": "86b3c11203557a52c3c28e0a77fc421209ceb0c6"
     }
   ]
 }

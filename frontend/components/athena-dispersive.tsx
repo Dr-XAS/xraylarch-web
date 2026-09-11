@@ -15,10 +15,10 @@ type Result={version:number;upload_id:string;coefficients:Coefficients;pixel:Tra
 const coefficientKeys=['offset','linear','quadratic'] as const
 const emptyColumns:Columns={pixel_column:'',numerator:[],denominator:[],logarithm:false,invert:false,reverse_signal:false,sort:false}
 
-function Figure({label,traces,xlabel,range}: {label:string;traces:Trace[];xlabel:string;range?:number[]}) {
+function Figure({label,traces,xlabel,ylabel,range}: {label:string;traces:Trace[];xlabel:string;ylabel:string;range?:number[]}) {
   return <div className={styles.plot} aria-label={label}>{traces.length ? <Plot
     data={traces.map((t,i)=>({x:t.x,y:t.y,name:t.label,type:'scatter',mode:'lines',line:{color:i?'#b76d37':'#16736b',width:1.6}}))}
-    layout={{autosize:true,margin:{l:60,r:15,t:20,b:90},xaxis:{title:{text:xlabel},range},yaxis:{title:{text:'Signal'}},
+    layout={{autosize:true,margin:{l:60,r:15,t:20,b:65},xaxis:{title:{text:xlabel},range},yaxis:{title:{text:ylabel}},
       font:{size:11},legend:{orientation:'h',y:-.3},uirevision:label}}
     config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'athena-dispersive'}}}
     style={{width:'100%',height:'100%'}} useResizeHandler /> : <p>Choose a file and review its detector columns.</p>}</div>
@@ -129,6 +129,11 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
     setDefaults(value);adopt(value.coefficients!);setNotice('Imported and saved athena.dxas calibration.')
   })}
   function select(id:string,field:'numerator'|'denominator',checked:boolean){setColumns(c=>({...c,[field]:checked?[...c[field],id]:c[field].filter(v=>v!==id)}))}
+  function preset(kind:'mu'|'esrf'|'slri') {
+    if(!inspection)return
+    const ids=inspection.columns.map(c=>c.column_id)
+    setColumns({...emptyColumns,pixel_column:ids[0],numerator:[ids[1]],denominator:kind==='slri'?[ids[2]]:[],logarithm:kind!=='mu'})
+  }
   const fitted=fit?.key===key?fit.details:undefined
   return <div className="ath-modal-body"><div className={styles.layout}>
     <fieldset disabled={pending} className={styles.controls}>
@@ -136,6 +141,7 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
       <p className="ath-hint">Choose a conventional scan of the same standard measured with the pixel detector. Saved processing settings are used.</p>
       <label className="ath-field"><span>Import pixel standard</span><input type="file" aria-label="Choose pixel standard file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
       {inspection&&<><h3>{inspection.display_name} · {inspection.row_count} pixels</h3>
+        <div className={styles.actions} aria-label="Pixel column presets"><button disabled={inspection.columns.length<2} onClick={()=>preset('mu')}>Use μ(pixel) columns</button><button disabled={inspection.columns.length<2} onClick={()=>preset('esrf')}>Use Athena ESRF log columns</button><button disabled={inspection.columns.length<3} onClick={()=>preset('slri')}>Use Athena SLRI I₀/Iₜ columns</button></div>
         <label className="ath-field"><span>Pixel column</span><select value={columns.pixel_column} onChange={e=>setColumns(c=>({...c,pixel_column:e.target.value}))}>{inspection.columns.map(c=><option key={c.column_id} value={c.column_id}>{c.index+1}. {c.name}</option>)}</select></label>
         <div className={styles.table}><table><thead><tr><th>Numerator</th><th>Denominator</th><th>Column</th></tr></thead><tbody>{inspection.columns.map(c=><tr key={c.column_id}><td><input type="checkbox" aria-label={`Pixel numerator ${c.name}`} checked={columns.numerator.includes(c.column_id)} onChange={e=>select(c.column_id,'numerator',e.target.checked)} /></td><td><input type="checkbox" aria-label={`Pixel denominator ${c.name}`} checked={columns.denominator.includes(c.column_id)} onChange={e=>select(c.column_id,'denominator',e.target.checked)} /></td><td>{c.index+1}. {c.name}</td></tr>)}</tbody></table></div>
         <p className="ath-hint">Selected columns are summed; no selected column means constant 1. For SLRI I₀/Iₜ select both channels and Natural log. Already-computed μ(pixel) uses one numerator and no denominator or log.</p>
@@ -158,8 +164,8 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
       <p className="ath-hint">Estimate, Reset, Refine and Replot save the plotted calibration for the SLRIBL4 pixel/stripe reader, as in Athena. Live previews while editing do not save it. Make calibrated data group inserts a new μ(E) group after the selected standard; Undo removes the group and keeps the saved calibration.</p>
     </fieldset>
     <section className={styles.previews}>
-      <h3>Selected pixel signal</h3><Figure label="Pixel column preview" traces={pixel?[pixel.pixel]:[]} xlabel="Pixel" />
-      <h3>Calibration and conventional standard</h3><Figure label="Dispersive calibration preview" traces={current?[current.normalized??current.calibrated!,...(current.standard?[current.standard]:[])].filter(Boolean):[]} xlabel="Energy (eV)" range={current?.plot_range} />
+      <h3>Selected pixel signal</h3><Figure label="Pixel column preview" traces={pixel?[pixel.pixel]:[]} xlabel="Pixel" ylabel="Selected signal" />
+      <h3>Calibration and conventional standard</h3><Figure label="Dispersive calibration preview" traces={current?[current.normalized??current.calibrated!,...(current.standard?[current.standard]:[])].filter(Boolean):[]} xlabel="Energy (eV)" ylabel={current?.normalized?'Normalized μ(E)':'μ(E)'} range={current?.plot_range} />
       {!hasCalibration&&<p>Review the pixel curve, then estimate coefficients or load a saved calibration.</p>}
       {fitted?.sum_squares!==undefined&&<p role="status">Derivative fit sum of squares: {fitted.initial_sum_squares?.toPrecision(5)} → {fitted.sum_squares.toPrecision(5)} · {fitted.evaluations} evaluations · scale {fitted.scale?.toPrecision(5)}</p>}
       {[...(pixel?.warnings??[]),...(current?.warnings??[]),...(fitted?.warnings??[])].map((w,i)=><p key={i} className="ath-warning">{w}</p>)}
