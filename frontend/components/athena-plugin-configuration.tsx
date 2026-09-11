@@ -7,9 +7,9 @@ function checked(value: PluginConfiguration, reader: string) {
   if (!value || value.reader !== reader || !Number.isInteger(value.version) || value.version < 0 || !value.session_id
     || !Array.isArray(value.fields) || !value.fields.length || new Set(value.fields.map(f => f?.name)).size !== value.fields.length
     || !value.values || !value.saved || !value.defaults
-    || value.fields.some(f => !f || !f.name || !f.title || !['number', 'integer', 'string'].includes(f.type)
-      || [value.values[f.name], value.saved[f.name], value.defaults[f.name]].some(v => f.type === 'string'
-        ? typeof v !== 'string' : typeof v !== 'number' || !Number.isFinite(v)))) {
+    || value.fields.some(f => !f || !f.name || !f.title || !['number', 'integer', 'string', 'boolean'].includes(f.type)
+      || [value.values[f.name], value.saved[f.name], value.defaults[f.name]].some(v => f.type === 'boolean' ? typeof v !== 'boolean'
+        : f.type === 'string' ? typeof v !== 'string' : typeof v !== 'number' || !Number.isFinite(v)))) {
     throw new Error('Could not read reader configuration. Reload configuration and try again.')
   }
   return value
@@ -52,8 +52,9 @@ export function AthenaPluginConfiguration({ reader, onPendingChange }: {
   const values: PluginConfiguration['values'] = {}
   for (const field of state?.fields ?? []) {
     const text = draft[field.name] ?? ''
-    const value = field.type === 'string' ? text : Number(text)
-    if (!text.trim() || (typeof value === 'number' && (!Number.isFinite(value)
+    const value = field.type === 'boolean' ? text === 'true' : field.type === 'string' ? text : Number(text)
+    if ((field.type !== 'boolean' && (field.type === 'string' ? text.trim().length < (field.minLength ?? 1) : !text.trim()))
+      || (typeof value === 'number' && (!Number.isFinite(value)
       || (field.type === 'integer' && !Number.isInteger(value)) || (field.minimum !== undefined && value < field.minimum)
       || (field.maximum !== undefined && value > field.maximum) || (field.exclusiveMinimum !== undefined && value <= field.exclusiveMinimum)))
       || (typeof value === 'string' && ((field.enum && !field.enum.includes(value)) || (field.maxLength && value.length > field.maxLength)))) {
@@ -83,12 +84,14 @@ export function AthenaPluginConfiguration({ reader, onPendingChange }: {
     {notice && <p role="status">{notice}</p>}
     <fieldset disabled={pending || !state} style={{ border: 0, padding: 0, margin: 0 }}>
       <div className="ath-fields">{state?.fields.map(field => <div key={field.name}>
-        <label className="ath-field"><span>{field.title}</span>{field.enum
+        <label className={field.type === 'boolean' ? 'ath-check' : 'ath-field'}><span>{field.title}</span>{field.type === 'boolean'
+          ? <input type="checkbox" checked={draft[field.name] === 'true'} onChange={e => { setDraft(v => ({ ...v, [field.name]: String(e.target.checked) })); setNotice('') }} />
+          : field.enum
           ? <select value={draft[field.name] ?? ''} onChange={e => { setDraft(v => ({ ...v, [field.name]: e.target.value })); setNotice('') }}>{field.enum.map(v => <option key={v}>{v}</option>)}</select>
           : <input type={field.type === 'string' ? 'text' : 'number'} min={field.minimum} max={field.maximum}
               step={field.type === 'integer' ? 1 : 'any'} maxLength={field.maxLength} value={draft[field.name] ?? ''}
               onChange={e => { setDraft(v => ({ ...v, [field.name]: e.target.value })); setNotice('') }} />}</label>
-        <p className="ath-hint">Current: {state.values[field.name]} · Saved: {state.saved[field.name]} · Default: {state.defaults[field.name]}</p>
+        <p className="ath-hint">Current: {String(state.values[field.name])} · Saved: {String(state.saved[field.name])} · Default: {String(state.defaults[field.name])}</p>
         {field.description && <p className="ath-hint">{field.description}</p>}
       </div>)}</div>
       {problem && <p role="alert" className="ath-error">{problem}</p>}

@@ -857,6 +857,139 @@
       "git_blob_sha1": "22d62395563ac5561b5e0d723ed4a6d0e4b90d05",
       "bytes": 194,
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/share/xdi/xdac.x23a2.ini"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/10BMMultiChannel.pm",
+      "sha256": "2d1fd42e58917a155cc541c2b638c53a8440785d79bb2e1ea1ecce51cf789360",
+      "git_blob_sha1": "a90064076ee8abe364acdadecf7ba3a770c329d5",
+      "bytes": 9777,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/10BMMultiChannel.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/10bmmultichannel.demeter_conf",
+      "sha256": "0461634f17b25a9435085457cfba45fb6df0f86d1f1b46ce48fbc7ee6abdb7e5",
+      "git_blob_sha1": "c89b30e2d61a82c07ef28b882ca5ebbf095e3ea9",
+      "bytes": 3746,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/10bmmultichannel.demeter_conf"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/X23A2MultiChannel.pm",
+      "sha256": "5b2cda0b58f461288d0d1ee32ad196a04fe5331ed5de7ef41a5c174f1a014746",
+      "git_blob_sha1": "6e4d408fd0f380b4988c9045d4e3b3daf1ee74a9",
+      "bytes": 4905,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/X23A2MultiChannel.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/B18.pm",
+      "sha256": "843e7d739f893ff72fe18e975b2bc094f59ccbf8a4fc0406a339ea1936091d5f",
+      "git_blob_sha1": "1810b0faa616b0638df4ba68e17d272f1636d9aa",
+      "bytes": 2468,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/B18.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/BM23.pm",
+      "sha256": "6cd8e1b68ed645a31f4cb94e8b86d3559881c130877a3c28975a2a125e248a3c",
+      "git_blob_sha1": "d640f62e53ce76993d6cf8d853e0ffa872b224b8",
+      "bytes": 2731,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/BM23.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/BL8Ar.pm",
+      "sha256": "145a70fcf060365837da365a6551328a3bcc3d7e2a28ac92b04e62e81a13fed0",
+      "git_blob_sha1": "49592052cbaaa2fd2c01ce3ea83429b2aa5d8e8f",
+      "bytes": 6508,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/BL8Ar.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/bl8ar.demeter_conf",
+      "sha256": "06c09f15c09e28ee0655dd7fcaea58dc774fb1e2418cc5e9d2375efc8a12ded3",
+      "git_blob_sha1": "35c5c91c50157945acac14096ac4a7814e84e23f",
+      "bytes": 3136,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/bl8ar.demeter_conf"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/SLRIBL4.pm",
+      "sha256": "6c2c33851cfcd3ae268dd1c9d7612d13ba232a3e8ed71da0505b7d5c456d6b5e",
+      "git_blob_sha1": "fe65b9b9c21b3bc71a5c460217b0c373bee8b8f4",
+      "bytes": 2451,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/SLRIBL4.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/Zip.pm",
+      "sha256": "d6b36a2b0396b613734e2d4ecacff6919bdeaa8ddcdea2f56f25928de8bc856d",
+      "git_blob_sha1": "71187fd151b5590c348744d269b215accc9c7e06",
+      "bytes": 4930,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/Zip.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/MultiChannel.pm",
+      "sha256": "cc092813b5cdc164916495ae9dbc2b53b4ed7c4d828d94a53032823fa87b18dc",
+      "git_blob_sha1": "d01c147925a9adeac023ef245d715d2cb678880a",
+      "bytes": 6740,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Data/MultiChannel.pm"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/README",
+      "sha256": "e5256bce972c33e0b7d098822339e4acd4d6373a06b66373c979ab011be03315",
+      "git_blob_sha1": "671e9dcec06837c3581a414ca6081fec8245364a",
+      "bytes": 1902,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/README"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/mc2prj",
+      "sha256": "b320a9fe246e7f51bd0eac5d68c9b2c2d2d844a4a3403575e714808464243270",
+      "git_blob_sha1": "a6dc3dedea9235d7a6eae78b885e284b4989ee55",
+      "bytes": 2981,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/mc2prj"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/re4chan.000",
+      "sha256": "6b86fda488c7247fe41d1713faea6d60ada796f353fb2c177158c34bec107ed2",
+      "git_blob_sha1": "989b6ba3645538c04f61e84e8cd9d2c2e5393a99",
+      "bytes": 66544,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/re4chan.000"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/re4chan.001",
+      "sha256": "9e1be8182893a1311d89a2012deff8d0e99542dd1d6e62d1a62c90cd2babe2f9",
+      "git_blob_sha1": "fda2a02dcac237b9dd80d97718f63e12900b220d",
+      "bytes": 66544,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/re4chan.001"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/re4chan.002",
+      "sha256": "859c04c42887bcefc79f4745ae3c0eaeb1d37c8e367679430b91a8e461a827db",
+      "git_blob_sha1": "f8f0b0f8fef02ac0ab9f7e8e34ee1d87b55e6c7d",
+      "bytes": 66544,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MultiChannel/re4chan.002"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/018_multichannel.t",
+      "sha256": "3955e0a67c3cf8b23ecabe3fcf13ad6462d030a54ba58f46fc5324d83fb17356",
+      "git_blob_sha1": "bd8e9084ea6439f9ddae4fcaaa3b63e112f3330a",
+      "bytes": 1782,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/018_multichannel.t"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/columns.tmpl",
+      "sha256": "4eb57f0562a496440067afb9b8831ab86ce2ce735b6c7b6a472437b2daec62dc",
+      "git_blob_sha1": "368192030a7b1430ff41a8f9ce0fa01a924eb262",
+      "bytes": 838,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/columns.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/columns.tmpl",
+      "sha256": "69b2730eaf964f2f8c84448ffd5451ea38ad1b1b2ea2958c1ce51f7eeb1726c8",
+      "git_blob_sha1": "a6986ea0cc1782d9b1c30d3c3b7589e65e42c410",
+      "bytes": 778,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/ifeffit/columns.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/sort.tmpl",
+      "sha256": "f4962e50d0de7524157b8aa43b14013a7e80d905d1f1cc2b674e861f92acb5fe",
+      "git_blob_sha1": "02b842ba74958bad45cd0e3e5e431e7602fc6694",
+      "bytes": 502,
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/sort.tmpl"
     }
   ]
 }

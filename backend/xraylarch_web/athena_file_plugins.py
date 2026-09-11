@@ -21,12 +21,20 @@ class PreparedFile:
     denominator: int
     fluorescence: tuple[int, int] | None = None
     suggestions: dict | None = None
+    column_units: dict[int, str] | None = None
 
 
 @dataclass(frozen=True)
 class PreparedCollection:
     scans: list[PreparedFile]
     metadata: dict
+
+
+@dataclass(frozen=True)
+class PreparedProject:
+    groups: list[dict]
+    metadata: dict
+    journal: str = ''
 
 
 def _fail(message, code='upload_malformed_rows'):
@@ -75,6 +83,26 @@ def _prepared(original, headers, labels, rows, metadata, numerator, denominator,
 def _spec(data, max_points, max_columns):
     from .athena_spec import split_spec
     return split_spec(data, max_points, max_columns)
+
+
+def _b18(data, max_points, max_columns):
+    from .athena_header_files import b18
+    return b18(data, max_points, max_columns)
+
+
+def _bm23(data, max_points, max_columns):
+    from .athena_header_files import bm23
+    return bm23(data, max_points, max_columns)
+
+
+def _multichannel(data, max_points, max_columns, configuration=None):
+    from .athena_multichannel import multichannel
+    return multichannel(data, max_points, max_columns, configuration)
+
+
+def _recognize_multichannel(data, reader):
+    from .athena_multichannel import recognize
+    return recognize(data, reader)
 
 
 def _srs(data, max_points, max_columns):
@@ -324,7 +352,7 @@ class FilePlugin:
     description: str
     documentation: str
     signature: re.Pattern
-    transform: Callable[..., PreparedFile | PreparedCollection]
+    transform: Callable[..., PreparedFile | PreparedCollection | PreparedProject]
     recognize: Callable[[bytes], bool] | None = None
     configurable: bool = False
     configured_recognize: Callable[[bytes, dict], bool] | None = None
@@ -339,6 +367,23 @@ class FilePlugin:
 # DUBBLE precedes generic SRS when both are enabled; either can read its SRS
 # records. User/system extension discovery remains separate work.
 _PLUGINS = (
+    FilePlugin('10BMMultiChannel', '0.2', 'APS 10BM · four-channel ion chambers',
+        'Converts the four paired ion-chamber channels into a project for group preview and selection. '
+        'Configure column numbers, names, per-channel energy shifts, temperature and the optional summed '
+        'reference. Applied shifts are included in the energy arrays; the resulting shift parameter is zero.',
+        re.compile(rb'^\s*MRCAT_XAFS'), _multichannel,
+        lambda data: _recognize_multichannel(data, '10BMMultiChannel'), configurable=True),
+    FilePlugin('B18', '0.1', 'Diamond B18 · Core XAFS',
+        'Cleans tabs and indentation and retains all measurements with Larch. The native default '
+        'sums the 36 detector columns 8–43 and divides by column 3 without a logarithm. '
+        'Review or change the selected detector channels in the live column preview.',
+        re.compile(rb'.*Diamond'), _b18,
+        lambda data: len(data.splitlines()) > 1 and b'B18-CORE XAS' in data.splitlines()[1]),
+    FilePlugin('BM23', '0.1', 'ESRF BM23',
+        'Cleans SPEC labels and converts the first column from keV to eV. The native transmission '
+        'suggestion is ln(abs(column 3 / column 4)). Multiple scans open in the scan chooser; '
+        'review detector columns and the converted energy axis before import.',
+        re.compile(rb'(?=.*BM23)(?=.*E\.S\.R\.F\.).*'), _bm23),
     FilePlugin('CMC', '0.1', 'APS 9BM · CMC-XOR',
         'Selects native energy, ion-chamber, Lytle and MCA columns. Derives dark-current rates from the first '
         'observation and offset columns, then subtracts rate times each integration time. Native NaN-to-zero '
@@ -422,6 +467,12 @@ _PLUGINS = (
         re.compile(rb'.*'), _x23a2med,
         lambda data: b'BMM' in data.split(b'\n',1)[0] or (len(data.splitlines()) > 1 and b'X-23A2' in data.splitlines()[1]),
         configurable=True, configured_recognize=_recognize_x23a2med),
+    FilePlugin('X23A2MultiChannel', '0.1', 'NSLS X23A2 · four-channel ion chambers',
+        'Creates four independent transmission groups from I0/I02/I03/I04 and It1–It4, then opens '
+        'project preview and selection. Each sample uses its own denominator. Native defaults do not '
+        'import or tie a reference channel. Original detector columns and source bytes are retained.',
+        re.compile(rb'^\s*XDAC'), _multichannel,
+        lambda data: _recognize_multichannel(data, 'X23A2MultiChannel')),
 )
 
 

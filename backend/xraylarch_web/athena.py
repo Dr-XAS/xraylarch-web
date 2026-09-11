@@ -1077,13 +1077,15 @@ class AthenaStore:
 
     def inspect(self, ident, data, filename):
         project = self.load(ident)
-        from .athena_file_plugins import prepare_file, PreparedCollection
+        from .athena_file_plugins import prepare_file, PreparedCollection, PreparedProject
         from .parsing import _safe_display_name
         prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
                                 max_points=self.settings.max_points, max_columns=self.settings.max_columns,
                                 enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
                                 read_configuration=self.plugin_configurations.read)
         display_name = _safe_display_name(filename)
+        if isinstance(prepared, PreparedProject):
+            return {'kind': 'project', 'preview': self.preview_project(ident, data, display_name, prepared=prepared)}
         if isinstance(prepared, PreparedCollection):
             # Parse every scan before staging any result. A damaged later
             # scan must not leave a partial collection available to import.
@@ -1138,6 +1140,10 @@ class AthenaStore:
             inspection['plugin_suggestions'] = plugin_suggestions
             if prepared.suggestions is None:
                 column_units[ids[0]] = 'eV'
+            for index, units in (prepared.column_units or {}).items():
+                column_units[ids[index]] = units
+                if suggestion['energy_column'] == ids[index]:
+                    suggestion = dict(suggestion, units=units)
             converted = prepared.data.decode('utf-8')
             inspection.update(file_plugin=prepared.metadata, converted_preview='\n'.join(converted.splitlines()[:120]),
                               converted_preview_truncated=len(converted.splitlines()) > 120)
@@ -2301,9 +2307,28 @@ class AthenaStore:
                 "notes": record["notes"][:20_000], "result": None, "processing_error": record["recipe_error"],
                 **{key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id", "background_standard_id")}}
 
-    def preview_project(self, ident, data, filename):
+    def preview_project(self, ident, data, filename, *, prepared=None):
         self.load(ident)
         filename = Path(filename.replace("\\", "/")).name[:255] or "project.prj"
+        from .athena_file_plugins import prepare_file, PreparedProject
+        if prepared is None:
+            prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
+                max_points=self.settings.max_points, max_columns=self.settings.max_columns,
+                enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
+                read_configuration=self.plugin_configurations.read)
+        original = None
+        if isinstance(prepared, PreparedProject):
+            original = data
+            records = []
+            for ordinal, group in enumerate(prepared.groups, 1):
+                label = f'{filename} - {group["label"]}' if group.get('prefix_filename') else group['label']
+                records.append(dict(id=f'channel-{ordinal}', label=label, energy=group['energy'], mu=group['mu'],
+                    data_type=group['data_type'], parameters=AthenaParameters().model_dump(),
+                    source=group['source'] | {'filename': filename}, notes='', result=None,
+                    is_normalized=False, is_difference=False, reference_id=None, background_standard_id=None,
+                    marked=False, frozen=False, multiplier=1, offset=0))
+            data = json.dumps(dict(format='athena-web', schema_version=1, version=0, name=filename,
+                journal=prepared.journal, groups=records), allow_nan=False).encode()
         parsed = self._parse_project(data, filename)
         groups = []
         for record in parsed["groups"]:
@@ -2322,20 +2347,49 @@ class AthenaStore:
             workspace = self.storage.workspace_dir(ident)
             self.storage.write_bytes(ident, prefix + ".bin", data)
             try:
-                self.storage.write_json(ident, prefix + ".json", {"filename": filename})
+                if original is not None:
+                    self.storage.write_bytes(ident, prefix + '.source', original)
+                self.storage.write_json(ident, prefix + ".json", {"filename": filename,
+                    **({'file_plugin': prepared.metadata} if original is not None else {})})
             except OSError:
                 self.storage.path(ident, prefix + ".bin").unlink(missing_ok=True)
+                self.storage.path(ident, prefix + '.source').unlink(missing_ok=True)
                 raise
             cached = sorted(workspace.glob("project-upload-*.bin"), key=lambda path: path.stat().st_mtime_ns)
-            size = sum(path.stat().st_size for path in cached)
+            def cached_size(path):
+                source = path.with_suffix('.source')
+                return path.stat().st_size + (source.stat().st_size if source.exists() else 0)
+            size = sum(cached_size(path) for path in cached)
             while len(cached) > 10 or size > 2 * self.settings.max_upload_bytes:
                 expired = cached.pop(0)
-                size -= expired.stat().st_size
+                size -= cached_size(expired)
                 expired.unlink()
                 expired.with_suffix(".json").unlink(missing_ok=True)
+                expired.with_suffix('.source').unlink(missing_ok=True)
         return {"upload_id": upload_id, "filename": filename, "name": parsed["name"],
                 "journal": parsed["journal"], "format": parsed["format"],
-                "groups": groups, "warnings": parsed["warnings"]}
+                "groups": groups, "warnings": parsed["warnings"],
+                **({'file_plugin': prepared.metadata} if original is not None else {})}
+
+    def project_upload_file(self, ident, upload_id, variant):
+        self.storage._validate_id(upload_id)
+        if variant not in ('source', 'converted'):
+            fail('Choose source or converted project content.')
+        with self.storage.lock(ident):
+            self.load(ident)
+            try:
+                metadata = self.storage.read_json(ident, f'project-upload-{upload_id}.json')
+                data = self.storage.path(ident, f'project-upload-{upload_id}.bin').read_bytes()
+            except FileNotFoundError:
+                fail('Project preview expired or belongs to another workspace; upload the file again.')
+            filename = metadata['filename']
+            source = self.storage.path(ident, f'project-upload-{upload_id}.source')
+            if source.exists():
+                if variant == 'source':
+                    data = source.read_bytes()
+                else:
+                    filename = Path(filename).stem + '.athena.json'
+            return data, filename
 
     def _read_project_upload(self, ident, upload_id):
         self.storage._validate_id(upload_id)
@@ -2585,6 +2639,13 @@ def build_athena_router(settings: Settings):
     def preview_project_group(ident: str, upload_id: str, group_id: str,
                               mode: Literal["mu", "norm", "flat", "dmude", "chi"] = "mu"):
         return guarded(lambda: store.preview_project_group(ident, upload_id, group_id, mode))
+
+    @router.get('/projects/{ident}/preview-project/{upload_id}/file')
+    def project_upload_file(ident: str, upload_id: str, variant: Literal['source', 'converted'] = 'source'):
+        data, filename = guarded(lambda: store.project_upload_file(ident, upload_id, variant))
+        from urllib.parse import quote
+        return Response(data, media_type='application/octet-stream',
+            headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename, safe='')}"})
 
     @router.post("/projects/{ident}/restore-upload")
     def restore_upload(ident: str, request: RestoreUploadRequest):

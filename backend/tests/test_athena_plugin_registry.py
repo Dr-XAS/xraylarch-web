@@ -25,7 +25,7 @@ FIXTURES = Path(__file__).parent / 'fixtures'
 def test_native_default_off_catalog_order_and_project_independence(tmp_path):
     prefs = AthenaPreferences(Settings(data_root=tmp_path))
     assert prefs.read_plugins() == {'version': 0, 'enabled': {}}
-    assert [p['name'] for p in plugin_catalog()] == ['CMC', 'DUBBLE', 'HXMA', 'LNLS', 'Lytle', 'PFBL12C', 'SPEC', 'SRS', 'SSRLA', 'SSRLB', 'SSRLmicro', 'X10C', 'X15B', 'X23A2MED']
+    assert [p['name'] for p in plugin_catalog()] == ['10BMMultiChannel', 'B18', 'BM23', 'CMC', 'DUBBLE', 'HXMA', 'LNLS', 'Lytle', 'PFBL12C', 'SPEC', 'SRS', 'SSRLA', 'SSRLB', 'SSRLmicro', 'X10C', 'X15B', 'X23A2MED', 'X23A2MultiChannel']
     assert all(p['documentation'] and p['documentation_url'].endswith(p['name'] + '.pm') for p in plugin_catalog())
     store = AthenaStore(prefs_settings := Settings(data_root=tmp_path)); p = store.create()
     grid = prefs.read(); memory = prefs.read_columns()

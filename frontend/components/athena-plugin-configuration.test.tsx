@@ -125,3 +125,26 @@ it('ignores a stale response after StrictMode cleanup', async () => {
   await act(async () => first(initial)); expect(input).toHaveValue(8)
   await waitFor(() => expect(input).toBeEnabled())
 })
+
+it('applies a boolean reference switch and an explicitly empty temperature label, then restores defaults', async () => {
+  const values = { reference: true, temperature_column: 'mcs6', eshift1: 0 }
+  const config: PluginConfiguration = { ...initial, reader: '10BMMultiChannel', values, saved: values, defaults: values,
+    fields: [{ name: 'reference', title: 'Import reference channel', type: 'boolean' },
+      { name: 'temperature_column', title: 'Temperature column label', type: 'string', minLength: 0, maxLength: 128 },
+      { name: 'eshift1', title: 'Channel 1 energy shift (eV)', type: 'number' }] }
+  vi.mocked(loadPluginConfiguration).mockResolvedValue(config)
+  render(<AthenaPluginConfiguration reader="10BMMultiChannel" />)
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Import reference channel' }))
+  fireEvent.change(screen.getByRole('textbox'), { target: { value: '' } })
+  fireEvent.change(screen.getByRole('spinbutton'), { target: { value: '-2.5' } })
+  const changed = { reference: false, temperature_column: '', eshift1: -2.5 }
+  vi.mocked(applyPluginConfiguration).mockResolvedValueOnce({ ...config, version: 1, values: changed, saved: changed })
+  fireEvent.click(screen.getByRole('button', { name: 'Apply and Save' }))
+  await screen.findByText(/Applied and saved/)
+  expect(applyPluginConfiguration).toHaveBeenCalledWith('10BMMultiChannel', { version: 0, session_id: 'server-a', values: changed, save: true })
+  expect(screen.getByText('Current: false · Saved: false · Default: true')).toBeVisible()
+  fireEvent.click(screen.getByRole('button', { name: 'Use Athena defaults' }))
+  expect(screen.getByRole('checkbox')).toBeChecked()
+  expect(screen.getByRole('textbox')).toHaveValue('mcs6')
+  expect(screen.getByRole('spinbutton')).toHaveValue(0)
+})

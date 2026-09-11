@@ -2863,3 +2863,36 @@ describe('Legacy detector records in the workbench', () => {
     expect(within(select).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['mu', 'xanes', 'norm'])
   })
 })
+
+it('hands the complete raw-file queue and staged native project to group selection without a second conversion', async () => {
+  const project = await openSaved()
+  fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+  const files = [new File(['XDAC'], 'native.000'), new File(['next'], 'next.dat'), new File(['project'], 'last.prj')]
+  const staged = { upload_id: 'native-project', filename: 'native.000', name: 'native', journal: '', warnings: [], groups: [] }
+  api.mockResolvedValueOnce({ kind: 'project', preview: staged })
+  fireEvent.change(screen.getByLabelText('Choose data files'), { target: { files } })
+  await screen.findByTestId('project-import-panel')
+  const props = projectImport.mock.calls.at(-1)![0]
+  expect(props.initialFiles).toEqual(files)
+  expect(props.initialPreview).toEqual(staged)
+  expect(props.getProject()).toBe(project)
+  expect(api.mock.calls.filter(([path]) => path.endsWith('/inspect'))).toHaveLength(1)
+  expect(importCalls()).toHaveLength(0)
+  expect(props.disabled).toBe(false)
+})
+
+it('stops raw batch reuse at a native project and forwards only the unimported tail', async () => {
+  const project = await openSaved(), first = inspectionFixture('first.dat'), native = inspectionFixture('native.000'), tail = inspectionFixture('later.dat')
+  const { dialog, files } = await chooseImportFiles([first, native, tail])
+  const after = importedProject(project, first.display_name)
+  const staged = { upload_id: 'native-project', filename: 'native.000', name: 'native', journal: '', warnings: [], groups: [] }
+  api.mockResolvedValueOnce(after).mockResolvedValueOnce({ kind: 'project', preview: staged })
+  submitImport(dialog)
+  await screen.findByTestId('project-import-panel')
+  const props = projectImport.mock.calls.at(-1)![0]
+  expect(props.initialFiles).toEqual(files.slice(1))
+  expect(props.initialPreview).toEqual(staged)
+  expect(props.getProject()).toEqual(after)
+  expect(importCalls()).toHaveLength(1)
+  expect(props.disabled).toBe(false)
+})

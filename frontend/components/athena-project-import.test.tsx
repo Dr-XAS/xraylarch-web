@@ -262,3 +262,42 @@ describe('Detector project preview', () => {
     expect(api).toHaveBeenCalledTimes(1)
   })
 })
+
+it('uses the converted project snapshot once, with independent channel preview, then reinspects the original file', async () => {
+  const staged = { ...preview(), file_plugin: { id: 'X23A2MultiChannel', description: 'Four channels', summary: 'Paired I0 and It' } }
+  const file = new File(['XDAC'], 'channels.000')
+  setup({ initialFiles: [file], initialPreview: staged }); await ready()
+  expect(api).not.toHaveBeenCalled()
+  expect(screen.getByRole('link', { name: 'Download original file' })).toHaveAttribute('href', expect.stringContaining('/upload-first/file?variant=source'))
+  expect(screen.getByRole('link', { name: 'Download converted project' })).toHaveAttribute('href', expect.stringContaining('/upload-first/file?variant=converted'))
+  fireEvent.click(checkbox('Reference foil'))
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Oxide, group 3' }))
+  await waitFor(() => expect(plot.mock.calls.at(-1)?.[0].data[0].y).toEqual(staged.groups[2].y))
+  const next = { ...staged, upload_id: 'reinspected', groups: staged.groups.slice(0, 2) }
+  api.mockResolvedValueOnce(next)
+  fireEvent.click(screen.getByRole('button', { name: 'Reinspect source file' }))
+  await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2))
+  expect(screen.getAllByRole('checkbox').every(c => (c as HTMLInputElement).checked)).toBe(true)
+  expect(api).toHaveBeenCalledTimes(1)
+  expect(api.mock.calls[0][0]).toBe('/projects/workspace/preview-project')
+  expect((api.mock.calls[0][1] as FormData).get('file')).toBe(file)
+  expect(imports()).toHaveLength(0)
+})
+
+it('disables stale project import after failed conversion and retries the same original without losing the queue', async () => {
+  const staged = { ...preview(), file_plugin: { id: '10BMMultiChannel', description: 'Four channels', summary: 'Paired I0 and It' } }
+  const files = [new File(['MRCAT'], 'channels.dat'), new File(['columns'], 'later.dat')], handoff = vi.fn()
+  const state = setup({ initialFiles: files, initialPreview: staged, onRemainingFiles: handoff }); await ready()
+  api.mockRejectedValueOnce(new Error('Invalid detector columns'))
+  fireEvent.click(screen.getByRole('button', { name: 'Reinspect source file' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Invalid detector columns')
+  expect(screen.queryByRole('button', { name: 'Import all groups' })).not.toBeInTheDocument()
+  api.mockResolvedValueOnce({ ...staged, upload_id: 'retry' })
+  fireEvent.click(screen.getByRole('button', { name: 'Retry preview' })); await ready()
+  expect((api.mock.calls[1][1] as FormData).get('file')).toBe(files[0])
+  api.mockResolvedValueOnce(state.result(1))
+  fireEvent.click(screen.getByRole('button', { name: 'Import all groups' }))
+  await waitFor(() => expect(handoff).toHaveBeenCalledWith([files[1]]))
+  expect(imports()).toHaveLength(1)
+  expect(imports()[0][1]).toEqual({ version: 0, upload_id: 'retry', group_ids: ['a','b','c'] })
+})

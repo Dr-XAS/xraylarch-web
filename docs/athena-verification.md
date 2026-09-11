@@ -1419,3 +1419,67 @@ Final complete regression results for this checkpoint:
 - Final source/fixture identities, local links, matrix invariants and
   `git diff --check` pass. No commit, push or deployment was performed in this
   checkpoint. The complete Athena objective remains active.
+
+## Multichannel project readers, 2026-09-10
+
+The [multichannel contract](athena-multichannel-reference.md) adds native
+X23A2MultiChannel and 10BMMultiChannel project output. Three official X23
+acquisitions are retained with source identities; six 10BM constructed
+configurations/layout probes are explicitly distinguished from measured data.
+Nine independent native runs reproduce every column and energy/μ/I0/signal
+expression, group label, datatype and journal. Native `sort_data` is executed
+for the row-preserving Ifeffit branch; the old Larch template's independent
+column sorting is documented as unsuitable for detector correspondence.
+Moose/RPC/default-resolution/XDI/project-writer/full-desktop execution is not
+claimed.
+
+Executed results (all process handles confirmed terminal):
+
+- Full backend: **2,272 passed**, **328 warnings**, **206.76 seconds**, exit 0
+  (`/tmp/athena-mc-backend-full.log`). The new 35 cases include real HTTP,
+  processing, source/converted downloads, staged configuration independence,
+  limits, failed writes, cache eviction, namespace isolation, restart,
+  undo/redo and JSON/PRJ exchange. Focused shared preview/configuration/registry
+  checks: **151 passed**, **15.04 seconds**.
+- Full frontend: **472 passed**, **23 files**, **47.66 seconds**, exit 0
+  (`/tmp/athena-mc-frontend-full.log`). Staged project handoff, raw/project batch
+  boundaries, no duplicate conversion/import, failed reinspection and boolean/
+  empty-string configuration are covered. Focused: **194 passed**.
+- Full Chromium: **43 passed**, **4.7 minutes**, exit 0
+  (`/tmp/athena-mc-browser-full.log`). Dedicated final multichannel flows:
+  **2 passed**, **22.2 seconds**, exit 0
+  (`/tmp/athena-mc-browser-final.log`). Real Plotly coordinates are checked for
+  every native channel, normalized previews, changed columns and energy
+  shifts; X23 E/k/R/q, both download variants, subset import, saved PRJ
+  reimport and page reload pass. Isolated ports 13004/18006 and temporary
+  data are used.
+- Long 10BM labels initially collided with checkboxes because global button
+  styles enforced nowrap. Scoped wrapping fixes this; desktop and 390-pixel
+  configuration screenshots were inspected after the change. Browser width
+  assertions pass. Mobile configuration actions wrap and remain reachable.
+- Type generation and TypeScript pass (`/tmp/athena-mc-typecheck.log`).
+  Production build compiled but failed when Next.js captured empty output
+  from TypeScript `--showConfig` in the sandbox (`/tmp/athena-mc-build.log`).
+  A separate read-only probe produced valid JSON when redirected directly,
+  while Next's `runTypeScriptCli` capture returned exit 0 with zero stdout.
+  The attempted normal-local build was rejected by automatic approval review
+  due to the account usage limit; it did not run. **Production build is not
+  verified at this checkpoint.** No type-check bypass or repo workaround was
+  introduced.
+- All nine native reproducers pass (`/tmp/athena-mc-native-reproduced.log`).
+  The primary catalog contains **150 unique entries**; added source byte,
+  SHA-256 and Git blob identities match. Fixtures/harness hashes and local
+  links pass. All **107 matrix IDs/order** match HEAD and no row is Verified.
+
+Sixteen converters are registered. Six top-level readers and four nested
+Beamlines helpers, measured 10BM acquisition validation, complete native
+metadata/preferences/extensions and the other Athena workflow rows remain.
+No commit, push or deployment was performed. The full Athena goal is active.
+
+Follow-up: after the permission context changed, the normal-local production
+build was approved and completed with **exit 0**
+(`/tmp/athena-mc-build-local.log`). Compilation, TypeScript, page generation and
+route output all passed. The prior sandbox failure and rejected attempt above
+remain recorded as failed/not-run attempts; the build limitation is resolved.
+Live frontend/proxy health is OK and the existing Copper foil temperature
+series remains version 67 with three groups.

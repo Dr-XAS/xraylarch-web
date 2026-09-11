@@ -14,12 +14,12 @@ export interface PluginEntry {
 }
 
 export interface PluginConfigurationField {
-  name: string; title: string; type: 'integer' | 'number' | 'string'; description?: string
-  minimum?: number; maximum?: number; exclusiveMinimum?: number; maxLength?: number; enum?: string[]
+  name: string; title: string; type: 'integer' | 'number' | 'string' | 'boolean'; description?: string
+  minimum?: number; maximum?: number; exclusiveMinimum?: number; minLength?: number; maxLength?: number; enum?: string[]
 }
 export interface PluginConfiguration {
   reader: string; version: number; session_id: string; unsaved: boolean
-  values: Record<string, number | string>; saved: Record<string, number | string>; defaults: Record<string, number | string>
+  values: Record<string, number | string | boolean>; saved: Record<string, number | string | boolean>; defaults: Record<string, number | string | boolean>
   fields: PluginConfigurationField[]
 }
 export function loadPluginConfiguration(reader: string, signal?: AbortSignal): Promise<PluginConfiguration> {

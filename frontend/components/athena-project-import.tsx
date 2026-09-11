@@ -3,8 +3,9 @@
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { FolderOpen } from "lucide-react"
-import { athenaApi, type AthenaProject } from "@/lib/athena"
+import { apiBase, athenaApi, type AthenaProject } from "@/lib/athena"
 import { isAthenaProjectFile } from "@/lib/athena-file-types"
+import { AthenaPluginConfiguration } from "./athena-plugin-configuration"
 import styles from "./athena-project-import.module.css"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false })
@@ -14,9 +15,10 @@ interface PreviewGroup {
   x: number[]; y: number[]; notes: string; reference_id: string | null
   background_standard_id?: string | null
 }
-interface ProjectPreview {
+export interface ProjectPreview {
   upload_id: string; filename: string; name: string; journal: string
   groups: PreviewGroup[]; warnings: string[]
+  file_plugin?: { id: string; description: string; summary: string; configurable?: boolean }
 }
 interface PreviewTrace {
   x: number[]; y: number[]; label: string; mode: PreviewMode
@@ -29,6 +31,7 @@ interface Props {
   onBusyChange: (label: string) => void
   disabled?: boolean
   initialFiles?: File[]
+  initialPreview?: ProjectPreview | null
   onRemainingFiles?: (files: File[]) => void
 }
 
@@ -36,7 +39,7 @@ const modeLabels: Record<PreviewMode, string> = {
   mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", chi: "χ(k)",
 }
 
-export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, initialFiles, onRemainingFiles }: Props) {
+export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, initialFiles, initialPreview, onRemainingFiles }: Props) {
   const [files, setFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<ProjectPreview | null>(null)
   const [selected, setSelected] = useState<string[]>([])
@@ -52,12 +55,14 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
   const [every, setEvery] = useState("2")
   const [start, setStart] = useState("1")
   const [selectionNote, setSelectionNote] = useState("")
+  const [configurationOpen, setConfigurationOpen] = useState(false)
+  const [configurationPending, setConfigurationPending] = useState(false)
   const anchor = useRef<number | null>(null)
   const initialChoice = useRef<File[] | undefined>(undefined)
   const active = preview?.groups.find(group => group.id === activeId)
   const all = !selected.length || selected.length === preview?.groups.length
   const compatibilityNotes = [...new Set([...(preview?.warnings ?? []), ...(trace?.warnings ?? [])])]
-  const locked = !!busy || disabled
+  const locked = !!busy || disabled || configurationPending
 
   function project() {
     const current = getProject()
@@ -81,10 +86,12 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     catch (err) { setError(err instanceof Error ? err.message : "Project import failed.") }
     finally { setBusy(""); onBusyChange("") }
   }
-  async function choose(incoming: File[]) {
+  async function choose(incoming: File[], staged?: ProjectPreview | null) {
     if (!incoming.length) return
     setFiles(incoming); setPreview(null); setTrace(null)
-    await task("Reading project preview", async () => { await inspect(incoming[0]) })
+    setConfigurationOpen(false)
+    if (staged) acceptPreview(staged)
+    else await task("Reading project preview", async () => { await inspect(incoming[0]) })
   }
   async function importSelected() {
     if (!preview || !files.length) return
@@ -118,7 +125,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
   useEffect(() => {
     if (initialFiles?.length && initialChoice.current !== initialFiles) {
       initialChoice.current = initialFiles
-      void choose(initialFiles)
+      void choose(initialFiles, initialPreview)
     }
     // A supplied file batch is consumed once, including React StrictMode.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,10 +183,21 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     setSelected(ids); setSelectionNote(`${ids.length} groups selected by position.`); setError("")
   }
 
-  return <section aria-label="Project file import">
+  return <section aria-label="Project file import" className={styles.panel}>
     {!preview && <label className="ath-upload-zone"><FolderOpen size={26} /><strong>Open an Athena project</strong><span>.prj, .json or .gz · multiple projects supported</span><input type="file" aria-label="Open project file" multiple disabled={locked} accept=".prj,.json,.gz" onChange={event => { void choose(Array.from(event.target.files ?? [])); event.target.value = "" }} /></label>}
     {files.length > 0 && <p className={styles.progress} role="status">{busy || `Reviewing ${files[0].name}`} · {files.length} project file{files.length === 1 ? "" : "s"} remaining</p>}
     {preview && <>
+      {preview.file_plugin && <section aria-label="Project file conversion">
+        <h4>{preview.file_plugin.description}</h4><p>{preview.file_plugin.summary}</p>
+        <div className="ath-modal-actions">
+          <a className="ath-button" href={`${apiBase}/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=source`} download>Download original file</a>
+          <a className="ath-button" href={`${apiBase}/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=converted`} download>Download converted project</a>
+          <button disabled={locked} onClick={() => { void choose(files) }}>Reinspect source file</button>
+          {preview.file_plugin.configurable && <button disabled={locked} onClick={() => setConfigurationOpen(value => !value)}>{configurationOpen ? 'Hide reader configuration' : 'Configure reader'}</button>}
+        </div>
+        {configurationOpen && <AthenaPluginConfiguration reader={preview.file_plugin.id} onPendingChange={value => { setConfigurationPending(value); onBusyChange(value ? 'Configuring file reader' : '') }} />}
+        <p className="ath-hint">Groups below use the reader settings from this inspection. Reinspect after changing configuration to recalculate and reset group selection.</p>
+      </section>}
       <h3 className={styles.title}>{preview.name || preview.filename}</h3>
       <div className={styles.layout}>
         <div>

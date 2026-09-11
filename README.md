@@ -85,6 +85,20 @@ source columns, deadtimes or integration time, return to import and choose
 [configured-reader contract](docs/athena-configured-readers-reference.md)
 records native defaults, official examples and numerical comparisons.
 
+**X23A2MultiChannel** and **10BMMultiChannel** convert four simultaneous
+samples into a project with independent channel previews and group selection.
+10BM also supports a reference channel, names, detector columns, temperature
+labels and per-channel energy shifts. Open **Configure reader** in the preview,
+then **Reinspect source file** to review updated curves before importing.
+See the [multichannel contract](docs/athena-multichannel-reference.md) for
+measured samples, native comparisons and remaining limitations.
+
+**B18** retains all points with Larch and suggests the 36-channel fluorescence
+sum. **BM23** converts keV to eV and offers independent scan previews for
+multi-scan files. Both use the live column editor; see the
+[header-reader contract](docs/athena-header-readers-reference.md) for native
+comparisons and the current constructed-fixture validation boundary.
+
 Enable these readers in **File → Plugin registry…** before importing; Athena's
 initial registry leaves plugins unchecked. Switches persist across sessions.
 The registry provides documentation and imports/exports native

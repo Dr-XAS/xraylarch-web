@@ -5,7 +5,7 @@ import { Activity, ArrowDown, ArrowUp, BookOpen, Check, ChevronDown, Copy, Downl
 import { apiBase, athenaApi, resources, isDifferenceGroup, dataTypeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot, type Space } from "./athena-plot"
-import { AthenaProjectImport } from "./athena-project-import"
+import { AthenaProjectImport, type ProjectPreview } from "./athena-project-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
 import { AthenaScanSelection } from './athena-scan-selection'
 import { columnPayload, initialColumnMapping, defaultPreprocessing, defaultRebin, lastImportedSample, type ColumnMapping } from "@/lib/athena-import"
@@ -208,6 +208,7 @@ export function AthenaWorkbench() {
   const [files, setFiles] = useState<ImportFile[]>([])
   const [scanSelection, setScanSelection] = useState<ScanInspectionResponse | null>(null)
   const [projectFiles, setProjectFiles] = useState<File[]>([])
+  const [projectPreview, setProjectPreview] = useState<ProjectPreview | null>(null)
   const [reuseMapping, setReuseMapping] = useState(true)
   const [mappingState, setMapping] = useState<ColumnMapping>({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
   const mapping: ColumnMapping = { ...mappingState, rebin: { ...defaultRebin, ...mappingState.rebin, ...rebinDefaults.grid } }
@@ -489,19 +490,23 @@ export function AthenaWorkbench() {
   }
   function optionText(key: string, label: string) { return <label className="ath-field"><span>{label}</span><input value={String(options[key] ?? "")} onChange={e => setOptions(o => ({ ...o, [key]: e.target.value }))} /></label> }
   function selectParameter(key: "window" | "rwindow" | "bkg_window", label: string) { return <label className="ath-field"><span>{label}</span><select value={parameters?.[key]} onChange={e => changeParameter(key, e.target.value)}>{windows.map(w => <option key={w}>{w}</option>)}</select></label> }
-  async function inspectFile(file: ImportFile, reuseFrom?: InspectionResponse) {
+  async function inspectFile(file: ImportFile, reuseFrom?: InspectionResponse, pending = files) {
     const p = projectRef.current
     if (!p) return
     // A failed inspection must not leave an already accepted upload available to import again.
     setInspection(null)
     setScanSelection(null)
     inspectionReuseRef.current = reuseFrom
-    let inspect: InspectionResponse | ScanInspectionResponse
+    let inspect: InspectionResponse | ScanInspectionResponse | { kind: 'project'; preview: ProjectPreview }
     if ('inspection' in file) {
       inspect = await athenaApi<InspectionResponse>(`/projects/${p.id}/uploads/${file.inspection.upload_id}/inspection`)
     } else {
       const form = new FormData(); form.append("file", file)
-      inspect = await athenaApi<InspectionResponse | ScanInspectionResponse>(`/projects/${p.id}/inspect`, form)
+      inspect = await athenaApi<InspectionResponse | ScanInspectionResponse | { kind: 'project'; preview: ProjectPreview }>(`/projects/${p.id}/inspect`, form)
+    }
+    if ('kind' in inspect && inspect.kind === 'project') {
+      setProjectPreview(inspect.preview); setProjectFiles(pending as File[]); setFiles([]); setModal('open')
+      return
     }
     if ('kind' in inspect && inspect.kind === 'scan_list') {
       setScanSelection(inspect)
@@ -521,6 +526,7 @@ export function AthenaWorkbench() {
   }
   async function queueFiles(incoming: ImportFile[]) {
     if (!incoming.length) return
+    setProjectPreview(null)
     setScanSelection(null)
     if (isProjectCandidate(incoming[0])) {
       // Unopened tail entries are original Files. Scan entries are expanded
@@ -536,7 +542,7 @@ export function AthenaWorkbench() {
     setMapping(m => ({ ...m, preprocessing: { ...(m.preprocessing ?? defaultPreprocessing), mark: false },
       ...(m.rebin ? { rebin: { ...m.rebin, enabled: false } } : {}) }))
     setModal("import"); setFiles(incoming)
-    await task("Inspecting " + incoming[0].name, async () => { await inspectFile(incoming[0]) })
+    await task("Inspecting " + incoming[0].name, async () => { await inspectFile(incoming[0], undefined, incoming) })
   }
   async function importCurrent() {
     if (!inspection || !projectRef.current) return
@@ -552,7 +558,7 @@ export function AthenaWorkbench() {
           setInspection(null); setFiles([]); remainingProjects = remaining as File[]
           return
         }
-        const inspected = await inspectFile(remaining[0], inspection)
+        const inspected = await inspectFile(remaining[0], inspection, remaining)
         if (!inspected || !reuseMapping || !matchingColumns(inspection, inspected)) return
         const current = projectRef.current!
         const result = await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspected.upload_id })
@@ -737,7 +743,7 @@ export function AthenaWorkbench() {
 
     {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}
     {modal === "import" && <Modal title="Import spectra" wide close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}<div className="ath-modal-actions"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0]) }) }}>Reinspect selected file</button>}</div>{inspection?.file_plugin && <p className="ath-hint">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</p>}{scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</p></> : <AthenaColumnSelection key={inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={() => { void importCurrent() }} />}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
-    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport initialFiles={projectFiles} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport initialFiles={projectFiles} initialPreview={projectPreview} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setProjectPreview(null); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
     {modal && modal !== "difference" && modal !== "rebin" && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
       {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes</span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}</div><label className="ath-field"><span>Reference group</span><select value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>

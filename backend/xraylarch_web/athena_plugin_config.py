@@ -51,7 +51,36 @@ class X23A2MEDParameters(ReaderParameters):
     inttime: float = Field(default=1., strict=True, gt=0, title='Constant integration time (s)')
 
 
-MODELS = {'X15B': X15BParameters, 'X23A2MED': X23A2MEDParameters}
+MultiColumn = Annotated[int, Field(strict=True, ge=1, le=100)]
+ChannelLabel = Annotated[str, Field(strict=True, min_length=0, max_length=128)]
+
+
+class TenBMParameters(ReaderParameters):
+    name1: ChannelLabel = Field(default='ch1', title='Channel 1 name')
+    name2: ChannelLabel = Field(default='ch2', title='Channel 2 name')
+    name3: ChannelLabel = Field(default='ch3', title='Channel 3 name')
+    name4: ChannelLabel = Field(default='ch4', title='Channel 4 name')
+    nameref: ChannelLabel = Field(default='Reference', title='Reference name')
+    numer1: MultiColumn = Field(default=2, title='Channel 1 I0 column')
+    numer2: MultiColumn = Field(default=3, title='Channel 2 I0 column')
+    numer3: MultiColumn = Field(default=4, title='Channel 3 I0 column')
+    numer4: MultiColumn = Field(default=5, title='Channel 4 I0 column')
+    denom1: MultiColumn = Field(default=6, title='Channel 1 It column')
+    denom2: MultiColumn = Field(default=7, title='Channel 2 It column')
+    denom3: MultiColumn = Field(default=8, title='Channel 3 It column')
+    denom4: MultiColumn = Field(default=9, title='Channel 4 It column')
+    denomref: MultiColumn = Field(default=10, title='Reference denominator column')
+    eshift1: float = Field(default=0, strict=True, title='Channel 1 energy shift (eV)')
+    eshift2: float = Field(default=0, strict=True, title='Channel 2 energy shift (eV)')
+    eshift3: float = Field(default=0, strict=True, title='Channel 3 energy shift (eV)')
+    eshift4: float = Field(default=0, strict=True, title='Channel 4 energy shift (eV)')
+    reference: StrictBool = Field(default=True, title='Import reference channel')
+    temperature_column: ChannelLabel = Field(default='mcs6', title='Temperature column label',
+        description='Leave empty to skip the native thermocouple temperature calculation.')
+    type: Literal['xmu', 'xanes'] = Field(default='xmu', title='Channel data type')
+
+
+MODELS = {'10BMMultiChannel': TenBMParameters, 'X15B': X15BParameters, 'X23A2MED': X23A2MEDParameters}
 
 
 def parameter_model(reader):
