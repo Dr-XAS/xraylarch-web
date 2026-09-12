@@ -130,3 +130,9 @@ supported Linux package selection below. These commands were used successfully:
 PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 PLAYWRIGHT_BROWSERS_PATH=/tmp/athena-playwright npx playwright install chromium --only-shell
 PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 PLAYWRIGHT_BROWSERS_PATH=/tmp/athena-playwright npm run test:e2e
 ```
+
+Energy alignment now writes native `bkg_delta_eshift` and reads it without the
+web sidecar. Full fit precision and scale remain in the sidecar; the native
+field retains Athena's three-decimal uncertainty. Manual shifts clear the
+estimate, and changed raw arrays/shifts invalidate stored fit provenance.
+See the [alignment exchange and verification](athena-alignment-reference.md).

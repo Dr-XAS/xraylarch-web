@@ -11,6 +11,8 @@ import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
 import { AthenaWorkbench } from "./athena-workbench"
 import { differenceOptions, differencePreview, differenceSaved } from "./athena-difference.fixtures"
+import { mergeDefaults, mergePreview, mergeSaved } from "./athena-merge.fixtures"
+import type { MergePreview } from "./athena-merge"
 
 // Full workbench flows exercise many controls; leave time for jsdom style/accessibility
 // calculation on shared CI hosts. Individual waitFor assertions stay bounded.
@@ -2291,26 +2293,27 @@ describe("AthenaWorkbench parameter copy and reset", () => {
   })
 })
 
+function serveMerge(project:AthenaProject){
+  api.mockImplementation(async(path,body)=>{
+    if(path==='/preferences/merge')return mergeDefaults
+    const r=body as {group_ids:string[];options:MergePreview['options']}
+    const v=mergePreview(project,r.group_ids,r.options)
+    return path.endsWith('/command')?mergeSaved(project,v):v
+  })
+}
+async function readyMerge(dialog:HTMLElement){await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Save merged groups'})).toBeEnabled(),{timeout:2500})}
+async function saveMerge(dialog:HTMLElement){fireEvent.click(within(dialog).getByRole('button',{name:'Save merged groups'}));await within(dialog).findByText('Merge saved. The source spectra are unchanged.');fireEvent.click(within(dialog).getByRole('button',{name:'Close merge result'}))}
+
 describe("AthenaWorkbench weighted combinations", () => {
   it("keeps relative merge weights paired with marked IDs in the saved list order", async () => {
-    const initial = projectFixture()
-    initial.groups = [initial.groups[0], initial.groups[2], initial.groups[1], initial.groups[3]]
-    const project = await openSaved(initial)
-    selectGroup("Unused reference")
-    const dialog = await openTool("Process", /merge marked groups/i)
-    fireEvent.change(within(dialog).getByRole("combobox", { name: /signal to combine/i }), { target: { value: "norm" } })
-    editNumber(/^Weight: Oxide standard$/, 3, dialog)
-    editNumber(/^Weight: Sample scan$/, 1, dialog)
-    const next = importedProject(project, "weighted-merge")
-    api.mockResolvedValueOnce(next)
-
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Apply$/i }))
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
-      version: project.version, action: "merge", group_ids: ["oxide", "sample"], options: { weights: [3, 1], array: "norm" },
-    })
-    expect(plotProps().active).toEqual(next.groups.at(-1))
+    const initial=projectFixture();initial.groups=[initial.groups[0],initial.groups[2],initial.groups[1],initial.groups[3]]
+    const project=await openSaved(initial);serveMerge(project);selectGroup('Unused reference')
+    const dialog=await openTool('Process',/merge marked groups/i)
+    fireEvent.change(within(dialog).getByLabelText('Merge as'),{target:{value:'norm'}})
+    editNumber(/^Importance: Oxide standard$/,3,dialog);editNumber(/^Importance: Sample scan$/,1,dialog);await readyMerge(dialog)
+    await saveMerge(dialog)
+    expect(api.mock.calls.findLast(([path])=>path.endsWith('/command'))?.[1]).toEqual(expect.objectContaining({action:'merge',group_ids:['oxide','sample'],options:expect.objectContaining({method:'demeter-larch',array:'norm',weights:{oxide:3,sample:1}})}))
+    expect(plotProps().active?.id).toBe('merged-0')
   })
 
   it("sends signed sum coefficients unchanged and resets the controls when reopened", async () => {
@@ -2345,38 +2348,16 @@ describe("AthenaWorkbench weighted combinations", () => {
     })
   })
 
-  it.each([{ weights: [-1, 1] }, { weights: [0, 0] }])("shows backend rejection for merge weights $weights and preserves inputs for retry", async ({ weights }) => {
-    const project = await openSaved()
-    editNumber(/^Rbkg/, 2.9)
-    const dialog = await openTool("Process", /merge marked groups/i)
-    editNumber(/^Weight: Sample scan$/, weights[0], dialog)
-    editNumber(/^Weight: Oxide standard$/, weights[1], dialog)
-    api.mockRejectedValueOnce(new ApiRequestError({
-      code: "invalid_weights", message: "Merge weights must be nonnegative with a positive total.",
-      fields: ["weights"], recovery: "Review the relative weights.",
-    }, 422))
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Apply$/i }))
-
-    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Merge weights must be nonnegative with a positive total.")
-    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
-      version: project.version, action: "merge", group_ids: ["sample", "oxide"], options: { weights },
-    })
-    expect(within(dialog).getByRole("spinbutton", { name: /^Weight: Sample scan$/ })).toHaveValue(weights[0])
-    expect(within(dialog).getByRole("spinbutton", { name: /^Weight: Oxide standard$/ })).toHaveValue(weights[1])
-    expect(plotProps().active).toEqual(project.groups[0])
-    expect(plotProps().groups).toEqual(project.groups.filter(g => g.marked))
-    const next = importedProject(project, "recovered-merge")
-    api.mockResolvedValueOnce(next)
-    editNumber(/^Weight: Sample scan$/, 3, dialog)
-    editNumber(/^Weight: Oxide standard$/, 1, dialog)
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Apply$/i }))
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
-      version: project.version, action: "merge", group_ids: ["sample", "oxide"], options: { weights: [3, 1] },
-    })
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
-    selectGroup("Foil scan")
-    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.9)
+  it.each([{weights:[-1,1]},{weights:[0,0]}])('rejects invalid merge weights $weights and preserves inputs for retry',async({weights})=>{
+    const project=await openSaved();serveMerge(project);editNumber(/^Rbkg/,2.9)
+    const dialog=await openTool('Process',/merge marked groups/i)
+    editNumber(/^Importance: Sample scan$/,weights[0],dialog);editNumber(/^Importance: Oxide standard$/,weights[1],dialog)
+    if(weights[0]===0)expect(await within(dialog).findByRole('alert')).toHaveTextContent('positive total')
+    expect(within(dialog).getByRole('button',{name:'Save merged groups'})).toBeDisabled()
+    expect(within(dialog).getByLabelText('Importance: Sample scan')).toHaveValue(weights[0])
+    expect(api.mock.calls.some(([path])=>path.endsWith('/command'))).toBe(false)
+    editNumber(/^Importance: Sample scan$/,3,dialog);editNumber(/^Importance: Oxide standard$/,1,dialog);await readyMerge(dialog);await saveMerge(dialog)
+    selectGroup('Foil scan');expect(screen.getByRole('spinbutton',{name:/^Rbkg/})).toHaveValue(2.9)
   })
 
   it("reports an empty coefficient instead of silently treating it as zero or one", async () => {
@@ -2396,24 +2377,11 @@ describe("AthenaWorkbench weighted combinations", () => {
     } : g) }
   }
 
-  it("offers chi for marked processed EXAFS with overlapping grids, including mixed input types", async () => {
-    const initial = withExafs(projectFixture())
-    initial.groups[2].data_type = "chi"
-    initial.groups[2].energy = [2, 2.5, 3.5]
-    initial.groups[2].mu = initial.groups[2].result!.arrays.chi
-    initial.groups[2].result!.arrays.k = initial.groups[2].energy
-    const project = await openSaved(initial)
-    const dialog = await openTool("Process", /merge marked groups/i)
-    expect(within(dialog).getByRole("option", { name: "χ(k)" })).toBeEnabled()
-    fireEvent.change(within(dialog).getByRole("combobox", { name: /signal to combine/i }), { target: { value: "chi" } })
-    api.mockResolvedValueOnce(importedProject(project, "merged-chi"))
-
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Apply$/i }))
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
-      version: project.version, action: "merge", group_ids: ["sample", "oxide"], options: { weights: [1, 1], array: "chi" },
-    })
+  it('offers chi for marked processed EXAFS with overlapping grids, including mixed input types',async()=>{
+    const initial=withExafs(projectFixture());initial.groups[2].data_type='chi'
+    const project=await openSaved(initial);serveMerge(project);const dialog=await openTool('Process',/merge marked groups/i)
+    fireEvent.change(within(dialog).getByLabelText('Merge as'),{target:{value:'chi'}});await readyMerge(dialog);await saveMerge(dialog)
+    expect(api.mock.calls.findLast(([path])=>path.endsWith('/command'))?.[1]).toEqual(expect.objectContaining({group_ids:['sample','oxide'],options:expect.objectContaining({array:'chi',weights:{sample:1,oxide:1}})}))
   })
 
   it.each(["missing chi", "disjoint grids", "XANES data"])("disables chi when a marked group has %s", async condition => {
@@ -2584,22 +2552,13 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     expect(plotProps().active).toEqual(next.groups[3])
   })
 
-  it("merges marked groups in list order and selects the returned derived group", async () => {
-    const project = await openSaved()
-    const derived = group("merged", "Merged scan")
-    const next = { ...project, version: project.version + 1, groups: [...project.groups, derived] }
-    const dialog = await openTool("Process", /merge marked groups/i)
-    expect(within(dialog).getByRole("combobox", { name: /signal to combine/i })).toHaveValue("")
-    expect(within(dialog).getAllByRole("spinbutton").map(input => (input as HTMLInputElement).value)).toEqual(["1", "1"])
-    api.mockResolvedValueOnce(next)
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Apply$/i }))
-
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
-      version: project.version, action: "merge", group_ids: ["sample", "oxide"],
-      options: { weights: [1, 1] },
-    })
-    expect(plotProps().active).toEqual(derived)
+  it('merges marked groups in list order and selects the returned derived group',async()=>{
+    const project=await openSaved();serveMerge(project);const dialog=await openTool('Process',/merge marked groups/i)
+    expect(within(dialog).getByLabelText('Merge as')).toHaveValue('mu')
+    expect(within(dialog).getByLabelText('Importance: Sample scan')).toHaveValue(1)
+    await readyMerge(dialog);await saveMerge(dialog)
+    expect(api.mock.calls.findLast(([path])=>path.endsWith('/command'))?.[1]).toEqual(expect.objectContaining({version:project.version,action:'merge',group_ids:['sample','oxide'],options:expect.objectContaining({method:'demeter-larch',array:'mu'})}))
+    expect(plotProps().active?.id).toBe('merged-0')
   })
 
   it("sends the LCF target first and only the explicitly selected standards", async () => {

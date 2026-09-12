@@ -24,8 +24,10 @@ The pinned Larch `align.tmpl` differs from parts of the manual and the Ifeffit
 template. Its fitting window is `[standard E0 - 20, standard E0 + 50)`, not
 the manual's -50/+100 description. It interpolates moving mu onto the shifted
 standard energy grid, then divides index derivatives of mu by those of energy.
-Smoothed import fitting uses Larch `savitzky_golay` with the configured defaults
-31 points/order 4. Its two free parameters are absolute energy shift and an
+Smoothed import fitting uses Larch `savitzky_golay` with captured shared
+preferences. The effective defaults are 31 points/order 9: native Config
+clamps the declared order 4 to its minimum 9. Import now shares the
+[verified alignment engine](athena-alignment-reference.md) with the panel. Its two free parameters are absolute energy shift and an
 amplitude scale for the derivative residual. The Ifeffit branch applies a
 three-point smoothing repeatedly instead. This implementation follows the
 **Larch template**, consistent with the requested backend.

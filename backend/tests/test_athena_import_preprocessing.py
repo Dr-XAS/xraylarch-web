@@ -228,6 +228,23 @@ def test_native_larch_alignment_template_on_measured_copper(store, offset, ampli
     assert [moving, std] == before
 
 
+def test_import_alignment_uses_shared_sg_preferences(store, xas_arrays):
+    from xraylarch_web.athena_alignment import saved_fit
+    from xraylarch_web.athena_smoothing_preferences import SGPreferenceRequest
+    x,y=xas_arrays;p=standard_project(store,x,y)
+    prefs=store.smoothing_preferences.read()
+    store.smoothing_preferences.apply(SGPreferenceRequest(version=prefs['version'],session_id=prefs['session_id'],values=dict(window=21,order=11)))
+    req,_=staged(store,p,x+3.1254,mu=y*2)
+    req.preprocessing=ImportPreprocessing(standard_id=p['groups'][0]['id'],align=True)
+    imported=store.import_data(p['id'],req)['groups'][-1]
+    result=imported['source']['import_preprocessing']['alignment']
+    assert result['smoothing_window']==21 and result['smoothing_order']==11
+    assert result['energy_shift']==-3.125
+    assert saved_fit(imported)['native_shift_stderr']==result['native_shift_stderr']
+    import gzip
+    assert b'bkg_delta_eshift' in gzip.decompress(store.export_project(p['id'],'prj'))
+
+
 def test_failed_later_med_channel_rolls_back_already_processed_sample_and_reference(store, xas_arrays):
     x, y = xas_arrays; p = standard_project(store, x, y, ref=True)
     req, ids = staged(store, p, x, first=y, invalid=np.ones(len(x)), ref=y)

@@ -92,6 +92,25 @@ class AthenaPreferences:
         except FileNotFoundError:
             return DispersiveDefaults().model_dump()
 
+    def read_merge(self):
+        from .athena_merge import MergeDefaults
+        try:
+            return MergeDefaults.model_validate(self.storage.read_json(self.ident,'merge.json')).model_dump()
+        except FileNotFoundError:
+            return MergeDefaults().model_dump()
+
+    def save_merge(self,request):
+        from .athena_merge import MergeDefaults
+        request=MergeDefaults.model_validate(request)
+        with self.storage.lock(self.ident):
+            previous=self.read_merge()
+            if previous['version']!=request.version:
+                raise WebInputError('stale_revision','Merge preferences changed in another window.',
+                    recovery='Reload the merge preferences, review them and save again.')
+            value=dict(version=previous['version']+1,values=request.values.model_dump())
+            self.storage.write_json(self.ident,'merge.json',value)
+            return value
+
     def save_dispersive(self,request):
         from .athena_dispersive import DispersiveDefaults
         request=DispersiveDefaults.model_validate(request)

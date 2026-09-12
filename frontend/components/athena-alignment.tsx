@@ -22,6 +22,13 @@ function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Option
   if(v.project_id!==p.id||v.version!==p.version||JSON.stringify(v.group_ids)!==JSON.stringify(ids)||!Array.isArray(v.rows)||!v.rows.length
     ||Object.entries(options).some(([k,x])=>v.requested_options?.[k as keyof Options]!==x||v.options?.[k as keyof Options]!==x))invalid()
   const seen=new Set<string>()
+  const expected=new Map<string,number>()
+  function family(id:string){
+    const members=new Set([id]);let size=0
+    while(size!==members.size){size=members.size;for(const g of p.groups)if(g.reference_id&&(members.has(g.id)||members.has(g.reference_id))){members.add(g.id);members.add(g.reference_id)}}
+    return members
+  }
+  const fixed=family(options.standard_id)
   for(const row of v.rows){
     const parent=p.groups.find(g=>g.id===row.group_id),standard=p.groups.find(g=>g.id===options.standard_id)
     const refs=!!(options.use_reference&&parent?.reference_id&&standard?.reference_id)
@@ -29,6 +36,10 @@ function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Option
       ||row.moving_id!==(refs?parent.reference_id:parent.id)||row.standard_id!==(refs?standard.reference_id:standard.id)||!Number.isFinite(row.energy_shift)
       ||row.shift_delta!==row.energy_shift-parent.parameters.energy_shift)invalid()
     seen.add(row.group_id)
+    if(options.operation!=='inspect')for(const id of family(row.group_id)){
+      if(fixed.has(id)||(expected.has(id)&&expected.get(id)!==row.energy_shift))invalid()
+      expected.set(id,row.energy_shift)
+    }
     for(const [c,id,shift] of [[row.before,row.moving_id,null],[row.after,row.moving_id,row.energy_shift],[row.standard,row.standard_id,null]] as const){
       const g=p.groups.find(g=>g.id===id)
       if(!g||!c||c.group_id!==id||!finite(c.x)||!finite(c.y)||c.x.length!==g.energy.length||c.y.length!==c.x.length||!Number.isFinite(c.e0)
@@ -44,10 +55,10 @@ function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Option
     if(options.operation==='manual'&&row.energy_shift!==options.energy_shift)invalid()
   }
   for(const id of ids)if(!seen.has(id)&&typeof v.skipped_reasons?.[id]!=='string')invalid()
-  if(!Array.isArray(v.changes)||new Set(v.changes.map(c=>c.group_id)).size!==v.changes.length)invalid()
+  if(!Array.isArray(v.changes)||new Set(v.changes.map(c=>c.group_id)).size!==v.changes.length||v.changes.length!==expected.size)invalid()
   for(const c of v.changes){
     const g=p.groups.find(g=>g.id===c.group_id)
-    if(!g||g.frozen||!Number.isFinite(c.energy_shift)||c.e0!==(g.parameters.e0??g.result?.effective.e0??null))invalid()
+    if(!g||g.frozen||!Number.isFinite(c.energy_shift)||expected.get(c.group_id)!==c.energy_shift||c.e0!==(g.parameters.e0??g.result?.effective.e0??null))invalid()
   }
   if(options.operation==='inspect'&&v.changes.length)invalid()
 }

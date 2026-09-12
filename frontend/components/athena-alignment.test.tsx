@@ -43,7 +43,7 @@ it('starts with smoothed derivative, plots all four views and keeps inspection r
 it('previews every native nudge, manual full precision and cancels without saving',async()=>{
   serve();const p=props();render(<AthenaAlignment {...p}/>);await ready();let total=0
   for(const n of [-5,-1,-.5,-.1,.1,.5,1,5]){
-    fireEvent.click(screen.getByRole('button',{name:`${n>0?'+':''}${n} eV`,exact:true}));total=Number((total+n).toFixed(10));await ready()
+    fireEvent.click(screen.getByRole('button',{name:`${n>0?'+':''}${n} eV`}));total=Number((total+n).toFixed(10));await ready()
     expect(screen.getByLabelText('Total energy shift · eV')).toHaveValue(total);expect(save()).toBeEnabled()
   }
   change('Total energy shift · eV','1.234567');await ready()
@@ -53,7 +53,7 @@ it('previews every native nudge, manual full precision and cancels without savin
 
 it('fits only on Auto align, shows scale/error and saves the captured preferences without changing E0',async()=>{
   serve();const p=props();render(<AthenaAlignment {...p}/>);await ready()
-  fireEvent.click(screen.getByRole('button',{name:'Auto align',exact:true}));await ready();expect(save()).toBeEnabled()
+  fireEvent.click(screen.getByRole('button',{name:'Auto align'}));await ready();expect(save()).toBeEnabled()
   expect(screen.getByText(/0.012300 eV/)).toBeVisible();expect(screen.getByText(/derivative scale 0.500000/)).toBeVisible()
   const r=api.mock.calls.at(-1)![1] as {options:Options};const next=structuredClone(project);next.version=5;next.groups[1].parameters.energy_shift=-3.125
   api.mockResolvedValueOnce(next);fireEvent.click(save());await waitFor(()=>expect(p.saved).toHaveBeenCalledWith(next))
@@ -68,7 +68,7 @@ it('includes marked groups and reports the fixed standard skip',async()=>{
   expect(screen.getByText(/Skipped standard/)).toBeVisible()
 })
 
-it.each(['revision','request','axis','signal','e0','shift','residual'])('rejects malformed %s preview data',async(kind)=>{
+it.each(['revision','request','axis','signal','e0','shift','residual','missing-family','fixed-standard'])('rejects malformed %s preview data',async(kind)=>{
   api.mockImplementation(async(_path,body)=>{
     const r=preview((body as {options:Options}).options)
     if(kind==='revision')r.version--
@@ -78,9 +78,11 @@ it.each(['revision','request','axis','signal','e0','shift','residual'])('rejects
     if(kind==='e0'&&r.changes.length)r.changes[0].e0=8999
     if(kind==='shift')r.rows[0].energy_shift=42
     if(kind==='residual'&&r.rows[0].fit)r.rows[0].fit.curve.residual[0]=99
+    if(kind==='missing-family')r.changes=[]
+    if(kind==='fixed-standard'&&r.changes.length)r.changes[0].group_id='standard'
     return r
   })
-  render(<AthenaAlignment {...props()}/>);fireEvent.click(screen.getByRole('button',{name:'Auto align',exact:true}))
+  render(<AthenaAlignment {...props()}/>);fireEvent.click(screen.getByRole('button',{name:'Auto align'}))
   await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('does not match'),{timeout:2500});expect(save()).toBeDisabled()
 })
 
@@ -92,7 +94,7 @@ it('disables save immediately when input is cleared or the project revision chan
 
 it('rejects a save response that moves E0 and exposes server conflicts for retry',async()=>{
   serve();const p=props();render(<AthenaAlignment {...p}/>);await ready();change('Total energy shift · eV','2');await ready()
-  const next=structuredClone(project);next.version=5;next.groups[1].parameters.energy_shift=2;next.groups[1].parameters.e0+=2
+  const next=structuredClone(project);next.version=5;next.groups[1].parameters.energy_shift=2;next.groups[1].parameters.e0=next.groups[1].parameters.e0!+2
   api.mockResolvedValueOnce(next);fireEvent.click(save());await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('saved alignment does not match'))
   expect(p.saved).not.toHaveBeenCalled();expect(save()).toBeDisabled()
   serve();fireEvent.click(screen.getByRole('button',{name:'Replot alignment'}));await ready();api.mockRejectedValueOnce(new Error('Project changed in another tab.'))

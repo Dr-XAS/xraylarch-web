@@ -125,6 +125,14 @@ lets you use each operation independently. See the
 [convolution contract](docs/athena-convolution-reference.md) for native Cu/Fe
 comparisons, reproducible noise, project exchange and remaining limits.
 
+**Process → Align scans** compares the current or marked groups with a fixed
+standard using live μ(E), normalized, derivative and smoothed-derivative plots.
+Use the native shift buttons, enter a total shift, or fit automatically; review
+the shift uncertainty and residual before saving. Linked references share the
+shift while each group's E₀ remains fixed. Native `.prj` files preserve the
+rounded uncertainty. See the [alignment reference](docs/athena-alignment-reference.md)
+for executed original-template comparisons and remaining parity limits.
+
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
 display smoothing, and find the unsmoothed second-derivative zero crossing.

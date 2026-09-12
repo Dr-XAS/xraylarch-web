@@ -2915,3 +2915,80 @@ remain within the active goal; Artemis is excluded. Read-only live checks of
 frontend 3004, backend health 8006 and the frontend health proxy all returned
 HTTP 200. No live scientific project was mutated or dev service manually
 restarted.
+
+## 2026-09-12 — original Larch alignment and preview/save workflow
+
+The preceding local-run check verified the actual running checkout and all
+three health paths; this continuation resumed the unfinished alignment work.
+The [alignment contract](athena-alignment-reference.md) records the original
+sources, numerical differences from the manual, explicit native bridges and
+remaining acceptance boundaries. The old generic alignment dialog now opens
+a dedicated live panel with four plot representations, manual total shifts
+and eight native nudge buttons, two derivative fit modes, marked/current
+targets, paired reference selection, fit/residual plots and shift uncertainty.
+Saving preserves the standard, measured arrays and distinct E0 values.
+Import preprocessing shares the same corrected SG/default-aware engine and
+now retains a valid uncertainty record for native project exchange.
+
+The independent native harness recorded and then replayed **31 cases** using
+the original Config parser/default methods, original Larch alignment template
+and original Data::align rounding/E0 method. It includes the two measured
+iron scans used by Demeter's own alignment example, verified by pinned Git
+blob SHA-1 and SHA-256, plus measured Cu/Fe rigid translations, gain changes,
+added noise, raw/smoothed fits and alternative preferences. Full residuals,
+fit statistics, shifts, scales and covariance-derived errors are compared.
+The native Fe 300 K → 60 K raw derivative result is −0.738 eV with full
+uncertainty 0.0095102356 eV; the reverse fit is +0.739 eV, illustrating why
+tests include real different measurements in addition to rigid copies.
+
+Initial focused tests exposed one near-zero residual tolerance issue
+(2.93e−11 maximum difference between LM termination paths) and six test
+expectations using HTTP 422 instead of this API's documented 400 validation
+envelope. The residual tolerance was set to 1e−10 with the reason recorded;
+the error-envelope assertions were corrected. No failing measured comparison
+or case was removed. The first **247 affected backend tests passed** in
+38.36 s. The full backend suite then passed **3,225 tests, 1,425 warnings, in
+244.91 s**. After the final import uncertainty metadata change and its added
+preference test, **219 affected alignment/import/rebin/API/column-memory tests
+passed**, with 1,371 warnings in 27.12 s. The final state was not represented
+as a newly rerun 3,226-test full suite.
+
+The full frontend suite passed **599 tests across 36 files** in 55.94 s.
+After stricter linked-family/fixed-standard response validation, the final
+alignment component suite passed **15 tests** in 11.56 s. The first production
+build found TypeScript-only mistakes in the new test code: Testing Library
+role queries do not accept Playwright's `exact` option, and one intentionally
+malformed save fixture needed an explicit non-null E0. Both were fixed;
+production build and final type checking passed. No runtime application
+failure was hidden by the test fixes.
+
+Real browser tests passed on desktop 1500 × 1100 and mobile 390 × 844, first
+in **30.8 s**, then again after response-validation changes in **27.3 s**.
+Both import measured Cu and a +3.1254 eV / ×2 copy through actual column
+selection, compare every displayed import coordinate, inspect alignment
+traces, cancel a manual shift, auto-fit −3.125 eV and derivative scale 0.5,
+save, undo/redo, download native PRJ, remove all web sidecar lines and reimport
+the native uncertainty. The standard and raw arrays remain exact; each moving
+group retains its prior E0. Browser errors and horizontal dialog overflow are
+checked. Screenshots were visually inspected: plot legends, curves, controls,
+uncertainty and the mobile vertical-scrolling flow are readable.
+
+Evidence is preserved in `/tmp/athena-alignment-evidence/first-browser/` and
+`final-browser/`. Logs:
+
+- `/tmp/athena-alignment-native.log`, `/tmp/athena-alignment-replay.log`
+- `/tmp/athena-alignment-focused.log`, `/tmp/athena-alignment-regressions.log`
+- `/tmp/athena-alignment-full-backend.log`, `/tmp/athena-alignment-final-regressions.log`
+- `/tmp/athena-alignment-full-frontend.log`, `/tmp/athena-alignment-component-final.log`
+- `/tmp/athena-alignment-browser.log`, `/tmp/athena-alignment-browser-final.log`
+- `/tmp/athena-alignment-build-final.log`, `/tmp/athena-alignment-typecheck-final.log`
+
+The catalog has **295 unique source identities**; fixture/driver/kernel hashes,
+documentation links and whitespace checks pass. All **107 original requirement
+IDs, order and statuses remain unchanged**, including Pending PR-02/PR-03.
+Full Athena parity remains unproven: the alignment contract identifies the
+remaining GUI/state/context-menu checks, and the larger matrix retains the
+other open features. Artemis remains excluded. Live 3004, backend 8006 and the
+frontend proxy returned HTTP 200; scientific browser testing used isolated
+13004/18006 services and temporary projects. The active services were not
+manually restarted and live scientific projects were not changed.

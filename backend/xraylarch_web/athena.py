@@ -700,6 +700,8 @@ class AthenaStore:
     def __init__(self, settings: Settings):
         self.plugin_configurations = PluginConfigurations(settings)
         self.smoothing_preferences = SmoothingPreferences(settings)
+        from .athena_preferences import AthenaPreferences
+        self.preferences = AthenaPreferences(settings)
         self.settings = settings
         self.storage = WorkspaceStorage(settings.data_root / "athena")
 
@@ -1443,6 +1445,9 @@ class AthenaStore:
                 patch['e0'] = sample['parameters']['e0']
             self.parameter_updates(project, {sample['id']: patch})
             record['alignment'] = copy.deepcopy(shared_alignment)
+            from .athena_alignment import signature
+            for member in self.reference_family(project, sample['id']):
+                member['source']['alignment'] = copy.deepcopy(shared_alignment) | {'signature': signature(member)}
         return shared_alignment
 
     def rebinned_source(self, source, x, y, plan):
@@ -1696,6 +1701,69 @@ class AthenaStore:
         from .athena_xdi_controls import metadata_view
         project = self.load(ident)
         return dict(version=project['version'], **metadata_view(self.group(project, group_id)))
+
+    def _merge_results(self, project, request: Command):
+        from .athena_merge import MergeOptions, merge, plot_curves
+        if request.action!='merge' or len(request.group_ids)<2 or len(set(request.group_ids))!=len(request.group_ids):
+            fail('Mark at least two distinct spectra for merging.')
+        defaults=self.preferences.read_merge()['values']
+        choice=MergeOptions.model_validate({**defaults,**request.options})
+        groups=[self.group(project,ident) for ident in request.group_ids]
+        reference_ids={g['reference_id'] for g in groups if g.get('reference_id')}
+        if set(choice.reference_weights)-reference_ids:fail('Reference weights refer to a group outside the selected samples’ references.')
+        primary=merge(groups,choice)
+        used=[self.group(project,row['group_id']) for row in primary['members']]
+        outputs=[('sample',used,primary)]
+        notes=[]
+        if choice.merge_references and choice.array!='chi':
+            if all(g.get('reference_id') for g in used):
+                refs=list({g['id']:g for g in (self.group(project,g['reference_id']) for g in used)}.values())
+                if len(refs)<2: notes.append('The selected samples share one reference; a second reference spectrum is needed to make a reference merge.')
+                else: outputs.append(('reference',refs,merge(refs,choice,weights={g['id']:choice.reference_weights[g['id']] for g in refs if g['id'] in choice.reference_weights})))
+            else: notes.append('Reference channels were not merged because at least one contributing sample has no linked reference.')
+        elif choice.array=='chi' and choice.merge_references:
+            notes.append('Reference-channel merging applies to μ(E) and normalized μ(E), not χ(k).')
+        if len(project['groups'])+len(outputs)>100:fail('A project can contain at most 100 groups.')
+        labels={g['label'] for g in project['groups']}
+        number=1;label=choice.label or 'merge'
+        while label in labels and not choice.label:
+            number+=1;label=f'merge {number}'
+        prepared=[];rows=[]
+        for role,parents,result in outputs:
+            # Selection/filtering is repeated independently for the reference
+            # merge; report its contributors and coefficients explicitly.
+            parents=[self.group(project,item['group_id']) for item in result['members']]
+            first=parents[0]
+            source=_derived_source(first,'merge',parents=[g['id'] for g in parents],array=choice.array)
+            if not choice.push_metadata: source.pop('xdi_metadata',None)
+            source.update(raw_arrays={'stddev':result['stddev']},merge=dict(
+                options=choice.model_dump(exclude_none=True),role=role,details=result['details'],members=result['members'],excluded=result['excluded']))
+            source['warnings']=result['warnings']
+            p=dict(first['parameters'],energy_shift=0)
+            if p['e0'] is None:p['e0']=(first.get('result') or {}).get('effective',{}).get('e0')
+            if choice.array=='chi':p['fnorm']=False
+            dtype='chi' if choice.array=='chi' else 'mu'
+            g=self.make_group(('  Ref ' if role=='reference' else '')+label,result['x'],result['y'],
+                data_type=dtype,parameters=p,source=source,project=project,
+                is_normalized=False if dtype=='chi' else first.get('is_normalized',False),
+                background_standard_id=None if dtype=='chi' else first.get('background_standard_id'))
+            g['marked']=role=='sample'
+            prepared.append(g)
+            rows.append(dict(role=role,label=g['label'],data_type=dtype,parameters=g['parameters'],
+                result=result,curves=plot_curves(result,choice),
+                plots={view:plot_curves(result,choice.model_copy(update={'plot':view})) for view in ('stddev','variance','marked')},
+                processing_error=g['processing_error']))
+        if len(prepared)==2:
+            prepared[0]['reference_id']=prepared[1]['id'];prepared[1]['reference_id']=prepared[0]['id']
+        _exchange_budget(project['groups']+prepared,self.settings)
+        return prepared,dict(project_id=project['id'],version=project['version'],group_ids=request.group_ids,
+            options=choice.model_dump(exclude_none=True),requested_options=request.options,outputs=rows,notes=notes)
+
+    def preview_merge(self, ident, request: Command):
+        project=self.load(ident);self.check(project,request.version)
+        _,preview=self._merge_results(project,request)
+        self.check(self.load(ident),request.version)
+        return preview
 
     def _alignment_results(self, project, request: Command):
         from .athena_alignment import AlignmentOptions, display_curve, edge, fit_alignment, saved_fit, signature
@@ -2414,6 +2482,12 @@ class AthenaStore:
                         p["groups"].append(derived)
                         operation_details["difference_results"].append({"group_id": derived["id"],
                             "source_group_id": parent["id"], "label": derived["label"], "area": result["area"]})
+                elif action=='merge' and 'method' in options:
+                    merged,preview=self._merge_results(p,request)
+                    p['groups'].extend(merged)
+                    operation_details={'merge':dict(options=preview['options'],
+                        group_ids=[g['id'] for g in merged],notes=preview['notes'],
+                        outputs=[{k:row[k] for k in ('role','label','processing_error')} for row in preview['outputs']])}
                 elif action in ("merge", "sum", "difference"):
                     if len(groups) < 2:
                         fail("Select at least two groups.")
@@ -2747,6 +2821,9 @@ class AthenaStore:
                     if target in _NATIVE_ALIASES:
                         args[_NATIVE_ALIASES[target]] = value
             args["bkg_fixstep"] = int(params["step"] is not None)
+            merge = source.get('merge')
+            if isinstance(merge,dict) and merge.get('details',{}).get('method')=='demeter-larch':
+                args['is_merge'] = {'mu':'e','norm':'n','chi':'k'}[merge['details']['array']]
             if 'alignment' in source or 'bkg_delta_eshift' in args:
                 from .athena_alignment import saved_fit
                 alignment = saved_fit(g)
@@ -3405,6 +3482,18 @@ def build_athena_router(settings: Settings):
     def preview_point_edit(ident: str, request: Command):
         return guarded(lambda: store.preview_point_edit(ident, request))
 
+    @router.get('/preferences/merge')
+    def merge_preferences():
+        return guarded(lambda:store.preferences.read_merge())
+
+    @router.put('/preferences/merge')
+    def save_merge_preferences(request: dict):
+        return guarded(lambda:store.preferences.save_merge(request))
+
+    @router.post('/projects/{ident}/merge/preview')
+    def preview_merge(ident: str,request: Command):
+        return guarded(lambda:store.preview_merge(ident,request))
+
     @router.post('/projects/{ident}/alignment/preview')
     def preview_alignment(ident: str, request: Command):
         return guarded(lambda: store.preview_alignment(ident, request))
@@ -3503,6 +3592,12 @@ def build_athena_router(settings: Settings):
             # Retain scatter and supplied uncertainty only on their native grid;
             # interpolating a standard deviation is not variance propagation.
             if len(native_x) == len(output_x) and np.allclose(native_x, output_x, rtol=0, atol=1e-10):
+                merge = g['source'].get('merge',{})
+                native_merge = g['source'].get('native',{}).get('args',{}).get('is_merge')
+                if merge.get('details',{}).get('method')=='demeter-larch' or native_merge in ('e','n','k'):
+                    scatter=g['source'].get('raw_arrays',{}).get('stddev')
+                    if isinstance(scatter,list) and len(scatter)==len(output_x):
+                        a['merge_stddev']=scatter;columns.append('merge_stddev')
                 for key, label in (("stddev", "population_stddev"), ("uncertainty", "measurement_uncertainty")):
                     values = g["source"].get(key)
                     if isinstance(values, list) and len(values) == len(output_x):
