@@ -117,6 +117,33 @@ See [Athena research and tutorials](docs/athena-research.md),
 [remaining full-parity work](docs/athena-parity.md). This branch is under active
 development and does not yet implement every desktop Athena option.
 
+**Process → Convolve data** adds Gaussian/Lorentzian broadening and artificial
+normal noise with live original/modified E/k/R plots. Noise is scaled by the
+processed edge step, and saving retains exactly the noise realization shown
+in the preview. Controls survive closing the tool; zero width or zero noise
+lets you use each operation independently. See the
+[convolution contract](docs/athena-convolution-reference.md) for native Cu/Fe
+comparisons, reproducible noise, project exchange and remaining limits.
+
+**Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
+and second derivatives. Pick a reference on the plot or enter it, compare
+display smoothing, and find the unsmoothed second-derivative zero crossing.
+The preview shows the cumulative shift and affected linked groups before
+saving. Undo/Redo and native `.prj` exchange retain the calibration. See the
+[calibration reference](docs/athena-calibration-reference.md) for executed
+Cu/Fe comparisons, shift rounding and remaining processing boundaries.
+Normalization outer limits now stop at the measured endpoints while retaining
+the requested values. The parameter panel and calibration preview show the
+effective limits; the calibrated normalized curve is refitted with the proposed
+E₀ and rounded shift. See the [boundary reference](docs/athena-normalization-limits-reference.md).
+
+**Process → Deglitch data / Truncate data** previews measurements selected for
+removal from the current group. Pick points in μ(E) or weighted χ(E), use
+pre/post-edge tolerance margins, or trim before/after a cutoff for current or
+marked groups. Source detector columns remain aligned, and Undo/Redo restores
+the edit. See the [point-edit contract](docs/athena-point-edit-reference.md)
+for native boundary rules, measured CLS examples and verification limits.
+
 ## XrayLarch Web V1
 
 XrayLarch Web is a local browser workbench for one XAS spectrum at a time. It
@@ -127,6 +154,69 @@ ZIP archives can be opened from Import data, drag and drop, or Open project afte
 enabling **Zip** in the plugin registry. Select archive members, then review
 their normal column, scan or project previews. Original downloads, nested ZIPs
 and mixed queues are supported; see the [ZIP reader contract](docs/athena-zip-reference.md).
+
+BL8Ar and SpecFileLongLine are available in File → Plugin registry. BL8Ar can
+show the I0 correction fits before import; the live column preview also lets
+you compare all detector channels and the uncorrected reference. See the
+[reader contract and verification limits](docs/athena-bl8ar-spec-long-reference.md).
+
+BL8, MRCAT MX, X11A EDC and XDAC imports capture acquisition metadata. Review
+it beside the live column plot or in **Group → Group information**. **File →
+Beamline identification…** controls automatic recognition. The measured legacy
+X11A copper foil now imports all 612 observations, including a notice that its
+header declares 611. See the [metadata contract](docs/athena-beamline-metadata-reference.md)
+for native comparisons. XDI imports also show acquisition fields beside the
+live column plot; saved `.prj` files now include native Xray::XDI objects that
+retain these fields without the web sidecar. See the
+[XDI exchange contract](docs/athena-xdi-reference.md) for measured Cu/Fe examples,
+identity precedence, independent native execution and remaining history/export work.
+
+**Group → File metadata…** shows XDI versions, expandable field families and
+required/recommended fields. Validate individual fields or all fields with
+Larch, and save XDI comments independently of group notes. Comments support
+frozen groups, Undo/Redo and native `.prj` exchange. See the
+[metadata controls contract](docs/athena-xdi-controls-reference.md) for native
+validation behavior and conflict recovery.
+
+Derived groups retain acquisition metadata and saved XDI comments. File metadata
+also shows scan times and accumulated processing history, which survives native
+`.prj` export/reimport and appears in individual column-file headers. Rebinning
+during column import records the operation for both sample and reference.
+See the [history contract](docs/athena-xdi-history-reference.md) for exact native
+copy, merge and difference rules and the remaining verification limits.
+
+**File → Export column data…** previews and downloads current-group μ(E),
+normalization, χ(k), χ(R) and χ(q) files. Combine marked groups in nineteen
+data forms, or download separate files in a ZIP. Headers include acquisition
+metadata, saved comments and applied processing settings. See the
+[column-export contract](docs/athena-data-export-reference.md) for weighting,
+grid handling, measured tests and remaining native comparisons.
+
+**Edit → Excel report on all / marked groups…** previews the parameter report
+by section and downloads a native `.xls` workbook with all 28 parameter
+columns. Group order, frozen groups, numeric precision and background-standard
+names are retained. Notes identify unused settings and missing values. See
+the [parameter-report contract](docs/athena-parameter-report-reference.md)
+for comparisons with the original Athena XLS writer.
+
+**Process → Multi-electron excitation** compares reflection and arctangent
+removal on normalized spectra. Adjust shift, amplitude and broadening with
+live E/k/R previews, pick the shift from a curve, then save a corrected group.
+The original remains available for comparison. See the
+[MEE contract](docs/athena-mee-reference.md) for the official LaCoO3 example,
+executed native comparisons and remaining verification boundaries.
+
+**Process → Smooth data** compares boxcar, Gaussian, Larch Savitzky–Golay and
+repeated three-point filters with the original spectrum. Review live E/k/R
+curves and boundary point counts before making a new group. Source metadata,
+Undo/Redo and native `.prj` exchange are retained. See the
+[smoothing contract](docs/athena-smoothing-reference.md) for executed native
+comparisons, parameter behavior and remaining preference/lifecycle work.
+SG also has expandable **Session and saved SG preferences** with Apply and
+Apply and Save, current/saved/default values, and conflict recovery. Tool
+controls persist when closing and reopening the panel. The
+[preference reference](docs/athena-smoothing-preferences-reference.md) records
+why Athena's effective SG default is order 9 despite its literal default 4.
 
 ### Run locally
 

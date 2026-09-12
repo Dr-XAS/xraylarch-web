@@ -57,7 +57,8 @@ export function AthenaPluginConfiguration({ reader, onPendingChange }: {
       || (typeof value === 'number' && (!Number.isFinite(value)
       || (field.type === 'integer' && !Number.isInteger(value)) || (field.minimum !== undefined && value < field.minimum)
       || (field.maximum !== undefined && value > field.maximum) || (field.exclusiveMinimum !== undefined && value <= field.exclusiveMinimum)))
-      || (typeof value === 'string' && ((field.enum && !field.enum.includes(value)) || (field.maxLength && value.length > field.maxLength)))) {
+      || (field.enum && !field.enum.includes(value as string | number))
+      || (typeof value === 'string' && field.maxLength && value.length > field.maxLength)) {
       problem ||= `Check ${field.title.toLowerCase()}.`
     }
     values[field.name] = value

@@ -20,8 +20,11 @@ post-edge, spline and FT limits at the atomic table energy, then iterates the
 fraction calculation from that seed. It preserves explicit recipe fields
 other than E0. The source's `bkg.nnorm=3` is represented as Larch polynomial
 degree 2, following its normalization template. Automatic endpoints can be
-tightened to measured support after refinement; explicit unusable endpoints
-produce an error. The seed recipe and adjustments are recorded in provenance.
+tightened to measured support after refinement. Explicit outer normalization
+requests are retained, while effective fits are limited to measured support
+and reported in warnings; see the [boundary reference](athena-normalization-limits-reference.md).
+Unusable inner intervals and unsupported explicit spline/FT ranges still
+produce errors. The seed recipe and adjustments are recorded in provenance.
 Raw scans ending less than 100 eV after the seed become XANES. Normalized
 inputs retain their unit-step signal. Forced-import failure is atomic, including
 failure in a reference channel, and leaves the upload available for retry.

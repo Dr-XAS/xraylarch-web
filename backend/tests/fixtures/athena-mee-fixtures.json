@@ -1,0 +1,22 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 12,
+  "source_sha256": {
+    "lib/Demeter/Data/Process.pm": "953a1b3392a33b64c9d1a0ade21d6b75762261880de483329a829c49d99f2865",
+    "lib/Demeter/templates/process/larch/mee_arctan.tmpl": "a2ecc50f01b54247f346a8c7fada738e8ab00028f6cad475a3166d9492994d33",
+    "lib/Demeter/templates/process/larch/mee_do.tmpl": "de80f6b24c818d876cd4a900ce88994322f4d55f4f09f8022f8e56d8184d526e",
+    "lib/Demeter/templates/process/larch/mee_reflect.tmpl": "168cd65a47268a9738fd283bf9af992935cfc12e40708d4d35faffc2b93f2cfe"
+  },
+  "larch_version": "2026.3.1.post61+gf5272011f",
+  "template_version": "1.61",
+  "template_sha256": "2fd5ae88bc1210b0335f703139a2a4d24755a66b823d9d055d8dee4c79c48250",
+  "sha256": {
+    "backend/tests/reference/mee_native_reference.py": "f4b50a5ef88dfe47439edaf3add96310d10a239d910176423d1bda5d8b3ab355",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467",
+    "larch/io/athena_project.py": "71bba578dc6cec282d7a2768acf85bc9106f932de69e22bf8a96cca7106683ac",
+    "backend/tests/fixtures/demeter-mee-LaCoO3.prj": "9b5e126dad2514252beff52630a8a961b239aa47739b3eecdbe2c42260a8d0a2",
+    "backend/tests/fixtures/athena-mee-native.json.gz": "af021551ca959f368a89c0c32dac9be699614deb77ed01e21738ff9f45e61240"
+  },
+  "basis": "Unmodified pinned Larch MEE templates, actual Text::Template, and unmodified Process.pm::mee parameter handling and padding; data, background update, clone, and XDI methods are explicit bridges. Independent Larch Athena reader supplies measured normalized inputs. This is not a complete desktop normalization/GUI replay.",
+  "exception": "Explicit zero amplitude remains zero in the web. Native amp ||= 1 incorrectly substitutes one; negative amplitude becomes zero in both."
+}

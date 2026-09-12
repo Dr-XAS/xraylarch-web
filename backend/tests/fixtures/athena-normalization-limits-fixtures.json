@@ -1,0 +1,17 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "cases": 54,
+  "dispatches": 108,
+  "source_sha256": {
+    "lib/Demeter/UI/Athena/Calibrate.pm": "0080b66641fb900a1aeb1c09060feaacf3bfd85a3e1d3a02ec15062252632fb6",
+    "lib/Demeter/templates/process/larch/normalize.tmpl": "d82f4fa4c34197deb83437f05e779b4ba7227fbf12b9b1bc44aa116d2ca30d75"
+  },
+  "sha256": {
+    "backend/tests/reference/normalization_limits_native_reference.py": "dd60dc8ea8e4101a02897ac87a18bfcadb5ec0e1743e3e6c90af861fd649a5cf",
+    "backend/tests/fixtures/athena-normalization-limits-native.json.gz": "e0a43018ef8b056363c54f4ae061006493e79ce67743fcd44942792db9b71f7c",
+    "backend/tests/fixtures/xdi-official-cu_metal_rt.xdi": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+    "backend/tests/fixtures/xdi-official-fe2o3_rt.xdi": "4a1c4cec3e00d62734406a872d8a114ebd7d7c1b66050a61ec4017b03abd2a5a",
+    "larch/xafs/pre_edge.py": "0a49d5cfb4b465580cb3ba17079df97e36d40c994d7e4b02cf2b8ec9a437e02d"
+  },
+  "basis": "Original OnCalibrate and process/larch/normalize.tmpl, with explicit Data/App/widget accessors and real Larch pre_edge; no web normalization/range functions in the reference driver. Not a full Demeter GUI/AUTOBK/flatten-fit replay."
+}

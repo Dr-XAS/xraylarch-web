@@ -1,0 +1,6224 @@
+{
+  "basis": "Constructed arrays; actual Perl Text::Template and actual Larch interpreter/write_ascii",
+  "text_template_version": "1.61",
+  "source_sha256": {
+    "lib/Demeter/templates/process/larch/save_xmu.tmpl": "a04c1f5a99eaffaba8047597cd62f45d4ef97b372e4b83dc7f100f72c810da0b",
+    "lib/Demeter/templates/process/larch/save_xmu_xanes.tmpl": "579a2bb2e34fef8c8d36d238481e740112f1689c72dd03191218bfa4fc52cb12",
+    "lib/Demeter/templates/process/larch/save_norm.tmpl": "337d0d1a580bab741d291d1cf3780ec1b19d971cf055564678e376caca8b5cbe",
+    "lib/Demeter/templates/process/larch/save_norm_xanes.tmpl": "196f15b77b30c7e673833c4ca2de99d1e54fd9fc4fe14cadbdef872dd08c8d0f",
+    "lib/Demeter/templates/process/larch/save_chik.tmpl": "1981a9d92338f6da77adc1e49358377ed24bae8a0dbf03220293646a525f7634",
+    "lib/Demeter/templates/process/larch/save_chir.tmpl": "4a3d236da7d43a2cc3d97c2ea2660677fb7ffd67b6a59f7ca0517bf0a59d6568",
+    "lib/Demeter/templates/process/larch/save_chiq.tmpl": "75ce1c0cdc7f70b252d6e1c6746d2c00c4c092588e91cb3b539629900b9cf6ae",
+    "lib/Demeter/templates/process/larch/save_chikw.tmpl": "bc4d929912fc65d5e7fbd21d4bec88854c1748915b5f219302d5f93deb842081",
+    "lib/Demeter/templates/process/larch/save_many_header.tmpl": "657c10bad5358445339a4eb30f37716a7254bee68509d5667675d5b341180eea",
+    "lib/Demeter/templates/process/larch/save_many.tmpl": "a20bd8ce70371270b9fb45d06a62e8f7bb6f8da3d16d6cc5e238bd6b17a4f49e",
+    "lib/Demeter/templates/process/larch/save_many_header_k.tmpl": "693aa150e22159a40f1533933441a3607e8136880aea33374e0829a44637f1e1",
+    "lib/Demeter/templates/process/larch/save_many_k.tmpl": "50ecd7b1b43d7f2f5ffa1436488d6e32f689a39997bbf2d3e69d44bc0d210a36",
+    "lib/Demeter/templates/process/larch/deriv.tmpl": "dca0f02c6bf743cf91a8a98c74e9273717f1be777fde24b6f1d0486517a009b4",
+    "lib/Demeter/templates/process/larch/nderiv.tmpl": "83ea8e8a9c42e0ed7b6d7b62b6f75f62f7268ba2b449a51b0cd22cd5debe9fde",
+    "lib/Demeter/templates/process/larch/dphase.tmpl": "7ebe56e7dcf62397b127054ef0913b923ee1e6a0ee145b97cfdb50ea108c457b",
+    "lib/Demeter/templates/process/larch/post_autobk.tmpl": "5507fce0593b95f4e02fafcfd41c5eca3d89a89610b451ec70e07a261d95b9cb",
+    "lib/Demeter/templates/process/larch/flatten_set.tmpl": "dabfe50288b5a4c554923db09b2f2b010cba9b1c3aec0b00ab1155dedde64d66",
+    "lib/Demeter/templates/process/larch/interpolate.tmpl": "3d5ecec8c09d81b2e62bd090232e3f1111c8bbda627b975a13dc27b6c7f384de"
+  },
+  "cases": [
+    {
+      "id": "save_xmu-i0-0",
+      "code": "##|\n##| saving \"Cu foil 1\" as mu(E)\ng.e = g.energy+2.25\nif hasattr(g, 'i0'): \n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec, g.i0,\n\t       label=\"energy xmu background pre_edge post_edge derivative second i0\", header=g.myheader)\nelse:\n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec,\n\t       label=\"energy xmu background pre_edge post_edge derivative second\", header=g.myheader)\n#endif\ndel g.e\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          11.0,
+          21.0,
+          31.0,
+          41.0,
+          51.0,
+          61.0
+        ],
+        [
+          8982.25,
+          12.0,
+          22.0,
+          32.0,
+          42.0,
+          52.0,
+          62.0
+        ],
+        [
+          8992.25,
+          13.0,
+          23.0,
+          33.0,
+          43.0,
+          53.0,
+          63.0
+        ],
+        [
+          9002.25,
+          14.0,
+          24.0,
+          34.0,
+          44.0,
+          54.0,
+          64.0
+        ],
+        [
+          9012.25,
+          15.0,
+          25.0,
+          35.0,
+          45.0,
+          55.0,
+          65.0
+        ],
+        [
+          9022.25,
+          16.0,
+          26.0,
+          36.0,
+          46.0,
+          56.0,
+          66.0
+        ],
+        [
+          9032.25,
+          17.0,
+          27.0,
+          37.0,
+          47.0,
+          57.0,
+          67.0
+        ],
+        [
+          9042.25,
+          18.0,
+          28.0,
+          38.0,
+          48.0,
+          58.0,
+          68.0
+        ],
+        [
+          9052.25,
+          19.0,
+          29.0,
+          39.0,
+          49.0,
+          59.0,
+          69.0
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "energy",
+        "xmu",
+        "background",
+        "pre_edge",
+        "post_edge",
+        "derivative",
+        "second"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  energy xmu background pre_edge post_edge derivative second"
+      ]
+    },
+    {
+      "id": "save_xmu-i0-1",
+      "code": "##|\n##| saving \"Cu foil 1\" as mu(E)\ng.e = g.energy+2.25\nif hasattr(g, 'i0'): \n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec, g.i0,\n\t       label=\"energy xmu background pre_edge post_edge derivative second i0\", header=g.myheader)\nelse:\n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec,\n\t       label=\"energy xmu background pre_edge post_edge derivative second\", header=g.myheader)\n#endif\ndel g.e\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          11.0,
+          21.0,
+          31.0,
+          41.0,
+          51.0,
+          61.0,
+          1000.0
+        ],
+        [
+          8982.25,
+          12.0,
+          22.0,
+          32.0,
+          42.0,
+          52.0,
+          62.0,
+          1001.0
+        ],
+        [
+          8992.25,
+          13.0,
+          23.0,
+          33.0,
+          43.0,
+          53.0,
+          63.0,
+          1002.0
+        ],
+        [
+          9002.25,
+          14.0,
+          24.0,
+          34.0,
+          44.0,
+          54.0,
+          64.0,
+          1003.0
+        ],
+        [
+          9012.25,
+          15.0,
+          25.0,
+          35.0,
+          45.0,
+          55.0,
+          65.0,
+          1004.0
+        ],
+        [
+          9022.25,
+          16.0,
+          26.0,
+          36.0,
+          46.0,
+          56.0,
+          66.0,
+          1005.0
+        ],
+        [
+          9032.25,
+          17.0,
+          27.0,
+          37.0,
+          47.0,
+          57.0,
+          67.0,
+          1006.0
+        ],
+        [
+          9042.25,
+          18.0,
+          28.0,
+          38.0,
+          48.0,
+          58.0,
+          68.0,
+          1007.0
+        ],
+        [
+          9052.25,
+          19.0,
+          29.0,
+          39.0,
+          49.0,
+          59.0,
+          69.0,
+          1008.0
+        ]
+      ],
+      "columns": 8,
+      "labels": [
+        "energy",
+        "xmu",
+        "background",
+        "pre_edge",
+        "post_edge",
+        "derivative",
+        "second",
+        "i0"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  energy xmu background pre_edge post_edge derivative second i0"
+      ]
+    },
+    {
+      "id": "save_xmu_xanes-i0-0",
+      "code": "##|\n##| saving \"Cu foil 1\" as mu(E)\ng.e = g.energy+2.25\ng.nbkg = zeros(size(g.energy))\nif hasattr(g, 'i0'): \n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec, g.i0,\n\t       label=\"energy xmu pre_edge post_edge derivative second i0\", header=g.myheader)\nelse:\n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec,\n\t       label=\"energy xmu pre_edge post_edge derivative second\", header=g.myheader)\n#endif\ndel g.e\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          11.0,
+          21.0,
+          31.0,
+          41.0,
+          51.0,
+          61.0
+        ],
+        [
+          8982.25,
+          12.0,
+          22.0,
+          32.0,
+          42.0,
+          52.0,
+          62.0
+        ],
+        [
+          8992.25,
+          13.0,
+          23.0,
+          33.0,
+          43.0,
+          53.0,
+          63.0
+        ],
+        [
+          9002.25,
+          14.0,
+          24.0,
+          34.0,
+          44.0,
+          54.0,
+          64.0
+        ],
+        [
+          9012.25,
+          15.0,
+          25.0,
+          35.0,
+          45.0,
+          55.0,
+          65.0
+        ],
+        [
+          9022.25,
+          16.0,
+          26.0,
+          36.0,
+          46.0,
+          56.0,
+          66.0
+        ],
+        [
+          9032.25,
+          17.0,
+          27.0,
+          37.0,
+          47.0,
+          57.0,
+          67.0
+        ],
+        [
+          9042.25,
+          18.0,
+          28.0,
+          38.0,
+          48.0,
+          58.0,
+          68.0
+        ],
+        [
+          9052.25,
+          19.0,
+          29.0,
+          39.0,
+          49.0,
+          59.0,
+          69.0
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "energy",
+        "xmu",
+        "pre_edge",
+        "post_edge",
+        "derivative",
+        "second"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  energy xmu pre_edge post_edge derivative second"
+      ]
+    },
+    {
+      "id": "save_xmu_xanes-i0-1",
+      "code": "##|\n##| saving \"Cu foil 1\" as mu(E)\ng.e = g.energy+2.25\ng.nbkg = zeros(size(g.energy))\nif hasattr(g, 'i0'): \n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec, g.i0,\n\t       label=\"energy xmu pre_edge post_edge derivative second i0\", header=g.myheader)\nelse:\n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec,\n\t       label=\"energy xmu pre_edge post_edge derivative second\", header=g.myheader)\n#endif\ndel g.e\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          11.0,
+          21.0,
+          31.0,
+          41.0,
+          51.0,
+          61.0,
+          1000.0
+        ],
+        [
+          8982.25,
+          12.0,
+          22.0,
+          32.0,
+          42.0,
+          52.0,
+          62.0,
+          1001.0
+        ],
+        [
+          8992.25,
+          13.0,
+          23.0,
+          33.0,
+          43.0,
+          53.0,
+          63.0,
+          1002.0
+        ],
+        [
+          9002.25,
+          14.0,
+          24.0,
+          34.0,
+          44.0,
+          54.0,
+          64.0,
+          1003.0
+        ],
+        [
+          9012.25,
+          15.0,
+          25.0,
+          35.0,
+          45.0,
+          55.0,
+          65.0,
+          1004.0
+        ],
+        [
+          9022.25,
+          16.0,
+          26.0,
+          36.0,
+          46.0,
+          56.0,
+          66.0,
+          1005.0
+        ],
+        [
+          9032.25,
+          17.0,
+          27.0,
+          37.0,
+          47.0,
+          57.0,
+          67.0,
+          1006.0
+        ],
+        [
+          9042.25,
+          18.0,
+          28.0,
+          38.0,
+          48.0,
+          58.0,
+          68.0,
+          1007.0
+        ],
+        [
+          9052.25,
+          19.0,
+          29.0,
+          39.0,
+          49.0,
+          59.0,
+          69.0,
+          1008.0
+        ]
+      ],
+      "columns": 8,
+      "labels": [
+        "energy",
+        "xmu",
+        "pre_edge",
+        "post_edge",
+        "derivative",
+        "second",
+        "i0"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  energy xmu pre_edge post_edge derivative second i0"
+      ]
+    },
+    {
+      "id": "save_xmu_xanes-missing-bkg-i0-0",
+      "code": "##|\n##| saving \"Cu foil 1\" as mu(E)\ng.e = g.energy+2.25\ng.nbkg = zeros(size(g.energy))\nif hasattr(g, 'i0'): \n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec, g.i0,\n\t       label=\"energy xmu pre_edge post_edge derivative second i0\", header=g.myheader)\nelse:\n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec,\n\t       label=\"energy xmu pre_edge post_edge derivative second\", header=g.myheader)\n#endif\ndel g.e\n",
+      "errors": [
+        "AttributeError"
+      ],
+      "data": [
+        [
+          8972.25,
+          11.0
+        ],
+        [
+          8982.25,
+          12.0
+        ],
+        [
+          8992.25,
+          13.0
+        ],
+        [
+          9002.25,
+          14.0
+        ],
+        [
+          9012.25,
+          15.0
+        ],
+        [
+          9022.25,
+          16.0
+        ],
+        [
+          9032.25,
+          17.0
+        ],
+        [
+          9042.25,
+          18.0
+        ],
+        [
+          9052.25,
+          19.0
+        ]
+      ],
+      "columns": 2,
+      "labels": [
+        "col1",
+        "col2"
+      ],
+      "header": [
+        "# None",
+        "# None",
+        "# None",
+        "# None",
+        "# None",
+        "#---------------------------------",
+        "#  col1             col2"
+      ]
+    },
+    {
+      "id": "save_xmu_xanes-missing-bkg-i0-1",
+      "code": "##|\n##| saving \"Cu foil 1\" as mu(E)\ng.e = g.energy+2.25\ng.nbkg = zeros(size(g.energy))\nif hasattr(g, 'i0'): \n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec, g.i0,\n\t       label=\"energy xmu pre_edge post_edge derivative second i0\", header=g.myheader)\nelse:\n   write_ascii(\"output.dat\",\n               g.e, g.xmu, g.bkg, g.pre_edge,\n               g.post_edge, g.der, g.sec,\n\t       label=\"energy xmu pre_edge post_edge derivative second\", header=g.myheader)\n#endif\ndel g.e\n",
+      "errors": [
+        "AttributeError"
+      ],
+      "data": [
+        [
+          8972.25,
+          11.0
+        ],
+        [
+          8982.25,
+          12.0
+        ],
+        [
+          8992.25,
+          13.0
+        ],
+        [
+          9002.25,
+          14.0
+        ],
+        [
+          9012.25,
+          15.0
+        ],
+        [
+          9022.25,
+          16.0
+        ],
+        [
+          9032.25,
+          17.0
+        ],
+        [
+          9042.25,
+          18.0
+        ],
+        [
+          9052.25,
+          19.0
+        ]
+      ],
+      "columns": 2,
+      "labels": [
+        "col1",
+        "col2"
+      ],
+      "header": [
+        "# None",
+        "# None",
+        "# None",
+        "# None",
+        "# None",
+        "# None",
+        "#---------------------------------",
+        "#  col1             col2"
+      ]
+    },
+    {
+      "id": "save_norm",
+      "code": "##|\n##| saving \"Cu foil 1\" as normalized mu(E)\ng.e = g.energy+2.25\nwrite_ascii(\"output.dat\",\n            g.e, g.norm, g.nbkg, g.flat,\n            g.fbkg, g.nder, g.nsec,\n\t    label=\"energy norm norm_background flattened flat_background norm_derivative norm_second\", header=g.myheader)\ndel g.e\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          71.0,
+          81.0,
+          91.0,
+          101.0,
+          111.0,
+          121.0
+        ],
+        [
+          8982.25,
+          72.0,
+          82.0,
+          92.0,
+          102.0,
+          112.0,
+          122.0
+        ],
+        [
+          8992.25,
+          73.0,
+          83.0,
+          93.0,
+          103.0,
+          113.0,
+          123.0
+        ],
+        [
+          9002.25,
+          74.0,
+          84.0,
+          94.0,
+          104.0,
+          114.0,
+          124.0
+        ],
+        [
+          9012.25,
+          75.0,
+          85.0,
+          95.0,
+          105.0,
+          115.0,
+          125.0
+        ],
+        [
+          9022.25,
+          76.0,
+          86.0,
+          96.0,
+          106.0,
+          116.0,
+          126.0
+        ],
+        [
+          9032.25,
+          77.0,
+          87.0,
+          97.0,
+          107.0,
+          117.0,
+          127.0
+        ],
+        [
+          9042.25,
+          78.0,
+          88.0,
+          98.0,
+          108.0,
+          118.0,
+          128.0
+        ],
+        [
+          9052.25,
+          79.0,
+          89.0,
+          99.0,
+          109.0,
+          119.0,
+          129.0
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "energy",
+        "norm",
+        "norm_background",
+        "flattened",
+        "flat_background",
+        "norm_derivative",
+        "norm_second"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  energy norm norm_background flattened flat_background norm_derivative norm_second"
+      ]
+    },
+    {
+      "id": "save_norm_xanes",
+      "code": "##|\n##| saving \"Cu foil 1\" as normalized mu(E)\ng.e = g.energy+2.25\ng.nbkg = zeros(size(g.energy))\ng.fbkg = zeros(size(g.energy))\nwrite_ascii(\"output.dat\",\n            g.e, g.norm, g.nbkg, g.flat, g.fbkg, g.nder, g.nsec,\n\t    label=\"energy norm flattened norm_derivative norm_second\", header=g.myheader)\ndel g.e\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          71.0,
+          0.0,
+          91.0,
+          0.0,
+          111.0,
+          121.0
+        ],
+        [
+          8982.25,
+          72.0,
+          0.0,
+          92.0,
+          0.0,
+          112.0,
+          122.0
+        ],
+        [
+          8992.25,
+          73.0,
+          0.0,
+          93.0,
+          0.0,
+          113.0,
+          123.0
+        ],
+        [
+          9002.25,
+          74.0,
+          0.0,
+          94.0,
+          0.0,
+          114.0,
+          124.0
+        ],
+        [
+          9012.25,
+          75.0,
+          0.0,
+          95.0,
+          0.0,
+          115.0,
+          125.0
+        ],
+        [
+          9022.25,
+          76.0,
+          0.0,
+          96.0,
+          0.0,
+          116.0,
+          126.0
+        ],
+        [
+          9032.25,
+          77.0,
+          0.0,
+          97.0,
+          0.0,
+          117.0,
+          127.0
+        ],
+        [
+          9042.25,
+          78.0,
+          0.0,
+          98.0,
+          0.0,
+          118.0,
+          128.0
+        ],
+        [
+          9052.25,
+          79.0,
+          0.0,
+          99.0,
+          0.0,
+          119.0,
+          129.0
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "energy",
+        "norm",
+        "flattened",
+        "norm_derivative",
+        "norm_second"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  energy norm flattened norm_derivative norm_second"
+      ]
+    },
+    {
+      "id": "save_chik",
+      "code": "##|\n##| saving \"Cu foil 1\" as chi(k)\ng.chik  = g.k*g.chi\ng.chik2 = g.k**2*g.chi\ng.chik3 = g.k**3*g.chi\ng.chiee = 8980.5 + g.k**2 / 0.2624682917\nwrite_ascii(\"output.dat\",\n            g.k, g.chi, g.chik, g.chik2, g.chik3, g.kwin, g.chiee,\n            label=\"k chi chik chik2 chik3 win energy\", header=g.myheader)\ndel g.chik, g.chik2, g.chik3, g.chiee\n",
+      "errors": [],
+      "data": [
+        [
+          0.0,
+          141.0,
+          0.0,
+          0.0,
+          0.0,
+          151.0,
+          8980.5
+        ],
+        [
+          0.05,
+          142.0,
+          7.1,
+          0.355,
+          0.01775,
+          152.0,
+          8980.50952496
+        ],
+        [
+          0.1,
+          143.0,
+          14.3,
+          1.43,
+          0.143,
+          153.0,
+          8980.53809984
+        ],
+        [
+          0.15,
+          144.0,
+          21.6,
+          3.24,
+          0.486,
+          154.0,
+          8980.58572464
+        ],
+        [
+          0.2,
+          145.0,
+          29.0,
+          5.8,
+          1.16,
+          155.0,
+          8980.65239936
+        ],
+        [
+          0.25,
+          146.0,
+          36.5,
+          9.125,
+          2.28125,
+          156.0,
+          8980.738124
+        ],
+        [
+          0.3,
+          147.0,
+          44.1,
+          13.23,
+          3.969,
+          157.0,
+          8980.84289856
+        ],
+        [
+          0.35,
+          148.0,
+          51.8,
+          18.13,
+          6.3455,
+          158.0,
+          8980.96672304
+        ],
+        [
+          0.4,
+          149.0,
+          59.6,
+          23.84,
+          9.536,
+          159.0,
+          8981.10959744
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "k",
+        "chi",
+        "chik",
+        "chik2",
+        "chik3",
+        "win",
+        "energy"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  k chi chik chik2 chik3 win energy"
+      ]
+    },
+    {
+      "id": "save_chir",
+      "code": "##|\n##| saving \"Cu foil 1\" as chi(R)\nwrite_ascii(\"output.dat\",\n            g.r, g.chir_re, g.chir_im,\n            g.chir_mag, g.chir_pha, g.rwin, g.dph,\n            label=\"r chir_re chir_im chir_mag chir_pha win deriv_phase\", header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          161.0,
+          171.0,
+          181.0,
+          191.0,
+          201.0,
+          211.0,
+          221.0
+        ],
+        [
+          162.0,
+          172.0,
+          182.0,
+          192.0,
+          202.0,
+          212.0,
+          222.0
+        ],
+        [
+          163.0,
+          173.0,
+          183.0,
+          193.0,
+          203.0,
+          213.0,
+          223.0
+        ],
+        [
+          164.0,
+          174.0,
+          184.0,
+          194.0,
+          204.0,
+          214.0,
+          224.0
+        ],
+        [
+          165.0,
+          175.0,
+          185.0,
+          195.0,
+          205.0,
+          215.0,
+          225.0
+        ],
+        [
+          166.0,
+          176.0,
+          186.0,
+          196.0,
+          206.0,
+          216.0,
+          226.0
+        ],
+        [
+          167.0,
+          177.0,
+          187.0,
+          197.0,
+          207.0,
+          217.0,
+          227.0
+        ],
+        [
+          168.0,
+          178.0,
+          188.0,
+          198.0,
+          208.0,
+          218.0,
+          228.0
+        ],
+        [
+          169.0,
+          179.0,
+          189.0,
+          199.0,
+          209.0,
+          219.0,
+          229.0
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "r",
+        "chir_re",
+        "chir_im",
+        "chir_mag",
+        "chir_pha",
+        "win",
+        "deriv_phase"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  r chir_re chir_im chir_mag chir_pha win deriv_phase"
+      ]
+    },
+    {
+      "id": "save_chiq",
+      "code": "##|\n##| saving \"Cu foil 1\" as chi(q)\ng.chik = g.k**2*g.chi\nwrite_ascii(\"output.dat\",\n            g.q, g.chiq_re, g.chiq_im,\n            g.chiq_mag, g.chiq_pha, g.kwin, g.chik,\n            label=\"q chiq_re chiq_im chiq_mag chiq_pha win chik\", header=g.myheader)\ndel g.chik\n",
+      "errors": [],
+      "data": [
+        [
+          231.0,
+          241.0,
+          251.0,
+          261.0,
+          271.0,
+          151.0,
+          0.0
+        ],
+        [
+          232.0,
+          242.0,
+          252.0,
+          262.0,
+          272.0,
+          152.0,
+          0.355
+        ],
+        [
+          233.0,
+          243.0,
+          253.0,
+          263.0,
+          273.0,
+          153.0,
+          1.43
+        ],
+        [
+          234.0,
+          244.0,
+          254.0,
+          264.0,
+          274.0,
+          154.0,
+          3.24
+        ],
+        [
+          235.0,
+          245.0,
+          255.0,
+          265.0,
+          275.0,
+          155.0,
+          5.8
+        ],
+        [
+          236.0,
+          246.0,
+          256.0,
+          266.0,
+          276.0,
+          156.0,
+          9.125
+        ],
+        [
+          237.0,
+          247.0,
+          257.0,
+          267.0,
+          277.0,
+          157.0,
+          13.23
+        ],
+        [
+          238.0,
+          248.0,
+          258.0,
+          268.0,
+          278.0,
+          158.0,
+          18.13
+        ],
+        [
+          239.0,
+          249.0,
+          259.0,
+          269.0,
+          279.0,
+          159.0,
+          23.84
+        ]
+      ],
+      "columns": 7,
+      "labels": [
+        "q",
+        "chiq_re",
+        "chiq_im",
+        "chiq_mag",
+        "chiq_pha",
+        "win",
+        "chik"
+      ],
+      "header": [
+        "# Constructed native export template probe",
+        "#---------------------------------",
+        "#  q chiq_re chiq_im chiq_mag chiq_pha win chik"
+      ]
+    },
+    {
+      "id": "save_chikw-0",
+      "code": "##|\n##| saving \"Cu foil 1\" as k^0*chi(k)\ng.chik  = g.k**0*g.chi,\nwrite_ascii(\"output.dat\", g.k, g.chik\n            label=\"k k0_chi\", header=g.myheader)\ndel g.chik\n",
+      "errors": [
+        "SyntaxError"
+      ]
+    },
+    {
+      "id": "save_chikw-1",
+      "code": "##|\n##| saving \"Cu foil 1\" as k^1*chi(k)\ng.chik  = g.k**1*g.chi,\nwrite_ascii(\"output.dat\", g.k, g.chik\n            label=\"k k1_chi\", header=g.myheader)\ndel g.chik\n",
+      "errors": [
+        "SyntaxError"
+      ]
+    },
+    {
+      "id": "save_chikw-2",
+      "code": "##|\n##| saving \"Cu foil 1\" as k^2*chi(k)\ng.chik  = g.k**2*g.chi,\nwrite_ascii(\"output.dat\", g.k, g.chik\n            label=\"k k2_chi\", header=g.myheader)\ndel g.chik\n",
+      "errors": [
+        "SyntaxError"
+      ]
+    },
+    {
+      "id": "save_chikw-3",
+      "code": "##|\n##| saving \"Cu foil 1\" as k^3*chi(k)\ng.chik  = g.k**3*g.chi,\nwrite_ascii(\"output.dat\", g.k, g.chik\n            label=\"k k3_chi\", header=g.myheader)\ndel g.chik\n",
+      "errors": [
+        "SyntaxError"
+      ]
+    },
+    {
+      "id": "save_chikw-kw",
+      "code": "##|\n##| saving \"Cu foil 1\" as k^1.5*chi(k)\ng.chik  = g.k**1.5*g.chi,\nwrite_ascii(\"output.dat\", g.k, g.chik\n            label=\"k k1.5_chi\", header=g.myheader)\ndel g.chik\n",
+      "errors": [
+        "SyntaxError"
+      ]
+    },
+    {
+      "id": "save_many-xmu",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn mu(E)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.energy+2.25, g.int, h.int, \n            label=\"energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          281.0,
+          381.0
+        ],
+        [
+          8982.25,
+          282.0,
+          382.0
+        ],
+        [
+          8992.25,
+          283.0,
+          383.0
+        ],
+        [
+          9002.25,
+          284.0,
+          384.0
+        ],
+        [
+          9012.25,
+          285.0,
+          385.0
+        ],
+        [
+          9022.25,
+          286.0,
+          386.0
+        ],
+        [
+          9032.25,
+          287.0,
+          387.0
+        ],
+        [
+          9042.25,
+          288.0,
+          388.0
+        ],
+        [
+          9052.25,
+          289.0,
+          389.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn mu(E)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-norm",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn normalized mu(E)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.energy+2.25, g.int, h.int, \n            label=\"energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          281.0,
+          381.0
+        ],
+        [
+          8982.25,
+          282.0,
+          382.0
+        ],
+        [
+          8992.25,
+          283.0,
+          383.0
+        ],
+        [
+          9002.25,
+          284.0,
+          384.0
+        ],
+        [
+          9012.25,
+          285.0,
+          385.0
+        ],
+        [
+          9022.25,
+          286.0,
+          386.0
+        ],
+        [
+          9032.25,
+          287.0,
+          387.0
+        ],
+        [
+          9042.25,
+          288.0,
+          388.0
+        ],
+        [
+          9052.25,
+          289.0,
+          389.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn normalized mu(E)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-der",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn derivative mu(E)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.energy+2.25, g.int, h.int, \n            label=\"energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          281.0,
+          381.0
+        ],
+        [
+          8982.25,
+          282.0,
+          382.0
+        ],
+        [
+          8992.25,
+          283.0,
+          383.0
+        ],
+        [
+          9002.25,
+          284.0,
+          384.0
+        ],
+        [
+          9012.25,
+          285.0,
+          385.0
+        ],
+        [
+          9022.25,
+          286.0,
+          386.0
+        ],
+        [
+          9032.25,
+          287.0,
+          387.0
+        ],
+        [
+          9042.25,
+          288.0,
+          388.0
+        ],
+        [
+          9052.25,
+          289.0,
+          389.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn derivative mu(E)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-nder",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn derivative of normalized mu(E)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.energy+2.25, g.int, h.int, \n            label=\"energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          281.0,
+          381.0
+        ],
+        [
+          8982.25,
+          282.0,
+          382.0
+        ],
+        [
+          8992.25,
+          283.0,
+          383.0
+        ],
+        [
+          9002.25,
+          284.0,
+          384.0
+        ],
+        [
+          9012.25,
+          285.0,
+          385.0
+        ],
+        [
+          9022.25,
+          286.0,
+          386.0
+        ],
+        [
+          9032.25,
+          287.0,
+          387.0
+        ],
+        [
+          9042.25,
+          288.0,
+          388.0
+        ],
+        [
+          9052.25,
+          289.0,
+          389.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn derivative of normalized mu(E)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-sec",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn second derivative mu(E)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.energy+2.25, g.int, h.int, \n            label=\"energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          281.0,
+          381.0
+        ],
+        [
+          8982.25,
+          282.0,
+          382.0
+        ],
+        [
+          8992.25,
+          283.0,
+          383.0
+        ],
+        [
+          9002.25,
+          284.0,
+          384.0
+        ],
+        [
+          9012.25,
+          285.0,
+          385.0
+        ],
+        [
+          9022.25,
+          286.0,
+          386.0
+        ],
+        [
+          9032.25,
+          287.0,
+          387.0
+        ],
+        [
+          9042.25,
+          288.0,
+          388.0
+        ],
+        [
+          9052.25,
+          289.0,
+          389.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn second derivative mu(E)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-nsec",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn second derivative of normalized mu(E)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.energy+2.25, g.int, h.int, \n            label=\"energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          8972.25,
+          281.0,
+          381.0
+        ],
+        [
+          8982.25,
+          282.0,
+          382.0
+        ],
+        [
+          8992.25,
+          283.0,
+          383.0
+        ],
+        [
+          9002.25,
+          284.0,
+          384.0
+        ],
+        [
+          9012.25,
+          285.0,
+          385.0
+        ],
+        [
+          9022.25,
+          286.0,
+          386.0
+        ],
+        [
+          9032.25,
+          287.0,
+          387.0
+        ],
+        [
+          9042.25,
+          288.0,
+          388.0
+        ],
+        [
+          9052.25,
+          289.0,
+          389.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn second derivative of normalized mu(E)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chir_mag",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn magnitude of chi(R)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: R Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.r, g.chir_mag, h.chir_mag, \n            label=\"r  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          161.0,
+          191.0,
+          191.0
+        ],
+        [
+          162.0,
+          192.0,
+          192.0
+        ],
+        [
+          163.0,
+          193.0,
+          193.0
+        ],
+        [
+          164.0,
+          194.0,
+          194.0
+        ],
+        [
+          165.0,
+          195.0,
+          195.0
+        ],
+        [
+          166.0,
+          196.0,
+          196.0
+        ],
+        [
+          167.0,
+          197.0,
+          197.0
+        ],
+        [
+          168.0,
+          198.0,
+          198.0
+        ],
+        [
+          169.0,
+          199.0,
+          199.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "r",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn magnitude of chi(R)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: R Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  r  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chir_re",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn real part of chi(R)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: R Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.r, g.chir_re, h.chir_re, \n            label=\"r  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          161.0,
+          171.0,
+          171.0
+        ],
+        [
+          162.0,
+          172.0,
+          172.0
+        ],
+        [
+          163.0,
+          173.0,
+          173.0
+        ],
+        [
+          164.0,
+          174.0,
+          174.0
+        ],
+        [
+          165.0,
+          175.0,
+          175.0
+        ],
+        [
+          166.0,
+          176.0,
+          176.0
+        ],
+        [
+          167.0,
+          177.0,
+          177.0
+        ],
+        [
+          168.0,
+          178.0,
+          178.0
+        ],
+        [
+          169.0,
+          179.0,
+          179.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "r",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn real part of chi(R)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: R Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  r  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chir_im",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn imaginary part of chi(R)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: R Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.r, g.chir_im, h.chir_im, \n            label=\"r  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          161.0,
+          181.0,
+          181.0
+        ],
+        [
+          162.0,
+          182.0,
+          182.0
+        ],
+        [
+          163.0,
+          183.0,
+          183.0
+        ],
+        [
+          164.0,
+          184.0,
+          184.0
+        ],
+        [
+          165.0,
+          185.0,
+          185.0
+        ],
+        [
+          166.0,
+          186.0,
+          186.0
+        ],
+        [
+          167.0,
+          187.0,
+          187.0
+        ],
+        [
+          168.0,
+          188.0,
+          188.0
+        ],
+        [
+          169.0,
+          189.0,
+          189.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "r",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn imaginary part of chi(R)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: R Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  r  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chir_pha",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn phase of chi(R)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: R Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.r, g.chir_pha, h.chir_pha, \n            label=\"r  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          161.0,
+          201.0,
+          201.0
+        ],
+        [
+          162.0,
+          202.0,
+          202.0
+        ],
+        [
+          163.0,
+          203.0,
+          203.0
+        ],
+        [
+          164.0,
+          204.0,
+          204.0
+        ],
+        [
+          165.0,
+          205.0,
+          205.0
+        ],
+        [
+          166.0,
+          206.0,
+          206.0
+        ],
+        [
+          167.0,
+          207.0,
+          207.0
+        ],
+        [
+          168.0,
+          208.0,
+          208.0
+        ],
+        [
+          169.0,
+          209.0,
+          209.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "r",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn phase of chi(R)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: R Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  r  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-dph",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn ')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: energy')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.r, g.dph, h.dph, \n            label=\"r  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          161.0,
+          221.0,
+          221.0
+        ],
+        [
+          162.0,
+          222.0,
+          222.0
+        ],
+        [
+          163.0,
+          223.0,
+          223.0
+        ],
+        [
+          164.0,
+          224.0,
+          224.0
+        ],
+        [
+          165.0,
+          225.0,
+          225.0
+        ],
+        [
+          166.0,
+          226.0,
+          226.0
+        ],
+        [
+          167.0,
+          227.0,
+          227.0
+        ],
+        [
+          168.0,
+          228.0,
+          228.0
+        ],
+        [
+          169.0,
+          229.0,
+          229.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "r",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn ",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: energy",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  r  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chiq_mag",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn magnitude of chi(q)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: q inverse Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.q, g.chiq_mag, h.chiq_mag, \n            label=\"q  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          231.0,
+          261.0,
+          261.0
+        ],
+        [
+          232.0,
+          262.0,
+          262.0
+        ],
+        [
+          233.0,
+          263.0,
+          263.0
+        ],
+        [
+          234.0,
+          264.0,
+          264.0
+        ],
+        [
+          235.0,
+          265.0,
+          265.0
+        ],
+        [
+          236.0,
+          266.0,
+          266.0
+        ],
+        [
+          237.0,
+          267.0,
+          267.0
+        ],
+        [
+          238.0,
+          268.0,
+          268.0
+        ],
+        [
+          239.0,
+          269.0,
+          269.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "q",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn magnitude of chi(q)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: q inverse Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  q  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chiq_re",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn real part of chi(q)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: q inverse Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.q, g.chiq_re, h.chiq_re, \n            label=\"q  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          231.0,
+          241.0,
+          241.0
+        ],
+        [
+          232.0,
+          242.0,
+          242.0
+        ],
+        [
+          233.0,
+          243.0,
+          243.0
+        ],
+        [
+          234.0,
+          244.0,
+          244.0
+        ],
+        [
+          235.0,
+          245.0,
+          245.0
+        ],
+        [
+          236.0,
+          246.0,
+          246.0
+        ],
+        [
+          237.0,
+          247.0,
+          247.0
+        ],
+        [
+          238.0,
+          248.0,
+          248.0
+        ],
+        [
+          239.0,
+          249.0,
+          249.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "q",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn real part of chi(q)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: q inverse Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  q  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chiq_im",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn imaginary part of chi(q)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: q inverse Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.q, g.chiq_im, h.chiq_im, \n            label=\"q  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          231.0,
+          251.0,
+          251.0
+        ],
+        [
+          232.0,
+          252.0,
+          252.0
+        ],
+        [
+          233.0,
+          253.0,
+          253.0
+        ],
+        [
+          234.0,
+          254.0,
+          254.0
+        ],
+        [
+          235.0,
+          255.0,
+          255.0
+        ],
+        [
+          236.0,
+          256.0,
+          256.0
+        ],
+        [
+          237.0,
+          257.0,
+          257.0
+        ],
+        [
+          238.0,
+          258.0,
+          258.0
+        ],
+        [
+          239.0,
+          259.0,
+          259.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "q",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn imaginary part of chi(q)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: q inverse Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  q  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chiq_pha",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn phase of chi(q)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: q inverse Angstrom')\ng.myheader.append(\"Column.2: Cu_foil_1\")\ng.myheader.append(\"Column.3: Cu_foil_2\")\nwrite_ascii(\"output.dat\", g.q, g.chiq_pha, h.chiq_pha, \n            label=\"q  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          231.0,
+          271.0,
+          271.0
+        ],
+        [
+          232.0,
+          272.0,
+          272.0
+        ],
+        [
+          233.0,
+          273.0,
+          273.0
+        ],
+        [
+          234.0,
+          274.0,
+          274.0
+        ],
+        [
+          235.0,
+          275.0,
+          275.0
+        ],
+        [
+          236.0,
+          276.0,
+          276.0
+        ],
+        [
+          237.0,
+          277.0,
+          277.0
+        ],
+        [
+          238.0,
+          278.0,
+          278.0
+        ],
+        [
+          239.0,
+          279.0,
+          279.0
+        ]
+      ],
+      "columns": 3,
+      "labels": [
+        "q",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn phase of chi(q)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: q inverse Angstrom",
+        "# Column.2: Cu_foil_1",
+        "# Column.3: Cu_foil_2",
+        "#---------------------------------",
+        "#  q  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chi",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn chi(k)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: k inverse Angstrom')\ng.myheader.append('Column.2: energy eV')\ng.myheader.append(\"Column.3: Cu_foil_1\")\ng.myheader.append(\"Column.4: Cu_foil_2\")\ng.chiee = 8980.5 + g.k**2 / 0.2624682917\nwrite_ascii(\"output.dat\", g.k, g.chiee, g.chi, h.chi, \n            label=\"k energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          0.0,
+          8980.5,
+          141.0,
+          141.0
+        ],
+        [
+          0.05,
+          8980.50952496,
+          142.0,
+          142.0
+        ],
+        [
+          0.1,
+          8980.53809984,
+          143.0,
+          143.0
+        ],
+        [
+          0.15,
+          8980.58572464,
+          144.0,
+          144.0
+        ],
+        [
+          0.2,
+          8980.65239936,
+          145.0,
+          145.0
+        ],
+        [
+          0.25,
+          8980.738124,
+          146.0,
+          146.0
+        ],
+        [
+          0.3,
+          8980.84289856,
+          147.0,
+          147.0
+        ],
+        [
+          0.35,
+          8980.96672304,
+          148.0,
+          148.0
+        ],
+        [
+          0.4,
+          8981.10959744,
+          149.0,
+          149.0
+        ]
+      ],
+      "columns": 4,
+      "labels": [
+        "k",
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn chi(k)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: k inverse Angstrom",
+        "# Column.2: energy eV",
+        "# Column.3: Cu_foil_1",
+        "# Column.4: Cu_foil_2",
+        "#---------------------------------",
+        "#  k energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chik",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn k * chi(k)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: k inverse Angstrom')\ng.myheader.append('Column.2: energy eV')\ng.myheader.append(\"Column.3: Cu_foil_1\")\ng.myheader.append(\"Column.4: Cu_foil_2\")\ng.chiee = 8980.5 + g.k**2 / 0.2624682917\nwrite_ascii(\"output.dat\", g.k, g.chiee, g.chik, h.chik, \n            label=\"k energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          0.0,
+          8980.5,
+          291.0,
+          291.0
+        ],
+        [
+          0.05,
+          8980.50952496,
+          292.0,
+          292.0
+        ],
+        [
+          0.1,
+          8980.53809984,
+          293.0,
+          293.0
+        ],
+        [
+          0.15,
+          8980.58572464,
+          294.0,
+          294.0
+        ],
+        [
+          0.2,
+          8980.65239936,
+          295.0,
+          295.0
+        ],
+        [
+          0.25,
+          8980.738124,
+          296.0,
+          296.0
+        ],
+        [
+          0.3,
+          8980.84289856,
+          297.0,
+          297.0
+        ],
+        [
+          0.35,
+          8980.96672304,
+          298.0,
+          298.0
+        ],
+        [
+          0.4,
+          8981.10959744,
+          299.0,
+          299.0
+        ]
+      ],
+      "columns": 4,
+      "labels": [
+        "k",
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn k * chi(k)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: k inverse Angstrom",
+        "# Column.2: energy eV",
+        "# Column.3: Cu_foil_1",
+        "# Column.4: Cu_foil_2",
+        "#---------------------------------",
+        "#  k energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chik2",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn k^2 * chi(k)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: k inverse Angstrom')\ng.myheader.append('Column.2: energy eV')\ng.myheader.append(\"Column.3: Cu_foil_1\")\ng.myheader.append(\"Column.4: Cu_foil_2\")\ng.chiee = 8980.5 + g.k**2 / 0.2624682917\nwrite_ascii(\"output.dat\", g.k, g.chiee, g.chik2, h.chik2, \n            label=\"k energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          0.0,
+          8980.5,
+          301.0,
+          301.0
+        ],
+        [
+          0.05,
+          8980.50952496,
+          302.0,
+          302.0
+        ],
+        [
+          0.1,
+          8980.53809984,
+          303.0,
+          303.0
+        ],
+        [
+          0.15,
+          8980.58572464,
+          304.0,
+          304.0
+        ],
+        [
+          0.2,
+          8980.65239936,
+          305.0,
+          305.0
+        ],
+        [
+          0.25,
+          8980.738124,
+          306.0,
+          306.0
+        ],
+        [
+          0.3,
+          8980.84289856,
+          307.0,
+          307.0
+        ],
+        [
+          0.35,
+          8980.96672304,
+          308.0,
+          308.0
+        ],
+        [
+          0.4,
+          8981.10959744,
+          309.0,
+          309.0
+        ]
+      ],
+      "columns": 4,
+      "labels": [
+        "k",
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn k^2 * chi(k)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: k inverse Angstrom",
+        "# Column.2: energy eV",
+        "# Column.3: Cu_foil_1",
+        "# Column.4: Cu_foil_2",
+        "#---------------------------------",
+        "#  k energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chik3",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn k^3 * chi(k)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: k inverse Angstrom')\ng.myheader.append('Column.2: energy eV')\ng.myheader.append(\"Column.3: Cu_foil_1\")\ng.myheader.append(\"Column.4: Cu_foil_2\")\ng.chiee = 8980.5 + g.k**2 / 0.2624682917\nwrite_ascii(\"output.dat\", g.k, g.chiee, g.chik3, h.chik3, \n            label=\"k energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [],
+      "data": [
+        [
+          0.0,
+          8980.5,
+          311.0,
+          311.0
+        ],
+        [
+          0.05,
+          8980.50952496,
+          312.0,
+          312.0
+        ],
+        [
+          0.1,
+          8980.53809984,
+          313.0,
+          313.0
+        ],
+        [
+          0.15,
+          8980.58572464,
+          314.0,
+          314.0
+        ],
+        [
+          0.2,
+          8980.65239936,
+          315.0,
+          315.0
+        ],
+        [
+          0.25,
+          8980.738124,
+          316.0,
+          316.0
+        ],
+        [
+          0.3,
+          8980.84289856,
+          317.0,
+          317.0
+        ],
+        [
+          0.35,
+          8980.96672304,
+          318.0,
+          318.0
+        ],
+        [
+          0.4,
+          8981.10959744,
+          319.0,
+          319.0
+        ]
+      ],
+      "columns": 4,
+      "labels": [
+        "k",
+        "energy",
+        "Cu_foil_1",
+        "Cu_foil_2"
+      ],
+      "header": [
+        "# XDI/1.0 Demeter/0.9.26",
+        "# Demeter.output_filetype: multicolumn k^3 * chi(k)",
+        "# Element.symbol: Cu",
+        "# Element.edge: K",
+        "# Column.1: k inverse Angstrom",
+        "# Column.2: energy eV",
+        "# Column.3: Cu_foil_1",
+        "# Column.4: Cu_foil_2",
+        "#---------------------------------",
+        "#  k energy  Cu_foil_1  Cu_foil_2"
+      ]
+    },
+    {
+      "id": "save_many-chi-unequal-grids",
+      "code": "g.myheader = [\"XDI/1.0 Demeter/0.9.26\"]\ng.myheader.append('Demeter.output_filetype: multicolumn chi(k)')\ng.myheader.append('Element.symbol: Cu')\ng.myheader.append('Element.edge: K')\ng.myheader.append('Column.1: k inverse Angstrom')\ng.myheader.append('Column.2: energy eV')\ng.myheader.append(\"Column.3: Cu_foil_1\")\ng.myheader.append(\"Column.4: Cu_foil_2\")\ng.chiee = 8980.5 + g.k**2 / 0.2624682917\nwrite_ascii(\"output.dat\", g.k, g.chiee, g.chi, h.chi, \n            label=\"k energy  Cu_foil_1  Cu_foil_2\",\n\t    header=g.myheader)\n",
+      "errors": [
+        "ValueError"
+      ]
+    },
+    {
+      "id": "products-derivatives",
+      "code": "##| Set first and second derivative of xmu data\ng.der = deriv(g.xmu)/deriv(g.energy)\ng.sec = deriv(g.der)/deriv(g.energy)\n##| Set first and second derivative of normalized data\ng.nder = deriv(g.norm)/deriv(g.energy)\ng.nsec = deriv(g.nder)/deriv(g.energy)\n",
+      "errors": [],
+      "inputs": {
+        "g": {
+          "energy": [
+            8970.0,
+            8980.0,
+            8990.0,
+            9000.0,
+            9010.0,
+            9020.0,
+            9030.0,
+            9040.0,
+            9050.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            281.0,
+            282.0,
+            283.0,
+            284.0,
+            285.0,
+            286.0,
+            287.0,
+            288.0,
+            289.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ],
+          "prex": [
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0
+          ]
+        },
+        "h": {
+          "energy": [
+            8975.0,
+            8985.0,
+            8995.0,
+            9005.0,
+            9015.0,
+            9025.0,
+            9035.0,
+            9045.0,
+            9055.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            71.0,
+            72.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            78.0,
+            79.0
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            381.0,
+            382.0,
+            383.0,
+            384.0,
+            385.0,
+            386.0,
+            387.0,
+            388.0,
+            389.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ]
+        }
+      },
+      "products": {
+        "der": [
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1,
+          0.1
+        ],
+        "sec": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "nder": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "nsec": [
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ]
+      }
+    },
+    {
+      "id": "products-phase",
+      "code": "##| Set first derivative of phase in R\ng.dph = deriv(g.chir_pha)/deriv(g.r)\ng.dph = (max(g.chir_mag) / max(abs(g.dph))) * g.dph\n",
+      "errors": [],
+      "inputs": {
+        "g": {
+          "energy": [
+            8970.0,
+            8980.0,
+            8990.0,
+            9000.0,
+            9010.0,
+            9020.0,
+            9030.0,
+            9040.0,
+            9050.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            281.0,
+            282.0,
+            283.0,
+            284.0,
+            285.0,
+            286.0,
+            287.0,
+            288.0,
+            289.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ],
+          "prex": [
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0
+          ]
+        },
+        "h": {
+          "energy": [
+            8975.0,
+            8985.0,
+            8995.0,
+            9005.0,
+            9015.0,
+            9025.0,
+            9035.0,
+            9045.0,
+            9055.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            71.0,
+            72.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            78.0,
+            79.0
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            381.0,
+            382.0,
+            383.0,
+            384.0,
+            385.0,
+            386.0,
+            387.0,
+            388.0,
+            389.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ]
+        }
+      },
+      "products": {
+        "dph": [
+          199.0,
+          199.0,
+          199.0,
+          199.0,
+          199.0,
+          199.0,
+          199.0,
+          199.0,
+          199.0
+        ]
+      }
+    },
+    {
+      "id": "products-background",
+      "code": "##| post autobk\ng.nbkg = (g.bkg - g.pre_edge) / 3.2 + 0.35\n",
+      "errors": [],
+      "inputs": {
+        "g": {
+          "energy": [
+            8970.0,
+            8980.0,
+            8990.0,
+            9000.0,
+            9010.0,
+            9020.0,
+            9030.0,
+            9040.0,
+            9050.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            281.0,
+            282.0,
+            283.0,
+            284.0,
+            285.0,
+            286.0,
+            287.0,
+            288.0,
+            289.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ],
+          "prex": [
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0
+          ]
+        },
+        "h": {
+          "energy": [
+            8975.0,
+            8985.0,
+            8995.0,
+            9005.0,
+            9015.0,
+            9025.0,
+            9035.0,
+            9045.0,
+            9055.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            71.0,
+            72.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            78.0,
+            79.0
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            381.0,
+            382.0,
+            383.0,
+            384.0,
+            385.0,
+            386.0,
+            387.0,
+            388.0,
+            389.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ]
+        }
+      },
+      "products": {
+        "nbkg": [
+          -2.775,
+          -2.775,
+          -2.775,
+          -2.775,
+          -2.775,
+          -2.775,
+          -2.775,
+          -2.775,
+          -2.775
+        ]
+      }
+    },
+    {
+      "id": "products-flatten",
+      "code": "##|\n##| make the flattened, normalized spectrum\n##|   flat_cN are the difference in slope and curvature between\n##|   the pre- and post-edge polynomials\n##|\n##|  compute a step function\n##|\nn___step     = 3\nn___points    = size(g.energy) - n___step\nt___oss       = group(__name__='t___oss')\nt___oss.zeros = zeros(n___step)\nt___oss.ones  = ones(n___points)\ng.theta = array(list(t___oss.zeros) + list(t___oss.ones))\n##|\nflat_c0 = 0.2 - 0.1\nflat_c1 = 0.003 - 0.001\nif 2 >= 2:\n   flat_c2 = 0\nelse:\n   flat_c2 = 0\n#endif\nif 2 == 3:\n   flat_c3 = 0\nelse:\n   flat_c3 = 0\n#endif\ng.line = (flat_c0 + flat_c1*(g.energy+2.25) + flat_c2*(g.energy+2.25)**2)\ng.flat = ((3.2 - g.line)*g.theta + g.prex) / 3.2\ng.fbkg = (g.bkg-g.pre_edge+(3.2-g.line)*g.theta)/3.2\n\n##| clean up after computing flattened spectrum\ndel t___oss, flat_c0, flat_c1, flat_c2, flat_c3\n",
+      "errors": [],
+      "inputs": {
+        "g": {
+          "energy": [
+            8970.0,
+            8980.0,
+            8990.0,
+            9000.0,
+            9010.0,
+            9020.0,
+            9030.0,
+            9040.0,
+            9050.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            281.0,
+            282.0,
+            283.0,
+            284.0,
+            285.0,
+            286.0,
+            287.0,
+            288.0,
+            289.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ],
+          "prex": [
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0
+          ]
+        },
+        "h": {
+          "energy": [
+            8975.0,
+            8985.0,
+            8995.0,
+            9005.0,
+            9015.0,
+            9025.0,
+            9035.0,
+            9045.0,
+            9055.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            71.0,
+            72.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            78.0,
+            79.0
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            381.0,
+            382.0,
+            383.0,
+            384.0,
+            385.0,
+            386.0,
+            387.0,
+            388.0,
+            389.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ]
+        }
+      },
+      "products": {
+        "flat": [
+          -6.25,
+          -6.25,
+          -6.25,
+          -10.907656249999999,
+          -10.91390625,
+          -10.920156250000002,
+          -10.92640625,
+          -10.93265625,
+          -10.938906250000002
+        ],
+        "fbkg": [
+          -3.125,
+          -3.125,
+          -3.125,
+          -7.7826562500000005,
+          -7.78890625,
+          -7.79515625,
+          -7.80140625,
+          -7.807656250000001,
+          -7.8139062500000005
+        ]
+      }
+    },
+    {
+      "id": "products-interpolation",
+      "code": "g.int = interp(g.energy+2.25, g.xmu, h.energy+2.25, fill_value=0.0)\n",
+      "errors": [],
+      "inputs": {
+        "g": {
+          "energy": [
+            8970.0,
+            8980.0,
+            8990.0,
+            9000.0,
+            9010.0,
+            9020.0,
+            9030.0,
+            9040.0,
+            9050.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25,
+            -6.25
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            281.0,
+            282.0,
+            283.0,
+            284.0,
+            285.0,
+            286.0,
+            287.0,
+            288.0,
+            289.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ],
+          "prex": [
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0,
+            -20.0
+          ]
+        },
+        "h": {
+          "energy": [
+            8975.0,
+            8985.0,
+            8995.0,
+            9005.0,
+            9015.0,
+            9025.0,
+            9035.0,
+            9045.0,
+            9055.0
+          ],
+          "xmu": [
+            11.0,
+            12.0,
+            13.0,
+            14.0,
+            15.0,
+            16.0,
+            17.0,
+            18.0,
+            19.0
+          ],
+          "bkg": [
+            21.0,
+            22.0,
+            23.0,
+            24.0,
+            25.0,
+            26.0,
+            27.0,
+            28.0,
+            29.0
+          ],
+          "pre_edge": [
+            31.0,
+            32.0,
+            33.0,
+            34.0,
+            35.0,
+            36.0,
+            37.0,
+            38.0,
+            39.0
+          ],
+          "post_edge": [
+            41.0,
+            42.0,
+            43.0,
+            44.0,
+            45.0,
+            46.0,
+            47.0,
+            48.0,
+            49.0
+          ],
+          "der": [
+            51.0,
+            52.0,
+            53.0,
+            54.0,
+            55.0,
+            56.0,
+            57.0,
+            58.0,
+            59.0
+          ],
+          "sec": [
+            61.0,
+            62.0,
+            63.0,
+            64.0,
+            65.0,
+            66.0,
+            67.0,
+            68.0,
+            69.0
+          ],
+          "norm": [
+            71.0,
+            72.0,
+            73.0,
+            74.0,
+            75.0,
+            76.0,
+            77.0,
+            78.0,
+            79.0
+          ],
+          "nbkg": [
+            81.0,
+            82.0,
+            83.0,
+            84.0,
+            85.0,
+            86.0,
+            87.0,
+            88.0,
+            89.0
+          ],
+          "flat": [
+            91.0,
+            92.0,
+            93.0,
+            94.0,
+            95.0,
+            96.0,
+            97.0,
+            98.0,
+            99.0
+          ],
+          "fbkg": [
+            101.0,
+            102.0,
+            103.0,
+            104.0,
+            105.0,
+            106.0,
+            107.0,
+            108.0,
+            109.0
+          ],
+          "nder": [
+            111.0,
+            112.0,
+            113.0,
+            114.0,
+            115.0,
+            116.0,
+            117.0,
+            118.0,
+            119.0
+          ],
+          "nsec": [
+            121.0,
+            122.0,
+            123.0,
+            124.0,
+            125.0,
+            126.0,
+            127.0,
+            128.0,
+            129.0
+          ],
+          "k": [
+            0.0,
+            0.05,
+            0.1,
+            0.15000000000000002,
+            0.2,
+            0.25,
+            0.30000000000000004,
+            0.35000000000000003,
+            0.4
+          ],
+          "chi": [
+            141.0,
+            142.0,
+            143.0,
+            144.0,
+            145.0,
+            146.0,
+            147.0,
+            148.0,
+            149.0
+          ],
+          "kwin": [
+            151.0,
+            152.0,
+            153.0,
+            154.0,
+            155.0,
+            156.0,
+            157.0,
+            158.0,
+            159.0
+          ],
+          "r": [
+            161.0,
+            162.0,
+            163.0,
+            164.0,
+            165.0,
+            166.0,
+            167.0,
+            168.0,
+            169.0
+          ],
+          "chir_re": [
+            171.0,
+            172.0,
+            173.0,
+            174.0,
+            175.0,
+            176.0,
+            177.0,
+            178.0,
+            179.0
+          ],
+          "chir_im": [
+            181.0,
+            182.0,
+            183.0,
+            184.0,
+            185.0,
+            186.0,
+            187.0,
+            188.0,
+            189.0
+          ],
+          "chir_mag": [
+            191.0,
+            192.0,
+            193.0,
+            194.0,
+            195.0,
+            196.0,
+            197.0,
+            198.0,
+            199.0
+          ],
+          "chir_pha": [
+            201.0,
+            202.0,
+            203.0,
+            204.0,
+            205.0,
+            206.0,
+            207.0,
+            208.0,
+            209.0
+          ],
+          "rwin": [
+            211.0,
+            212.0,
+            213.0,
+            214.0,
+            215.0,
+            216.0,
+            217.0,
+            218.0,
+            219.0
+          ],
+          "dph": [
+            221.0,
+            222.0,
+            223.0,
+            224.0,
+            225.0,
+            226.0,
+            227.0,
+            228.0,
+            229.0
+          ],
+          "q": [
+            231.0,
+            232.0,
+            233.0,
+            234.0,
+            235.0,
+            236.0,
+            237.0,
+            238.0,
+            239.0
+          ],
+          "chiq_re": [
+            241.0,
+            242.0,
+            243.0,
+            244.0,
+            245.0,
+            246.0,
+            247.0,
+            248.0,
+            249.0
+          ],
+          "chiq_im": [
+            251.0,
+            252.0,
+            253.0,
+            254.0,
+            255.0,
+            256.0,
+            257.0,
+            258.0,
+            259.0
+          ],
+          "chiq_mag": [
+            261.0,
+            262.0,
+            263.0,
+            264.0,
+            265.0,
+            266.0,
+            267.0,
+            268.0,
+            269.0
+          ],
+          "chiq_pha": [
+            271.0,
+            272.0,
+            273.0,
+            274.0,
+            275.0,
+            276.0,
+            277.0,
+            278.0,
+            279.0
+          ],
+          "int": [
+            381.0,
+            382.0,
+            383.0,
+            384.0,
+            385.0,
+            386.0,
+            387.0,
+            388.0,
+            389.0
+          ],
+          "chik": [
+            291.0,
+            292.0,
+            293.0,
+            294.0,
+            295.0,
+            296.0,
+            297.0,
+            298.0,
+            299.0
+          ],
+          "chik2": [
+            301.0,
+            302.0,
+            303.0,
+            304.0,
+            305.0,
+            306.0,
+            307.0,
+            308.0,
+            309.0
+          ],
+          "chik3": [
+            311.0,
+            312.0,
+            313.0,
+            314.0,
+            315.0,
+            316.0,
+            317.0,
+            318.0,
+            319.0
+          ]
+        }
+      },
+      "products": {
+        "int": [
+          11.5,
+          12.5,
+          13.5,
+          14.5,
+          15.5,
+          16.5,
+          17.5,
+          18.5,
+          19.5
+        ]
+      }
+    }
+  ]
+}

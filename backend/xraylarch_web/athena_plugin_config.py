@@ -4,7 +4,7 @@ import threading
 import uuid
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, model_validator
 
 from .errors import WebInputError
 from .storage import WorkspaceStorage
@@ -80,7 +80,25 @@ class TenBMParameters(ReaderParameters):
     type: Literal['xmu', 'xanes'] = Field(default='xmu', title='Channel data type')
 
 
-MODELS = {'10BMMultiChannel': TenBMParameters, 'X15B': X15BParameters, 'X23A2MED': X23A2MEDParameters}
+class BL8ArParameters(ReaderParameters):
+    harmonic: int = Field(default=2, strict=True, ge=1, le=3, title='Monochromator harmonic',
+        json_schema_extra={'enum': [1, 2, 3]})
+    plot: StrictBool = Field(default=False, title='Review I0 correction before import')
+    margin: float = Field(default=200, strict=True, gt=0, title='Activation margin (eV)')
+    pre1: float = Field(default=-30, strict=True, title='Pre-edge start (eV relative to Ar)')
+    pre2: float = Field(default=-10, strict=True, title='Pre-edge end (eV relative to Ar)')
+    nor1: float = Field(default=10, strict=True, title='Post-edge start (eV relative to Ar)')
+    nor2: float = Field(default=30, strict=True, title='Post-edge end (eV relative to Ar)')
+
+    @model_validator(mode='after')
+    def ordered_windows(self):
+        if not self.pre1 < self.pre2 < 0 < self.nor1 < self.nor2:
+            raise ValueError('Choose ordered pre-edge bounds below zero and post-edge bounds above zero.')
+        return self
+
+
+MODELS = {'10BMMultiChannel': TenBMParameters, 'BL8Ar': BL8ArParameters,
+          'X15B': X15BParameters, 'X23A2MED': X23A2MEDParameters}
 
 
 def parameter_model(reader):

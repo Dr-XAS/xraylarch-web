@@ -18,6 +18,23 @@ async function open() {
   return screen.findByRole('spinbutton', { name: 'i0 column' })
 }
 
+it('submits numeric harmonic choices and the BL8Ar review checkbox with their original types', async () => {
+  const values = { harmonic: 2, plot: false }
+  const config: PluginConfiguration = { reader: 'BL8Ar', version: 0, session_id: 'server-a', unsaved: false,
+    values, defaults: values, saved: values, fields: [
+      { name: 'harmonic', title: 'Monochromator harmonic', type: 'integer', enum: [1, 2, 3] },
+      { name: 'plot', title: 'Review I0 correction before import', type: 'boolean' }] }
+  vi.mocked(loadPluginConfiguration).mockResolvedValue(config)
+  render(<AthenaPluginConfiguration reader="BL8Ar" />)
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Monochromator harmonic' }), { target: { value: '3' } })
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Review I0 correction before import' }))
+  const changed = { harmonic: 3, plot: true }
+  vi.mocked(applyPluginConfiguration).mockResolvedValue({ ...config, version: 1, values: changed, saved: changed })
+  fireEvent.click(screen.getByRole('button', { name: 'Apply and Save' }))
+  await screen.findByText(/Applied and saved reader settings/)
+  expect(applyPluginConfiguration).toHaveBeenCalledWith('BL8Ar', { version: 0, session_id: 'server-a', values: changed, save: true })
+})
+
 it('applies only on demand and distinguishes current, saved and factory values', async () => {
   const input = await open()
   fireEvent.change(input, { target: { value: '7' } })

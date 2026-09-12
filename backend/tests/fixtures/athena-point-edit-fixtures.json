@@ -1,0 +1,22 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 30,
+  "source_sha256": {
+    "lib/Demeter/Data/Process.pm": "953a1b3392a33b64c9d1a0ade21d6b75762261880de483329a829c49d99f2865",
+    "lib/Demeter/templates/process/larch/deglitch.tmpl": "ddaffb1315e07702d371310b0013c87e9e4d26b4c096916db2010bcdda785502",
+    "lib/Demeter/templates/process/larch/margin.tmpl": "52f87415e9e3cec65cd56983fef95bbebbfbb4c9b255b91747645d2f27a7b155",
+    "lib/Demeter/templates/process/larch/trun_signal_after.tmpl": "64af99b7bffe9e6aa49f64b52ba3f165ff17b5c47ee3a0f37edc32815ad882df",
+    "lib/Demeter/templates/process/larch/trun_signal_before.tmpl": "0eaa46b60bb4ef2b9ffd7a31d15e999f6d7105b89d237f12109baac0166a5211",
+    "lib/Demeter/templates/process/larch/truncate_after.tmpl": "d577a464dfa940f83108e64d673ce8c30bb3c81a79d8adcd22b2a958329e971b",
+    "lib/Demeter/templates/process/larch/truncate_before.tmpl": "a78f74fa3b3f7674f06ee583f8e26fef833190e8b67ebfef237bae0f37bd9fef"
+  },
+  "sha256": {
+    "backend/tests/reference/point_edit_native_reference.py": "013f5dd7ffc17be9c355bf00fffe5f6f0333991ea15152f49a2c00e834187848",
+    "backend/tests/fixtures/athena-point-edit-native.json.gz": "b56a1c54898e465b0f3c91747687cf1b4fb3f5c4ed8e7d81cc09ce7a55bc0ac5",
+    "backend/tests/fixtures/demeter-deglitch-ORP5.000": "14ba29646a27fc92dd707776df6396d7c14f1d5f39aeff1dae99f64eacab47ab",
+    "backend/tests/fixtures/demeter-deglitch-ZT20.000": "d67ce7a091d4a0c5d7e9160cb081987e8a4a51597d06feb7cd38f1fa3e6702dc",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467",
+    "larch/xafs/xafsutils.py": "d21f079b44a20ad6584427b4b521b03a67983869108f88c54f6da2749db36eed"
+  },
+  "basis": "Unchanged Data::Process deglitch, deglitch_margins and Truncate methods, rendered by Text::Template and executed in Larch. Explicit data/config accessor and normalization-line bridges. Two measured CLS files and one constructed boundary probe; not a full native GUI or normalization pipeline replay. Native detector template corruption is captured rather than copied into the web implementation."
+}

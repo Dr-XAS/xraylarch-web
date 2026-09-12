@@ -1,0 +1,10 @@
+.body :global(.ath-hint), .body :global(.ath-field) { color: #566353; }
+.body :global(.ath-warning) { color: #765917; }
+.body section[aria-label="Savitzky–Golay preferences"] :global(.ath-modal-actions) { flex-wrap: wrap; justify-content: flex-start; }
+.body section[aria-label="Savitzky–Golay preferences"] button { white-space: normal; max-width: 100%; }
+.actions { flex-wrap: wrap; }
+.actions button { max-width: 100%; white-space: normal; }
+@media (max-width: 780px) {
+  .actions { flex-direction: column; align-items: stretch; }
+  .actions button { width: 100%; margin: 0; }
+}

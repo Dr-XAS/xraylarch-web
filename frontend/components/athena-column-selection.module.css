@@ -1,6 +1,8 @@
 .layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1.05fr); align-items: start; gap: 24px; }
 .controls { min-width: 0; }
 .preview { min-width: 0; position: sticky; top: 0; }
+.readerPreviews { max-height: max(380px, calc(84vh - 170px)); overflow-y: auto; padding-right: 6px; }
+.readerPreviews > section + section { margin-top: 18px; }
 .previewPanel { min-width: 0; }
 .previewTools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .previewTools > strong { flex-basis: 100%; font-size: 13px; }
@@ -13,3 +15,4 @@
 .range button { border: 1px solid #dce5d3; padding: 8px; }
 .raw { margin: 15px 0; }
 @media (max-width: 850px) { .layout { display: flex; flex-direction: column; gap: 16px; }.controls, .preview { width: 100%; }.preview { position: static; order: -1; }.plot { height: 300px; } }
+@media (max-width: 850px) { .readerPreviews { max-height: none; overflow: visible; padding-right: 0; } }

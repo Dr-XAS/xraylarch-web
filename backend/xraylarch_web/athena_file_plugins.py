@@ -23,6 +23,7 @@ class PreparedFile:
     fluorescence: tuple[int, int] | None = None
     suggestions: dict | None = None
     column_units: dict[int, str] | None = None
+    preview: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -99,6 +100,26 @@ def _bm23(data, max_points, max_columns):
 def _slribl4(data,max_points,max_columns,calibration):
     from .athena_dispersive import slribl4
     return slribl4(data,max_points,max_columns,calibration)
+
+
+def _bl8ar(data, max_points, max_columns, configuration):
+    from .athena_bl8ar import bl8ar
+    return bl8ar(data, max_points, max_columns, configuration)
+
+
+def _recognize_bl8ar(data, configuration):
+    from .athena_bl8ar import recognize
+    return recognize(data, configuration)
+
+
+def _spec_long(data, max_points, max_columns):
+    from .athena_spec_long import spec_long
+    return spec_long(data, max_points, max_columns)
+
+
+def _recognize_spec_long(data):
+    from .athena_spec_long import recognize
+    return recognize(data)
 
 
 def _multichannel(data, max_points, max_columns, configuration=None):
@@ -385,6 +406,14 @@ _PLUGINS = (
         'Review or change the selected detector channels in the live column preview.',
         re.compile(rb'.*Diamond'), _b18,
         lambda data: len(data.splitlines()) > 1 and b'B18-CORE XAS' in data.splitlines()[1]),
+    FilePlugin('BL8Ar', '0.1', 'SLRI BL8 · Ar correction in I0',
+        'Fits the argon edge in I0 with Larch and subtracts its step above Ar K energy divided by the '
+        'configured harmonic. Configure the fit ranges and optional I0 review plot, then reinspect. '
+        'Column 6 retains the uncorrected absorption multiplied by the detector count, for reference '
+        'comparison without a logarithm. Native fluorescence defaults select SCA0–SCA3 even for Ge13; '
+        'select additional detectors in the live preview when needed.',
+        re.compile(rb'.*BL8: X-ray Absorption Spectroscopy'), _bl8ar,
+        configurable=True, configured_recognize=_recognize_bl8ar),
     FilePlugin('BM23', '0.1', 'ESRF BM23',
         'Cleans SPEC labels and converts the first column from keV to eV. The native transmission '
         'suggestion is ln(abs(column 3 / column 4)). Multiple scans open in the scan chooser; '
@@ -457,6 +486,12 @@ _PLUGINS = (
         'and omits ICR channels from the converted table. Transmission uses columns 3 / 4; fluorescence uses '
         '6 / 3. Use column ranges to sum additional SCA channels. Original ICR readings remain in the source download.',
         re.compile(rb'^\s*SSRL\s+MicroEXAFS Data Collector'), _ssrlmicro),
+    FilePlugin('SpecFileLongLine', '0.1', 'SPEC · long column label line',
+        'Recognizes a #L line longer than 254 bytes in the initial comment header. Removes #L lines '
+        'from a converted copy without changing observations. Native transmission uses columns 56 / 57 '
+        'and energy column 1. Review the numbered columns and live curve; original labels remain in '
+        'the source download. Shorter tables require a manual detector selection.',
+        re.compile(rb'.*'), _spec_long, _recognize_spec_long),
     FilePlugin('X10C', '0.1', 'NSLS beamline X10C',
         'Recognizes EXAFS on the first line and DATA START later in the file. '
         'Removes NUL padding and separates joined negative numbers in a converted copy. '

@@ -140,3 +140,15 @@ it('imports and exports native calibration without requiring a pixel file',async
   expect(screen.getByRole('link',{name:'Export saved athena.dxas'})).toHaveAttribute('href','/api/backend/api/athena/preferences/dispersive/file')
   expect(screen.getByRole('button',{name:'Make calibrated data group'})).toBeDisabled()
 })
+
+it('a delayed initial preference lookup cannot replace a newer explicit load',async()=>{
+  let finish!:(v:unknown)=>void
+  api.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve}))
+  render(<Harness/>);await tick()
+  pref={version:8,coefficients}
+  await click('Load saved calibration')
+  await act(async()=>finish({version:0,coefficients:null}))
+  await click('Save calibration')
+  expect(api.mock.calls.findLast(c=>c[2]==='PUT')![1].version).toBe(8)
+  expect(screen.getByRole('link',{name:'Export saved athena.dxas'})).toBeInTheDocument()
+})

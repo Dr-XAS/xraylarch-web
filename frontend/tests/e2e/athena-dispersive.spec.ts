@@ -135,7 +135,12 @@ test('Photon Factory Pd: numeric CSV header, signal reversal, mobile curves and 
   await page.getByRole('button',{name:'File',exact:true}).click()
   await page.getByRole('button',{name:'Plugin registry…',exact:true}).click()
   const registry=page.getByRole('dialog',{name:'Plugin registry',exact:true})
-  await registry.getByRole('checkbox',{name:'Enable SLRIBL4',exact:true}).check()
+  const enabled=registry.getByRole('checkbox',{name:'Enable SLRIBL4',exact:true})
+  if(!await enabled.isChecked()) {
+    const accepting=page.waitForResponse(r=>r.url().endsWith('/preferences/plugins')&&r.request().method()==='PUT')
+    await enabled.click();expect((await accepting).ok()).toBe(true)
+    await expect(enabled).toBeChecked()
+  }
   await registry.getByRole('button',{name:'Close registry',exact:true}).click()
   await page.getByRole('button',{name:'Import data',exact:true}).click()
   await page.getByLabel('Choose data files',{exact:true}).setInputFiles(source('cu','pixels'))

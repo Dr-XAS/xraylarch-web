@@ -1,0 +1,9 @@
+.metadata { border: 1px solid #dce5d3; border-radius: 5px; padding: 12px; margin-top: 14px; font-size: 13px; overflow-wrap: anywhere; }
+.metadata p { margin: 7px 0; }
+.metadata summary { cursor: pointer; margin-top: 10px; }
+.scroll { max-height: 300px; overflow: auto; margin-top: 10px; }
+.scroll table { width: 100%; table-layout: fixed; border-collapse: collapse; }
+.scroll caption { text-align: left; font-weight: 600; margin-bottom: 8px; }
+.scroll th, .scroll td { text-align: left; vertical-align: top; padding: 6px; border-bottom: 1px solid #e8ede3; white-space: pre-wrap; }
+.scroll th { width: 43%; font-weight: 500; }
+.digest { font-size: 11px; color: #65705e; }

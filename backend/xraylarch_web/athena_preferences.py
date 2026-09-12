@@ -7,6 +7,7 @@ from .athena_rebin import ImportRebin
 from .errors import WebInputError
 from .storage import WorkspaceStorage
 from .athena_plugin_registry import PluginRegistry
+from .athena_beamline_metadata import BeamlineDefaults
 
 
 class RebinGrid(BaseModel):
@@ -111,6 +112,22 @@ class AthenaPreferences:
         except FileNotFoundError:
             # Native PluginRegistry.pm starts unchecked when no YAML exists.
             return PluginRegistry().model_dump()
+
+    def read_beamline(self):
+        try:
+            return BeamlineDefaults.model_validate(self.storage.read_json(self.ident, 'beamline.json')).model_dump()
+        except FileNotFoundError:
+            return BeamlineDefaults().model_dump()
+
+    def save_beamline(self, request: BeamlineDefaults):
+        with self.storage.lock(self.ident):
+            current = self.read_beamline()
+            if request.version != current['version']:
+                raise WebInputError('stale_revision', 'Beamline identification settings changed in another window.',
+                                    recovery='Reload the settings, review the switch and save again.')
+            result = {'version': current['version'] + 1, 'enabled': request.enabled}
+            self.storage.write_json(self.ident, 'beamline.json', result)
+            return result
 
     def save_plugins(self, request: PluginRegistry):
         with self.storage.lock(self.ident):

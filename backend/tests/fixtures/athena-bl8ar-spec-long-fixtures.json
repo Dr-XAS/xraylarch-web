@@ -1,0 +1,62 @@
+{
+  "kind": "constructed probes, not measured acquisitions",
+  "references": [
+    {
+      "name": "trans",
+      "reader": "BL8Ar",
+      "parameters": {},
+      "file": "athena-bl8ar-spec-trans-native.json.gz",
+      "sha256": "291eb68b62824c18ca808d4adc26e7194fc57b5b54124a260669714d29c59cc6",
+      "input": "constructed-bl8ar-trans.dat",
+      "input_sha256": "22edc9a556176b9d2246d6061480456e9f902456e4c046f104fd00c53db49459",
+      "source_sha256": "145a70fcf060365837da365a6551328a3bcc3d7e2a28ac92b04e62e81a13fed0"
+    },
+    {
+      "name": "sidrift",
+      "reader": "BL8Ar",
+      "parameters": {},
+      "file": "athena-bl8ar-spec-sidrift-native.json.gz",
+      "sha256": "a642d80603eb22113d73688614a68248d61868db9fbc511f9d182327314c0a32",
+      "input": "constructed-bl8ar-sidrift.dat",
+      "input_sha256": "f3bea3dc74f73772c329ab7c394933f681be87f23d8bff649016b2bd8249b44e",
+      "source_sha256": "145a70fcf060365837da365a6551328a3bcc3d7e2a28ac92b04e62e81a13fed0"
+    },
+    {
+      "name": "ge",
+      "reader": "BL8Ar",
+      "parameters": {},
+      "file": "athena-bl8ar-spec-ge-native.json.gz",
+      "sha256": "b71aecd8e81664fa439b61f6aa357d26872ace390cc311bd232c044f66ff23ec",
+      "input": "constructed-bl8ar-ge.dat",
+      "input_sha256": "03b4b77a0a5d5716dd67fa5247da5f21573c8c621ac9190d1efe01546ee2e243",
+      "source_sha256": "145a70fcf060365837da365a6551328a3bcc3d7e2a28ac92b04e62e81a13fed0"
+    },
+    {
+      "name": "alternate-range",
+      "reader": "BL8Ar",
+      "parameters": {
+        "pre1": -40,
+        "pre2": -15,
+        "nor1": 15,
+        "nor2": 40
+      },
+      "file": "athena-bl8ar-spec-alternate-range-native.json.gz",
+      "sha256": "5107d4b4a8893ee8bb13b5a5741caf6a41bdafa2f447d06091f1152e7ae4706d",
+      "input": "constructed-bl8ar-trans.dat",
+      "input_sha256": "22edc9a556176b9d2246d6061480456e9f902456e4c046f104fd00c53db49459",
+      "source_sha256": "145a70fcf060365837da365a6551328a3bcc3d7e2a28ac92b04e62e81a13fed0"
+    },
+    {
+      "name": "spec",
+      "reader": "SpecFileLongLine",
+      "parameters": {},
+      "file": "athena-bl8ar-spec-spec-native.json.gz",
+      "sha256": "0ad289bd01d5426e927a2f2687a6d13ccc69d2caff0cf874d63fe3c9c25153d1",
+      "input": "constructed-spec-long.dat",
+      "input_sha256": "3cc27017b0342c264eb632944f8cd6b93a14cef4d0ae04c18fd804dc72d1a0ba",
+      "source_sha256": "d4bafdba6392bee336369365329c1029fb8923ef467cda199ea30d1a73267059"
+    }
+  ],
+  "harness_sha256": "089553a9a3bc0fa96a0886ae9d090d724d5fed3534ef24bcc879db2dc444c2d0",
+  "generator_sha256": "1cbe92f009c4739e461ed33c825df3138e037f201da59c0ed6ccb2451d880ec4"
+}

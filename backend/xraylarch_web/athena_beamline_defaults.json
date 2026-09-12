@@ -1,0 +1,172 @@
+{
+  "mx.10bm.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "none",
+      "name": "10BM"
+    },
+    "facility": {
+      "name": "APS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si(111)"
+    }
+  },
+  "mx.10id.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "none",
+      "harmonic_rejection": "flat, Rh/Si/Pt striped mirror",
+      "name": "10ID"
+    },
+    "facility": {
+      "name": "APS",
+      "xray_source": "undulator A"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si(111)"
+    }
+  },
+  "xdac.u7a.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "Au-coated ULE toroidal mirror with Au-coated ULE toroidal refocusuing mirror",
+      "harmonic_rejection": "none",
+      "name": "U7A"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "name": "Toroidal Spherical Grating Monochromator 600 or 1200 lines/mm"
+    }
+  },
+  "xdac.x11a.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "none",
+      "harmonic_rejection": "detuned mono",
+      "name": "X11A"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si 111"
+    }
+  },
+  "xdac.x11b.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "none",
+      "harmonic_rejection": "bent second surface of channel-cut mono",
+      "name": "X11B"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si 111"
+    }
+  },
+  "xdac.x18b.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "Cylindrical, rhodium-coated aluminum 1:1 focusing mirror",
+      "harmonic_rejection": "detuned mono",
+      "name": "X18B"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si 111"
+    }
+  },
+  "xdac.x19a.ini": {
+    "beamline": {
+      "collimation": "Rh-coated spherical mirror, 3 mrad incident angle",
+      "focusing": "Rh-coated toroidal mirror",
+      "harmonic_rejection": "detuned mono",
+      "name": "X19A"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si 111"
+    }
+  },
+  "xdac.x23a2.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "none",
+      "harmonic_rejection": "flat Rh coated mirror",
+      "name": "X23A2"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "1.6375",
+      "name": "Si 311"
+    }
+  },
+  "xdac.x23b.ini": {
+    "beamline": {
+      "collimation": "Pt-coated flat silicon mirror with 4-point bender",
+      "focusing": "Ni-coated quartz toroidal mirror",
+      "harmonic_rejection": "upstream mirrors",
+      "name": "X23B"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si 111"
+    }
+  },
+  "xdac.x24a.ini": {
+    "beamline": {
+      "collimation": "Ni-coated graphite spherical mirror",
+      "focusing": "Pt-coated quartz toroidal mirror",
+      "harmonic_rejection": "upstream mirrors",
+      "name": "X24A"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    }
+  },
+  "xdac.x3b.ini": {
+    "beamline": {
+      "collimation": "none",
+      "focusing": "sagittally bent second crystal",
+      "harmonic_rejection": "Ni coated flat cylindrically bent mirror",
+      "name": "X3B"
+    },
+    "facility": {
+      "name": "NSLS",
+      "xray_source": "bend magnet"
+    },
+    "mono": {
+      "d_spacing": "3.1356",
+      "name": "Si 111"
+    }
+  }
+}

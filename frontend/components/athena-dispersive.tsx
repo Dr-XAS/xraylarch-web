@@ -18,8 +18,8 @@ const emptyColumns:Columns={pixel_column:'',numerator:[],denominator:[],logarith
 function Figure({label,traces,xlabel,ylabel,range}: {label:string;traces:Trace[];xlabel:string;ylabel:string;range?:number[]}) {
   return <div className={styles.plot} aria-label={label}>{traces.length ? <Plot
     data={traces.map((t,i)=>({x:t.x,y:t.y,name:t.label,type:'scatter',mode:'lines',line:{color:i?'#b76d37':'#16736b',width:1.6}}))}
-    layout={{autosize:true,margin:{l:60,r:15,t:20,b:65},xaxis:{title:{text:xlabel},range},yaxis:{title:{text:ylabel}},
-      font:{size:11},legend:{orientation:'h',y:-.3},uirevision:label}}
+    layout={{autosize:true,margin:{l:60,r:15,t:traces.length>1?48:20,b:45},xaxis:{title:{text:xlabel},range},yaxis:{title:{text:ylabel}},
+      font:{size:11},legend:{orientation:'h',y:1.05,yanchor:'bottom',font:{size:10}},uirevision:label}}
     config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'athena-dispersive'}}}
     style={{width:'100%',height:'100%'}} useResizeHandler /> : <p>Choose a file and review its detector columns.</p>}</div>
 }
@@ -36,6 +36,7 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
   const [normalization,setNormalization]=useState({pre1:'',pre2:'',norm1:'',norm2:'1000',nnorm:'2'})
   const [nsmooth,setNsmooth]=useState('4')
   const [defaults,setDefaults]=useState<Defaults|null>(null)
+  const defaultsEpoch=useRef(0)
   const [pending,setPending]=useState(false),lock=useRef(false)
   const [error,setError]=useState(''),[notice,setNotice]=useState('')
   const [raw,setRaw]=useState<{key:string;value?:Result;error?:string}|null>(null)
@@ -57,7 +58,7 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
   const pixel=raw?.key===rawKey ? raw.value : undefined
   const problem=(raw?.key===rawKey?raw.error:'')||(preview?.key===key?preview.error:'')||(!valid?'Enter finite coefficients and valid normalization values.':'')
 
-  useEffect(()=>{let live=true;void athenaApi<Defaults>('/preferences/dispersive').then(v=>{if(live)setDefaults(v)}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[])
+  useEffect(()=>{let live=true;const epoch=++defaultsEpoch.current;void athenaApi<Defaults>('/preferences/dispersive').then(v=>{if(live&&epoch===defaultsEpoch.current)setDefaults(v)}).catch(e=>{if(live&&epoch===defaultsEpoch.current)setError(e.message)});return()=>{live=false}},[])
   useEffect(()=>{
     if(!inspection||pending)return
     let live=true;const controller=new AbortController()
@@ -104,6 +105,7 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
     })
   }
   async function load(){await task('Loading calibration',async()=>{
+    ++defaultsEpoch.current
     const v=await athenaApi<Defaults>('/preferences/dispersive');setDefaults(v)
     if(!v.coefficients)throw new Error('No calibration has been saved. Estimate coefficients from standards or import athena.dxas.')
     adopt(v.coefficients);setNotice('Loaded saved calibration.')

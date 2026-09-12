@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 const allowedHeaders = ["content-type", "accept", "content-length"] as const
-const responseHeaders = ["content-type", "content-length", "content-disposition"] as const
+const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version"] as const
 
 function isAllowedPath(path: string[]): boolean {
   if (path.some((segment) => !segment || segment === "." || segment === "..")) {

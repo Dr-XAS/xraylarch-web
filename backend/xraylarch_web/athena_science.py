@@ -185,16 +185,22 @@ def _edge(x, y, e0=None):
 
 
 def _normalization_ranges(x, e0, p):
-    """Resolve Larch defaults while rejecting explicit clipping or degree reduction."""
+    """Intersect outer fit endpoints with measured support, as in native Larch.
+
+    Keep the requested recipe intact. The returned/effective endpoints describe
+    the fit; inner endpoints and polynomial support must still be usable.
+    """
     lo, hi = float(x[0] - e0), float(x[-1] - e0)
     rounding = 5 if index_nearest(x, e0) > 20 else 2
     pre1 = p.pre1 if p.pre1 is not None else max(lo, rounding * round((x[1] - e0) / rounding))
     if p.pre1 is None and pre1 >= 0:
         pre1 = lo
+    pre1 = max(pre1, lo)
     pre2 = p.pre2 if p.pre2 is not None else pre1 / 2
     norm2 = p.norm2 if p.norm2 is not None else min(hi, 5 * round(hi / 5))
     if p.norm2 is None and norm2 <= 2:
         norm2 = hi
+    norm2 = min(norm2, hi)
     norm1 = p.norm1 if p.norm1 is not None else min(25, 5 * round(norm2 / 15))
     if p.norm1 is None:
         norm1 = max(0, min(norm1, norm2 - 2))
@@ -210,6 +216,19 @@ def _normalization_ranges(x, e0, p):
     if npre < 3 or npost < max(3, nnorm + 2) or (nnorm > 1 and npost < 5):
         raise ScientificError("Normalization windows contain too few points; widen them or lower nnorm.")
     return dict(pre1=pre1, pre2=pre2, norm1=norm1, norm2=norm2, nnorm=nnorm)
+
+
+def normalization_adjustments(parameters, effective):
+    """Report outer endpoint resolutions without changing saved user choices."""
+    return [dict(parameter=key, requested=parameters[key], used=effective[key])
+            for key in ('pre1', 'norm2') if parameters.get(key) is not None
+            and effective.get(key) is not None and parameters[key] != effective[key]]
+
+
+def normalization_warnings(parameters, effective):
+    return [f"Normalization {a['parameter']}: requested {a['requested']:.10g} eV relative to E0; "
+            f"using {a['used']:.10g} eV at the measured boundary. The requested value is retained."
+            for a in normalization_adjustments(parameters, effective)]
 
 
 def _fft_capacity(kmax, p):
@@ -478,6 +497,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                 ranges = _normalization_ranges(x, e0, p)
                 pre_edge(x, y, group=group, e0=e0, step=p.step, make_flat=p.flatten, **ranges)
                 effective.update({key: getattr(group.pre_edge_details, key) for key in ranges})
+                warnings.extend(normalization_warnings(p.model_dump(), effective))
                 ie0 = index_nearest(x, e0)
                 fitted_step = float(group.post_edge[ie0] - group.pre_edge[ie0])
                 if p.step is None and fitted_step <= max(1e-12, np.ptp(y) * 1e-10):

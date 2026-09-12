@@ -29,13 +29,19 @@ export interface InspectionResponse {
   columns: ColumnInfo[]
   warnings: string[]
   issues: FieldIssue[]
+  beamline_metadata?: Record<string, unknown>
+  xdi_metadata?: Record<string, unknown>
   source_preview?: string
   source_preview_truncated?: boolean
   source_preview_format?: "hex"
-  file_plugin?: { id: string; version: string; description: string; summary: string; source_sha256: string; converted_sha256: string
+  file_plugin?: { id: string; version: string; description: string; summary: string; source_sha256: string; converted_sha256: string; review_required?: boolean
     scan?: { number: string; ordinal: number; command: string; date: string; points: number } }
   converted_preview?: string
   converted_preview_truncated?: boolean
+  reader_preview?: {
+    traces: { id: string; label: string; role: string; x: number[]; y: number[] }[]
+    points: number; edge_energy: number; step_size: number; pre_range: [number, number]; post_range: [number, number]
+  }
   athena_suggestion?: {
     energy_column: string; numerator: string[]; denominator: string | null
     mode: "mu" | "transmission" | "fluorescence"; units: "eV" | "keV"; data_type: "mu" | "chi" | "xmudat"

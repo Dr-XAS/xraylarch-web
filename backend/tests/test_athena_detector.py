@@ -181,15 +181,18 @@ def test_raw_detector_transformations_keep_signal_type_and_original(workspace, a
              'convolve':{'form':'gaussian','width':5},
              'dispersive':{'offset':0,'linear':2,'quadratic':0}}[action]
     updated=run(store,p,action,**options); child=updated['groups'][-1]
-    assert updated['groups'][0]==g
+    if action=='truncate':
+        assert len(updated['groups'])==len(p['groups']) and child['id']==g['id']
+    else:
+        assert updated['groups'][0]==g
     assert child['data_type']=='detector' and child['processing_error'] is None
     assert child['result']['arrays']['mu']==child['mu']
     assert child['result']['arrays']['norm']==[] and child['result']['arrays']['chi']==[]
     assert child['result']['effective']['e0'] is None
     if action=='truncate':
         assert child['mu']==g['mu'][30:281]
-        assert child['energy']==g['result']['arrays']['energy'][30:281]
-        assert child['parameters']['energy_shift']==0
+        assert child['energy']==g['energy'][30:281]
+        assert child['parameters']['energy_shift']==g['parameters']['energy_shift']
     elif action=='dispersive':
         assert child['mu']==g['mu']
         np.testing.assert_array_equal(child['energy'],np.array(g['energy'])*2)

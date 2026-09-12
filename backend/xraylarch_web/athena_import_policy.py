@@ -11,7 +11,9 @@ including energy_shift, numeric clamps, weights, windows and grids, survive;
 E0 is deliberately replaced by the enforced table seed then its fraction.
 Defaults are resolved at that seed. Automatic bounds can subsequently be
 limited to measured support, as a native normalization/background backend
-would do; explicit bounds are never clipped. Each such adjustment is recorded.
+would do. Explicit outer normalization requests remain in the recipe, while
+their effective fit endpoints follow Larch's measured-boundary clipping and
+are reported separately. Explicit spline/FT bounds remain validated.
 
 The web recipe uses eV relative to E0, positive k bounds in inverse angstroms,
 and Larch polynomial degree. It does not accept Demeter's signed end-relative
@@ -68,7 +70,7 @@ def _pre2_default(seed):
 
 
 def _at_e0(x, base, automatic, e0, data_type):
-    """Limit only automatic endpoint bounds; validate all explicit bounds.
+    """Update automatic bounds; retain explicit outer bounds for Larch to clip.
 
     Reuse the seed-resolved base on every pass so an earlier iteration's
     adjustment does not permanently shrink a later, again-valid interval.
@@ -87,11 +89,12 @@ def _at_e0(x, base, automatic, e0, data_type):
             recipe["pre2"] = recipe["pre1"] / 2
         if "norm2" in automatic:
             recipe["norm2"] = min(recipe["norm2"], end)
-        # Ranges must remain usable; no repair by moving an explicit endpoint.
+        # Explicit outer requests are retained, while the actual fit is limited
+        # to measured support. Inner endpoints must still leave a usable fit.
         try:
             _normalization_ranges(x, e0, AthenaParameters.model_validate(recipe))
         except ValueError as exc:
-            raise ScientificError(f"Import normalization ranges are unusable at E0={e0:.6g} eV: {exc} Supply valid pre1/pre2/norm1/norm2 or extend the scan; explicit ranges are not clipped.") from exc
+            raise ScientificError(f"Import normalization ranges are unusable at E0={e0:.6g} eV: {exc} Supply usable pre/post-edge intervals or extend the scan.") from exc
     if data_type != "xanes":
         available = float(np.sqrt(ETOK * (x[-1] - e0)))
         if "bkg_kmax" in automatic:
@@ -234,6 +237,10 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", _f
         raise ScientificError("Enforced import normalization is numerically unstable; rescale mu or adjust the normalization ranges.") from exc
     selection.update(iterations=iteration, converged=converged)
     warnings = []
+    if output_type not in ('norm', 'xmudat'):
+        from .athena_science import normalization_warnings
+        ranges = _normalization_ranges(x, current, AthenaParameters.model_validate(final_recipe))
+        warnings.extend(normalization_warnings(final_recipe, ranges))
     if not converged:
         warning = "Fraction E0 did not converge within five iterations at 0.001 eV tolerance; inspect the import normalization ranges."
         selection["warnings"].append(warning)

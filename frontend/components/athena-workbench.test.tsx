@@ -2558,17 +2558,23 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     const project = await openSaved()
     selectGroup("Unused reference")
     let dialog = await openTool("Process", /calibrate energy/i)
-    editNumber(/^Calibrated energy/, 8980, dialog)
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Cancel$/i }))
+    editNumber(/^Calibrate to/, 8980, dialog)
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Cancel calibration$/i }))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(api).toHaveBeenCalledTimes(1)
 
     dialog = await openTool("Process", /calibrate energy/i)
-    editNumber(/^Observed edge/, 8978, dialog)
-    editNumber(/^Calibrated energy/, 8979, dialog)
-    const next = nextProject(project, { unused: { parameters: { ...parameters, rbkg: 1.6, energy_shift: 1 } } })
+    editNumber(/^Observed reference/, 8978, dialog)
+    editNumber(/^Calibrate to/, 8979, dialog)
+    const options={coordinate:'displayed',observed:8978,target:8979,display:'derivative',smoothing:0,smoothing_method:'three_point'}
+    api.mockResolvedValueOnce({project_id:project.id,version:project.version,group_id:'unused',options,requested_options:options,
+      curve:{x:project.groups[3].energy,y:[0,.1,0],unsmoothed:[0,.1,0],marker:{x:8978,y:.09},range:[8948,9028],smoothing:{}},
+      energy_shift:1,shift_delta:1,actual_reference:8979,zero_crossing:null,atomic_target:null,
+      changes:[{group_id:'unused',label:'Unused reference',e0:8979,energy_shift:1}],processing_errors:{}})
+    await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Calibrate'})).toBeEnabled())
+    const next = nextProject(project, { unused: { parameters: { ...parameters, rbkg: 1.6, e0:8979, energy_shift: 1 } } })
     api.mockResolvedValueOnce(next)
-    fireEvent.click(within(dialog).getByRole("button", { name: /^Apply$/i }))
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Calibrate$/i }))
 
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
     expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, expect.objectContaining({

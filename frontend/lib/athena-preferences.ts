@@ -15,7 +15,7 @@ export interface PluginEntry {
 
 export interface PluginConfigurationField {
   name: string; title: string; type: 'integer' | 'number' | 'string' | 'boolean'; description?: string
-  minimum?: number; maximum?: number; exclusiveMinimum?: number; minLength?: number; maxLength?: number; enum?: string[]
+  minimum?: number; maximum?: number; exclusiveMinimum?: number; minLength?: number; maxLength?: number; enum?: (string | number)[]
 }
 export interface PluginConfiguration {
   reader: string; version: number; session_id: string; unsaved: boolean

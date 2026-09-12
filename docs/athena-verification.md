@@ -1590,3 +1590,1328 @@ Final complete regression results:
   3004/8006. No commit, push or deployment was performed by this checkpoint.
   The shared checkout moved to master externally during the work; existing
   commits were retained. The full Athena goal remains unfinished and active.
+
+
+## Dispersive calibration and saved pixel imports checkpoint (2026-09-10)
+
+The [source contract](athena-dispersive-reference.md) resolves PR-14's upstream
+TODO page against Pixel.pm, Dispersive.pm, the Ifeffit pixel templates and
+SLRIBL4.pm at revision `06afc8da08a5a7d5a26ee14992170fcf5dc67406`. The five
+[retained official files](../backend/tests/fixtures/athena-dispersive-fixtures.json)
+match SHA-256 and upstream Git blob identities. The primary-source catalog now
+contains 171 unique entries. All 107 original requirement IDs/order remain
+unchanged; PR-14 advances to Partial and no row is Verified.
+
+This implements live pixel column arithmetic and plots, native beamline
+presets, conventional-standard selection, 10%/90% guesses, raw-derivative
+refinement, reset/replot/make, native calibration settings exchange and
+SLRIBL4 conversion using saved coefficients. Explicit native plot actions
+persist coefficients while live editing remains read-only. The standard
+preview respects saved normalization, automatic polynomial degree, supplied
+normalization and energy shifts. Desktop plots remain alongside the controls
+while scrolling. Stale preview responses and stale initial preference loads
+cannot replace newer selections/settings.
+
+A real make-group failure was fixed: pixel coordinates were being placed in
+`source.raw_arrays`, whose schema only permits native detector arrays. All
+source columns now use counted, validated `column_arrays`, aligned to group
+row order with a reversible `row_order` permutation, plus the original source
+SHA-256 and calibration/mapping provenance. JSON and compressed PRJ restore
+retain these values; an independent Larch reader confirms exported energy and
+mu. The 12-line ESRF colon header and numeric Photon Factory CSV header are
+recognized without dropping any observations. Dates no longer become detector
+column names. Damaged rows after the numeric boundary remain errors.
+
+Measured results from isolated temporary projects (Python 3.12.14, NumPy 2.5.3,
+SciPy 1.18.1, lmfit 1.3.4, local Larch 2026.3.1.post61+gf5272011f):
+
+| Measurement | Fitted offset | Linear | Quadratic | Derivative SSR before → after | Fitted points |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ESRF Cu | 8952.152566 | 0.2865228384 | 5.513845724e−6 | 0.13265622 → 0.01449968 | 339 |
+| Photon Factory Pd | 23925.203720 | 1.0680161248 | −1.185585751e−4 | 0.05504062 → 0.00405631 | 352 |
+
+Neither fit extrapolates. Against the separately published `cu_08.calib` energy
+axis, the Cu RMS difference is 0.145996 eV, maximum 0.348975 eV. That rounded
+published axis is independent evidence, not a native-optimizer golden result.
+The Pd check reverses mu alone and uses the recipe's pixel windows; it does
+not apply the recipe's extra 1 eV conventional-standard Gaussian convolution.
+Exact native normalization/optimizer replay, a measured SLRI acquisition,
+large gzip time-series matrices and the remaining Athena requirements stay
+open. No Artemis workflow is included.
+
+The focused browser run passed both measured-file flows in 23.8 s, including
+live detector/log/invert edits, paired conventional/calibrated curves, native
+settings download/upload, make, E/k/R/q arrays, undo/redo, original byte
+download and PRJ save/reopen. The Pd run checks a 390 px layout and then imports
+the Cu pixel/stripe file through SLRIBL4 using a loaded native calibration.
+Initial browser failures were test mistakes: an exact label lookup included
+nested select-option text, and a download link was inside a collapsed source
+disclosure. Correct semantic selection/disclosure interaction resolved both.
+Visual inspection caught scrolling-hidden plots and a legend/axis-title
+overlap; the final layout pins desktop previews and puts legends above plots.
+
+Final commands and terminal results for this checkpoint:
+
+- `PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests -q`:
+  **2,380 passed, 332 warnings, 229.51 s**. The dedicated dispersive module has
+  **42 passing cases** (including supplied/automatic standard normalization).
+- `npm --prefix frontend test`: **484 passed in 24 files, 53.76 s**, including
+  nine dispersive interaction cases.
+- `NEXT_BUILD_DIR=.next-verify npm --prefix frontend run build`: **passed**,
+  including TypeScript, page-data collection and all four static pages.
+- `npm --prefix frontend run test:e2e`: **50 passed, 5.7 min** in the final
+  clean Chromium run. An earlier full run had 49 passes and one asynchronous
+  checkbox-test failure; waiting for the plugin settings PUT and confirmed
+  checked state resolved it without changing the application's save behavior.
+- Requirement identity/order, the 171 unique primary-source identities,
+  fixture hashes, document links and `git diff --check`: **passed**.
+
+Backend/HTTP tests use temporary data and writable Larch/Matplotlib caches.
+Browser checks use `PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64`,
+`PLAYWRIGHT_BROWSERS_PATH=/tmp/athena-playwright`, a fresh temporary data root
+and ports 13004/18006. Logs for the terminal full runs are
+`/tmp/athena-dispersive-backend-full.log`,
+`/tmp/athena-dispersive-frontend-full.log`,
+`/tmp/athena-dispersive-build.log` and
+`/tmp/athena-dispersive-browser-final.log`. Final desktop/mobile captures are
+in the dispersive cases under `frontend/test-results/` (test outputs, not
+upstream reference images). The 3004/8006 local services remain healthy; a
+read-only check confirmed the existing copper project still has three groups
+at revision 67. Testing did not edit that project. Full Athena parity remains
+an active objective.
+
+## BL8Ar I0 review and SPEC long-label checkpoint — 2026-09-11
+
+The [reader contract](athena-bl8ar-spec-long-reference.md) adds BL8Ar and
+SpecFileLongLine, bringing the registry to 22 converters. BL8Ar uses the
+actual native Elam energy (3205.9 eV), Larch's two-term normalization call,
+strict above-edge subtraction, native output precision, measurement-specific
+column suggestions and a configurable I0 fit review. The plot shows original
+and corrected I0 plus pre/post-edge fits and their intervals. Confirmation is
+scoped to one staged file and cannot be reused automatically in a batch.
+Native Ge13's first-four-detector default is explicit and all 13 columns
+remain editable. Column 6 supports the uncorrected reference comparison.
+SpecFileLongLine removes only native `#L` lines while preserving other bytes,
+and offers columns 56/57 when available. The native 254-byte boundary includes
+the newline; shorter tables require manual detector selection.
+
+Four reproducible, explicitly constructed files and five executed native Perl
+references cover 21,311 converted values. Full converted-byte hashes and
+native suggestions agree. The BL8Ar normalization bridge executes Larch with
+the pinned native template arguments; Moose/Wx and Ifeffit are not replayed.
+The official BL8 page has no aluminium download link, and no independent
+measured BL8 or long-SPEC acquisition was obtained. Their absence remains an
+explicit verification gap, together with the four XDI metadata helpers.
+No requirement has been promoted to Verified or removed from the 107-row
+inventory. The broader Athena goal remains active; Artemis is excluded.
+
+Terminal results:
+
+- Backend reader/configuration/registry tests: **91 passed**, including
+  31 new reader cases; isolated HTTP tests enforce per-file review even after
+  configuration changes and verify unmodified project revisions on refusal.
+- Complete backend regression: **2,411 passed, 332 warnings, 205.27 s**.
+- Complete frontend regression: **488 passed in 25 files, 49.52 s**.
+- Production build: **passed**, including TypeScript and static generation.
+- Focused Chromium: **2 passed, 20.3 s**, covering I0 plot arrays, Ge13/reference
+  edits, two identical queued files needing separate review, normalized
+  imports, original downloads, PRJ save/reopen and mobile SPEC detector edits.
+- Unchanged native reader replay: **five cases passed**; generator/oracle
+  hashes and exact regeneration of all four probes also pass.
+- Requirement identity/order, no Verified rows, **174 unique primary-source
+  identities**, local documentation links and `git diff --check`: **passed**.
+- Full Chromium regression: **52 passed, 6.0 min**. Existing measured readers,
+  live columns, batch memory, dispersive calibration, project and ZIP flows
+  also pass. Final standalone type checking passes.
+
+The first frontend run identified an unnecessary `reader_reviewed: false`
+addition to ordinary import requests. The client now sends the field only
+for explicit reader confirmation; all existing batch-request checks pass
+unchanged. The first browser run passed BL8Ar but the SPEC test incorrectly
+looked for a denominator select. It now uses the actual denominator
+checkboxes and passes. These were resolved before the terminal results above.
+
+Logs: `/tmp/athena-bl8-backend-full.log`,
+`/tmp/athena-bl8-frontend-final.log`, `/tmp/athena-bl8-build.log`,
+`/tmp/athena-bl8-browser-focused-final.log` and
+`/tmp/athena-bl8-browser-full.log`. Tests use temporary workspaces, local
+Larch/Matplotlib caches and browser servers on 13004/18006. The user-facing
+3004/8006 services respond successfully; a read-only check confirms the
+existing copper project is still revision 67 with three groups.
+
+The final desktop `bl8ar-i0-review.png` and 390 px `spec-long-mobile.png` in
+their cases under `frontend/test-results/` were visually inspected. Curves,
+fit regions, legends and energy labels are readable. The desktop preview
+column scrolls independently when the diagnostic is open; confirming review
+collapses it to expose the selected detector plot. All test/build processes
+have reached successful terminal states; the normal local services remain up.
+
+
+## 2026-09-11 — acquisition metadata and measured X11A EDC
+
+The [beamline metadata contract](athena-beamline-metadata-reference.md) adds
+BL8/MX/X11A/XDAC acquisition recognition, all 11 native beamline INIs,
+readable import/group panels and the persisted, default-on identification
+switch. These are metadata helpers, separate from the 22 file converters.
+
+The author-published X11A Cu foil now imports using actual Larch ASCII
+reading. All 612 measured rows (2,448 values) are retained; the discrepant
+611-point header is reported. Explicit detector/OFFSETS boundaries prevent
+mixed headers from blocking import and prevent damaged observations from
+being discarded. Live transmission and fluorescence previews are checked
+against every measured point. Native offsets/gains remain inert metadata.
+
+Terminal checks for this checkpoint:
+
+- Backend focused metadata/parser checks: **81 passed**.
+- Backend full regression: **2,467 passed, 332 warnings, 208.51 s**.
+- Frontend focused metadata/reader components: **8 passed**.
+- Frontend full regression: **493 passed across 26 files, 49.02 s**.
+- Production build and standalone type checking: **passed**.
+- Focused Chromium: **2 passed, 21.5 s**, covering all-point live edits,
+  processing, refresh, actual PRJ download/reupload, persisted switch changes
+  and mobile layout.
+- Unchanged native Perl helper replay: **31 cases passed**. All four helpers,
+  all 11 INIs, date corrections, focusing booleans and BL8 crystal precedence
+  are covered. The harness records XDI setter calls; it does not execute the
+  actual Xray::XDI validator/serializer or a desktop GUI.
+- Exact bundled INI comparison, **191 unique source identities**, unchanged
+  order of all **107 requirements**, no Verified rows, local documentation
+  links and `git diff --check`: **passed**.
+
+The first focused backend run exposed test setup assumptions: the measured
+four-channel fixture requires its separate converter workflow, and BL8Ar is
+initially disabled. Ordinary XDAC workflow coverage uses the existing measured
+fe.060 file; the BL8 test enables its reader. Column 6 of converted BL8 is
+correctly labelled mu, matching its uncorrected absorption. The first browser
+run used an ambiguous warning locator (the warning appears both in the form
+and the preview); scoping that assertion resolved it. No failing checks are
+being represented as passes.
+
+The desktop `x11a-columns-metadata.png` and 390 px
+`x11a-mobile-metadata.png` were visually inspected under their cases in
+`frontend/test-results/`. The native acquisition fields are readable and the
+live copper curve is present. Tests use temporary workspaces and separate
+13004/18006 services. The live frontend/backend and proxied health check
+respond successfully; the existing copper project remains revision 67 with
+three groups. The live preference remains its initial version 0, enabled.
+
+Logs: `/tmp/athena-metadata-focused.log`,
+`/tmp/athena-metadata-backend-full.log`,
+`/tmp/athena-metadata-frontend-full.log`, `/tmp/athena-metadata-build.log`,
+`/tmp/athena-metadata-typecheck.log`,
+`/tmp/athena-metadata-browser-focused.log`, and
+`/tmp/athena-metadata-native-replay.log`.
+
+Web JSON and PRJ-sidecar retention pass, including restart and browser restore.
+Native XDI serialization, full XDI families/comments/history editing, XDI data
+exports, generated-project metadata cloning and actual desktop exchange
+remain required. The eight existing downloaded project fixtures contain no
+Perl `$xdi` object records; their passing exchange tests alone cannot prove
+that serializer path. `Data/Athena.pm` calls Xray::XDI.serialize for this path,
+and `Data/Prj.pm` restores the object/comments. Those boundaries need an
+independent fixture and validation in subsequent work.
+
+
+The complete **54-case Chromium run** finished with **53 passed and one
+asynchronous test assertion failure (6.2 min)**. The X23A2MultiChannel test used
+Playwright `check()` on a controlled switch that updates only after its saved
+PUT. The trace showed **PUT 200** and the final snapshot showed the switch
+checked, so the immediate assertion raced a successful save. The test now
+clicks, waits for the save response and explicitly waits for the checked state,
+as other registry browser tests already do. Both complete multichannel
+workflows then passed (**2 passed, 21.9 s**), including native channel previews,
+configuration and PRJ exchange. This is an affected-case rerun, not a claim
+that the initial full run was green. The application code was unchanged by
+this test correction.
+
+Additional logs: `/tmp/athena-metadata-browser-full.log` and
+`/tmp/athena-metadata-multichannel.log`. All test/build handles have terminated;
+no background verification job remains. Browser output directories are
+transient and are replaced by subsequent runs; the metadata screenshots were
+reviewed before the multichannel rerun. The ordinary local app remains on
+3004/8006. Native comparisons covered 693 captured metadata fields across
+the 31 cases, with the documented date conversions checked separately.
+
+## Native XDI acquisition-object exchange checkpoint — 2026-09-12
+
+Implemented [XDI metadata display and native PRJ objects](athena-xdi-reference.md).
+Official measured Cu/Fe XDI inputs retain all 756 observations and 2,676
+original table values. The selected signal previews, original detector
+columns, explicit absorber identity, versions, acquisition fields and comments
+survive the relevant import/export paths. Native-object PRJ tests remove the
+web sidecar before restoring; exact web metadata is separately verified.
+
+Completed checks:
+
+- Actual native Perl/C reader plus unchanged Demeter record writer: **3
+  recorded cases passed** (Cu, Fe2O3, constructed escaped/Unicode metadata).
+  Default replay reproduced every recorded object, array and PRJ record.
+- Actual Perl Xray::XDI methods and clone/serializer accepted **5 web-emitted
+  objects**, including newly constructed Larch and X11A metadata objects.
+  The loaded Perl modules are checked against pinned source hashes. The Data
+  bridge supplies already-read arrays; no desktop normalization/GUI is claimed.
+- Backend full suite: **2,486 passed, 332 warnings, 210.04 s**. After this run
+  started, two additional export-boundary tests and conversion of malformed
+  export metadata to a recoverable input error were added. The final affected
+  XDI suite passed **21 tests, 2.74 s**; this is not a claim of a single
+  2,488-test full-suite execution. Valid exchange paths remained unchanged.
+- Frontend full suite: **494 passed in 26 files, 48.16 s**. The focused XDI/
+  beamline component suite passed **6 tests**.
+- Production build and standalone type checking: **passed**.
+- Focused real Chromium XDI and beamline flows: **4 passed, 34.2 s**, including
+  full plotted arrays, changed columns, processing, refresh, actual download
+  and independent native-object restore, plus 390 px mobile layout.
+
+The initial XDI browser run passed Cu but timed out on a desktop-only **Open
+project** toolbar locator at 390 px. The native File-menu item is **Open
+project…**; the test now checks the menu's expanded state and selects that
+actual item. The four-flow rerun above passed. This was a test-navigation
+correction, not a repaired application import failure. Initial evidence and
+the passing focused screenshots were preserved under
+`/tmp/athena-xdi-browser-evidence/` before the full browser run.
+
+The Cu desktop and Fe mobile metadata screenshots were visually inspected:
+the desktop shows the live curve beside column selection and acquisition
+fields; the mobile table remains within the dialog and readable while
+scrolling. No live user project was used for test imports.
+
+The source catalog now contains **211 unique source identities**, including
+the actual XDI Perl/C sources, two measured inputs and three newly audited
+Athena metadata UI/documentation files. The 107 requirement IDs/order and
+their statuses remain unchanged. Native UI source shows field add/edit/delete
+actions commented out: active controls to implement next are Save comments,
+individual/all validation, required/recommended-field status and family
+expansion controls. File/module presence is not evidence of an enabled feature.
+
+An exploratory comparison at `/tmp/athena-xdi-validation-probe/report.json`
+found **30/30 identical status codes and diagnostic strings** between real
+Perl Xray::XDI and Larch's bundled native library. Cases cover valid/invalid
+absorber symbols/edges, d-spacing, current/energy units, dates, first-column
+labels and versioned/unversioned extension fields. This confirms a feasible
+Larch backend path for the next controls; those controls are not implemented
+by this checkpoint. It does not establish exhaustive dictionary compliance.
+
+Logs: `/tmp/athena-xdi-replay.log`, `/tmp/athena-xdi-focused.log`,
+`/tmp/athena-xdi-backend-full.log`, `/tmp/athena-xdi-frontend-full.log`,
+`/tmp/athena-xdi-build.log`, `/tmp/athena-xdi-typecheck.log`,
+`/tmp/athena-xdi-browser.log` (initial failure) and
+`/tmp/athena-xdi-browser-rerun.log` (passing focused rerun).
+
+The complete current Chromium suite subsequently finished with **56 passed,
+6.6 min**, logged in `/tmp/athena-xdi-browser-full.log`. This includes the
+previously corrected multichannel switch test, all three native PRJ browser
+fixtures, both XDI workflows, all beamline workflows and the classic interface.
+The final application export error handling was present in this browser run.
+Passing artifacts are preserved under
+`/tmp/athena-xdi-browser-evidence/passing-full/` as well as the transient
+`frontend/test-results/` directory.
+
+All verification handles are terminal. Source/fixture/oracle/harness checksum
+checks, 211-source uniqueness, local links, 107 unchanged requirement IDs/order,
+absence of Verified rows and `git diff --check` passed. Read-only live checks
+returned HTTP 200 for the page on 3004, backend health on 8006 and proxied
+health. The existing copper project was observed at version 76 with three
+groups; tests used separate temporary workspaces and did not import into it.
+No service restart, commit, push or branch change was performed in this chunk.
+
+### File metadata controls: native validation and saved XDI comments
+
+The active controls in pinned `UI/Athena/XDI.pm` are now implemented through
+**Group → File metadata…**: versions, family expansion, required/recommended
+presence, individual/all-field validation and saved XDI comments. The
+[controls contract](athena-xdi-controls-reference.md) records the native
+behavior, API, runtime ownership and remaining scope. The native commented-out
+field editing handlers remain distinguished from enabled controls.
+
+- Actual Perl/C validation and unchanged native Save-comments replay:
+  **70 validation cases and 4 saved-comment cases passed**. Default replay
+  reproduced the recorded codes, diagnostics, text and presence lists.
+- The existing native exchange harness also passed after the extension-family
+  export correction: **3 native reader/writer cases and 5 web-literal round
+  trips** through actual Xray::XDI methods.
+- Final backend full suite: **2,574 passed, 332 warnings, 230.32 s**. This run
+  includes the missing-library error path and the `GSE` family-case PRJ
+  restore/revalidation regression. An earlier 2,573-test run passed before
+  those final changes; the final run supersedes it.
+- Frontend full suite: **501 passed in 27 files, 49.99 s**. The seven focused
+  controls tests also passed after the explicit textarea accessible label and
+  test TypeScript correction. Final CSS/table accessibility changes are
+  covered by the browser checks below.
+- Complete Chromium suite: **59 passed, 6.9 min**. The final extension-family
+  correction and independent PRJ revalidation assertion were included. UI
+  polish was applied during this run, so its final layout was separately
+  rerun: **3 passed, 24.3 s**.
+- Final production build and standalone type checking: **passed**, using
+  `.next-verify` independently of the live dev server.
+
+The backend oracle comparisons preserve the native difference between
+all-field and individual value casing and the native date validator's
+calendar leniency. The comment flows verify frozen-group edits, independent
+group notes, unchanged arrays/recipes/results, Undo/Redo, restart, explicit
+stale-revision recovery and native PRJ exchange without the web sidecar.
+
+During verification, one backend expectation was corrected from 422 to the
+existing command route's 400 error contract. A build exposed unsupported
+Testing Library `exact` options, which were removed. Initial browser runs
+found an ambiguous Freeze-group test locator and an unreliable textarea
+label for populated comments. The locator now selects the actual menu item;
+the component now explicitly labels the textarea. Subsequent focused and
+full browser runs passed. These initial failures were retained in the logs.
+
+Final desktop field and mobile comment screenshots were visually inspected.
+The duplicate visible table captions were removed while retaining accessible
+table names. Disclosure buttons align left, action buttons have visible
+borders, and the 390 px comment form fits within the dialog. Artifacts are
+preserved under `/tmp/athena-xdi-controls-evidence/full-59/` and
+`/tmp/athena-xdi-controls-evidence/final-layout/` before future browser runs.
+All browser imports used isolated servers on 13004/18006 and temporary data
+roots; the live local workspace was not used for test mutations.
+
+Logs: `/tmp/athena-xdi-controls-replay.log`,
+`/tmp/athena-xdi-exchange-final-replay.log`,
+`/tmp/athena-xdi-controls-backend-final.log`,
+`/tmp/athena-xdi-controls-frontend-full.log`,
+`/tmp/athena-xdi-controls-frontend-focused-final.log`,
+`/tmp/athena-xdi-controls-build-polish.log`,
+`/tmp/athena-xdi-controls-typecheck-polish.log`,
+`/tmp/athena-xdi-controls-browser-full.log`, and
+`/tmp/athena-xdi-controls-browser-polish.log`. Earlier browser failures are
+in `/tmp/athena-xdi-controls-browser.log` and
+`/tmp/athena-xdi-controls-browser-rerun.log`.
+
+This checkpoint implements the active metadata controls; it does not verify
+all of IO-01 or full Athena parity. Processing history, XDI export options,
+derived-group metadata cloning, legacy argument semantics and desktop GUI
+replay remain open. No Artemis implementation is included.
+
+The subsequent [native export audit](athena-data-export-reference.md) covers
+the full current/marked/separate-file menu and pins the missing header and
+numeric requirements. Actual Perl Text::Template and Larch execution recorded
+**36 constructed observations**: 28 error-free tables and eight error cases,
+two of which nevertheless wrote files. Default replay in a fresh directory
+reproduced all numerical values, headers, labels and error classes. This is
+reference discovery, not a claim that the web exporter or desktop workflow
+has passed. Native selected-weight syntax, XANES label/background failures
+and unequal-grid failure are explicitly retained as evidence for repairs.
+
+All verification handles for this checkpoint are terminal. Final audit passed
+for 227 unique source identities, downloaded export Git blobs, XDI/export
+oracle and harness hashes, the reference Text::Template and local Larch writer
+hashes, local documentation links, 107 unchanged IDs/order/statuses and
+`git diff --check`. The source audit added 16 previously uncatalogued identities
+from 20 inspected export-related source files. The full Athena goal remains
+active, with all original requirement rows retained.
+
+## Column-data export and metadata-preserving reopen checkpoint (2026-09-12)
+
+**File → Export column data…** now provides current-group files, nineteen
+marked-table data forms and individual marked files in a ZIP. The
+[export contract](athena-data-export-reference.md) records the exact schemas,
+native numerical comparisons, applied-value headers, grid handling and
+remaining desktop checks. Larch `write_ascii` writes the numeric tables.
+The preview and download use the same project revision; frozen groups can be
+exported without modifying arrays, recipes, metadata or project versions.
+
+The native reference now has **41 observations**: the previous 36 output
+template cases plus five actual Larch derivative, phase, background,
+flattening and interpolation products rendered by Perl Text::Template.
+The default expanded replay passed. The original eight native error cases
+remain recorded, including selected-weight syntax and XANES label/background
+failures; the web implementation supplies valid files with correct labels.
+
+Measured Cu/Fe XDI and X11A Cu acquisitions exercise all five current formats.
+Focused cases cover all marked forms, fractional and per-group arbitrary
+weights, normalization with flatten off, absolute energy with retained native
+E0, unknown-E0 chi, detector-only data, optional I0, XANES zeros, q padding,
+mixed-grid rejection, export preflight, comments, header equations and
+case-insensitive ZIP-name collisions. The browser extracts actual ZIP files
+and compares every weighted value; a separate flow downloads and reimports
+all 408 measured Cu absorption values.
+
+That reopen flow exposed an additional importer gap: XDI acquisition fields
+were read only for `.xdi` filenames, so metadata in exported `.xmu`, `.nor`
+and `.chik` files was silently omitted. The parser now recognizes the
+first-line XDI signature independently of the extension. Tests cover six
+renamed/BOM cases, a later comment that must not trigger detection, complete
+metadata/array retention, real column previews and import of raw, normalized
+and chi output. Explicitly selecting normalized input preserves the exported
+norm values. The browser now also checks acquisition fields and comments
+after reopening the downloaded `.xmu` file.
+
+Terminal results:
+
+- Final complete backend suite: **2,640 passed, 332 warnings, 207.04 s**.
+  This includes the format-signature correction and all final numerical
+  changes. The earlier 2,630-test run passed before the reopen extension;
+  final focused parser/XDI/export checks also passed **112 cases, 5.92 s**.
+- Complete frontend suite: **508 passed, 28 files, 46.25 s**. Six export
+  component cases cover request choices, stale previews, invalid responses,
+  retry, conflict handling and confirmed attachment bytes. A proxy regression
+  checks the revision header and exact download bytes.
+- Complete Chromium suite before the final parser correction:
+  **62 passed, 7.4 min**. After the mobile single-column form adjustment,
+  the three export cases passed again in **20.1 s**. After the parser change,
+  export, XDI and beamline metadata flows passed **7 cases, 48.5 s**,
+  including the stronger browser assertions on reopened metadata.
+- Final production build and standalone TypeScript check: **passed**, in
+  `.next-verify` independently of the live development server. These cover
+  the final component/layout/proxy changes; subsequent product changes were
+  confined to the Python importer.
+
+Initial browser tests found that the Next API proxy discarded
+`X-Athena-Project-Version`, preventing the browser from confirming a valid
+download. The header is now forwarded and verified by both route and real
+browser tests. An ambiguous test locator matched both a visible notice and
+its copy in the header; it now selects the visible paragraph. The first
+component run needed the existing jest-dom matchers imported. All corrected
+checks passed. An initial provenance audit assumed every older catalog row
+contained a Git-blob field; final verification instead checked each actual
+template blob against the pinned Git tree and any recorded blob field.
+
+Desktop and 390 px mobile screenshots were visually reviewed. The mobile
+scope and format controls now occupy full-width rows, while wide numerical
+tables scroll inside the dialog. Evidence was preserved before each browser
+rerun under `/tmp/athena-data-export-evidence/`, including `full-62`,
+`final-layout` and `reopen-final`. All browser data mutations used isolated
+13004/18006 servers and temporary data roots. The live 3004/8006 workspace
+was not used for test imports or commands.
+
+Final logs are `/tmp/athena-data-export-backend-complete.log`,
+`/tmp/athena-export-signature-focused.log`,
+`/tmp/athena-data-export-frontend-full.log`,
+`/tmp/athena-data-export-browser-full.log`,
+`/tmp/athena-data-export-browser-final-layout.log`,
+`/tmp/athena-export-reopen-browser.log`,
+`/tmp/athena-data-export-build-final-layout.log`,
+`/tmp/athena-data-export-typecheck-final.log` and
+`/tmp/athena-export-products-replay.log`. The export fixture manifest now
+records the expanded 41-case oracle and current harness hashes.
+
+The final audit verified 234 unique source identities, SHA-256 and pinned Git
+blobs for all 18 executed templates, oracle/harness/Text::Template/Larch-writer
+hashes, local documentation links, `git diff --check` and all 107 original
+requirement IDs, order and statuses. No row is promoted to Verified.
+The [parameter-report source contract](athena-parameter-report-reference.md)
+also identifies the separate all/marked Excel workflow and its 28 populated
+columns. Spreadsheet implementation, complete desktop GUI comparisons,
+processing-history/cloning coverage and the rest of the parity matrix remain
+open. The full Athena goal remains active; no Artemis implementation was added.
+
+## Parameter Excel report checkpoint (2026-09-12)
+
+**Edit → Excel report on all groups… / Excel report on marked groups…** now
+provides a section-based preview and an actual BIFF8 `.xls` download. The
+[report contract](athena-parameter-report-reference.md) describes all 28
+parameter columns, native positions/formats, effective-versus-saved values,
+applicability notes and the remaining full-platform comparisons.
+
+The native reference executes unchanged pinned `Report`, `header`, `row`
+and `number2clamp` code using actual Spreadsheet::WriteExcel 2.40 and
+Chemistry::Elements 1.081. GUI/data/clock accessors are constructed bridges;
+the GUI file-picker and full processing pipeline are not executed. Both
+scope files are independently read with xlrd, recording 140 populated data
+cells, their types and display formats, column labels and merged ranges.
+Thirteen clamp cases and all 118 element names are also recorded. Final
+default replay passed, including SHA-256 hashes of the five actual loaded
+native modules. This exposed the native `Aluminium` spelling, which the web
+report now preserves while using the Larch backend's element database.
+
+Final focused backend checks: **25 passed, 2.86 s**. They compare every
+parameter cell against the native XLS files, then cover measured Cu,
+normalized/XANES input, native JSON/difference/detector PRJ reports, frozen
+groups, zero importance, arbitrary fractional weights, unavailable values,
+saved fixed steps after processing failure, full numeric precision, literal
+formula-like/Unicode labels, frozen panes and revision checks both before and
+after generation. The project is unchanged by successful or rejected reports.
+
+The complete backend suite passed **2,661 tests, 332 warnings, 210.84 s**.
+This run included the initial 21 report tests. The final clamp explanatory
+note, Aluminium mapping, three PRJ report regressions and all-element-name
+assertion were completed afterward and covered by the final 25 focused
+checks. These overlapping counts must not be added together.
+
+The complete frontend suite passed **514 tests in 29 files, 49.55 s**. Six
+report component cases cover exact scope/revision requests, preview-section
+changes, empty marks, group-order validation, retry, late responses, revision
+conflicts and invalid XLS bytes with busy-state recovery. Production build
+and standalone TypeScript checks passed using `.next-verify`, independently
+of the live development server.
+
+The initial desktop/mobile Chromium run passed **2 tests, 14.6 s**. It
+downloads real all/marked workbooks and uses an independent Python xlrd
+process to compare every exported parameter value and each numeric cell
+type with the confirmed preview. It includes frozen-group output, duplicate
+labels, a Unicode label, mark ordering and a real cross-window version change
+that prevents downloading until reload. The final refinement replay also passed
+**2 tests, 14.6 s**, recorded in `/tmp/athena-report-browser-final.log`;
+its downloads and screenshots are preserved in `/tmp/athena-report-evidence/final/`.
+
+Both browser layouts were visually inspected. The 390 px dialog fits its
+viewport; its numerical table scrolls horizontally inside the dialog, and
+download/close controls remain usable. The actual downloaded all-group XLS
+was opened by LibreOffice and converted to a temporary XLSX verification
+copy. Artifact Tool imported that copy, inspected all parameter cells and
+rendered the identity, full background, transform/plotting and note sections.
+The headers, numeric/scientific formats and group labels were legible. A
+formula-error scan matched zero cells; the report contains static scientific
+parameters and does not claim spreadsheet recalculation behavior. The
+delivered product remains XLS, with one worksheet and all native parameter
+columns.
+
+Initial reference-harness attempts exposed missing Cwd import, array-reference
+construction and JSON serialization of xlrd cell-type arrays. Those bridge
+issues were corrected without changing the pinned native source bodies.
+An initial component conflict mock lacked the API envelope's required error
+code; the corrected mock passed in the full suite. No unresolved product
+failure from these checks remains.
+
+Logs: `/tmp/athena-report-backend-full.log`,
+`/tmp/athena-report-backend-focused-final.log`,
+`/tmp/athena-report-frontend-full.log`,
+`/tmp/athena-report-browser-focused.log`,
+`/tmp/athena-report-browser-final.log`,
+`/tmp/athena-report-build.log`,
+`/tmp/athena-report-typecheck-final.log`,
+`/tmp/athena-report-native-replay-final.log`,
+`/tmp/athena-report-office.log` and `/tmp/athena-report-render-final.log`.
+Initial browser evidence is preserved under `/tmp/athena-report-evidence/focused/`;
+workbook visual evidence is under `/tmp/athena-report-render/`.
+
+The fixture manifest verifies the native source, oracle, harness, loaded
+modules and four downloaded Perl packages. The catalog remains at 234 unique
+source identities. All 107 requirement IDs/order/statuses are retained and
+no row is promoted to Verified. Full Athena parity, including the remaining
+processing/UI/preferences/history work, is still open. The empirical-standard
+workflow remains deferred with Artemis.
+
+## MEE reflection, normalized removal and live plots (2026-09-12)
+
+The preceding local-run request was verified against the actual checkout:
+frontend 3004, backend 8006 and the frontend health proxy all returned HTTP
+200. Those services and saved projects were left running. This continuation
+adds a concrete Athena processing workflow; the full goal remains active.
+
+**Process → Multi-electron excitation** now provides the native Reflection and
+Arctangent algorithms, live normalized-data previews, E/k/R comparisons,
+energy-shift picking and a corrected group inserted after its source. The
+[MEE contract](athena-mee-reference.md) records units, accepted recipes,
+parameter coercion, source preservation, revision checks and remaining native
+comparison boundaries. The original raw-μ project subtraction is replaced by
+the native normalized-input/clone/reprocess sequence. Standalone low-level
+raw-unit arctangent calls remain a separate utility.
+
+The official LaCoO3 PRJ was downloaded from pinned Demeter and verified by both
+SHA-256 and Git blob identity. Its 405- and 333-point groups import through the
+normal browser project-selection dialog, show normalized preview curves and
+process successfully. The original MEE Perl method and actual Text::Template
+rendering plus Larch template execution provide **12 reference cases** across
+both measured scans, both algorithms, manual/recipe settings, negative/zero
+amplitude and minimum broadening. Default replay passed exactly. These execute
+native parameter handling, interpolation, broadening, padding and subtraction;
+GUI, source background updates, cloning and XDI methods are explicit bridges.
+
+The reference exposes native `amp ||= 1` replacing explicit zero with one.
+The web keeps the documented zero-removal behavior instead. Negative amplitude
+still becomes zero and broadening below 0.01 becomes 0.01 in both. Larch's
+extrapolation before the shifted edge is explicitly zero-padded, as required by
+the original Perl loop. The manifest records source, fixture, harness, Larch
+reader/math and actual Text::Template module hashes.
+
+Focused backend verification passed **123 tests, 2 warnings, 29.49 s**,
+including all 19 new MEE cases plus existing API, detector and derived-identity
+regressions. The complete backend suite passed **2,684 tests, 332 warnings,
+216.67 s**. It covers the final backend code: normalized scale, exact numerical
+models, preview/save arrays in all three spaces, frozen sources, scientific
+identity, source order, one-time calibration, XANES, work limits, atomic batch
+failure, Undo/Redo, native PRJ restore and stale HTTP requests. Counts overlap.
+
+The full frontend suite passed **520 tests in 30 files, 51.38 s**. Six MEE
+component cases cover original plots, matched scope/settings/revision, late
+responses, save conflicts, invalid arrays, native clamp inputs and E/k picking
+with stale-callback rejection. Production build and TypeScript checks passed.
+After the responsive-style refinements, the final production build passed and
+the six focused component cases passed again in **4.47 s**.
+
+Desktop/mobile Chromium passed **2 tests, 18.5 s** after adding explicit
+source/algorithm accessible labels. Screenshots then exposed clipping of the
+mobile action row despite the earlier dialog-width check. The action buttons
+were changed to a vertical layout, and their individual bounding boxes are now
+checked against the dialog. That replay passed **2 tests, 18.7 s**. A final
+rendered-axis/selected-tab verification also passed **2 tests, 18.5 s**.
+All three exported plot arrays are compared with server arrays, a real mouse
+click updates the energy shift, and saved μ values match the confirmed preview.
+The mobile test checks negative-amplitude feedback, a cross-window conflict
+that saves no group, reload, and successful recovery. Desktop Undo/Redo and
+the actual corrected PRJ download are also exercised.
+
+Visual inspection covers the desktop R comparison and the mobile energy plot
+and complete action row. Both curves, legends, warnings and all three mobile
+buttons remain inside the dialog; real DOM assertions confirm axis titles and
+the selected plot space. Evidence is preserved in
+`/tmp/athena-mee-evidence/{initial,replay,final,labels}/`.
+
+Initial checks found seven project-command regression cases using the former
+raw-unit edge-step contract; the tests now exercise normalized
+project operations while retaining independent raw-unit utility checks.
+The first native-reader inspection used an incorrect private attribute and was
+corrected to the documented `AthenaGroup.groups` interface. The first browser
+run timed out resolving exact source/algorithm labels; explicit accessible
+labels fixed both failures. These failures and the mobile clipping are resolved.
+
+Logs: `/tmp/athena-mee-native.log`, `/tmp/athena-mee-native-replay.log`,
+`/tmp/athena-mee-compat.log`, `/tmp/athena-mee-focused.log`,
+`/tmp/athena-mee-backend-full.log`, `/tmp/athena-mee-frontend-full.log`,
+`/tmp/athena-mee-component-final.log`, `/tmp/athena-mee-build-final.log`,
+`/tmp/athena-mee-typecheck-final.log`, `/tmp/athena-mee-browser.log`,
+`/tmp/athena-mee-browser-replay.log`, `/tmp/athena-mee-browser-final.log` and
+`/tmp/athena-mee-browser-labels.log`.
+
+The primary catalog now contains **244 unique identities**; all 11 MEE source
+and data files match their recorded hashes. All **107 original requirement
+IDs, order and statuses** are unchanged; PR-15 gains subset evidence and is
+not promoted to Verified. Complete native GUI/normalization comparison, XDI
+clone history and the remaining Athena matrix stay open. No Artemis features
+were added and the full Athena goal is not complete.
+
+Final read-only live checks again returned HTTP 200 for the page, direct
+backend health and frontend health proxy. The running backend's OpenAPI
+document includes the new MEE preview route. No live scientific project was
+created or changed by this verification.
+
+### Acquisition metadata and processing history checkpoint — 2026-09-12
+
+The [history contract](athena-xdi-history-reference.md) connects XDI acquisition
+metadata and exact saved comments to copies/series, rebin, MEE, differences,
+merge/sum and the other existing derived operations. Import-time rebin now
+records history for both independently processed sample/reference channels.
+Dispersive calibration inherits the pixel upload's metadata, not the standard's
+acquisition. File metadata displays scan times and exact accumulated
+Scan.process, with a readable explanation of inherited acquisition columns.
+
+Source inspection corrected the first implementation's assumptions about
+difference timestamps and Copy-series text. Native Diff keeps both times and
+uses its own description; Series calls the ordinary copy routine. The contract
+separately identifies the web's descriptions for operations without matching
+native history calls and its one-rebin-entry-per-imported-channel policy.
+
+The native harness recorded **30 real Xray::XDI clone objects** using the
+unchanged Data::XDI routine and official measured Cu/Fe files. Every web clone
+matches every field in these objects, including native NoClone defaults.
+Another **30 web-emitted literals** were read and serialized by the actual Perl
+module. A fresh default replay matched exactly. Modules actually loaded, source
+routines, harness, fixtures and oracle are pinned by hashes. The initial
+unseeded replay was unstable because Moose traversal can trigger source-file
+rereads and Data::Dumper order varies. The reproducible reference fixes the
+Perl hash seed without changing the native code; full desktop lifecycle and
+other native hash orders remain outside this claim.
+
+The final focused backend suite passed **52 tests in 5.41 s**. It includes all
+30 native object comparisons, source/hash audits, the connected transforms,
+current identity, comments, frozen-source reads, atomic failure, Undo/Redo,
+restart, import rebin, bare PRJ restore, independent Larch Athena reading and
+column-file headers. Full backend regression produced **2,735 passes and one
+failure, 332 warnings, 220.74 s**: the new manifest test had been collected
+before its incorrect repository-root path was corrected. The final 52-test
+run includes the corrected manifest case and passes it. This is recorded as
+a full run plus a successful focused correction, not a second all-green full
+run. Initial focused tests also corrected assumptions about rebin's retained
+detector arrays, three-scan example insertion and the preview method name;
+these were test errors, resolved in the final focused suite.
+
+The full frontend suite passed **522 tests in 30 files, 53.95 s**. The nine
+metadata component cases include literal/multiline history rendering,
+read-only acquisition fields, revision refresh and the existing comment and
+validation controls. Production build and the explicit TypeScript check pass.
+
+The first Chromium run passed **5 tests in 42.2 s**: desktop/mobile derived
+history and existing XDI/beamline comment controls, including conflicts and
+native-only PRJ restore. Screenshots prompted a contrast improvement to the
+new history hints. The final Chromium run passed **4 tests in 37.0 s**:
+desktop/mobile history plus the existing official Cu/Fe live-column workflows.
+The latter compares rendered Plotly values after changing the column mapping,
+and both native-only project round trips preserve metadata and measurements.
+These runs overlap; their counts must not be summed as distinct cases.
+
+Desktop and 390 px screenshots were inspected. The final mobile history card
+shows complete scan times and process text without horizontal clipping, and
+its explanatory text is legible. Evidence is preserved under
+`/tmp/athena-xdi-history-evidence/{initial,final}/`; the prior MEE browser output
+was preserved under `before-history/` before the first new run.
+
+Key logs: `/tmp/athena-xdi-history-native-stable.log`,
+`/tmp/athena-xdi-history-native-confirm.log`,
+`/tmp/athena-xdi-history-final-52.log`,
+`/tmp/athena-xdi-history-backend-full.log`,
+`/tmp/athena-xdi-history-frontend-full.log`,
+`/tmp/athena-xdi-history-build.log`, `/tmp/athena-xdi-history-typecheck.log`,
+`/tmp/athena-xdi-history-browser.log` and
+`/tmp/athena-xdi-history-browser-final.log`.
+
+The primary catalog now contains **250 unique identities**. The 107 original
+requirement IDs, order and statuses are unchanged. IO-01 and PR-15 gain linked
+subset evidence without being promoted to Verified. Complete Athena parity,
+exhaustive derived/multichannel metadata behavior and native desktop GUI
+exchange remain unproven. No Artemis work was introduced.
+
+Final read-only checks returned HTTP 200 from the running frontend on 3004,
+backend health on 8006 and the frontend health proxy. Browser tests used only
+isolated 13004/18006 services and temporary projects; live scientific projects
+were not edited. Final whitespace, fixture hashes, local reference links,
+primary-source uniqueness and original requirement identities/statuses pass.
+
+## Smoothing checkpoint — 2026-09-12
+
+The [smoothing contract](athena-smoothing-reference.md) implements the four
+named algorithms in PR-09 with raw original/filtered comparison, E/k/R views,
+explicit boundary counts, native parameter adjustments and creation of a new
+group after the source. The old generic two-field form is replaced. Frozen
+groups are readable, and saving requires the preview's exact source, settings
+and revision. The saved response is checked against both preview arrays.
+Acquisition metadata/history, input meaning, scientific identity and accepted
+calibration survive derived-group creation, Undo/Redo, restart and native-only
+PRJ exchange. The previous local-runtime turn confirmed the requested services
+were live; this continuation makes implementation and verification progress
+toward the unchanged Athena objective.
+
+Native execution recorded **36 cases** and a fresh default replay matched the
+whole oracle exactly. Unmodified Demeter Perl routines use actual PDL and
+PDL::Filter::Linear; unchanged templates are rendered by Text::Template and
+executed by Larch. Three-point reference data come from the original compiled
+IFEFFIT `f1mth` routine, including original support code and includes. Official
+Cu/Fe measurements and constructed endpoint impulses cover all algorithms,
+native clamps, odd/even windows and edge handling. All coordinates match
+exactly; all numerical values match at `atol=rtol=2e-14`.
+
+Actual PDL execution corrected an initial precision assumption: `xvals`
+promotes the Gaussian constructor to double precision. The production kernel
+was corrected before recording the oracle. Native boxcar/Gaussian also remove
+one extra right-hand observation; the web reproduces and reports that crop.
+Original SG/three-point group names do not contain the comma used by the
+boxcar/Gaussian names; source review corrected this distinction too. All
+reference dependencies were downloaded/extracted under `/tmp`, with package
+SHA-256 checks. No Perl/Fortran dependency was added to the production server.
+
+The initial focused backend run had **54 passes and six failures** from test
+setup/assertions: a kernel leaving exactly ten points was valid; a newly
+constructed chi input had incorrectly inherited a detector table on another
+grid; and the direct store's ValueError was expected as the narrower HTTP
+exception. The corrected run passed **60 tests in 4.58 s**. Extended tests then
+had **74 passes and four failures** because they incorrectly expected a
+normalized array for detector counts. Detector inputs deliberately have none;
+the corrected assertions verify raw counts and unavailable normalization.
+
+The final **full backend suite passed 2,814 tests, 356 warnings, in 228.09 s**.
+It includes all **78 smoothing tests**, provenance checks, μ(E)/normalized/χ(k)
+round trips, XANES/counts/difference eligibility, frozen source preservation,
+calibration materialized once, batch insertion order/marking, atomic rollback
+and HTTP conflicts. This all-green run also includes the prior XDI-history
+manifest correction that previously had only a focused passing rerun.
+
+The new component suite passed **12 tests in 10.28 s**. The **full frontend
+suite passed 534 tests in 31 files, 52.84 s**. Source/revision changes and late
+responses invalidate the old result; malformed curves/counts and mismatched
+save results cannot be accepted. Algorithm controls retain independent drafts,
+and failed saves release busy state while preserving the current choices.
+The production build and final explicit TypeScript check both passed.
+
+The first browser run failed both cases because the new test selected a
+Measurement dropdown that is absent in the Athena column form. The corrected
+test uses the actual numerator/denominator/Natural log checkboxes and compares
+the rendered import curve with the measured file. The corrected smoothing run
+passed **2 tests in 33.7 s**. After improving text contrast, smoothing plus the
+existing measured Cu/Fe XDI workflows passed **4 tests in 45.8 s**. A final
+smoothing run passed **2 tests in 32.5 s**, explicitly checking active E/k/R
+button state and capturing screenshots after CSS transitions finish. These
+runs overlap and are not eight distinct browser cases.
+
+The desktop flow imports all 408 Cu observations through the live column plot,
+runs all four methods, compares every displayed Plotly coordinate/value with
+each backend preview in E/k/R, saves each derived group, inspects XDI history,
+uses Undo/Redo, downloads a PRJ and reimports it after removing every web
+sidecar line. All five groups retain their raw arrays and processing history.
+The 390 px flow checks Gaussian width/size adjustments, action bounds,
+cross-window revision failure, preserved draft/source and successful recovery
+after reload. The additional Cu/Fe XDI regressions verify live column changes
+and independent native-project exchange.
+
+Desktop and mobile control/plot/action screenshots were visually inspected.
+Early screenshots caught the previous active-button color during the shared
+120 ms CSS transition; the final snapshots fast-forward animations and show
+the selected E button with the energy plot. No production state discrepancy
+was observed. Labels/hints now have 6.35:1 contrast on white and adjustment
+messages 6.00:1 on their background. Mobile controls and actions fit within the
+dialog without horizontal overflow; the plot and action area remain reachable
+by vertical scrolling. Evidence is preserved under
+`/tmp/athena-smoothing-evidence/`, including the preceding browser results,
+the failed first run, passing runs and final settled screenshots.
+
+Key logs: `/tmp/athena-smoothing-replay.log`,
+`/tmp/athena-smoothing-fixed.log`, `/tmp/athena-smoothing-extended.log`,
+`/tmp/athena-smoothing-full-backend.log`,
+`/tmp/athena-smoothing-full-frontend.log`,
+`/tmp/athena-smoothing-build.log`,
+`/tmp/athena-smoothing-typecheck-final.log`,
+`/tmp/athena-smoothing-browser-fixed.log`,
+`/tmp/athena-smoothing-browser-final.log` and
+`/tmp/athena-smoothing-browser-settled.log`.
+
+The primary catalog now has **261 unique identities**; source/fixture hashes,
+reference links and whitespace checks pass. All **107 original requirement
+IDs, ordering and statuses remain unchanged**. PR-09 has linked evidence but
+retains Pending. Native SG preference persistence and panel-session retention,
+full preference exchange, and a complete desktop normalization/GUI replay
+remain open. The reference uses explicit group-access/update bridges and
+does not prove whole-desktop equivalence. The method-less legacy API is still
+separate. Complete Athena parity remains unproven; no Artemis work was added.
+
+Final read-only checks returned HTTP 200 for the live frontend (3004), backend
+health (8006) and frontend health proxy. Process working directories match
+this checkout. Browser tests used isolated ports 13004/18006 and temporary
+projects; no live scientific project was changed, and no service restart was
+required.
+
+## Effective SG preferences and retained smoothing controls — 2026-09-12
+
+The [preference contract](athena-smoothing-preferences-reference.md) corrects
+an earlier assumption: unchanged native Config parsing and bound resolution
+return SG **31/9**, although the file's literal defaults say 31/4. The earlier
+36-case kernel oracle only supplied explicit configuration values. It did not
+establish the effective default. Its explicit-setting evidence remains valid.
+
+Thirteen new native observations execute Config parsing/defaults, the actual
+INI reader/writer, shared UI Apply control flow and original Larch template.
+Twelve complete measured Cu arrays match at `atol=rtol=2e-14`; window/order
+39/39 records the real Larch/NumPy `UFuncTypeError`. The web reports a
+recoverable lower-order error. Fresh replay of all thirteen passed. Bridges
+for wx values, callbacks and Moose accessors remain explicit; this does not
+constitute a rendered whole-desktop or full normalization replay.
+
+Apply, Apply and Save, current/saved/factory values, independent-process
+restart, external writers, failed persistence and stale server/window guards
+are covered. The reviewed preview captures its settings before a later
+preference change. Shared kernel/repetition controls and explicit SG drafts
+survive closing and reopening the tool. Late preference loads, even after
+reverted edits, cannot overwrite committed drafts; hidden SG changes do not
+invalidate an accepted boxcar preview. These preferences remain a separate
+store; general INI exchange and global all-group saving are still open.
+
+All previously launched processes were polled to terminal success. The full
+backend baseline passed **2,842 tests, 371 warnings, in 234.82 s**. It began
+before the last full-pair request validator and its three tests were added;
+the final focused smoothing/preference run passed **109 tests, 40 warnings,
+in 8.38 s**, including that final change. Do not report 2,845 as an executed
+full-suite result. The first focused run had 105 passes/one failure because
+its assertion expected TypeError instead of the actual UFuncTypeError name;
+that expectation was corrected. The final full frontend run passed **544
+tests in 32 files, 56.55 s**. The production build, including TypeScript,
+passed after removing an unsupported Testing Library query option from a test.
+
+The final browser run passed **four cases in 1.1 minutes**: measured Cu with
+all filters/E/k/R/Undo/PRJ, mobile Gaussian/conflict recovery, and desktop/mobile
+SG Apply/Save with two windows, stale-write recovery, retained fields and
+preview-matched group creation. This rerun includes the collapsible preference
+section and final preview key; the earlier four-case run overlaps and is not
+four additional cases. Final desktop compact/expanded SG and mobile expanded
+screenshots were inspected: the compact plot and save actions fit together,
+and expanded preferences remain readable/reachable by vertical scrolling
+without horizontal overflow. Copies are retained at
+`/tmp/athena-smoothing-preferences-evidence/final-browser/`.
+
+Logs: `/tmp/athena-smoothing-preferences-full-backend.log`,
+`/tmp/athena-smoothing-preferences-tests-final.log`,
+`/tmp/athena-smoothing-preferences-full-frontend-final.log`,
+`/tmp/athena-smoothing-preferences-build-final.log` and
+`/tmp/athena-smoothing-preferences-browser-final.log`. The preference checkpoint
+has 263 unique primary identities; subsequent convolution research adds more.
+All 107 original IDs, ordering and statuses are unchanged. PR-09/UI-11/IO-03
+have updated subset evidence only. Full Athena parity remains unproven and
+Artemis is excluded. Read-only frontend/backend/proxy checks on 3004/8006
+returned HTTP 200, with process working directories matching this checkout.
+
+## Native Larch convolution and artificial noise — 2026-09-12
+
+The [convolution contract](athena-convolution-reference.md) replaces the
+workbench's generic convolution path with actual `larch.math.smooth`, following
+the original Larch template. The complete panel now has Gaussian/Lorentzian
+width, edge-step-relative normal noise, zero defaults, original/modified E/k/R
+plots, retained controls, fresh-noise replot and preview-matched group save.
+Normalization is recalculated after broadening before obtaining the noise
+scale; the modified raw signal is then processed again. A private seeded
+NumPy RandomState preserves the displayed realization on save without changing
+global RNG state. Consecutive batch seeds follow project order. Native-style
+source insertion, frozen-source copying, original retention and Undo/Redo are
+implemented. Acquisition metadata and explicit web noise provenance survive
+bare native PRJ exchange; this history text is not claimed to be emitted by
+the original ConvoluteNoise panel.
+
+Twenty-five executed native cases use original `ConvoluteNoise::get_values/plot`,
+`Data::Process::convolve/noise`, actual Text::Template and unchanged Larch
+convolution/noise templates. Measured Cu/Fe, endpoint impulses, zero copies,
+Gaussian/Lorentzian broadening, combined/independent noise, negative-control
+coercion and lower-level chi-noise are covered. All output arrays match at
+`atol=rtol=2e-14`, and fresh native replay reproduced the oracle exactly.
+The first reference attempt selected the fourth column of a three-column Fe
+file; it failed before recording. The corrected measured mu column is used.
+Wx/clone/plot and normalization-update bridges remain explicit. In particular,
+the reference supplies an edge step; it does not establish whole-native
+normalization equivalence. The web deliberately rejects negative values and
+repairs the native panel's chi-noise argument error; these differences are
+recorded in the contract.
+
+The first integration run passed 155/156 tests and exposed a work budget that
+excluded the bundled 612-point copper foil. The budget now matches existing
+MEE's 100-million estimate and admits the measured Cu 10/50 K grids while
+rejecting pathological allocations before Larch is called. No interpolation
+or kernel was substituted. The next expanded run had 184 passes/19 failures:
+18 new cases used an incorrect test-fixture save signature, and an old test
+still expected the derived group at the end instead of directly after its
+source. After fixing those test assumptions, two negative-path tests still
+used a pre-save revision; updating their tokens completed the checks. The
+final focused run passed **203 tests, two warnings, in 39.56 s**, including
+**47 new convolution tests**. These cover exact reference arrays, distribution,
+private/concurrent RNG use, same-seed/fresh-seed behavior, atomic failures,
+raw/type/calibration preservation, effective edge-step capture, bare native
+PRJ history/data round trips and HTTP stale preview/save behavior.
+
+The new component suite passed **13 tests in 9.26 s**. The full frontend suite
+passed **557 tests in 33 files, 52.24 s**, and the production build including
+TypeScript passed. An initial typecheck had found an obsolete comparison in
+the generic dialog after convolution moved into its own panel; that unreachable
+UI fragment was corrected before the successful build.
+
+Both first browser cases stopped at the test's label-text lookup for the
+nested line-shape select. Inspection confirmed the accessible combobox and
+visible panel were present. Using the actual combobox role fixed the locator;
+the second run passed **two browser cases in 34.3 s**. The desktop case imports
+all 408 Cu points through the live detector-column plot, exercises zero-copy,
+broadening-only, noise-only and combined modes, compares every Plotly x/y
+value in E/k/R, verifies saved arrays and captured seeds, uses Undo/Redo and
+reimports the downloaded five-group PRJ after removing every web sidecar.
+The 390 px case verifies fresh noise on replot, retained controls,
+cross-window stale-save rejection, source preservation,
+reload recovery and an exact saved noisy curve. Original and modified raw
+arrays survive the independent project exchange.
+
+Final desktop and mobile controls/plot/action screenshots were inspected.
+The desktop plot, parameters and save actions fit together; the mobile layout
+has no horizontal overflow and all controls/axes/actions are reachable by
+vertical scrolling. Evidence is retained at
+`/tmp/athena-convolution-evidence/first-browser/` and
+`/tmp/athena-convolution-evidence/final-browser/`.
+
+Key logs are `/tmp/athena-convolution-native.log`,
+`/tmp/athena-convolution-replay.log`,
+`/tmp/athena-convolution-regressions.log`,
+`/tmp/athena-convolution-focused.log`,
+`/tmp/athena-convolution-focused-fixed.log`,
+`/tmp/athena-convolution-focused-final.log`,
+`/tmp/athena-convolution-component.log`,
+`/tmp/athena-convolution-full-frontend.log`,
+`/tmp/athena-convolution-build.log`,
+`/tmp/athena-convolution-browser.log` and
+`/tmp/athena-convolution-browser-fixed.log`.
+
+The primary catalog contains **271 unique identities**. Both new reference
+manifests, local documentation links and whitespace checks pass. All **107
+original requirement IDs, ordering and statuses remain unchanged**; PR-10 has
+linked subset evidence. Native whole-application/normalization/background/FFT
+replay and long-job behavior remain open. Full Athena parity is unproven and
+Artemis remains excluded. Browser tests used 13004/18006 and isolated temporary
+projects; no live scientific project was mutated.
+
+The final **full backend suite passed 2,892 tests, 371 warnings, in 221.32 s**
+(`/tmp/athena-convolution-full-backend.log`). This run includes all 47 new
+convolution cases, the three final complete-SG-request checks and the changed
+project insertion/history semantics. The entire launched suite finished
+successfully; the count is an executed result, not a sum of partial runs.
+
+The final explicit TypeScript check also passed
+(`/tmp/athena-convolution-typecheck-final.log`). Final read-only checks returned
+HTTP 200 for frontend 3004, backend health 8006 and the frontend health proxy.
+No manual service restart was required. Final reference hashes, 271 unique
+source identities, whitespace and the unchanged 107-row matrix were rechecked.
+
+## 2026-09-12 — In-place deglitching and snapped truncation
+
+Continued PR-07/PR-08 against the original Demeter methods and templates.
+The [point-edit reference](athena-point-edit-reference.md) records native
+rules, exact source identities, measured files, web behavior and fidelity
+limits. No original requirement status was promoted. The active full-Athena
+goal remains incomplete; Artemis remains excluded.
+
+The native reference records **30 cases** across measured ORP5.000 and
+ZT20.000 (586 rows each) and a constructed boundary/spike probe. Both initial
+recording and fresh independent replay passed. Tests compare retained raw
+energy/signal values, exact indices and margins. The oracle also preserves
+the native Larch detector-template corruption; web behavior deliberately
+keeps all detector/source arrays aligned to the retained observations.
+Separate native HXMA execution on both measured inputs confirmed all values
+in the 586 × 11 fallback tables and the generic energy-channel suggestion.
+Its source hash was checked against the primary catalog; outputs and drivers
+remain at `/tmp/athena-point-edit-hxma-native/`.
+
+The command now edits the same group rather than appending an interpolated
+or trimmed derivative. Preview covers single points, margins and before/after
+truncation, plus read-only initial μ(E)/χ(E) inspection. Changes preserve
+data identity/calibration/provenance, synchronously slice detector and source
+columns, append XDI history and recompute transitive background consumers.
+Frozen protection, atomic errors, revision checks, Undo/Redo and both sidecar
+and bare native PRJ exchange are exercised. Invalid post-removal recipes clear
+processed curves and report their errors while retaining inspectable raw data.
+
+The first existing-regression run exposed **11 obsolete derived-group /
+interpolation assumptions**. Those expectations were changed to native
+in-place deletion, while preserving the existing independent helper tests.
+The affected 156 tests then passed. The first dedicated suite passed 66/68;
+two measured-margin tests selected no observations at tolerance 0.02. Direct
+residual checks showed that 0.002 selects 122 ORP and 118 ZT observations under
+the explicit test normalization recipe, so those tests now exercise real
+removal without modifying the measured fixtures. A dependency test initially
+used a nonexistent `freeze` command; replacing it with the actual metadata
+command produced two passing point-removal dependency tests. The initial
+component type check also caught a Testing Library `exact` option copied
+from Playwright; the unsupported test option was removed.
+
+Final **full backend: 2,962 passed, 371 warnings, 239.30 s**, including all
+68 dedicated point-edit cases and two added transitive-dependency cases.
+Final **full frontend: 569 passed in 34 files, 55.58 s**, including 12
+point-edit component cases. Production build and explicit TypeScript checks
+passed. These are complete executed suite results, not sums of partial runs.
+
+Browser tests use real imported files and isolated projects on 13004/18006.
+The first run exposed an asynchronous registry-checkbox assertion and the
+old CLS headers' generic HXMA mapping. Waiting for the saved checkbox state,
+explicitly selecting feedback energy/I0/I1 and comparing every live plotted
+coordinate resolved those checks. The desktop workflow then passed; the
+mobile marked-truncation test had not marked any groups. After marking the
+groups through the UI, both cases passed in 31.3 s. Visual inspection of the
+tight margin case showed a real AUTOBK processing warning, so the final
+browser assertions also require the saved error to match the preview and
+the saved processed result to be null. Both final cases passed in **30.9 s**.
+
+Desktop coverage includes actual Plotly point clicks in μ(E) and χ(E), the
+selected marker coordinates, pink margin arrays, in-place saved raw/source
+arrays, both snapped boundary rules, Undo/Redo and downloading/reimporting a
+PRJ after stripping the web sidecar. Mobile coverage includes a 390 px
+layout without horizontal overflow, retained raw data after a two-window
+stale-save rejection, reload recovery, marked truncation and an unchanged
+frozen group. Screenshots of desktop χ(E), margins, mobile plots and controls
+were inspected: axes, selected measurements and actions are readable, with
+vertical scrolling on mobile. The deliberately tight tolerance is a test
+of selection/error handling, not a recommended scientific cleanup setting.
+
+Evidence directories are `/tmp/athena-point-edit-evidence/first-browser/`,
+`second-browser/`, `final-browser/` and `verified-browser/`. Earlier browser
+evidence was copied before Playwright cleared its output directory.
+Key logs are `/tmp/athena-point-edit-replay.log`,
+`/tmp/athena-point-edit-regressions-current.log`,
+`/tmp/athena-point-edit-focused.log`,
+`/tmp/athena-point-edit-focused-final.log`,
+`/tmp/athena-point-edit-graph.log`,
+`/tmp/athena-point-edit-component.log`,
+`/tmp/athena-point-edit-full-backend.log`,
+`/tmp/athena-point-edit-full-frontend.log`,
+`/tmp/athena-point-edit-build.log`,
+`/tmp/athena-point-edit-typecheck-verified.log` and
+`/tmp/athena-point-edit-browser-verified.log`.
+
+The catalog contains **286 unique identities**. The new manifest hashes,
+local documentation links and whitespace checks pass. All **107 original
+requirement IDs, ordering and statuses remain unchanged**. Live frontend
+3004, backend health 8006 and frontend health proxy return HTTP 200; no live
+scientific project was mutated or service manually restarted.
+
+## 2026-09-12 — Calibration display, reference selection and cumulative shifts
+
+Continued PR-01 against the original Calibrate panel, E0 method and display
+templates. The [calibration reference](athena-calibration-reference.md)
+records the complete source/coordinate contract, native comparison scope,
+application behavior and remaining differences. The preceding local-run turn
+verified the correct checkout and live frontend/backend/proxy; reinspection of
+the pending calibration browser log showed both workflows had completed, so
+that process was not restarted. No original requirement status was promoted.
+
+The native recording and a fresh replay both passed **68 cases** on official
+Cu metal and Fe2O3 measurements. Original Perl UI methods and suffix/zero
+selection run unchanged through explicit widget/data bridges. Original Larch
+templates execute raw first/second derivatives and SG; the original compiled
+Ifeffit smoothing opcode supplies repeated three-point results. Independent
+Larch normalization supplies recorded normalized/flat inputs, so this does
+not claim complete native normalization or wx dispatch. Source/fixture/kernel
+hashes and all native displayed values are checked by backend tests.
+
+The new panel opens in the first derivative, offers all four native displays,
+supports typed or plotted references and target energies, and reports the
+rounded total shift and actual reference landing energy before saving. Display
+smoothing leaves source arrays unchanged; zero search uses the unsmoothed raw
+second derivative. The backend captures shared SG values, stages calibration
+on a copy, updates linked groups once and recalculates background dependents.
+Save retains the existing group and raw/source arrays. Frozen dependencies,
+version conflicts, Undo/Redo and bare native project exchange are exercised.
+
+Additional review found that an explicitly misspelled coordinate mode could
+fall through to the old raw-coordinate command. Explicit coordinate fields
+now always enter strict calibration validation; four invalid modes are tested
+against both preview and save without mutation. Background integration tests
+independently recalculate a two-hop chain in both group orders and verify
+protection of a frozen transitive consumer. Component tests also ensure picks
+from the shifted overlay are ignored and a zero-search error remains visible
+after the workbench exits its busy state and resumes previewing.
+
+The first native harness execution lacked the App `modified` bridge; adding
+the explicit bridge allowed the unchanged original method to run. An early
+TypeScript check caught the obsolete generic calibration branch after the new
+modal narrowed its type. A later check found an unsafe test-only Plotly layout
+property access; that assertion now uses a structured partial matcher. Both
+were corrected before the final build/typecheck. The first measured normalized
+reference test also exposed the existing strict fit-window boundary: moving
+E0 by +3 eV put saved norm2 beyond the measured endpoint. The valid refit test
+now moves E0 by −3 eV, and a separate test retains the +3 eV failure, confirms
+its visible preview error and verifies that saved invalid processing clears
+the result. Native clipping at that boundary remains explicitly open.
+
+Final **full backend: 3,061 passed, 391 warnings, 231.70 s**, including all
+96 dedicated calibration cases and three added dependency cases. The earlier
+expanded calibration/background run passed **157 tests**. Final **full
+frontend: 584 passed in 35 files, 53.00 s**, including 15 calibration component
+cases. Production build and the separate final TypeScript check both passed.
+These totals come from complete executed suites, not sums of partial runs.
+
+Both isolated Chromium cases passed in **28.9 s**. Desktop testing compares
+all live Cu import-preview coordinates during column selection, exercises four
+calibration displays, three-point/SG smoothing, zero search and exact save,
+then checks Undo/Redo and downloads/reimports a PRJ with its web sidecar removed.
+Mobile testing uses a real Plotly point click at 390 × 844, retained smoothing
+controls, read-only cancel, two-window stale-save rejection and reload recovery.
+The desktop SG/zero plot and mobile plot/actions screenshots were inspected:
+curves, axes, reference marker and controls are readable, with vertical scroll
+and no horizontal dialog overflow. The browser tests preceded the final strict
+invalid-coordinate dispatch fix; their valid `displayed` path is unchanged and
+covered again by the final backend tests. No frontend runtime code changed
+after the browser run.
+
+Browser evidence was preserved at `/tmp/athena-calibration-evidence/initial-browser/`
+before any future Playwright output cleanup. Earlier point-edit evidence is
+also preserved at `/tmp/athena-calibration-evidence/before-calibration/`.
+Key logs: `/tmp/athena-calibration-replay.log`,
+`/tmp/athena-calibration-expanded.log`,
+`/tmp/athena-calibration-component-final.log`,
+`/tmp/athena-calibration-full-backend.log`,
+`/tmp/athena-calibration-full-frontend.log`,
+`/tmp/athena-calibration-build.log`,
+`/tmp/athena-calibration-typecheck-verified.log` and
+`/tmp/athena-calibration-browser.log`.
+
+The [deconvolution source inspection](athena-deconvolution-reference.md) also
+confirms that pinned Athena's panel contains a placeholder and documentation
+button, with no algorithm, matching both TODO manuals. The current web Larch
+deconvolution extension remains available; it is not promoted as native parity.
+
+The catalog now contains **292 unique source identities**. All 14 local
+calibration/deconvolution source files matched their catalog SHA-256 and,
+where recorded, Git blob identities. The calibration manifest's harness,
+oracle, input, Larch kernel and compiled smoothing-library hashes matched;
+new documentation links and `git diff --check` passed. All **107 original
+requirement IDs, ordering and statuses remain unchanged**. The full goal is
+still incomplete, including normalization boundary behavior and other entries
+in the matrix; Artemis remains excluded. Final read-only checks returned
+HTTP 200 for the live frontend, backend health and frontend health proxy, and
+OpenAPI contains both calibration preview/zero routes. No live scientific
+project was mutated and no development service was manually restarted.
+
+## 2026-09-12 — Requested normalization limits and measured fit support
+
+The preceding goal turn made verified calibration progress and left a concrete
+outer-fit-boundary failure. This follow-up closes that failure across shared
+normalization, fractional E0/enforced import, native PRJ restore and calibration.
+The [boundary reference](athena-normalization-limits-reference.md) states the
+verified behavior and remaining native differences. SC-01/PR-01 evidence was
+updated without changing the original requirement scope or statuses.
+
+Original Demeter `process/larch/normalize.tmpl` passes requested pre/post-edge
+limits to Larch. `Calibrate.pm::OnCalibrate` changes E0 and total shift but
+leaves those request fields intact. The new native driver executes that
+unchanged method through explicit field/widget bridges, renders the unchanged
+template with Perl Text::Template, and executes its commands in Larch. It
+imports no web processing or limit resolver. **54 measured cases / 108 native
+normalization dispatches** cover Cu/Fe, three existing shifts, three reference
+offsets and pre/post/both endpoint requests. Recording and fresh replay passed;
+all normalized, flattened, pre-edge and post-edge values plus effective limits
+and step are compared by the dedicated suite. This is original template/method
+execution with Larch, not a complete Demeter Data/wx or Ifeffit pipeline.
+
+Requested pre1/norm2 now remain in the recipe; actual fits intersect their
+outer endpoints with measured support on every calculation. Effective limits
+appear in processing results/warnings, saved-result parameter readouts and
+calibration preview. Native-only PRJ restore no longer permanently replaces
+those two requests with their effective values. Automatic endpoint behavior
+and separate spline/FT compatibility resolutions remain unchanged. Intervals
+without usable measured overlap still fail. Moving E0 back restores the
+usable requested range rather than retaining a previous shortened interval.
+
+The normalized calibration overlay is now independently refitted with the
+proposed E0 and rounded total shift. This includes the small E−E0 difference
+caused by 0.001 eV rounding instead of merely translating old normalized y
+values. Backend tests and actual browser saves compare the resulting complete
+normalized array with the reviewed overlay. Raw energy/signal and source
+detector arrays remain unchanged; Undo/Redo and web/bare-native project exchange
+retain both requests and applied calibration.
+
+The first affected-science run passed **628 tests** and exposed **8 obsolete
+explicit-outer-endpoint rejection expectations**. These were changed to native
+resolution/retained-request assertions or to genuinely unsupported inner
+intervals. Import tests additionally compare the resolved fit to direct Larch.
+The initial new dedicated suite passed **112 tests**. A later review added
+linked-reference limit reporting and its regression, bringing that dedicated
+file to **113 cases**; limits now include the whole tied family and its
+background dependents.
+
+The complete backend run passed **3,173 tests, 391 warnings, 245.98 s** before
+that final linked-reference reporting adjustment. After the adjustment,
+the complete affected normalization/calibration/background suites passed
+**270 tests, 20 warnings, 28.96 s**, including the new reference case. The
+backend full suite was not rerun for this response-field-only refinement;
+3,174 is not reported as an executed full-suite result. The final frontend
+suite passed **586 tests in 35 files, 61.46 s**. Production build and a separate
+final TypeScript check both passed.
+
+The first browser run passed the two existing desktop/mobile calibration
+workflows, but the two new endpoint cases failed on test code: Playwright
+requires string values in `toHaveValue`, unlike Testing Library's numeric
+assertion. TypeScript independently caught the same two assertions. After
+correcting them, the two new measured-boundary workflows passed in **20.7 s**
+at 1500 × 1150 and 390 × 844. They import real Cu through the live column
+preview, edit limits through the parameter UI, verify retained requests and
+visible effective values, calibrate using a fractional observed reference,
+compare every saved normalized value with its separately refitted preview,
+then download and reimport a PRJ with the web sidecar removed. No application
+failure was suppressed or mocked. Desktop plots and mobile boundary readouts
+were visually inspected; the dialog scrolls vertically without horizontal
+overflow. The deliberately large outer requests exercise clipping; they are
+not a suggested scientific fitting recipe.
+
+Evidence is preserved at `/tmp/athena-normalization-limits-evidence/first-browser/`
+and `final-browser/`. Logs include
+`/tmp/athena-normalization-limits-native.log`,
+`/tmp/athena-normalization-limits-replay.log`,
+`/tmp/athena-normalization-limits-regressions.log`,
+`/tmp/athena-normalization-limits-focused.log`,
+`/tmp/athena-normalization-limits-full-backend.log`,
+`/tmp/athena-normalization-limits-final-regressions.log`,
+`/tmp/athena-normalization-limits-full-frontend.log`,
+`/tmp/athena-normalization-limits-browser.log`,
+`/tmp/athena-normalization-limits-browser-final.log`,
+`/tmp/athena-normalization-limits-build.log` and
+`/tmp/athena-normalization-limits-typecheck-final.log`.
+
+The manifest's source, input, driver, oracle and Larch kernel hashes match.
+The primary catalog remains **292 unique identities**; it already contained
+the required template and calibration sources. All **107 original requirement
+IDs, order and statuses remain unchanged**. New documentation links and
+whitespace checks pass. Inner-endpoint repairs, sparse polynomial reduction,
+complete normalization/flattening dispatch and the other open Athena features
+remain within the active goal; Artemis is excluded. Read-only live checks of
+frontend 3004, backend health 8006 and the frontend health proxy all returned
+HTTP 200. No live scientific project was mutated or dev service manually
+restarted.

@@ -35,7 +35,7 @@ GEOMETRIC_TRANSFORMS = [
 CORRECTION_TRANSFORMS = [
     ("deconvolve", {"esigma": 1, "smooth": False}),
     ("self_absorption", {"formula": "Cu", "element": "Cu", "edge": "K", "norm2": 200}),
-    ("multi_electron", {"e0": 8980, "shift": 20, "amplitude": 0.01, "width": 2, "edge_step": 1}),
+    ("multi_electron", {"method": "arctangent", "e0": 8980, "shift": 20, "amplitude": 0.01, "width": 2}),
 ]
 
 
@@ -137,9 +137,15 @@ def test_numeric_transform_of_difference_does_not_detect_an_absorption_edge(stor
     parent = before["groups"][-1]
     after = command(store, before, action, [parent["id"]], **options)
     child = after["groups"][-1]
-    assert after["groups"][:-1] == before["groups"]
-    assert child["source"]["operation"] == action
-    assert child["source"]["parent"] == parent["id"]
+    if action in ('deglitch','truncate'):
+        assert after['groups'][:-1] == before['groups'][:-1]
+        assert child['id'] == parent['id']
+        assert child['source']['point_edits'][-1]['action'] == action
+        assert child['source']['operation'] == parent['source']['operation']
+    else:
+        assert after["groups"][:-1] == before["groups"]
+        assert child["source"]["operation"] == action
+        assert child["source"]["parent"] == parent["id"]
     assert_signed(child)
     if zero:
         np.testing.assert_allclose(child["mu"], 0, atol=1e-15)
@@ -172,6 +178,21 @@ def test_absorption_transforms_keep_identity_without_claiming_parent_detector_ar
     assert parent["source"]["columns"]
     after = command(store, absorption, action, [parent["id"]], **options)
     child = after["groups"][-1]
+    if action in ('deglitch','truncate'):
+        assert len(after['groups']) == len(absorption['groups'])
+        assert child['id'] == parent['id']
+        assert_identity(child, parent)
+        assert child['source']['point_edits'][-1]['action'] == action
+        removed = set(child['source']['point_edits'][-1]['removed_indices'])
+        keep = [i for i in range(len(parent['energy'])) if i not in removed]
+        for category in ('raw_arrays','column_arrays'):
+            for name, values in parent['source'].get(category,{}).items():
+                assert child['source'][category][name] == [values[i] for i in keep]
+        for key in ('edge_policy','import_defaults','e0_selection'):
+            assert child['source'].get(key) == parent['source'].get(key)
+        applied = command(store, after, 'parameters', [child['id']])
+        assert_identity(applied['groups'][-1], parent)
+        return
     assert after["groups"][0] == parent
     assert child["is_difference"] is False
     assert_identity(child, parent)
@@ -307,8 +328,8 @@ def test_legacy_operation_marker_migrates_before_derivation_and_is_persisted(sto
 @pytest.mark.parametrize("action,options", [
     ("deconvolve", {"form": "gaussian", "esigma": 1, "smooth": False}),
     ("deconvolve", {"form": "lorentzian", "esigma": 1, "smooth": False}),
-    ("multi_electron", {"e0": 8980, "shift": 20, "amplitude": 0.01, "width": 2, "edge_step": 1}),
-    ("multi_electron", {"e0": 8980, "shift": 20, "amplitude": 0, "width": 2, "edge_step": 1}),
+    ("multi_electron", {"method": "arctangent", "e0": 8980, "shift": 20, "amplitude": 0.01, "width": 2}),
+    ("multi_electron", {"method": "arctangent", "e0": 8980, "shift": 20, "amplitude": 0, "width": 2}),
 ], ids=["deconvolve-gaussian", "deconvolve-lorentzian", "specified-MEE", "zero-MEE"])
 def test_difference_copy_corrections_match_direct_numeric_transform(store, xas_arrays, action, options):
     project = difference_project(store, xas_arrays)
@@ -318,7 +339,7 @@ def test_difference_copy_corrections_match_direct_numeric_transform(store, xas_a
     project = command(store, project, "parameters", [parent["id"]], energy_shift=2)
     parent = group(project, parent["id"])
     x = np.asarray(parent["energy"]) + parent["parameters"]["energy_shift"]
-    expected = transform_spectrum(action, x, parent["mu"], options)
+    expected = transform_spectrum(action, x, parent["mu"], dict(options, edge_step=1) if action == 'multi_electron' else options)
     after = command(store, project, action, [parent["id"]], **options)
     child = after["groups"][-1]
     assert after["groups"][:-1] == project["groups"]
@@ -328,7 +349,7 @@ def test_difference_copy_corrections_match_direct_numeric_transform(store, xas_a
     assert child["parameters"]["energy_shift"] == 0
     assert_signed(child, expected["mu"])
     if action == "multi_electron":
-        secondary = options["amplitude"] * options["edge_step"] * (
+        secondary = options["amplitude"] * (
             0.5 + np.arctan((x - options["e0"] - options["shift"]) / options["width"]) / np.pi)
         np.testing.assert_allclose(child["mu"], np.asarray(parent["mu"]) - secondary, atol=1e-15)
     applied = command(store, after, "parameters", [child["id"]])
@@ -338,8 +359,8 @@ def test_difference_copy_corrections_match_direct_numeric_transform(store, xas_a
 @pytest.mark.parametrize("action,options,message", [
     ("deconvolve", {"esigma": 0}, "greater than zero"),
     ("deconvolve", {"xmin": 8740, "xmax": 9200}, "interval inside the measured energy range"),
-    ("multi_electron", {"e0": 8980, "shift": 20, "amplitude": -0.01, "width": 2, "edge_step": 1}, "fraction"),
-    ("multi_electron", {"e0": 8980, "shift": 1000, "amplitude": 0.01, "width": 2, "edge_step": 1}, "inside the measured range"),
+    ("multi_electron", {"e0": 8980, "shift": 20, "amplitude": True, "width": 2}, "amplitude"),
+    ("multi_electron", {"e0": 8980, "shift": 1000, "amplitude": 0.01, "width": 2}, "inside the measured range"),
 ], ids=["deconvolve-width", "deconvolve-range", "MEE-amplitude", "MEE-range"])
 def test_invalid_difference_correction_options_leave_project_unchanged(store, xas_arrays, action, options, message):
     project = difference_project(store, xas_arrays)
@@ -359,13 +380,14 @@ def test_later_numeric_correction_failure_does_not_commit_earlier_batch_output(s
         # The specified secondary step lies within the first scan but outside
         # the shorter difference's measured interval.
         project = command(store, project, "truncate", [project["groups"][-1]["id"]], xmax=9050)
-        options = {"e0": 8980, "shift": 120, "amplitude": 0.01, "width": 2, "edge_step": 1}
+        options = {"method": "arctangent", "e0": 8980, "shift": 120, "amplitude": 0.01, "width": 2}
         message = "inside the measured range"
     first, last = project["groups"][0], project["groups"][-1]
     input_y = first["result"]["arrays"]["norm"] if action == "deconvolve" else first["mu"]
-    assert transform_spectrum(action, first["energy"], input_y, options)["mu"]
+    primitive_options = dict(options, edge_step=1) if action == 'multi_electron' else options
+    assert transform_spectrum(action, first["energy"], input_y, primitive_options)["mu"]
     with pytest.raises(ValueError, match=message):
-        transform_spectrum(action, last["energy"], last["mu"], options)
+        transform_spectrum(action, last["energy"], last["mu"], primitive_options)
     with pytest.raises((ValueError, WebInputError), match=message):
         command(store, project, action, [first["id"], last["id"]], **options)
     assert store.load(project["id"]) == project

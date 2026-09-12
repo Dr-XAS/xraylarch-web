@@ -635,8 +635,8 @@ def test_process_converts_pydantic_errors_and_revalidates_constructed_models(xas
 
 
 @pytest.mark.parametrize("params, message", [
-    ({"e0": 9500}, "e0"), ({"pre1": -500}, "pre1"),
-    ({"norm2": 500}, "norm1/norm2"), ({"norm1": 30, "norm2": 30.1}, "norm1/norm2"),
+    ({"e0": 9500}, "e0"), ({"pre1": -500, "pre2": -400}, "pre1"),
+    ({"norm1": 500, "norm2": 600}, "norm1/norm2"), ({"norm1": 30, "norm2": 30.1}, "norm1/norm2"),
     ({"bkg_kmax": 50}, "post-edge"), ({"bkg_kmin": 20}, "post-edge"),
     ({"kmax": 20}, "kmax"), ({"nfft": 128}, "nfft/2"),
     ({"dk": 20}, "dk"), ({"dr": 10}, "dr"),

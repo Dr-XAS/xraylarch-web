@@ -67,9 +67,8 @@ saved calibration. Calibration files accept only three finite scalar numbers.
 selected standard, with normal processing defaults and undo/redo. Source
 columns, original row order, mapping, coefficient values, standard identity
 and source SHA-256 survive JSON/PRJ exchange. Original file downloads preserve
-all bytes. Source columns use the existing counted/validated project array
-schema; they are not smuggled into uncounted metadata or mislabelled as native
-detector arrays. Sorting and decreasing-energy conversion align retained
+all bytes. Source columns use the existing validated project array schema and
+participate in project size limits and exchange checks. Sorting and decreasing-energy conversion align retained
 columns with group rows; `row_order` maps back to the source table.
 
 ## Automatic pixel/stripe import

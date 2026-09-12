@@ -200,7 +200,7 @@ def test_failed_normalization_does_not_prevent_exporting_an_exact_zero_sum(clien
     ("deconvolve", {"form": "gaussian", "width": 1, "xmin": 8950, "xmax": 9100}),
     ("self_absorption", {"formula": "Cu", "element": "Cu", "edge": "K", "angle_in": 45, "angle_out": 45}),
     ("dispersive", {"offset": 1, "linear": 1, "quadratic": 0}),
-    ("multi_electron", {"method": "arctangent", "e0": 8978, "shift": 100, "amplitude": .03, "width": 2, "edge_step": 2.3}),
+    ("multi_electron", {"method": "arctangent", "shift": 100, "amplitude": .03, "width": 2}),
 ])
 def test_transform_dialog_payloads_create_a_finite_derived_group(client, action, options):
     p = example(client)
@@ -208,12 +208,18 @@ def test_transform_dialog_payloads_create_a_finite_derived_group(client, action,
     response = command(client, p, action, [original["id"]], **options)
     assert response.status_code == 200, response.text
     next = response.json()
-    assert len(next["groups"]) == 4
-    assert next["groups"][0] == original
-    derived = next["groups"][1 if action == 'rebin' else -1]
-    if action == 'rebin':
+    inplace = action in ('deglitch', 'truncate')
+    assert len(next["groups"]) == (3 if inplace else 4)
+    if inplace:
+        assert next['groups'][1:] == p['groups'][1:]
+        assert next['groups'][0]['id'] == original['id']
+        assert len(next['groups'][0]['mu']) < len(original['mu'])
+    else:
+        assert next["groups"][0] == original
+    derived = next['groups'][0] if inplace else next["groups"][1 if action in ('rebin', 'multi_electron', 'convolve') else -1]
+    if action in ('rebin', 'multi_electron', 'convolve'):
         assert next['groups'][2:] == p['groups'][1:]
-    assert derived["source"]["operation"] == action
+    assert (derived["source"]["point_edits"][-1]["action"] if inplace else derived["source"]["operation"]) == action
     assert np.isfinite(derived["energy"]).all() and np.isfinite(derived["mu"]).all()
     assert derived["processing_error"] is None, derived["processing_error"]
     if action == "self_absorption":

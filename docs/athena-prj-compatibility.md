@@ -57,12 +57,15 @@ the final group order. These four browser tests pass.
   retains the native term-count convention. See
   [normalization exchange](athena-native-normalization-reference.md) and
   [local Larch's project writer](../larch/io/athena_project.py).
-- Native outer pre-edge, normalization and background limits are resolved
-  against measured coverage, following Larch's own processing behavior.
+- Native normalization outer endpoints are now resolved during processing,
+  preserving requested pre1/norm2 values in the recipe as well as the original
+  arguments. See the executed [boundary reference](athena-normalization-limits-reference.md).
+  Background and FT limits retain their import-time coverage resolutions.
   Demeter's zero-width background Kaiser setting resolves to `0.1` as in its
   [Larch AUTOBK template](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/autobk.tmpl).
   Original arguments and explicit compatibility notes remain available.
-  Explicit web recipes are not passed through these native adjustments.
+  Normalization outer-fit resolution also applies to web recipes. The other
+  native compatibility adjustments remain specific to native import.
 - Irrelevant normalization/background placeholders in native chi(k) records
   no longer prevent Fourier processing. Malformed active numerical parameters
   preserve raw spectra with editable processing errors.

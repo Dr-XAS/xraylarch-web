@@ -1,0 +1,19 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 31,
+  "source_sha256": {
+    "lib/Demeter/Config.pm": "f5399a087b6f04fb5cfd56953c7c709303b2c126bd646d7f49ed43d0db91a7f8",
+    "lib/Demeter/Data/E0.pm": "a933d8ee57c1bcae3b842821e4cfdbb8194146bee1290cf53af6853e5f0cec3f",
+    "lib/Demeter/configuration/process.demeter_conf": "aa81973fbf7623f23a87a7ebbf550790f68e58ecf98b71ae333eb1e5c8f5a148",
+    "lib/Demeter/templates/process/larch/align.tmpl": "8d650483a72eb592ca78594d1ac45126a78f922fffbfa9f2ecbf660d9920373a"
+  },
+  "sha256": {
+    "backend/tests/reference/alignment_native_reference.py": "efbc01966a1a9e757beaa9032b6f981070726ff7b3238de47db9e2cc4ff34be7",
+    "backend/tests/fixtures/athena-alignment-native.json.gz": "3d83952197d1ec3a7b789f3d3508118af562f40d63519c8ce43e7d76ef7bf557",
+    "backend/tests/fixtures/xdi-official-cu_metal_rt.xdi": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+    "backend/tests/fixtures/demeter-fe.300.xmu": "495d5a23c27be69391473bb6aa17b854f7beda04c812e82ec67f74ba3afa9815",
+    "backend/tests/fixtures/demeter-fe.060.xmu": "2484a64ae71299c17a530a9ad191a49510b53e8515279dfc8163bf56221a1c80",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467",
+    "larch/fitting/__init__.py": "2d4cede1b72829a05c09dc4b2437ad619b0778883c9d2206e4d49c90de7b9547"
+  }
+}

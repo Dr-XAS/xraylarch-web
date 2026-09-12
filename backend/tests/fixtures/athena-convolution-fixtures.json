@@ -1,0 +1,18 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 25,
+  "source_sha256": {
+    "lib/Demeter/Data/Process.pm": "953a1b3392a33b64c9d1a0ade21d6b75762261880de483329a829c49d99f2865",
+    "lib/Demeter/UI/Athena/ConvoluteNoise.pm": "1c75aeb275f820c6e4bf3cea382e84c366e881071f2e92c1440f1108198daf57",
+    "lib/Demeter/templates/process/larch/convolve.tmpl": "6c29e30249d0616929f635b1e234ed15f7760d7835e1eaa473f789d7948911a5",
+    "lib/Demeter/templates/process/larch/noise.tmpl": "900442dde6d5d4bac2f3a505beb0fdb930600cb0d21c7a2457f260363d6bf51d"
+  },
+  "sha256": {
+    "backend/tests/reference/convolution_native_reference.py": "b43179eb4e54b7af4f564d70d2ee4fd9ee87a0ffc3cfd3c6bfe87d0d8ab1dc2b",
+    "backend/tests/fixtures/athena-convolution-native.json.gz": "5cc8383b01bed602fc00ff10a433d93d8f7dd391c29d5165ec52e7ab5df81d76",
+    "backend/tests/fixtures/xdi-official-cu_metal_rt.xdi": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+    "backend/tests/fixtures/xdi-official-fe2o3_rt.xdi": "4a1c4cec3e00d62734406a872d8a114ebd7d7c1b66050a61ec4017b03abd2a5a",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467"
+  },
+  "basis": "Original ConvoluteNoise::get_values/plot, Data::Process::convolve/noise and Text::Template rendered Larch templates. Explicit bridges for wx widgets/plot/clone and a supplied normalization edge step; not a full desktop-normalization or GUI replay. Actual NumPy MT19937 normal stream seeded through Larch, with global state restored after the harness."
+}

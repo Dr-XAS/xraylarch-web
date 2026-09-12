@@ -7,6 +7,8 @@ import { numeratorRange, denominatorColumns, columnExpression, columnProblem, ch
 import { AthenaImportPreview } from "./athena-import-preview"
 import { AthenaImportPreprocessing } from "./athena-import-preprocessing"
 import { AthenaImportRebin } from "./athena-import-rebin"
+import { AthenaReaderPreview } from "./athena-reader-preview"
+import { AthenaBeamlineMetadata } from './athena-beamline-metadata'
 import styles from "./athena-column-selection.module.css"
 
 export function AthenaColumnSelection({ projectId, version, inspection, mapping, setMapping, busy, remaining, reuseMapping, groups = [],
@@ -15,10 +17,11 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
   setMapping: Dispatch<SetStateAction<ColumnMapping>>; busy: boolean; remaining: number
   groups?: AthenaGroup[]
   rebinDefaults?: ReactNode
-  reuseMapping: boolean; setReuseMapping: (value: boolean) => void; chooseAnother: () => void; importCurrent: () => void
+  reuseMapping: boolean; setReuseMapping: (value: boolean) => void; chooseAnother: () => void; importCurrent: (readerReviewed: boolean) => void
 }) {
   const [range, setRange] = useState("")
   const [rangeError, setRangeError] = useState("")
+  const [reviewed, setReviewed] = useState(false)
   function selectRange() {
     try {
       const indices = numeratorRange(range, inspection.columns.length)
@@ -102,10 +105,15 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
           {remaining > 1 && <label className="ath-check"><input type="checkbox" checked={reuseMapping} onChange={e => setReuseMapping(e.target.checked)} />Reuse this mapping for remaining files with matching column labels</label>}
         </fieldset>
         {inspection.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
-        <div className="ath-modal-actions"><button disabled={busy} onClick={chooseAnother}>Choose another file</button><button className="ath-primary" disabled={busy || !!problem} onClick={importCurrent}>{busy ? "Importing…" : "Import spectrum"}</button></div>
+        {inspection.file_plugin?.review_required && !reviewed && <p role="status">Review the I0 correction plot and confirm it before importing this file.</p>}
+        <div className="ath-modal-actions"><button disabled={busy} onClick={chooseAnother}>Choose another file</button><button className="ath-primary" disabled={busy || !!problem || (!!inspection.file_plugin?.review_required && !reviewed)} onClick={() => importCurrent(reviewed)}>{busy ? "Importing…" : "Import spectrum"}</button></div>
       </div>
-      <div className={styles.preview}>
+      <div className={`${styles.preview} ${inspection.reader_preview ? styles.readerPreviews : ''}`}>
+        {inspection.reader_preview && <AthenaReaderPreview value={inspection.reader_preview} required={!!inspection.file_plugin?.review_required}
+          reviewed={reviewed} onReviewed={setReviewed} disabled={busy} />}
         <AthenaImportPreview projectId={projectId} version={version} uploadId={inspection.upload_id} mapping={mapping} disabled={busy} />
+        <AthenaBeamlineMetadata value={inspection.beamline_metadata} />
+        <AthenaBeamlineMetadata value={inspection.xdi_metadata} />
         {inspection.source_preview && <details className={styles.raw}><summary>{inspection.source_preview_format === 'hex' ? 'Binary source bytes (hex)' : 'Source file contents'}{inspection.source_preview_truncated ? " (first section)" : ""}</summary><a href={`/api/backend/api/athena/projects/${projectId}/uploads/${inspection.upload_id}/file`} download>Download original file</a><pre>{inspection.source_preview.replaceAll('\0', '␀')}</pre></details>}
         {inspection.converted_preview && <details className={styles.raw}><summary>Converted columns{inspection.converted_preview_truncated ? " (first section)" : ""}</summary><a href={`/api/backend/api/athena/projects/${projectId}/uploads/${inspection.upload_id}/file?variant=converted`} download>Download converted file</a><pre>{inspection.converted_preview}</pre></details>}
       </div>

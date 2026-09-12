@@ -23,8 +23,8 @@ inside import opens the same panel while retaining selected files, column
 mapping and batch state. Returning restores import; a disabled-file failure
 can then use **Retry file inspection** without reselection.
 
-The 20 available readers (10BMMultiChannel, B18, BM23, CMC, DUBBLE, HXMA,
-LNLS, Lytle, PFBL12C, SLRIBL4, SPEC, SRS, SSRLA, SSRLB, SSRLmicro, X10C, X15B,
+The 22 available readers (10BMMultiChannel, B18, BL8Ar, BM23, CMC, DUBBLE, HXMA,
+LNLS, Lytle, PFBL12C, SLRIBL4, SPEC, SRS, SSRLA, SSRLB, SSRLmicro, SpecFileLongLine, X10C, X15B,
 X23A2MED, X23A2MultiChannel and Zip) show descriptions, versions, ordered system-reader entries,
 local documentation and original source links. Switches save immediately to
 local server preferences. Unlike the earlier always-on converter checkpoint,
@@ -124,7 +124,21 @@ native numerical oracles, internal JSON persistence and remaining INI scope.
 
 The [dispersive calibration checkpoint](athena-dispersive-reference.md) adds
 SLRIBL4 and native `athena.dxas` settings, bringing the unique primary-source
-catalog to 167 entries. Pixel/stripe source inspection requires a saved
+catalog to 171 entries. Pixel/stripe source inspection requires a saved
 calibration; calibration-tool inspection always reads the original pixels.
 The official ESRF file exercises the broad native signature, with no claim
 that it is an SLRI acquisition. Exact native writer formatting remains open.
+
+The four `Beamlines::{BL8,MX,X11A,XDAC}` modules are XDI metadata enrichers,
+separate from the 22 registered file converters. Their acquisition fields,
+11 INI defaults, comments, date handling and automatic-identification preference
+now have a [native metadata comparison and import workflow](athena-beamline-metadata-reference.md).
+The fields appear beside live column previews and in Group information, and
+survive web JSON/PRJ-sidecar exchange. Native Xray::XDI serialization, full XDI
+round trips and multichannel cloning remain open.
+
+[BL8Ar and SpecFileLongLine](athena-bl8ar-spec-long-reference.md) implement the
+remaining two top-level conversions, including the I0 review plot, native
+configuration, source retention and live column selection. Constructed probes
+match executed native conversion bytes. Measured independent acquisitions
+and full desktop replay remain required.

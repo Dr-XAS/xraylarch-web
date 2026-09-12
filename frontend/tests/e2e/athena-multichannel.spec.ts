@@ -36,7 +36,10 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
     const toggle = registry.getByRole('checkbox', { name: `Enable ${reader}`, exact: true })
     await expect(toggle).toBeEnabled()
     const enabling = page.waitForResponse(r => r.url().endsWith('/preferences/plugins') && r.request().method() === 'PUT')
-    await toggle.check(); expect((await enabling).ok()).toBe(true)
+    // The controlled switch changes after its persisted PUT is confirmed.
+    // check() asserts immediately after the click and can race that response.
+    await toggle.click(); expect((await enabling).ok()).toBe(true)
+    await expect(toggle).toBeChecked()
     await registry.getByRole('button', { name: 'Close registry', exact: true }).click()
     await page.getByRole('button', { name: 'Import data', exact: true }).click()
     const inspection = page.waitForResponse(r => r.url().endsWith('/inspect'))

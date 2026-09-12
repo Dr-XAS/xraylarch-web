@@ -1,0 +1,1688 @@
+[
+  {
+    "name": "x11a-measured",
+    "reader": "X11A",
+    "input_sha256": "53c258b4d8927bf266a5b074011c93ad2de9338c40ed501b723707dc3e78fc9d",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "no",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "no"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "1992-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "mx-measured",
+    "reader": "MX",
+    "input_sha256": "f0e95b0639eca313f7c410b3a5827920a0568f8a28035fdce9af3bc52a09c814",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "flat, Rh/Si/Pt striped mirror",
+          "name": "10ID"
+        },
+        "facility": {
+          "energy": "7.00 GeV",
+          "name": "APS",
+          "xray_source": "undulator A"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Si(111)"
+        },
+        "mx": {
+          "gains": "8.00, 7.00, 7.00, 7.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00",
+          "num_regions": "1",
+          "offsets": "11929.00, 11616.00, 10594.00, 13223.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00",
+          "settling_time": "0 sec",
+          "spp": "0.05",
+          "srb": "17000",
+          "srss": "0.5"
+        },
+        "scan": {
+          "edge_energy": "17166.30",
+          "start_time": "2006-10-25T16:33:28"
+        }
+      },
+      "beamline": "10ID",
+      "comments": [
+        "U HUP in transmission"
+      ],
+      "daq": "MX",
+      "extra_version": "MX/0.3",
+      "identified": 1,
+      "ini_files": [
+        "mx.10id.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "xdac-measured",
+    "reader": "XDAC",
+    "input_sha256": "6b86fda488c7247fe41d1713faea6d60ada796f353fb2c177158c34bec107ed2",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "flat Rh coated mirror",
+          "name": "X23A2"
+        },
+        "column": {
+          "1": "Energy",
+          "10": "Iref",
+          "11": "temp",
+          "12": "IntTime",
+          "2": "I0",
+          "3": "I02",
+          "4": "I03",
+          "5": "I04",
+          "6": "It1",
+          "7": "It2",
+          "8": "It3",
+          "9": "It4"
+        },
+        "facility": {
+          "energy": "2.80 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "1.6375",
+          "name": "Si(311)"
+        },
+        "scan": {
+          "edge_energy": "10535.00",
+          "start_time": "2009-08-19T14:55:11"
+        },
+        "xdac": {
+          "gains": "8.00, 8.00, 8.00, 8.00, 7.00, 7.00, 7.00, 7.00, 9.00, 0.00, 1.00",
+          "num_regions": "4",
+          "offsets": "117.50, 82.75, 122.00, 107.00, 961.00, 1596.50, 1377.75, 66.25, 10.25, 0.00, 0.00",
+          "settling_time": "0.50 sec",
+          "spp": "1, 1, 1, 0.25k",
+          "srb": "-200, -20, 30, 60, 15k",
+          "srss": "10, 0.4, 0.05k, 0.05k"
+        }
+      },
+      "beamline": "x23a2",
+      "comments": [
+        "4 channel ion chambers\r",
+        "1: Re powder  2: NH4ReO4  3: ReO3  4: ReO2\r",
+        "50/50 Ar/N2 in I0; Ar in It\r"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x23a2.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "x11a-four-digit-year",
+    "reader": "X11A",
+    "input_sha256": "da07c10b22ef55b09943a0cbe543fff1fc7725ca2e375802423aac3296178e29",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "no",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "no"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "3892-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "x11a-focus-T",
+    "reader": "X11A",
+    "input_sha256": "52cdc7bc8d54ef1abb4eabf22280789adc11a81e13d9664892e84c0770415afd",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "yes",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "yes"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "1992-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "x11a-focus-Y",
+    "reader": "X11A",
+    "input_sha256": "1f4ddd4d7984d21c009c04db56adbc15d61d4c82e3762fda096510685e77de7e",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "yes",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "yes"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "1992-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "x11a-focus-2",
+    "reader": "X11A",
+    "input_sha256": "49576c1d10c0118f0c3bc0311efb67212c39984f69f07430e136a76e030e4a94",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "yes",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "yes"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "1992-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "x11a-focus-0",
+    "reader": "X11A",
+    "input_sha256": "a8630b737d78958ff2c236065ea5bc0cc34900ee6aab6ff402d123b7c4d0a65b",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "no",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "no"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "1992-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "x11a-focus-N",
+    "reader": "X11A",
+    "input_sha256": "e159feb35e30e7ac78c4c22775573e0310ec87939c13e90c9db8b4a09d9f968d",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "no",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A",
+          "table_translation": "no"
+        },
+        "edc": {
+          "del": "10.020 .483 .050K",
+          "gains": "8 7 10",
+          "offsets": "51284 50016 48319",
+          "srb": "-193.7 -43.5 30.0 2381.3"
+        },
+        "facility": {
+          "energy": "2.584 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.135301",
+          "name": "Si(111)",
+          "stpdeg": "6400"
+        },
+        "scan": {
+          "edge_energy": "8980.0",
+          "start_time": "1992-09-15T01:52:53"
+        }
+      },
+      "beamline": "",
+      "comments": [
+        "Cu foil, 10K, rolled and annealled foil by matt                                 "
+      ],
+      "daq": "",
+      "extra_version": "EDC/5.02",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-11a",
+    "reader": "XDAC",
+    "input_sha256": "ba8e09056def2c5d9aa457e3e902da3c1408b30b8e9eaddaf5aa29f9e61da3ed",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x11a",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x11a.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "xdac-AM",
+    "reader": "XDAC",
+    "input_sha256": "366123a3e3dbab5bb91a766a7734c65d375102689a5e46ac2617871667b4c13e",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T12:00:00"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x11a",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x11a.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "xdac-PM",
+    "reader": "XDAC",
+    "input_sha256": "0d4dfa02d66759290cfde8505bd22b152efca6cd2682b806d0fe184c5669fd23",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "detuned mono",
+          "name": "X11A"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T24:00:00"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x11a",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x11a.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-11b",
+    "reader": "XDAC",
+    "input_sha256": "03c38d8c22b6b99216c24ee129a0bee3b1423b0e97dd363102412f5e6ba85f5f",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "bent second surface of channel-cut mono",
+          "name": "X11B"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x11b",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x11b.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-18b",
+    "reader": "XDAC",
+    "input_sha256": "1290f0c85096e5b2f878c7f616031b2d712a149d941566931f4a653ace0c3bf7",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "Cylindrical, rhodium-coated aluminum 1:1 focusing mirror",
+          "harmonic_rejection": "detuned mono",
+          "name": "X18B"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x18b",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x18b.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-19a",
+    "reader": "XDAC",
+    "input_sha256": "eead9b96959d3088577e86be411ebd5aa28b9c93644c1d85b567fa481a3c4f63",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "Rh-coated spherical mirror, 3 mrad incident angle",
+          "focusing": "Rh-coated toroidal mirror",
+          "harmonic_rejection": "detuned mono",
+          "name": "X19A"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x19a",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x19a.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-23a2",
+    "reader": "XDAC",
+    "input_sha256": "61bb0ef4299c603bd5fe282766523b5f247b8d59c17141991bdd9992dffc0a07",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "flat Rh coated mirror",
+          "name": "X23A2"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "1.6375",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x23a2",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x23a2.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-23b",
+    "reader": "XDAC",
+    "input_sha256": "2741a0cee9ac26adbd242f70bf5192fe278d6a54bef81f890fce7265c3ecc1cd",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "Pt-coated flat silicon mirror with 4-point bender",
+          "focusing": "Ni-coated quartz toroidal mirror",
+          "harmonic_rejection": "upstream mirrors",
+          "name": "X23B"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x23b",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x23b.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-24a",
+    "reader": "XDAC",
+    "input_sha256": "e6edca6e7d351336f51eab3ba9167d0d74be522589621d20a1084924a9f83058",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "Ni-coated graphite spherical mirror",
+          "focusing": "Pt-coated quartz toroidal mirror",
+          "harmonic_rejection": "upstream mirrors",
+          "name": "X24A"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x24a",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x24a.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-x-3b",
+    "reader": "XDAC",
+    "input_sha256": "87731585b8322b61e00c19c173f855994f5b075e817791ed322710dc1210ea14",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "sagittally bent second crystal",
+          "harmonic_rejection": "Ni coated flat cylindrically bent mirror",
+          "name": "X3B"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "x3b",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.x3b.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-u-7a",
+    "reader": "XDAC",
+    "input_sha256": "214f8fefc99d3e36d393a897232099c6e1f78bac0e04aa9033407f1d41003e6d",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "Au-coated ULE toroidal mirror with Au-coated ULE toroidal refocusuing mirror",
+          "harmonic_rejection": "none",
+          "name": "U7A"
+        },
+        "column": {
+          "1": "energy",
+          "2": "I0",
+          "3": "It"
+        },
+        "facility": {
+          "energy": "2.50 GeV",
+          "name": "NSLS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112",
+          "start_time": "2009-02-28T14:55:11"
+        },
+        "xdac": {
+          "gains": "7, 8",
+          "num_regions": "3",
+          "offsets": "10, 20",
+          "settling_time": "0.2 sec",
+          "spp": "1, 2, 3",
+          "srb": "-200, -30, 30",
+          "srss": "10, .5, .05"
+        }
+      },
+      "beamline": "u7a",
+      "comments": [
+        "Constructed metadata probe"
+      ],
+      "daq": "xdac",
+      "extra_version": "XDAC/1.4",
+      "identified": 1,
+      "ini_files": [
+        "xdac.u7a.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "ini-mx10bm",
+    "reader": "MX",
+    "input_sha256": "99c58afc5497014eaa6a2e133778ee7194afd5b8ccc853878f8dea7c00b74a7b",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "name": "10BM"
+        },
+        "facility": {
+          "energy": "7.00 GeV",
+          "name": "APS",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1356",
+          "name": "Si(111)"
+        },
+        "mx": {
+          "gains": "8.00, 7.00, 7.00, 7.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00",
+          "num_regions": "1",
+          "offsets": "11929.00, 11616.00, 10594.00, 13223.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00",
+          "settling_time": "0 sec",
+          "spp": "0.05",
+          "srb": "17000",
+          "srss": "0.5"
+        },
+        "scan": {
+          "edge_energy": "17166.30",
+          "start_time": "2006-10-25T16:33:28"
+        }
+      },
+      "beamline": "10BM",
+      "comments": [
+        "U HUP in transmission"
+      ],
+      "daq": "MX",
+      "extra_version": "MX/0.3",
+      "identified": 1,
+      "ini_files": [
+        "mx.10bm.ini"
+      ],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-1559-auto",
+    "reader": "BL8",
+    "input_sha256": "ec601056871fc0757b982f393f397933f33395b4c2153526227ba66aa9cf93ee",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Al"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "5.4775",
+          "name": "KTP(011)"
+        },
+        "scan": {
+          "edge_energy": "1559 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-1839-auto",
+    "reader": "BL8",
+    "input_sha256": "e8c12d3658ff6ef9a78667e02f72e9c5af7c8f99325c59a00d9e8c723be1bd65",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Si"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.7405",
+          "name": "InSb(111)"
+        },
+        "scan": {
+          "edge_energy": "1839 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-1303-auto",
+    "reader": "BL8",
+    "input_sha256": "668936466eb6e9d313bf6f6aae9371cda5131def02343968401bdf5dae4e11f1",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Mg"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "7.977",
+          "name": "Beryl(1010)"
+        },
+        "scan": {
+          "edge_energy": "1303 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-7112-auto",
+    "reader": "BL8",
+    "input_sha256": "407208b5280c9e6a852e3a0164b4dd55fb23a1f430bcfb06a4d04040694c4627",
+    "crystal": "",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Fe"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "2.0005",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-7112-KTP",
+    "reader": "BL8",
+    "input_sha256": "407208b5280c9e6a852e3a0164b4dd55fb23a1f430bcfb06a4d04040694c4627",
+    "crystal": "KTP",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Fe"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "5.4775",
+          "name": "KTP(011)"
+        },
+        "scan": {
+          "edge_energy": "7112 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-7112-InSb",
+    "reader": "BL8",
+    "input_sha256": "407208b5280c9e6a852e3a0164b4dd55fb23a1f430bcfb06a4d04040694c4627",
+    "crystal": "InSb",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Fe"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.7405",
+          "name": "InSb(111)"
+        },
+        "scan": {
+          "edge_energy": "7112 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-7112-Si",
+    "reader": "BL8",
+    "input_sha256": "407208b5280c9e6a852e3a0164b4dd55fb23a1f430bcfb06a4d04040694c4627",
+    "crystal": "Si",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Fe"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.1355",
+          "name": "Si(111)"
+        },
+        "scan": {
+          "edge_energy": "7112 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-7112-Ge",
+    "reader": "BL8",
+    "input_sha256": "407208b5280c9e6a852e3a0164b4dd55fb23a1f430bcfb06a4d04040694c4627",
+    "crystal": "Ge",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Fe"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "2.0005",
+          "name": "Ge(220)"
+        },
+        "scan": {
+          "edge_energy": "7112 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-1559-Ge",
+    "reader": "BL8",
+    "input_sha256": "ec601056871fc0757b982f393f397933f33395b4c2153526227ba66aa9cf93ee",
+    "crystal": "Ge",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Al"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "5.4775",
+          "name": "KTP(011)"
+        },
+        "scan": {
+          "edge_energy": "1559 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  },
+  {
+    "name": "bl8-1839-Ge",
+    "reader": "BL8",
+    "input_sha256": "e8c12d3658ff6ef9a78667e02f72e9c5af7c8f99325c59a00d9e8c723be1bd65",
+    "crystal": "Ge",
+    "native": {
+      "attributes": {
+        "beamline": {
+          "collimation": "none",
+          "focusing": "none",
+          "harmonic_rejection": "none",
+          "name": "BL8"
+        },
+        "column": {
+          "1": "energy",
+          "2": "braggangle",
+          "3": "timestep",
+          "4": "i0",
+          "5": "i1",
+          "6": "mu"
+        },
+        "detector": {
+          "i0": "ionization chamber, N2+He",
+          "it": "ionization chamber, N2+He"
+        },
+        "element": {
+          "edge": "K",
+          "symbol": "Si"
+        },
+        "facility": {
+          "energy": "1.2 GeV",
+          "name": "SLRI",
+          "xray_source": "bend magnet"
+        },
+        "mono": {
+          "d_spacing": "3.7405",
+          "name": "InSb(111)"
+        },
+        "scan": {
+          "edge_energy": "1839 eV",
+          "end_time": "2026-09-11T09:20:00",
+          "start_time": "2026-09-11T09:00:00"
+        },
+        "slri": {
+          "arstep": "603.2",
+          "gains": "8",
+          "points": "211",
+          "scan": "1493 - 1703",
+          "step": "1",
+          "time": "1"
+        }
+      },
+      "beamline": "",
+      "comments": [],
+      "daq": "",
+      "extra_version": "SLRI/1",
+      "identified": 1,
+      "ini_files": [],
+      "recognized": 1
+    }
+  }
+]

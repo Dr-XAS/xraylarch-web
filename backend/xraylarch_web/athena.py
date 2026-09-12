@@ -30,7 +30,12 @@ from .athena_rebin import ImportRebin, PostRebin, RebinPlan, prepare_rebin, rebi
 from .athena_preferences import AthenaPreferences, RebinDefaults, RebinGrid
 from .athena_plugin_registry import PluginRegistry, registry_view, decode_registry, encode_registry, MAX_REGISTRY_BYTES
 from .athena_plugin_config import PluginConfigurations, ConfigurationRequest
+from .athena_smoothing_preferences import SmoothingPreferences, SGPreferenceRequest
 from .athena_dispersive import DispersiveRequest, DispersiveDefaults, PixelNormalization
+from .athena_beamline_metadata import BeamlineDefaults
+from .athena_xdi_controls import XDIValidation
+from .athena_report import ParameterReport
+from .athena_export import DataExport
 from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
@@ -130,11 +135,34 @@ def _exchange_array(value, name, settings):
     return array.tolist()
 
 
+def _point_edit_history(source, settings):
+    history = source.get('point_edits', [])
+    if not isinstance(history, list) or len(history) > 200:
+        fail('Point-edit history must be a list of at most 200 edits.')
+    from .athena_point_edit import parse_options
+    for edit in history:
+        required = {'action', 'options', 'removed_indices', 'removed_energy', 'removed_mu', 'project_version'}
+        if not isinstance(edit, dict) or set(edit) != required or edit['action'] not in ('deglitch', 'truncate'):
+            fail('Point-edit history contains an invalid edit.')
+        if type(edit['project_version']) is not int or edit['project_version'] < 0 or not isinstance(edit['options'], dict):
+            fail('Point-edit history needs a valid revision and options.')
+        parse_options(edit['action'], edit['options'])
+        indices = edit['removed_indices']
+        if not isinstance(indices, list) or not indices or any(type(i) is not int or i < 0 for i in indices) or indices != sorted(set(indices)):
+            fail('Point-edit history needs ordered, distinct removed row indices.')
+        for key in ('removed_energy', 'removed_mu'):
+            values = _exchange_array(edit[key], key, settings)
+            if len(values) != len(indices):
+                fail('Point-edit history needs paired removed measurements.')
+    return history
+
+
 def _exchange_source(source, npoints, settings):
     """Validate retained pointwise data without changing older source schemas."""
     if not isinstance(source, dict):
         fail("Source metadata must be an object.")
     source = copy.deepcopy(source)
+    _point_edit_history(source, settings)
     for key in ("raw_arrays", "column_arrays"):
         if key not in source:
             continue
@@ -182,6 +210,7 @@ def _exchange_budget(groups, settings):
         total += len(original.get('energy', [])) + len(original.get('mu', []))
         for key in ('raw_arrays', 'column_arrays'):
             total += sum(len(a) for a in original.get(key, {}).values())
+        total += sum(len(edit['removed_energy']) + len(edit['removed_mu']) for edit in _point_edit_history(source, settings))
         total += sum(len(a) for a in source.get("native", {}).get("unaligned_arrays", {}).values() if a is not None)
         if total > _EXCHANGE_MAX_VALUES:
             fail("Project exceeds 2,000,000 retained data values; reduce columns, groups, or scan lengths.")
@@ -336,8 +365,9 @@ def _native_processing_limits(parameters, energy, data_type, source):
     """Resolve native limits against measured support, retaining original args.
 
     Demeter's Larch AUTOBK template changes a zero Kaiser width to 0.1.
-    Larch pre_edge/autobk clip outer limits to measured coverage. Record these
-    resolutions explicitly so the web controls show the recipe actually used.
+    Background/FT compatibility resolutions are recorded here. Normalization
+    outer requests remain in the recipe and are resolved by the shared
+    processor, which reports the effective endpoints separately.
     """
     if data_type == "detector":
         return  # Absorption/EXAFS settings are dormant, not limits on counts.
@@ -371,10 +401,8 @@ def _native_processing_limits(parameters, energy, data_type, source):
     if data_type != "chi" and numeric(e0) and numeric(shift):
         lo, hi = float(energy[0] + shift - e0), float(energy[-1] + shift - e0)
         if lo < 0 < hi:
-            if numeric(parameters.get("pre1")) and parameters["pre1"] < lo:
-                resolve("pre1", lo, "first measured energy")
-            if numeric(parameters.get("norm2")) and parameters["norm2"] > hi:
-                resolve("norm2", hi, "last measured energy")
+            # Normalization now resolves outer fit endpoints at processing time,
+            # retaining the requested fields just like Demeter's Data object.
             from larch.xafs.xafsutils import ETOK
             available = float(np.sqrt(ETOK * hi))
             if numeric(parameters.get("bkg_kmax")) and parameters["bkg_kmax"] > available:
@@ -401,6 +429,17 @@ def _native_source(record, filename, kind, settings):
         identity = None  # Native Demeter uses H as its inference sentinel.
     if identity:
         source["edge_identity"] = {**identity, "origin": "native"}
+    if 'bkg_delta_eshift' in args:
+        from .athena_alignment import signature
+        try:
+            uncertainty = float(args['bkg_delta_eshift'])
+            shift = float(args.get('bkg_eshift', 0))
+            if isinstance(args['bkg_delta_eshift'], bool) or not np.isfinite([uncertainty, shift]).all() or uncertainty < 0:
+                raise ValueError
+            source['alignment'] = dict(method='native', energy_shift=shift, shift_stderr=uncertainty,
+                native_shift_stderr=uncertainty, signature=signature(dict(energy=record['x'], mu=record['y'])))
+        except (TypeError, ValueError, OverflowError):
+            source['warnings'].append('Invalid native energy-shift uncertainty was retained without applying it.')
     if "bkg_e0_fraction" in args:
         try:
             fraction = float(args["bkg_e0_fraction"])
@@ -412,6 +451,19 @@ def _native_source(record, filename, kind, settings):
     unsupported = {k: v for k, v in record.items() if k not in ("old_group", "args", "x", "y", *_NATIVE_ARRAYS)}
     if unsupported:
         source["native"]["fields"] = _metadata(unsupported)
+    if 'xdi' in record:
+        from .athena_xdi import from_native, identity as xdi_identity
+        try:
+            xdi = from_native(record['xdi'])
+        except ValueError as exc:
+            source['warnings'].append(f'Native XDI metadata was retained without applying it: {exc}')
+        else:
+            if xdi is not None:
+                source['xdi_metadata'] = xdi
+                unsupported.pop('xdi', None)
+                if xdi_identity(xdi):
+                    source['edge_identity'] = xdi_identity(xdi)
+    if unsupported:
         source["warnings"].append("Native record state retained as metadata, not executed: " + ", ".join(sorted(unsupported)))
     npoints = len(record["x"])
     for key in _NATIVE_ARRAYS:
@@ -435,6 +487,8 @@ def _native_source(record, filename, kind, settings):
         supported.update(("bkg_z", "fft_edge"))
     if "e0_fraction" in source:
         supported.add("bkg_e0_fraction")
+    if 'alignment' in source:
+        supported.add('bkg_delta_eshift')
     unapplied = sorted(set(args) - supported)
     if unapplied:
         source["native"]["unapplied_args"] = unapplied
@@ -487,6 +541,8 @@ def _derived_source(parent, operation, **details):
     for key in ("edge_identity", "e0_fraction"):
         if key in parent["source"]:
             source[key] = copy.deepcopy(parent["source"][key])
+    from .athena_xdi_history import inherit_source
+    source['xdi_metadata'] = inherit_source(parent, operation, details)
     return source
 
 
@@ -589,6 +645,7 @@ class ImportRequest(BaseModel):
     preprocessing: ImportPreprocessing | None = None
     rebin: ImportRebin | None = None
     rebin_grid: RebinGrid | None = None
+    reader_reviewed: bool = Field(default=False, strict=True)
 
 
 class Command(BaseModel):
@@ -642,6 +699,7 @@ _PARAMETER_SECTIONS = {
 class AthenaStore:
     def __init__(self, settings: Settings):
         self.plugin_configurations = PluginConfigurations(settings)
+        self.smoothing_preferences = SmoothingPreferences(settings)
         self.settings = settings
         self.storage = WorkspaceStorage(settings.data_root / "athena")
 
@@ -772,7 +830,7 @@ class AthenaStore:
         dependents = self.background_dependents(p, group_ids)
         return [g for g in p["groups"] if g["id"] in dependents and g["frozen"]]
 
-    def parameter_updates(self, p, updates, *, skip_frozen=False):
+    def parameter_updates(self, p, updates, *, skip_frozen=False, tolerate_errors=False):
         """Stage all recipes before recalculation; energy-shift ties are atomic."""
         expanded, skipped = {}, set()
         for ident, patch in updates.items():
@@ -820,7 +878,7 @@ class AthenaStore:
             group["parameters"] = recipe
         for ident, standard_id in standard_links.items():
             self.group(p, ident)["background_standard_id"] = standard_id
-        self._process_groups(p, recipes)
+        self._process_groups(p, recipes, tolerate_errors=tolerate_errors)
         return sorted(skipped)
 
     def set_e0(self, p, groups, options):
@@ -1029,7 +1087,7 @@ class AthenaStore:
             }
             g["result"]["warnings"].extend(message for message in source.get("warnings", [])
                                            if message not in g["result"]["warnings"])
-        elif data_type != "chi" and g["result"] and g["result"]["effective"].get("e0") is not None:
+        elif data_type != "chi" and not _source_edge_identity(source) and g["result"] and g["result"]["effective"].get("e0") is not None:
             from .athena_e0 import _infer_atomic
             entry = _infer_atomic(g["result"]["effective"]["e0"])
             identity = {key: entry[key] for key in ("element", "edge")}
@@ -1133,6 +1191,14 @@ class AthenaStore:
         self.storage.write_arrays(ident, f"upload-{upload}.npz", parsed.arrays)
         inspection = parsed.inspection().model_dump()
         inspection['display_name'] = display_name
+        if parsed.xdi_metadata is not None:
+            inspection['xdi_metadata'] = copy.deepcopy(parsed.xdi_metadata)
+        from .athena_beamline_metadata import identify
+        beamline = identify(prepared.data if prepared else data,
+                            enabled=AthenaPreferences(self.settings).read_beamline()['enabled'])
+        if beamline is not None:
+            beamline['input_basis'] = 'converted' if prepared else 'original'
+            inspection['beamline_metadata'] = beamline
         from .athena_columns import suggest_columns
         suggestion, column_units = suggest_columns(inspection['columns'], inspection['display_name'])
         if prepared:
@@ -1163,6 +1229,8 @@ class AthenaStore:
             converted = prepared.data.decode('utf-8')
             inspection.update(file_plugin=prepared.metadata, converted_preview='\n'.join(converted.splitlines()[:120]),
                               converted_preview_truncated=len(converted.splitlines()) > 120)
+            if prepared.preview is not None:
+                inspection['reader_preview'] = prepared.preview
             self.storage.write_bytes(ident, f'upload-{upload}.converted', prepared.data)
         if source_upload:
             inspection.update(source_upload_id=source_upload, source_display_name=source_name)
@@ -1264,9 +1332,16 @@ class AthenaStore:
                 column_order='group',row_order=order.tolist(),columns=metadata['columns'],
                 source_sha256=hashlib.sha256(self.storage.path(ident,f'upload-{request.upload_id}.source').read_bytes()).hexdigest(),
                 warnings=list(metadata.get('warnings',[]))+warnings)
+            for field in ('xdi_metadata', 'beamline_metadata'):
+                if metadata.get(field):
+                    source[field] = copy.deepcopy(metadata[field])
             source=_exchange_source(source,len(x),self.settings)
             _exchange_budget([*old['groups'],dict(energy=converted['energy'],mu=converted['mu'],source=source)],self.settings)
             new=self.make_group(metadata['display_name']+' · calibrated',converted['energy'],converted['mu'],source=source)
+            from .athena_xdi_history import inherit_source
+            # Acquisition metadata belongs to the pixel upload. The standard
+            # only supplies calibration, never its own scan times or comments.
+            new['source']['xdi_metadata'] = inherit_source(new, 'dispersive', {})
             new['marked']=False
             p=copy.deepcopy(old)
             index=p['groups'].index(standard)+1 if standard is not None else len(p['groups'])
@@ -1358,7 +1433,8 @@ class AthenaStore:
                 standard_reference = next((g for g in family if g['id'] != standard['id']), None)
                 use_reference = reference is not None and standard_reference is not None
                 moving, fixed = (reference, standard_reference) if use_reference else (sample, standard)
-                shared_alignment = import_alignment(moving, fixed) | {
+                prefs = self.smoothing_preferences.read()['values']
+                shared_alignment = import_alignment(moving, fixed, sg_window=prefs['window'], sg_order=prefs['order']) | {
                     'used_references': use_reference, 'moving_id': moving['id'], 'standard_id': fixed['id']}
             patch = {'energy_shift': shared_alignment['energy_shift']}
             if choice.copy_parameters:
@@ -1397,6 +1473,9 @@ class AthenaStore:
             self.storage._validate_id(request.upload_id)
             arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
             metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
+            if metadata.get('file_plugin', {}).get('review_required') and not request.reader_reviewed:
+                raise WebInputError('reader_review_required', 'Review the I0 correction plot before importing.',
+                                    recovery='Inspect the fit and corrected I0, then confirm the review for this file.')
             from .athena_columns import map_columns
             mapped = map_columns(arrays, request)
             prepare_rebin(mapped, request, standard)
@@ -1415,6 +1494,13 @@ class AthenaStore:
                       "column_order": "group", "raw_arrays": {}}
             if metadata.get('file_plugin'):
                 source_base['file_plugin'] = copy.deepcopy(metadata['file_plugin'])
+            if metadata.get('beamline_metadata'):
+                source_base['beamline_metadata'] = copy.deepcopy(metadata['beamline_metadata'])
+            if metadata.get('xdi_metadata'):
+                from .athena_xdi import identity as xdi_identity
+                source_base['xdi_metadata'] = copy.deepcopy(metadata['xdi_metadata'])
+                if xdi_identity(metadata['xdi_metadata']):
+                    source_base['edge_identity'] = xdi_identity(metadata['xdi_metadata'])
             # Preserve original units/column IDs. When sorting was requested,
             # all retained columns follow the group row order; row_order maps
             # those rows back to the uploaded table.
@@ -1450,6 +1536,9 @@ class AthenaStore:
                 group_source, group_x, group_y = self.rebinned_source(source, x, y, sample.get('rebin'))
                 g = self.make_import_group(label, group_x, group_y, data_type=request.data_type,
                                           source=group_source, edge_policy=request.edge_policy)
+                if sample.get('rebin') is not None:
+                    from .athena_xdi_history import inherit_source
+                    g['source']['xdi_metadata'] = inherit_source(g, 'rebin', {})
                 p["groups"].append(g)
                 self.preprocess_import(p, g, standard, request.preprocessing)
                 reference = None
@@ -1466,6 +1555,9 @@ class AthenaStore:
                     reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
                     reference = self.make_reference_group(g, ref_x, ref_y,
                         source=reference_source, same_element=request.reference_same_element)
+                    if sample.get('reference_rebin') is not None:
+                        from .athena_xdi_history import inherit_source
+                        reference['source']['xdi_metadata'] = inherit_source(reference, 'rebin', {})
                     g["reference_id"] = reference["id"]
                     p["groups"].append(reference)
                 shared_alignment = self.align_import(p, g, reference, standard,
@@ -1600,6 +1692,442 @@ class AthenaStore:
         return {'version': project['version'], 'options': choice.model_dump(), 'results': results,
                 'skipped_reasons': skipped}
 
+    def xdi_metadata(self, ident, group_id):
+        from .athena_xdi_controls import metadata_view
+        project = self.load(ident)
+        return dict(version=project['version'], **metadata_view(self.group(project, group_id)))
+
+    def _alignment_results(self, project, request: Command):
+        from .athena_alignment import AlignmentOptions, display_curve, edge, fit_alignment, saved_fit, signature
+        if request.action != 'align' or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Select distinct source groups for alignment.')
+        options = dict(request.options)
+        prefs = self.smoothing_preferences.read()['values']
+        choice = AlignmentOptions.model_validate({'sg_window': prefs['window'], 'sg_order': prefs['order'], **options})
+        if choice.operation != 'auto' and len(request.group_ids) != 1:
+            fail('Inspect or manually shift one current group at a time.')
+        standard = self.group(project, choice.standard_id)
+        edge(standard)
+        fixed = {g['id'] for g in self.reference_family(project, standard['id'])}
+        working, updates, rows, reasons, handled = copy.deepcopy(project), {}, [], {}, set()
+        for ident in request.group_ids:
+            parent = self.group(project, ident)
+            family = self.reference_family(project, ident)
+            members = {g['id'] for g in family}
+            reason = None
+            if members & fixed: reason = 'The alignment standard and its linked references stay fixed.'
+            elif members & handled: reason = 'This linked reference family is already included.'
+            elif choice.operation != 'inspect' and (any(g['frozen'] for g in family) or self._frozen_background_dependents(project, members)):
+                reason = 'Unfreeze the group, its linked references and background dependents before alignment.'
+            elif choice.operation != 'inspect' and self.background_dependents(project, members) & fixed:
+                reason = 'The fixed standard uses this group as a background standard.'
+            if reason:
+                if len(request.group_ids) == 1: fail(reason)
+                reasons[ident] = reason
+                continue
+            try:
+                edge(parent)
+                use_refs = bool(choice.use_reference and parent.get('reference_id') and standard.get('reference_id'))
+                moving = self.group(project, parent['reference_id']) if use_refs else parent
+                fixed_curve = self.group(project, standard['reference_id']) if use_refs else standard
+                before, target = display_curve(moving, choice.display), display_curve(fixed_curve, choice.display)
+                fit = fit_alignment(moving, fixed_curve, smoothed=choice.fit == 'smoothed', sg_window=choice.sg_window,
+                                    sg_order=choice.sg_order) if choice.operation == 'auto' else None
+                shift = fit['summary']['energy_shift'] if fit else choice.energy_shift if choice.operation == 'manual' else parent['parameters']['energy_shift']
+                # Native bkg_eshift's reference trigger changes only the shift.
+                # Explicit E0 patches prevent parameter_updates from moving it.
+                patches = {g['id']: dict(energy_shift=shift, e0=edge(g) if g['data_type'] not in ('chi','detector') and not _is_difference(g) else g['parameters']['e0'])
+                           for g in family} if choice.operation != 'inspect' else {}
+                after_group = copy.deepcopy(moving)
+                if patches: after_group['parameters'].update(patches[moving['id']])
+                after = display_curve(after_group, choice.display)
+            except (ValueError, WebInputError) as exc:
+                if len(request.group_ids) == 1: raise
+                reasons[ident] = str(exc)
+                continue
+            updates.update(patches)
+            handled.update(members)
+            if choice.operation != 'inspect':
+                for member in family:
+                    dest = self.group(working, member['id'])
+                    dest['source']['alignment'] = dict(
+                        **(fit['summary'] if fit else dict(method='manual',energy_shift=shift,shift_stderr=None)),
+                        signature=signature(dest), moving_id=moving['id'], standard_id=fixed_curve['id'], used_references=use_refs)
+            rows.append(dict(group_id=ident, label=parent['label'], moving_id=moving['id'], standard_id=fixed_curve['id'],
+                used_references=use_refs, before=before, after=after, standard=target, energy_shift=shift,
+                shift_delta=shift-parent['parameters']['energy_shift'], fit=fit, saved_fit=saved_fit(parent) if choice.operation == 'inspect' else None))
+        if not rows: fail('No selected groups can be aligned. ' + ' '.join(dict.fromkeys(reasons.values())))
+        if updates: self.parameter_updates(working, updates, tolerate_errors=True)
+        changed = [dict(group_id=g['id'], label=g['label'], energy_shift=g['parameters']['energy_shift'], e0=g['parameters']['e0'])
+                   for g in working['groups'] if g['id'] in updates]
+        errors = {g['id']: g['processing_error'] for g in working['groups']
+                  if g['id'] in self.background_dependents(project, updates) and g.get('processing_error')}
+        return working, dict(project_id=project['id'], version=project['version'], group_ids=request.group_ids,
+            options=choice.model_dump(exclude_none=True), requested_options=request.options, rows=rows,
+            changes=changed, skipped_reasons=reasons, processing_errors=errors)
+
+    def preview_alignment(self, ident, request: Command):
+        project = self.load(ident)
+        self.check(project, request.version)
+        _, result = self._alignment_results(project, request)
+        self.check(self.load(ident), request.version)
+        return result
+
+    def _calibration_results(self, project, request: Command, *, find_zero=False):
+        from .athena_calibration import CalibrationOptions, calibration_curve, calibration_shift, shifted_axis, zero_crossing
+        from .athena_e0 import atomic_edge
+        from .athena_science import _edge, normalization_adjustments
+        if request.action != 'calibrate' or len(request.group_ids) != 1:
+            fail('Choose one current group to calibrate.')
+        parent = self.group(project, request.group_ids[0])
+        options = dict(request.options)
+        if options.get('smoothing_method') == 'savitzky_golay' and options.get('smoothing', 0):
+            prefs = self.smoothing_preferences.read()['values']
+            options = {'sg_window': prefs['window'], 'sg_order': prefs['order'], **options}
+        choice = CalibrationOptions.model_validate(options)
+        x, y = shifted_axis(parent)
+        observed = choice.observed
+        if observed is None:
+            observed = parent['parameters']['e0'] or (parent.get('result') or {}).get('effective', {}).get('e0')
+            if observed is None:
+                if parent['data_type'] == 'detector' or _is_difference(parent):
+                    fail('Provide an observed reference energy for this group.')
+                observed = _edge(x, y)
+        if not x[0] <= observed <= x[-1]:
+            fail('Choose the observed reference inside the displayed energy range.')
+        atom = None
+        identity = _source_edge_identity(parent['source'])
+        if identity:
+            atom = atomic_edge(identity['element'], identity['edge'])
+        target = choice.target if choice.target is not None else atom['energy'] if atom else observed
+        zero = zero_crossing(parent, observed) if find_zero else None
+        choice = choice.model_copy(update=dict(observed=observed if zero is None else zero, target=target))
+        curve = calibration_curve(parent, choice)
+        shift = calibration_shift(choice.observed, target, parent['parameters']['energy_shift'])
+        working = copy.deepcopy(project)
+        family = self.reference_family(project, parent['id'])
+        self.parameter_updates(working, {parent['id']: dict(energy_shift=shift, e0=target)}, tolerate_errors=True)
+        calibrated_curve = None
+        if choice.display == 'norm':
+            # Rounding the shift changes E-E0 slightly. Refit the overlay on
+            # the proposed recipe so it shows the normalization save will use.
+            calibrated_curve = calibration_curve(self.group(working, parent['id']), choice.model_copy(update={'observed': target}))
+        changed = [g['id'] for g in family if self.group(working, g['id'])['parameters'] != g['parameters']]
+        errors = {g['id']: g['processing_error'] for g in working['groups']
+                  if g['id'] in self.background_dependents(project, changed) and g.get('processing_error')}
+        changes = [dict(group_id=g['id'], label=g['label'], e0=g['parameters']['e0'], energy_shift=g['parameters']['energy_shift'])
+                   for g in working['groups'] if g['id'] in changed]
+        limits = [dict(group_id=g['id'], label=g['label'], adjustments=adjustments)
+                  for g in working['groups'] if g['id'] in self.background_dependents(project, [member['id'] for member in family])
+                  and (adjustments := normalization_adjustments(g['parameters'], (g.get('result') or {}).get('effective', {})))]
+        return working, dict(project_id=project['id'], version=project['version'], group_id=parent['id'],
+            options=choice.model_dump(exclude_none=True), requested_options=request.options,
+            curve=curve, energy_shift=shift, shift_delta=shift-parent['parameters']['energy_shift'],
+            actual_reference=choice.observed + shift-parent['parameters']['energy_shift'],
+            atomic_target=atom, zero_crossing=zero, changes=changes, processing_errors=errors,
+            normalization_limits=limits, calibrated_curve=calibrated_curve)
+
+    def preview_calibration(self, ident, request: Command, *, find_zero=False):
+        project = self.load(ident)
+        self.check(project, request.version)
+        _, result = self._calibration_results(project, request, find_zero=find_zero)
+        self.check(self.load(ident), request.version)
+        return result
+
+    def _point_edit_results(self, project, request: Command):
+        from .athena_point_edit import parse_options, select_points, plot_views, selected_chie
+        if request.action not in ('deglitch','truncate') or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Select distinct source groups for deglitching or truncation.')
+        choice = parse_options(request.action, request.options)
+        selected = {gid: self.group(project, gid) for gid in request.group_ids}
+        working = copy.deepcopy(project)
+        results, reasons, changed = [], {}, []
+        for parent in project['groups']:
+            if parent['id'] not in selected:
+                continue
+            if self._frozen_background_dependents(project, [parent['id']]):
+                reason = 'Unfreeze this group and its background-standard dependents before removing points.'
+                if choice.scope != 'marked':
+                    fail(reason)
+                reasons[parent['id']] = reason
+                continue
+            selection = select_points(parent, choice)
+            edited = self.group(working, parent['id'])
+            if selection['removed_indices']:
+                keep = selection['kept_indices']
+                edited['energy'], edited['mu'] = selection['energy'], selection['mu']
+                source = edited['source']
+                for key in ('raw_arrays', 'column_arrays'):
+                    for name, values in source.get(key, {}).items():
+                        if len(values) != selection['input_points']:
+                            fail(f'{parent["label"]}: retained {name} does not match the measured rows.')
+                        source[key][name] = [values[i] for i in keep]
+                if len(source.get('row_order', [])) == selection['input_points']:
+                    source['row_order'] = [source['row_order'][i] for i in keep]
+                entry = dict(action=request.action, options=choice.model_dump(exclude_none=True),
+                    removed_indices=selection['removed_indices'], removed_energy=selection['selected_energy'],
+                    removed_mu=selection['selected_mu'], project_version=project['version'])
+                source['point_edits'] = (source.get('point_edits', []) + [entry])[-200:]
+                from .athena_xdi_history import inherit_source
+                source['xdi_metadata'] = inherit_source(parent, 'remove_points',
+                    dict(count=len(selection['removed_indices']), action=request.action))
+                changed.append(parent['id'])
+            results.append(dict(group_id=parent['id'], label=parent['label'], **selection,
+                                original=plot_views(parent), selected_chie=selected_chie(parent, selection['selected_energy'])))
+        if not results:
+            fail('No editable selected groups remain. Unfreeze the intended groups or change the selection.')
+        # Point removal can invalidate an old normalization/FFT range. Retain
+        # the edit and its recipe with an explicit processing error, never stale
+        # cached curves. Transitive background-standard consumers refresh too.
+        self._process_groups(working, changed, tolerate_errors=True)
+        _exchange_budget(working['groups'], self.settings)
+        for row in results:
+            group = self.group(working, row['group_id'])
+            row.update(modified=plot_views(group), processing_error=group.get('processing_error'))
+        return choice, working, results, reasons, changed
+
+    def preview_point_edit(self, ident, request: Command):
+        project = self.load(ident)
+        self.check(project, request.version)
+        choice, working, results, reasons, changed = self._point_edit_results(project, request)
+        self.check(self.load(ident), request.version)
+        return dict(project_id=ident, version=project['version'], options=choice.model_dump(exclude_none=True),
+                    results=results, skipped_reasons=reasons, changed_group_ids=changed)
+
+    def _convolution_results(self, project, request: Command):
+        from .athena_convolution import ConvolutionOptions, broaden, add_noise
+        if request.action != 'convolve' or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Choose convolution and distinct source groups.')
+        choice = ConvolutionOptions.model_validate(request.options).captured()
+        selected = {gid: self.group(project, gid) for gid in request.group_ids}
+        if len(project['groups']) + len(selected) > 100:
+            fail('A project can contain at most 100 groups.')
+        prepared = []
+        for index, parent in enumerate(project['groups']):
+            if parent['id'] not in selected:
+                continue
+            chi = parent['data_type'] == 'chi'
+            if chi and choice.width:
+                fail('Convolution width is in energy; use zero width to add noise to χ(k).')
+            shift = 0 if chi else parent['parameters']['energy_shift']
+            result = broaden(np.asarray(parent['energy']) + shift, parent['mu'], choice)
+            params = dict(parent['parameters'], energy_shift=0)
+            effective = (parent.get('result') or {}).get('effective', {})
+            if not chi and parent['data_type'] != 'detector' and not _is_difference(parent):
+                params['e0'] = effective.get('e0', params['e0'])
+            source = _derived_source(parent, 'convolve', options=choice.model_dump(), details=result['details'],
+                parent_parameters=copy.deepcopy(parent['parameters']), parent_energy_shift=shift)
+            label = f"{parent['label']}: {choice.width:.2f} eV {choice.form.capitalize()}, {choice.noise:.3f} noise"
+            child = self.make_group(label, result['energy'], result['mu'], parameters=params,
+                data_type=parent['data_type'], source=source, project=project,
+                background_standard_id=parent.get('background_standard_id'),
+                is_difference=_is_difference(parent), is_normalized=parent.get('is_normalized'))
+            if child['processing_error']:
+                fail(f"Could not process convolved {parent['label']}: {child['processing_error']}")
+            # Native noise() normalizes after broadening, then scales noise by
+            # that updated edge step. Existing normalization recipes are kept.
+            step = (child.get('result') or {}).get('effective', {}).get('edge_step')
+            child['mu'], noise_details = add_noise(child['mu'], choice, step, chi=chi, offset=len(prepared))
+            source['details'].update(noise_details)
+            from .athena_xdi_history import inherit_source
+            source['xdi_metadata'] = inherit_source(parent, 'convolve', source)
+            if choice.noise:
+                self.process(child, project)
+            for key in ('notes', 'multiplier', 'offset'):
+                child[key] = copy.deepcopy(parent[key])
+            child['marked'] = bool(parent['marked'] and index == len(project['groups'])-1)
+            prepared.append((parent, child))
+        return choice, prepared
+
+    def preview_convolution(self, ident, request: Command):
+        project = self.load(ident)
+        self.check(project, request.version)
+        choice, prepared = self._convolution_results(project, request)
+        results = []
+        for parent, child in prepared:
+            traces, errors = {space: [] for space in ('E', 'k', 'R')}, {}
+            for role, group in [('original', parent), ('modified', child)]:
+                if group['data_type'] != 'chi':
+                    x = np.asarray(group['energy']) + group['parameters']['energy_shift']
+                    traces['E'].append(dict(role=role, label=group['label'], x=x.tolist(), y=group['mu']))
+                for space, xkey, ykey in [('k', 'k', 'weighted_chi'), ('R', 'r', 'chir_mag')]:
+                    arrays = (group.get('result') or {}).get('arrays', {})
+                    x, y = arrays.get(xkey, []), arrays.get(ykey, [])
+                    if x and len(x) == len(y):
+                        traces[space].append(dict(role=role, label=group['label'], x=x, y=y))
+            for space, curves in traces.items():
+                if len(curves) != 2:
+                    traces[space] = []
+                    errors[space] = f'{space}-space comparison is unavailable for this data type or processing recipe.'
+            results.append(dict(group_id=parent['id'], label=child['label'], details=child['source']['details'],
+                input_space='k' if parent['data_type'] == 'chi' else 'E', data_type=parent['data_type'],
+                kweight=parent['parameters']['kweight'], traces=traces, errors=errors,
+                modified_energy=child['energy'], modified_mu=child['mu'], parameters=child['parameters']))
+        self.check(self.load(ident), request.version)
+        return dict(project_id=ident, version=project['version'], options=choice.model_dump(), results=results)
+
+    def _smoothing_results(self, project, request: Command):
+        from .athena_smoothing import SmoothOptions, smooth
+        if request.action != 'smooth' or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Choose smoothing and distinct source groups.')
+        if 'method' not in request.options:
+            fail('Choose a smoothing algorithm before previewing.')
+        options = request.options
+        if options.get('method') == 'savitzky_golay' and ('window' not in options or 'order' not in options):
+            # Capture current session defaults once; the preview returns both
+            # values explicitly so a later preference edit cannot alter save.
+            options = {**self.smoothing_preferences.read()['values'], **options}
+        choice = SmoothOptions.model_validate(options)
+        selected = {gid: self.group(project, gid) for gid in request.group_ids}
+        if len(project['groups']) + len(selected) > 100:
+            fail('A project can contain at most 100 groups.')
+        results = []
+        for index, parent in enumerate(project['groups']):
+            if parent['id'] not in selected:
+                continue
+            shift = 0 if parent['data_type'] == 'chi' else parent['parameters']['energy_shift']
+            transformed = smooth(np.asarray(parent['energy']) + shift, parent['mu'], choice)
+            info = transformed['details']
+            suffix = {'boxcar': f"boxcar size {info.get('window')}",
+                      'gaussian': f"Gaussian filter {info.get('window')}, {info.get('sigma'):g}" if 'sigma' in info else '',
+                      'savitzky_golay': 'Savitzky-Golay',
+                      'three_point': f"smoothed {info.get('repetitions')} times"}[choice.method]
+            effective = (parent.get('result') or {}).get('effective', {})
+            params = dict(parent['parameters'], energy_shift=0)
+            if parent['data_type'] not in ('chi', 'detector') and not _is_difference(parent):
+                params['e0'] = effective.get('e0', params['e0'])
+            source = _derived_source(parent, 'smooth', options=choice.model_dump(), details=info,
+                parent_parameters=copy.deepcopy(parent['parameters']), parent_energy_shift=shift)
+            separator = ', ' if choice.method in ('boxcar', 'gaussian') else ' '
+            child = self.make_group(parent['label'] + separator + suffix, transformed['energy'], transformed['mu'],
+                parameters=params, data_type=parent['data_type'], source=source,
+                background_standard_id=parent.get('background_standard_id'), project=project,
+                is_difference=_is_difference(parent), is_normalized=parent.get('is_normalized'))
+            for key in ('notes', 'multiplier', 'offset'):
+                child[key] = copy.deepcopy(parent[key])
+            # Native SG/three-point clones retain marking when appended; new
+            # put() groups and InsertData entries start unchecked.
+            child['marked'] = bool(parent['marked'] and index == len(project['groups']) - 1
+                                   and choice.method in ('savitzky_golay', 'three_point'))
+            if child['processing_error']:
+                fail(f"Could not process smoothed {parent['label']}: {child['processing_error']}")
+            results.append((parent, child))
+        return choice, results
+
+    def preview_smoothing(self, ident, request: Command):
+        project = self.load(ident)
+        self.check(project, request.version)
+        choice, prepared = self._smoothing_results(project, request)
+        results = []
+        for parent, child in prepared:
+            traces, errors = {space: [] for space in ('E', 'k', 'R')}, {}
+            for role, group in [('original', parent), ('smoothed', child)]:
+                if group['data_type'] != 'chi':
+                    x = np.asarray(group['energy']) + group['parameters']['energy_shift']
+                    traces['E'].append(dict(role=role, label=group['label'], x=x.tolist(), y=group['mu']))
+                for space, xkey, ykey in [('k', 'k', 'weighted_chi'), ('R', 'r', 'chir_mag')]:
+                    arrays = (group.get('result') or {}).get('arrays', {})
+                    x, y = arrays.get(xkey, []), arrays.get(ykey, [])
+                    if x and len(x) == len(y):
+                        traces[space].append(dict(role=role, label=group['label'], x=x, y=y))
+            for space, curves in traces.items():
+                if len(curves) != 2:
+                    traces[space] = []
+                    errors[space] = f'{space}-space comparison is unavailable for this data type or processing recipe.'
+            results.append(dict(group_id=parent['id'], label=child['label'], details=child['source']['details'],
+                input_space='k' if parent['data_type'] == 'chi' else 'E', data_type=parent['data_type'],
+                kweight=parent['parameters']['kweight'], traces=traces, errors=errors,
+                smoothed_energy=child['energy'], smoothed_mu=child['mu'], parameters=child['parameters']))
+        self.check(self.load(ident), request.version)
+        return dict(project_id=ident, version=project['version'], options=choice.model_dump(), results=results)
+
+    def _mee_results(self, project, request: Command):
+        from .athena_mee import MEEOptions, group_input, subtract
+        if request.action != 'multi_electron' or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Choose MEE removal and distinct source groups.')
+        choice = MEEOptions.model_validate(request.options)
+        selected = {gid: self.group(project, gid) for gid in request.group_ids}
+        results = []
+        for parent in project['groups']:
+            if parent['id'] not in selected:
+                continue
+            energy, norm, e0 = group_input(parent, choice)
+            transformed = subtract(energy, norm, e0, choice)
+            # Native mee_do assigns normalized-minus-model to the cloned xmu,
+            # then the clone is processed with its retained normalization flag.
+            params = dict(parent['parameters'], energy_shift=0, e0=e0)
+            source = _derived_source(parent, 'multi_electron', options=choice.model_dump(),
+                details=transformed['details'], parent_parameters=copy.deepcopy(parent['parameters']),
+                parent_energy_shift=parent['parameters']['energy_shift'])
+            child = self.make_group(parent['label'] + ' (MEE)', transformed['energy'], transformed['mu'],
+                parameters=params, data_type=parent['data_type'], source=source,
+                background_standard_id=parent.get('background_standard_id'), project=project,
+                is_difference=_is_difference(parent), is_normalized=parent.get('is_normalized'))
+            for key in ('notes', 'multiplier', 'offset'):
+                child[key] = copy.deepcopy(parent[key])
+            child['marked'] = parent['marked']
+            if child['processing_error']:
+                fail(f"Could not process MEE-corrected {parent['label']}: {child['processing_error']}")
+            results.append((parent, child))
+        return choice, results
+
+    def preview_mee(self, ident, request: Command):
+        project = self.load(ident)
+        self.check(project, request.version)
+        choice, prepared = self._mee_results(project, request)
+        results = []
+        for parent, child in prepared:
+            traces, errors = {}, {}
+            for space, xkey, ykey in [('E', 'energy', 'norm'), ('k', 'k', 'weighted_chi'), ('R', 'r', 'chir_mag')]:
+                traces[space] = []
+                for role, group in [('original', parent), ('corrected', child)]:
+                    arrays = group['result']['arrays']
+                    x, y = arrays.get(xkey, []), arrays.get(ykey, [])
+                    if not x or len(x) != len(y):
+                        errors[space] = f'{space}-space data are unavailable for this group’s processing mode.'
+                        continue
+                    traces[space].append({'role': role, 'label': group['label'], 'x': x, 'y': y})
+            results.append({'group_id': parent['id'], 'label': child['label'],
+                'details': child['source']['details'], 'traces': traces, 'errors': errors,
+                'kweight': parent['parameters']['kweight'], 'corrected_mu': child['mu'],
+                'parameters': child['parameters']})
+        self.check(self.load(ident), request.version)
+        return {'project_id': ident, 'version': project['version'], 'options': choice.model_dump(), 'results': results}
+
+    def preview_data_export(self, ident, request: DataExport):
+        from .athena_export import prepare, preview
+        project = self.load(ident)
+        self.check(project, request.version)
+        files = preview(prepare(project, request))
+        self.check(self.load(ident), request.version)
+        return dict(version=project['version'], project_id=ident, options=request.model_dump(), files=files)
+
+    def export_data(self, ident, request: DataExport):
+        from .athena_export import prepare, encode
+        project = self.load(ident)
+        self.check(project, request.version)
+        result = encode(prepare(project, request), request.scope)
+        self.check(self.load(ident), request.version)
+        return result
+
+    def parameter_report(self, ident, request: ParameterReport, *, download=False):
+        from .athena_report import prepare_report, encode_report
+        project = self.load(ident)
+        self.check(project, request.version)
+        report = prepare_report(project, request)
+        result = encode_report(report) if download else report
+        self.check(self.load(ident), request.version)
+        return result
+
+    def validate_xdi(self, ident, group_id, request: XDIValidation):
+        from .athena_xdi_controls import effective_metadata, validate_fields
+        project = self.load(ident)
+        self.check(project, request.version)
+        metadata = effective_metadata(self.group(project, group_id))
+        report = validate_fields(metadata, request.family, request.tag)
+        self.check(self.load(ident), request.version)
+        return dict(version=project['version'], group_id=group_id, **report)
+
     def command(self, ident, request: Command):
         with self.storage.lock(ident):
             old = self.load(ident)
@@ -1645,7 +2173,7 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("change_datatype", "metadata", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "rebin", "tie_reference", "untie_reference") and any(g["frozen"] for g in groups):
+                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
                 if action == 'rebin':
                     choice, prepared, reasons = self._rebin_results(p, request)
@@ -1657,6 +2185,41 @@ class AthenaStore:
                     operation_details = {'skipped_reasons': reasons, 'rebin_results': [
                         {'source_group_id': parent['id'], 'group_id': child['id'], 'label': child['label']}
                         for parent, child in prepared]}
+                elif action == 'multi_electron':
+                    choice, prepared = self._mee_results(p, request)
+                    created = {parent['id']: child for parent, child in prepared}
+                    p['groups'] = [item for parent in p['groups'] for item in
+                                   ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
+                    _exchange_budget(p['groups'], self.settings)
+                    operation_details = {'mee_results': [
+                        {'source_group_id': parent['id'], 'group_id': child['id'], 'label': child['label']}
+                        for parent, child in prepared]}
+                elif action in ('deglitch','truncate'):
+                    choice, edited, results, reasons, changed = self._point_edit_results(p, request)
+                    if not changed:
+                        fail('No points are selected for removal. Review the preview and change the limits.')
+                    p['groups'] = edited['groups']
+                    skipped = list(reasons)
+                    operation_details = {'point_edit_results': [{k: row[k] for k in ('group_id','label','removed_indices','input_points','output_points','processing_error')} for row in results], 'skipped_reasons': reasons,
+                                         'changed_group_ids': changed}
+                elif action == 'convolve':
+                    choice, prepared = self._convolution_results(p, request)
+                    created = {parent['id']: child for parent, child in prepared}
+                    p['groups'] = [item for parent in p['groups'] for item in
+                                   ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
+                    _exchange_budget(p['groups'], self.settings)
+                    operation_details = {'convolution_results': [
+                        {'source_group_id': parent['id'], 'group_id': child['id'], 'label': child['label']}
+                        for parent, child in prepared]}
+                elif action == 'smooth' and 'method' in options:
+                    choice, prepared = self._smoothing_results(p, request)
+                    created = {parent['id']: child for parent, child in prepared}
+                    p['groups'] = [item for parent in p['groups'] for item in
+                                   ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
+                    _exchange_budget(p['groups'], self.settings)
+                    operation_details = {'smoothing_results': [
+                        {'source_group_id': parent['id'], 'group_id': child['id'], 'label': child['label']}
+                        for parent, child in prepared]}
                 elif action == "change_datatype":
                     operation_details = self.change_datatype(p, groups, options)
                     skipped = list(operation_details["skipped_reasons"])
@@ -1666,6 +2229,12 @@ class AthenaStore:
                         fail("Choose marked or frozen groups and all, none, or invert.")
                     for g in groups:
                         g[field] = not g[field] if mode == "invert" else mode == "all"
+                elif action == 'xdi_comments':
+                    from .athena_xdi_controls import XDIComments, save_comments
+                    choice = XDIComments.model_validate(options)
+                    if len(groups) != 1:
+                        fail('Save XDI comments for one current group at a time.')
+                    save_comments(groups[0], choice.comments)
                 elif action == "metadata":
                     for g in groups:
                         for key in ("label", "notes", "marked", "frozen", "multiplier", "offset", "reference_id"):
@@ -1746,6 +2315,8 @@ class AthenaStore:
                     for g in groups:
                         clone = copy.deepcopy(g)
                         clone.update(id=uid(), label=g["label"] + " · copy", frozen=False, reference_id=None)
+                        from .athena_xdi_history import inherit_source
+                        clone['source']['xdi_metadata'] = inherit_source(g, 'duplicate', {})
                         p["groups"].append(clone)
                 elif action == "copy_series":
                     key = options.get("parameter")
@@ -1778,6 +2349,18 @@ class AthenaStore:
                             g["background_standard_id"] = None
                         if g["id"] in affected:
                             g.update(result=None, processing_error="A background standard was removed. Apply parameters to recalculate this group and its dependents.")
+                elif action == 'calibrate' and 'coordinate' in options:
+                    calibrated, preview = self._calibration_results(p, request)
+                    p['groups'] = calibrated['groups']
+                    operation_details = {'calibration': {key: preview[key] for key in
+                        ('group_id', 'options', 'energy_shift', 'shift_delta', 'actual_reference', 'changes', 'processing_errors')}}
+                elif action == 'align' and 'method' in options:
+                    aligned, preview = self._alignment_results(p, request)
+                    if preview['options']['operation'] == 'inspect': fail('Preview an automatic or manual alignment before saving.')
+                    p['groups'] = aligned['groups']
+                    skipped = list(preview['skipped_reasons'])
+                    operation_details = {'alignment': {key: preview[key] for key in
+                        ('options','changes','processing_errors','skipped_reasons')}}
                 elif action in ("calibrate", "align"):
                     reference = self.group(p, options.get("reference_id")) if action == "align" else None
                     if reference and reference["data_type"] == "detector":
@@ -1854,11 +2437,8 @@ class AthenaStore:
                             spectra.append((np.asarray(arrays[coordinate]), np.asarray(arrays[array])))
                     else:
                         spectra = [(np.asarray(g["energy"]) + (0 if g["data_type"] == "chi" else g["parameters"]["energy_shift"]), np.asarray(g["mu"])) for g in groups]
-                    source = {"operation": action, "parents": [g["id"] for g in groups],
-                              "array": array or ("chi" if groups[0]["data_type"] == "chi" else "mu")}
-                    for key in ("edge_identity", "e0_fraction"):
-                        if key in groups[0]["source"]:
-                            source[key] = copy.deepcopy(groups[0]["source"][key])
+                    source = _derived_source(groups[0], action, parents=[g['id'] for g in groups],
+                        array=array or ('chi' if groups[0]['data_type'] == 'chi' else 'mu'))
                     is_difference = action == "difference" or all(_is_difference(g) for g in groups)
                     if action == "difference":
                         if len(groups) != 2:
@@ -1897,7 +2477,6 @@ class AthenaStore:
                         "deconvolve": ("form", "esigma", "width", "eshift", "smooth", "sgwindow", "sgorder"),
                         "self_absorption": ("formula", "element", "edge", "line", "angle_in", "angle_out", "e0", "pre1", "pre2", "norm1", "norm2", "nnorm"),
                         "dispersive": ("offset", "linear", "quadratic"),
-                        "multi_electron": ("method", "e0", "shift", "amplitude", "width", "edge_step"),
                     }
                     if action not in allowed_options:
                         fail("Unknown processing operation.")
@@ -2168,6 +2747,10 @@ class AthenaStore:
                     if target in _NATIVE_ALIASES:
                         args[_NATIVE_ALIASES[target]] = value
             args["bkg_fixstep"] = int(params["step"] is not None)
+            if 'alignment' in source or 'bkg_delta_eshift' in args:
+                from .athena_alignment import saved_fit
+                alignment = saved_fit(g)
+                args['bkg_delta_eshift'] = (alignment.get('native_shift_stderr') or 0.) if alignment else 0.
             # Larch's legacy reader skips an entire args line containing bare
             # undef; explicit null metadata remains exact in the sidecar.
             flat = [v for pair in args.items() if pair[1] is not None for v in pair]
@@ -2184,6 +2767,13 @@ class AthenaStore:
                         continue  # Placeholder retained exactly in the sidecar.
                     values = _exchange_array(detector_arrays[key], key, self.settings)
                     lines.append(f"@{key} = (" + ",".join(repr(str(v)) for v in values) + ("," if len(values) == 1 else "") + ");")
+            from .athena_xdi import project_statement
+            try:
+                xdi_statement = project_statement(source, identity)
+            except (ValueError, TypeError, KeyError) as exc:
+                fail(f"{g['label']}: XDI acquisition metadata could not be exported: {exc}")
+            if xdi_statement:
+                lines.append(xdi_statement)
             lines.append("[record]")
         lines += ["@journal = (" + ", ".join(repr(v) for v in p["journal"].splitlines()) + ");", "1;"]
         # Sidecar comment preserves automatic settings, references and provenance
@@ -2658,6 +3248,14 @@ def build_athena_router(settings: Settings):
     def rebin_defaults():
         return guarded(preferences.read)
 
+    @router.get('/preferences/smoothing')
+    def smoothing_defaults():
+        return guarded(store.smoothing_preferences.read)
+
+    @router.put('/preferences/smoothing')
+    def apply_smoothing_defaults(request: SGPreferenceRequest):
+        return guarded(lambda: store.smoothing_preferences.apply(request))
+
     @router.put('/preferences/rebin')
     def save_rebin_defaults(request: RebinDefaults):
         return guarded(lambda: preferences.save(request))
@@ -2665,6 +3263,14 @@ def build_athena_router(settings: Settings):
     @router.get('/preferences/plugins')
     def file_plugins():
         return guarded(lambda: registry_view(preferences.read_plugins()))
+
+    @router.get('/preferences/beamline')
+    def beamline_defaults():
+        return guarded(preferences.read_beamline)
+
+    @router.put('/preferences/beamline')
+    def save_beamline_defaults(request: BeamlineDefaults):
+        return guarded(lambda: preferences.save_beamline(request))
 
     @router.get('/preferences/plugins/{reader}/configuration')
     def file_plugin_configuration(reader: str):
@@ -2771,6 +3377,14 @@ def build_athena_router(settings: Settings):
     def command(ident: str, request: Command):
         return guarded(lambda: store.command(ident, request))
 
+    @router.get('/projects/{ident}/groups/{group_id}/xdi')
+    def xdi_metadata(ident: str, group_id: str):
+        return guarded(lambda: store.xdi_metadata(ident, group_id))
+
+    @router.post('/projects/{ident}/groups/{group_id}/xdi/validate')
+    def validate_xdi(ident: str, group_id: str, request: XDIValidation):
+        return guarded(lambda: store.validate_xdi(ident, group_id, request))
+
     @router.post("/projects/{ident}/analyze")
     def analyze(ident: str, request: Command):
         return guarded(lambda: store.analyze(ident, request))
@@ -2782,6 +3396,34 @@ def build_athena_router(settings: Settings):
     @router.post('/projects/{ident}/rebin/preview')
     def preview_rebin(ident: str, request: Command):
         return guarded(lambda: store.preview_rebin(ident, request))
+
+    @router.post('/projects/{ident}/mee/preview')
+    def preview_mee(ident: str, request: Command):
+        return guarded(lambda: store.preview_mee(ident, request))
+
+    @router.post('/projects/{ident}/point-edit/preview')
+    def preview_point_edit(ident: str, request: Command):
+        return guarded(lambda: store.preview_point_edit(ident, request))
+
+    @router.post('/projects/{ident}/alignment/preview')
+    def preview_alignment(ident: str, request: Command):
+        return guarded(lambda: store.preview_alignment(ident, request))
+
+    @router.post('/projects/{ident}/calibration/preview')
+    def preview_calibration(ident: str, request: Command):
+        return guarded(lambda: store.preview_calibration(ident, request))
+
+    @router.post('/projects/{ident}/calibration/zero')
+    def calibration_zero(ident: str, request: Command):
+        return guarded(lambda: store.preview_calibration(ident, request, find_zero=True))
+
+    @router.post('/projects/{ident}/convolve/preview')
+    def preview_convolution(ident: str, request: Command):
+        return guarded(lambda: store.preview_convolution(ident, request))
+
+    @router.post('/projects/{ident}/smooth/preview')
+    def preview_smoothing(ident: str, request: Command):
+        return guarded(lambda: store.preview_smoothing(ident, request))
 
     @router.post("/projects/{ident}/restore")
     async def restore(ident: str, version: int, file: UploadFile = File(...)):
@@ -2815,6 +3457,28 @@ def build_athena_router(settings: Settings):
         content = guarded(lambda: store.export_project(ident, format, group_ids, marked_only))
         return Response(content, media_type="application/octet-stream" if format == "prj" else "application/json",
                         headers={"Content-Disposition": f'attachment; filename="athena-project.{format}"'})
+
+    @router.post('/projects/{ident}/parameter-report/preview')
+    def parameter_report_preview(ident: str, request: ParameterReport):
+        return guarded(lambda: store.parameter_report(ident, request))
+
+    @router.post('/projects/{ident}/parameter-report')
+    def parameter_report(ident: str, request: ParameterReport):
+        filename, media_type, content = guarded(lambda: store.parameter_report(ident, request, download=True))
+        return Response(content, media_type=media_type, headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Athena-Project-Version': str(request.version)})
+
+    @router.post('/projects/{ident}/export-data/preview')
+    def preview_data_export(ident: str, request: DataExport):
+        return guarded(lambda: store.preview_data_export(ident, request))
+
+    @router.post('/projects/{ident}/export-data')
+    def export_data(ident: str, request: DataExport):
+        filename, media_type, content = guarded(lambda: store.export_data(ident, request))
+        return Response(content, media_type=media_type, headers={
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'X-Athena-Project-Version': str(request.version)})
 
     @router.get("/projects/{ident}/groups/{group_id}/export")
     def export_group(ident: str, group_id: str, space: Literal["E", "k", "R", "q"] = "E"):

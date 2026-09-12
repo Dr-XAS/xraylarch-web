@@ -101,7 +101,7 @@ def test_real_http_apply_save_restart_conflict_and_registry_independence(tmp_pat
     with TestClient(create_app(settings)) as client:
         original = client.get('/api/athena/preferences/plugins').json()
         configured = [p['name'] for p in original['plugins'] if p.get('configurable')]
-        assert configured == ['10BMMultiChannel', 'X15B', 'X23A2MED']
+        assert configured == ['10BMMultiChannel', 'BL8Ar', 'X15B', 'X23A2MED']
         state = client.get(path).json(); body = request(state, state['values'] | {'narrow':9}).model_dump()
         applied = client.put(path, json=body); assert applied.status_code == 200 and applied.json()['unsaved']
         assert client.put(path, json=body).status_code == 409
