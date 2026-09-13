@@ -1972,6 +1972,16 @@
       "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/variancek.tmpl",
       "sha256": "0ef9efeecf91eb729d97ef4f20b4482cfc41b72ee9fe0ee35118839b90e1a712",
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/variancek.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newe.tmpl",
+      "sha256": "021578df1d707820468c9469d77130a89f447fd627f6af551774a74e3c224194",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newe.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newk.tmpl",
+      "sha256": "415dc740c2e03af886fac938536d9a256bd6bb447f25931f1d535cd6e0aea238",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newk.tmpl"
     }
   ]
 }

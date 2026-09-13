@@ -21,10 +21,11 @@ function validate(v:MergePreview,p:AthenaProject,ids:string[],options:Options){
   const invalid=()=>{throw new Error('The merge preview does not match this project and these settings. Replot the merge.')}
   if(v.project_id!==p.id||v.version!==p.version||JSON.stringify(v.group_ids)!==JSON.stringify(ids)||JSON.stringify(v.requested_options)!==JSON.stringify(options)
     ||!Array.isArray(v.outputs)||v.outputs.length<1||v.outputs.length>2||v.outputs[0].role!=='sample')invalid()
-  for(const o of v.outputs){
+  for(const [index,o] of v.outputs.entries()){
     const r=o.result
-    if(!r||!finite(r.x)||r.x.length<8||!finite(r.y)||!finite(r.stddev)||r.x.length!==r.y.length||r.x.length!==r.stddev.length||r.stddev.some(x=>x<0)
+    if(o.role!==(index===0?'sample':'reference')||!r||!finite(r.x)||r.x.length<8||!finite(r.y)||!finite(r.stddev)||r.x.length!==r.y.length||r.x.length!==r.stddev.length||r.stddev.some(x=>x<0)
       ||r.x.some((x,i)=>i>0&&x<=r.x[i-1])||!Array.isArray(r.members)||r.members.length<2||r.members.length!==r.details.count
+      ||!Array.isArray(r.excluded)||new Set(r.excluded.map(e=>e.group_id)).size!==r.excluded.length
       ||new Set(r.members.map(m=>m.group_id)).size!==r.members.length||Math.abs(r.members.reduce((s,m)=>s+m.coefficient,0)-1)>1e-10)invalid()
     for(const m of r.members)if(!p.groups.some(g=>g.id===m.group_id)||!Number.isFinite(m.weight)||m.weight<0||!Number.isFinite(m.coefficient)||m.coefficient<0)invalid()
     for(const view of ['stddev','variance','marked'] as const){
@@ -32,11 +33,13 @@ function validate(v:MergePreview,p:AthenaProject,ids:string[],options:Options){
       for(const c of curves)if(!finite(c.x)||!finite(c.y)||c.x.length!==r.x.length||c.y.length!==r.x.length||c.x.some((x,i)=>x!==r.x[i]))invalid()
     }
     const contributors=new Set(r.members.map(m=>m.group_id))
+    if(r.excluded.some(e=>contributors.has(e.group_id)))invalid()
     if(o.role==='sample'){
-      if(r.members.some(m=>!ids.includes(m.group_id))||ids.some(id=>!contributors.has(id)&&!r.excluded.some(e=>e.group_id===id)))invalid()
+      if(r.members.some(m=>!ids.includes(m.group_id))||r.excluded.some(e=>!ids.includes(e.group_id))||ids.some(id=>!contributors.has(id)&&!r.excluded.some(e=>e.group_id===id)))invalid()
     }else{
       const refs=new Set(v.outputs[0].result.members.map(m=>p.groups.find(g=>g.id===m.group_id)?.reference_id))
-      if(options.array==='chi'||!options.merge_references||refs.has(null)||refs.has(undefined)||r.members.some(m=>!refs.has(m.group_id)))invalid()
+      if(options.array==='chi'||!options.merge_references||refs.has(null)||refs.has(undefined)||r.members.some(m=>!refs.has(m.group_id))
+        ||r.excluded.some(e=>!refs.has(e.group_id))||[...refs].some(id=>!contributors.has(id!)&&!r.excluded.some(e=>e.group_id===id)))invalid()
     }
   }
 }
@@ -119,12 +122,13 @@ export function AthenaMerge({project,initialDraft,rememberDraft,initialArray,dis
     finally{saving.current=false;setBusy('')}
   }
   const curves=output?.plots[draft.plot]??[]
+  const displayedSources=completed?project.groups.filter(g=>completed.group_ids.includes(g.id)):marked
   return <div className={`ath-modal-body ${controls.body}`}><p>{completed?'The merged spectra are saved. Compare their spread or contributing scans below.':'Merge the marked spectra into a new group. Review the contributing scans, weights and standard deviation before saving.'}</p>
     <div className={styles.layout}><fieldset className={styles.controls} disabled={disabled}>
       <fieldset disabled={disabled||!!completed} className={styles.controls}>
         <label className="ath-field"><span>Merge as</span><select aria-label="Merge as" value={draft.array} onChange={e=>edit({array:e.target.value as Options['array']})}><option value="mu">μ(E)</option><option value="norm">Normalized μ(E)</option><option value="chi">χ(k)</option></select></label>
         <label className="ath-field"><span>Weight by</span><select aria-label="Merge weighting" value={draft.weightby} onChange={e=>edit({weightby:e.target.value as Settings['weightby']})}><option value="importance">Importance</option><option value="step">Edge step</option><option value="noise">Noise · native εk</option></select></label>
-        <details open={draft.weightby==='importance'}><summary>{marked.length} marked source groups</summary>{marked.map(g=><label className="ath-field" key={g.id}><span>Importance: {g.label}</span><input aria-label={`Importance: ${g.label}`} type="number" step="any" min="0" disabled={draft.weightby!=='importance'} value={value(g.id)} onChange={e=>edit({weights:{...draft.weights,[g.id]:e.target.value}})}/></label>)}</details>
+        <details open={draft.weightby==='importance'}><summary>{displayedSources.length} source groups</summary>{displayedSources.map(g=><label className="ath-field" key={g.id}><span>Importance: {g.label}</span><input aria-label={`Importance: ${g.label}`} type="number" step="any" min="0" disabled={draft.weightby!=='importance'} value={value(g.id)} onChange={e=>edit({weights:{...draft.weights,[g.id]:e.target.value}})}/></label>)}</details>
         <label className="ath-check"><input type="checkbox" checked={draft.exclude_short_data} onChange={e=>edit({exclude_short_data:e.target.checked})}/>Exclude short scans</label>
         <label className="ath-field"><span>Short-scan margin · points</span><input aria-label="Short-scan margin · points" type="number" min="0" step="1" value={draft.short_data_margin} onChange={e=>edit({short_data_margin:e.target.value})}/></label>
         <p className="ath-hint">A scan is excluded if it has more than this many fewer points than the first marked scan.</p>

@@ -2458,6 +2458,19 @@ async function readyMerge(dialog:HTMLElement){await waitFor(()=>expect(within(di
 async function saveMerge(dialog:HTMLElement){fireEvent.click(within(dialog).getByRole('button',{name:'Save merged groups'}));await within(dialog).findByText('Merge saved. The source spectra are unchanged.');fireEvent.click(within(dialog).getByRole('button',{name:'Close merge result'}))}
 
 describe("AthenaWorkbench weighted combinations", () => {
+  it('opens each native merge shortcut in its requested space and ignores text editing',async()=>{
+    const project=await openSaved();serveMerge(project)
+    fireEvent.keyDown(screen.getByRole('textbox',{name:'Search groups'}),{key:'M',ctrlKey:true,shiftKey:true})
+    expect(screen.queryByRole('dialog',{name:'Merge marked groups'})).not.toBeInTheDocument()
+    for(const [key,array] of [['M','mu'],['N','norm'],['C','chi']]){
+      fireEvent.keyDown(document.body,{key,ctrlKey:true,shiftKey:true})
+      const dialog=await screen.findByRole('dialog',{name:'Merge marked groups'})
+      expect(within(dialog).getByLabelText('Merge as')).toHaveValue(array)
+      fireEvent.keyDown(document.body,{key:'M',ctrlKey:true,shiftKey:true})
+      expect(within(dialog).getByLabelText('Merge as')).toHaveValue(array)
+      fireEvent.click(within(dialog).getByRole('button',{name:'Cancel merge'}))
+    }
+  })
   it("keeps relative merge weights paired with marked IDs in the saved list order", async () => {
     const initial=projectFixture();initial.groups=[initial.groups[0],initial.groups[2],initial.groups[1],initial.groups[3]]
     const project=await openSaved(initial);serveMerge(project);selectGroup('Unused reference')

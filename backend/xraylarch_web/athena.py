@@ -489,6 +489,8 @@ def _native_source(record, filename, kind, settings):
         supported.add("bkg_e0_fraction")
     if 'alignment' in source:
         supported.add('bkg_delta_eshift')
+    if args.get('is_merge') in ('e', 'n', 'k') and 'stddev' in source['raw_arrays']:
+        supported.add('is_merge')
     unapplied = sorted(set(args) - supported)
     if unapplied:
         source["native"]["unapplied_args"] = unapplied
@@ -1764,6 +1766,16 @@ class AthenaStore:
         _,preview=self._merge_results(project,request)
         self.check(self.load(ident),request.version)
         return preview
+
+    def plot_saved_merge(self, ident, group_id, request):
+        from .athena_merge_plot import MergePlotOptions, saved_merge_plot
+        options = MergePlotOptions.model_validate(request)
+        project = self.load(ident)
+        self.check(project, options.version)
+        result = saved_merge_plot(self.group(project, group_id), options)
+        self.check(self.load(ident), options.version)
+        return dict(project_id=ident, version=options.version,
+                    options=options.model_dump(), result=result)
 
     def _alignment_results(self, project, request: Command):
         from .athena_alignment import AlignmentOptions, display_curve, edge, fit_alignment, saved_fit, signature
@@ -3493,6 +3505,10 @@ def build_athena_router(settings: Settings):
     @router.post('/projects/{ident}/merge/preview')
     def preview_merge(ident: str,request: Command):
         return guarded(lambda:store.preview_merge(ident,request))
+
+    @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
+    def plot_saved_merge(ident: str, group_id: str, request: dict):
+        return guarded(lambda:store.plot_saved_merge(ident,group_id,request))
 
     @router.post('/projects/{ident}/alignment/preview')
     def preview_alignment(ident: str, request: Command):

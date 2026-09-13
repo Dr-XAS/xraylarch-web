@@ -133,6 +133,15 @@ shift while each group's E₀ remains fixed. Native `.prj` files preserve the
 rounded uncertainty. See the [alignment reference](docs/athena-alignment-reference.md)
 for executed original-template comparisons and remaining parity limits.
 
+**Process → Merge marked groups** previews μ(E), normalized μ(E) or χ(k),
+with importance, edge-step or native noise weights and short-scan exclusion.
+Review the contributing scans, standard deviation and linked-reference merge
+before saving. The result stays open for comparison; Undo/Redo and native
+`.prj` exchange retain its arrays and reference links. Ctrl/Command+Shift+M,
+N and C open the three merge spaces. See the
+[merge reference](docs/athena-merge-reference.md) for original Demeter/Larch
+comparisons and the documented discrepancy in native noise weighting.
+
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
 display smoothing, and find the unsmoothed second-derivative zero crossing.

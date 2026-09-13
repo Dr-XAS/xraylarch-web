@@ -30,6 +30,15 @@ export function dataTypeLabel(group: AthenaGroup) {
 export function isDifferenceGroup(group: AthenaGroup) {
   return group.is_difference ?? (group.source.operation === "difference")
 }
+export function savedMergeSpace(group: AthenaGroup):'mu'|'norm'|'chi'|null {
+  const source=group.source, native=source.native as {args?:{is_merge?:unknown}}|undefined
+  const merge=source.merge as {details?:{method?:unknown;array?:unknown}}|undefined
+  if(merge?.details?.method==='demeter-larch'&&['mu','norm','chi'].includes(String(merge.details.array)))return merge.details.array as 'mu'|'norm'|'chi'
+  if(['e','n','k'].includes(String(native?.args?.is_merge)))return ({e:'mu',n:'norm',k:'chi'} as const)[native!.args!.is_merge as 'e'|'n'|'k']
+  if(source.operation==='merge'&&Array.isArray(source.stddev))return ['mu','norm','chi'].includes(String(source.array))?source.array as 'mu'|'norm'|'chi':group.data_type==='chi'?'chi':'mu'
+  return null
+}
+export const hasSavedMerge=(group:AthenaGroup)=>savedMergeSpace(group)!==null
 export function rebinUnavailable(group: AthenaGroup): string | null {
   if (group.data_type === 'detector') return 'Three-region rebinning needs an absorption edge; correct the detector data type first.'
   if (group.data_type === 'chi') return 'Three-region rebinning requires energy data, not χ(k).'

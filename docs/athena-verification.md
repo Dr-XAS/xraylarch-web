@@ -2992,3 +2992,83 @@ other open features. Artemis remains excluded. Live 3004, backend 8006 and the
 frontend proxy returned HTTP 200; scientific browser testing used isolated
 13004/18006 services and temporary projects. The active services were not
 manually restarted and live scientific projects were not changed.
+
+## Native merge and project-import checkpoint — 2026-09-12
+
+The [merge reference](athena-merge-reference.md) records the implemented
+μ/norm/χ preview/save workflow, weighting, short-scan preferences, scatter,
+linked references, source preservation and native PRJ exchange. It also
+records two intentional distinctions from native UI/manual behavior: the
+noise mode follows executable εk weighting rather than the manual's inverse
+description, while reference dispatch follows the documented all-reference
+energy rule rather than the pinned UI's first-reference shortcut.
+
+`merge_native_reference.py` replayed **30 original Perl dispatch/Larch
+template observations**, exactly matching its checked-in oracle. Inputs are
+the original XDAC iron-foil scans `fe.060`, `fe.061` and `fe.062`, pinned with
+source/driver/kernel hashes in `athena-merge-fixtures.json`. This exercises
+the original Config methods and merge/noise templates through documented
+object/update bridges, not a complete wx application. All numerical
+tolerances and bridge boundaries are recorded in the reference.
+
+Validation on the current tree:
+
+- `PYTHONPATH=backend … backend/.venv/bin/python -m pytest backend/tests -q`
+  → **3270 passed, 1437 warnings, 249.24 s**. The full run includes the
+  44 native merge/store/API cases, all existing project parsing/exchange
+  tests and earlier analysis regressions. Warnings include existing fitting,
+  numerical-boundary and dependency notices; the run is not warning-free.
+- `npm --prefix frontend test` → **614 passed, 37 files, 61.29 s**.
+  The dedicated merge panel has 12 cases for malformed/stale responses,
+  source/scatter integrity on save, retained result views and preference
+  recovery. Workbench coverage includes all three merge shortcuts and text
+  editing/modal guards, plus existing ordered weights and retry behavior.
+- `NEXT_BUILD_DIR=.next-verify npm --prefix frontend run build` → **passed**,
+  including TypeScript and all four static pages.
+- `npm --prefix frontend run test:e2e -- athena-merge.spec.ts`, with the
+  configured isolated services → **2 passed, 35.9 s** at 1500×1100 and
+  390×844. Both import the three unmodified measured XDAC files, compare
+  every μ coordinate/value with ln(I0/It), exercise merge spaces, weighting,
+  sample/reference output and real Plotly trace arrays, save exact arrays,
+  retain source controls and three spread views, Undo/Redo, remove the web
+  sidecar from exported PRJ, and reimport exact mean/scatter/reference links.
+  The desktop run includes native noise weighting; both include edge-step
+  and importance weighting. Linked references reuse each measured input
+  channel and are explicitly constructed test pairs. Screenshots were
+  visually inspected: labels, axes, legends and the mobile vertical flow
+  are readable; horizontal dialog overflow and browser exceptions are checked.
+- `npm --prefix frontend run test:e2e -- athena-project.spec.ts`
+  → **4 passed, 29.7 s**. Existing independent `cu.prj` (3 groups),
+  `zirconolite.prj` (9 groups) and `demeter-athena-json.prj` (17 groups)
+  pass ordinary import, normalized preview, E/k/R/q rendering, export,
+  exact scientific-array/recipe reimport and page reload. The fourth case
+  verifies mixed raw/project/raw batch order.
+
+The first merge browser attempt used uppercase detector labels in its
+locators; the XDAC reader correctly exposes lowercase `i0` and `it`. After
+correcting the test to the observed labels, both complete workflows passed.
+No scientific tolerance or product behavior was changed to resolve that
+test failure. Passing merge evidence was preserved before running the
+project-import suite, which clears Playwright's output directory.
+
+Evidence: `/tmp/athena-merge-evidence/passing-browser/` and
+`/tmp/athena-merge-evidence/project-import-browser/`. Logs:
+
+- `/tmp/athena-merge-replay.log`, `/tmp/athena-merge-full-backend.log`
+- `/tmp/athena-merge-component.log`, `/tmp/athena-merge-full-frontend.log`
+- `/tmp/athena-merge-build.log`, `/tmp/athena-merge-typecheck-final.log`
+- `/tmp/athena-merge-browser.log`, `/tmp/athena-merge-prj-browser.log`
+
+The primary-source catalog now contains **314 unique identities**. The
+original **107 requirement IDs, order and statuses remain unchanged**;
+PR-04/PR-05 now point to the new evidence and explicit remaining work. Full
+Athena parity remains unfinished, including native plotting modifiers,
+historical merged-group spread inspection, desktop preference exchange and
+other open matrix entries. Artemis remains excluded.
+
+At this continuation, the local 3004/8006 services were absent. They were
+started from the current checkout with the existing data root, and the
+frontend API proxy returned a healthy backend response. Scientific tests
+used temporary projects on 13004/18006; no existing local scientific project
+was edited as part of verification. The local application is available at
+[localhost:3004](http://localhost:3004).
