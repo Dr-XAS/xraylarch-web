@@ -36,6 +36,7 @@ from .athena_beamline_metadata import BeamlineDefaults
 from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
 from .athena_export import DataExport
+from .athena_context import ContextReport, ContextPlot
 from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
@@ -2253,7 +2254,7 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
+                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "context_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
                 if action == 'rebin':
                     choice, prepared, reasons = self._rebin_results(p, request)
@@ -2317,6 +2318,13 @@ class AthenaStore:
                     save_comments(groups[0], choice.comments)
                 elif action == "metadata":
                     for g in groups:
+                        if 'importance' in options:
+                            value = options['importance']
+                            if g['frozen']:
+                                fail('Unfreeze the group before changing its importance.')
+                            if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) or value < 0:
+                                fail('Importance must be a finite nonnegative number.')
+                            g['source']['importance'] = float(value)
                         for key in ("label", "notes", "marked", "frozen", "multiplier", "offset", "reference_id"):
                             if key in options:
                                 value = options[key]
@@ -2353,11 +2361,22 @@ class AthenaStore:
                     results, reasons = self.set_e0(p, groups, options)
                     skipped = list(reasons)
                     operation_details = {"e0_results": results, "skipped_reasons": reasons}
+                elif action == 'context_parameters':
+                    from .athena_context import context_parameters
+                    skipped, operation_details = context_parameters(self, p, groups, options)
                 elif action in ("copy_parameters", "reset_parameters"):
                     defaults = AthenaParameters().model_dump()
                     defaults["background_standard_id"] = None
                     parameter, section = options.get("parameter"), options.get("section", "all")
-                    if parameter is not None:
+                    if sum(key in options for key in ('parameter', 'parameters', 'section')) > 1:
+                        fail('Choose one parameter, a parameter list, or one section.')
+                    if 'parameters' in options:
+                        keys = options['parameters']
+                        if (not isinstance(keys, list) or not keys or len(keys) > len(defaults)
+                                or any(not isinstance(key, str) or key not in defaults for key in keys)
+                                or len(set(keys)) != len(keys)):
+                            fail('Choose a nonempty list of distinct processing parameters.')
+                    elif parameter is not None:
                         if parameter not in defaults:
                             fail("Choose a valid processing parameter.")
                         keys = (parameter,)
@@ -2817,6 +2836,9 @@ class AthenaStore:
                 args['rebinned'] = 1
             if identity:
                 args.update(bkg_z=identity["element"], fft_edge=identity["edge"])
+            if 'importance' in source:
+                from .athena_merge import importance
+                args['importance'] = importance(g)
             fraction = source.get("e0_fraction")
             if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and 0 < fraction <= 1:
                 args["bkg_e0_fraction"] = fraction
@@ -3465,6 +3487,21 @@ def build_athena_router(settings: Settings):
     @router.post("/projects/{ident}/command")
     def command(ident: str, request: Command):
         return guarded(lambda: store.command(ident, request))
+
+    @router.post('/projects/{ident}/context-report')
+    def context_report(ident: str, request: ContextReport):
+        from .athena_context import context_report as report
+        return guarded(lambda: report(store, ident, request))
+
+    @router.post('/projects/{ident}/context-plot')
+    def context_plot(ident: str, request: ContextPlot):
+        from .athena_context import context_plot as plot
+        return guarded(lambda: plot(store, ident, request))
+
+    @router.get('/projects/{ident}/groups/{group_id}/source-text')
+    def source_text(ident: str, group_id: str):
+        from .athena_context import source_text as text
+        return guarded(lambda: text(store, ident, group_id))
 
     @router.get('/projects/{ident}/groups/{group_id}/xdi')
     def xdi_metadata(ident: str, group_id: str):

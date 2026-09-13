@@ -115,9 +115,9 @@ def report_row(group, project):
         element = _element_name(identity.get('symbol')) if identity.get('symbol') else None
     except (ValueError, KeyError):
         element = identity.get('symbol')
-    importance = _number(native.get('importance', 1.))
+    importance = _number(group.get('source', {}).get('importance', native.get('importance', 1.)))
     if importance is None:
-        notes.append('The retained native importance is invalid; reported as n.a.')
+        notes.append('The saved importance is invalid; reported as n.a.')
     weight = _number(native.get('fit_karb_value', value('kweight')))
     if 'fit_karb_value' not in native:
         notes.append('No separate arbitrary weight was saved; Arb. kw uses the applied FT weight.')

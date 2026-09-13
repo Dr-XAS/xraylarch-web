@@ -48,6 +48,14 @@ Ctrl+Alt-click μ(E)/XANES toggle, preserving the normalized-input flag. Legacy
 project records explicitly typed as detector signals display their counts
 without normalization or EXAFS processing.
 
+Right-click the group list or processing labels, or use their **⋯** buttons,
+for Athena's current-group actions, paired parameter copies and reports.
+Plot tabs also offer native shortcuts; **Plot shortcuts…** exposes the same
+comparisons without right-clicking. Plugin and XDI field menus provide reader
+documentation/configuration and saved-field validation. See the
+[context-menu reference](docs/athena-context-menu-reference.md) for the pinned
+native inventory, tested scientific reports and remaining desktop differences.
+
 Athena import also recognizes native NSLS X10C, Lytle encoder, SSRL ASCII,
 SSRL binary, SSRL MicroEXAFS and SPEC zapline mono files. It converts them before column selection
 and offers the reader's transmission/fluorescence channel suggestions. The

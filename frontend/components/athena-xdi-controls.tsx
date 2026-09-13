@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { AthenaContextMenu } from './athena-context-menu'
 import styles from './athena-xdi-controls.module.css'
 
 type Presence = { field: string; present: boolean }
@@ -33,12 +34,13 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
   const [expanded, setExpanded] = useState<string[]>([]), [report, setReport] = useState<Report | null>(null)
   const [pending, setPending] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const running = useRef(false), generation = useRef(0), busyCallback = useRef(onBusyChange)
+  const [context, setContext] = useState<{ family: string; tag: string; anchor: { x: number; y: number }; returnFocus: HTMLElement } | null>(null)
   busyCallback.current = onBusyChange
   const base = `/projects/${projectId}/groups/${groupId}/xdi`
   async function perform(work: (current: () => boolean) => Promise<void>) {
     if (running.current) return
     running.current = true; const token = ++generation.current
-    setPending(true); busyCallback.current(true); setError(''); setNotice('')
+    setPending(true); setContext(null); busyCallback.current(true); setError(''); setNotice('')
     try { await work(() => token === generation.current) }
     catch (e) { if (token === generation.current) setError(e instanceof Error ? e.message : 'The metadata operation failed.') }
     finally { if (token === generation.current) { running.current = false; setPending(false); busyCallback.current(false) } }
@@ -51,7 +53,7 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
     })
   }
   useEffect(() => {
-    setSaved(null); setComments(''); setReport(null)
+    setSaved(null); setComments(''); setReport(null); setContext(null)
     const abort = new AbortController(); void reload(abort.signal)
     return () => { generation.current++; running.current = false; abort.abort(); busyCallback.current(false) }
   }, [projectId, groupId])
@@ -89,6 +91,11 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
       <ul>{rows.map(r => <li key={r.field}>{r.field}: <strong>{r.present ? 'present' : 'missing'}</strong></li>)}</ul>
     </details>
   }
+  function openContext(family: string, tag: string, returnFocus: HTMLElement, anchor?: { x: number; y: number }) {
+    if (running.current || pending || !saved) return
+    const bounds = returnFocus.getBoundingClientRect()
+    setContext({ family, tag, returnFocus, anchor: anchor ?? { x: bounds.left, y: bounds.bottom } })
+  }
   return <section aria-label="File metadata controls" className={styles.controls}>
     {pending && <p role="status">Loading or saving metadata…</p>}
     {error && <p role="alert" className="ath-error">{error}</p>}
@@ -116,8 +123,18 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
           current.includes(f.name) ? current.filter(name => name !== f.name) : [...current, f.name])}><span aria-hidden="true">{expanded.includes(f.name) ? '▾' : '▸'}</span>{f.name}</button></h3>
         {expanded.includes(f.name) && <table aria-label={`${f.name} fields`}><tbody>{Object.entries(f.fields).sort(([a], [b]) => a.localeCompare(b)).map(([tag, value]) => {
           const result = report?.results.find(r => r.family === f.name && r.tag === tag)
-          return <tr key={tag}><th scope="row">{tag}</th><td>{value}{result && <p className={result.valid ? styles.valid : 'ath-warning'}>{result.valid ? 'Valid' : result.message}</p>}</td>
-            <td><button type="button" disabled={pending} aria-label={`Validate ${f.name}.${tag}`} onClick={() => { void validate(f.name, tag) }}>Validate</button></td></tr>
+          return <tr key={tag} onContextMenu={event => {
+            if (pending) return
+            event.preventDefault(); event.stopPropagation()
+            openContext(f.name, tag, event.currentTarget.querySelector('button')!, { x: event.clientX, y: event.clientY })
+          }} onKeyDown={event => {
+            if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return
+            event.preventDefault(); event.stopPropagation(); openContext(f.name, tag, event.target as HTMLElement)
+          }}><th scope="row">{tag}</th><td>{value}{result && <p className={result.valid ? styles.valid : 'ath-warning'}>{result.valid ? 'Valid' : result.message}</p>}</td>
+            <td><button type="button" disabled={pending} aria-label={`Validate ${f.name}.${tag}`} onClick={() => { void validate(f.name, tag) }}>Validate</button>
+              <button type="button" disabled={pending} aria-label={`Actions for ${f.name}.${tag}`} aria-haspopup="menu"
+                aria-expanded={context?.family === f.name && context.tag === tag}
+                onClick={event => openContext(f.name, tag, event.currentTarget)}>⋯</button></td></tr>
         })}</tbody></table>}
       </section>)}</div>
       {report && <section aria-label="Validation results"><p role="status">{report.results.length === 0 ? 'No metadata fields to validate.' :
@@ -136,5 +153,9 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
       <button type="button" disabled={pending} onClick={close}>Close metadata</button>
     </div>
     <p className="ath-hint">Reload replaces unsaved comments with the saved version.</p>
+    {context && !pending && <AthenaContextMenu key={`${context.family}.${context.tag}`} label={`${context.family}.${context.tag} actions`}
+      anchor={context.anchor} returnFocus={context.returnFocus} onClose={() => setContext(null)} items={[
+        { id: 'validate', label: `Validate ${context.family}.${context.tag}`, onSelect: () => { void validate(context.family, context.tag) } },
+      ]} />}
   </section>
 }

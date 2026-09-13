@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { apiBase } from '@/lib/athena'
 import { loadPluginRegistry, savePluginRegistry, importPluginRegistry, type PluginRegistry } from '@/lib/athena-preferences'
 import { AthenaPluginConfiguration } from './athena-plugin-configuration'
+import { AthenaContextMenu } from './athena-context-menu'
 
 function checked(value: PluginRegistry): PluginRegistry {
   if (!value || !Number.isInteger(value.version) || value.version < 0 || !value.enabled || Array.isArray(value.enabled)
@@ -24,11 +25,20 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
   const [configuring, setConfiguring] = useState<string | null>(null), [configurationPending, setConfigurationPending] = useState(false)
   const configurationRunning = useRef(false)
   const locked = pending || configurationPending
+  const documentation = useRef(new Map<string, HTMLDetailsElement>())
+  const [context, setContext] = useState<{ id: string; anchor: { x: number; y: number }; returnFocus: HTMLElement } | null>(null)
+  const contextPlugin = state?.plugins.find(plugin => plugin.id === context?.id)
+
+  function openContext(id: string, returnFocus: HTMLElement, anchor?: { x: number; y: number }) {
+    if (running.current || configurationRunning.current || locked) return
+    const bounds = returnFocus.getBoundingClientRect()
+    setContext({ id, returnFocus, anchor: anchor ?? { x: bounds.left, y: bounds.bottom } })
+  }
 
   async function perform(work: () => Promise<PluginRegistry>, message: string, signal?: AbortSignal) {
     if (running.current || configurationRunning.current) return
     const token = ++generation.current
-    running.current = true; setPending(true); onPendingChange?.(true); setError(''); setNotice('')
+    running.current = true; setPending(true); setContext(null); onPendingChange?.(true); setError(''); setNotice('')
     try {
       const result = checked(await work())
       if (token !== generation.current || signal?.aborted) return
@@ -67,15 +77,26 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
     {notice && <p role="status">{notice}</p>}
     <fieldset disabled={locked || !state} style={{ border: 0, padding: 0, margin: 0 }}>
       {state?.plugins.map((plugin, index) => <section key={plugin.id} className="ath-plugin-entry">
-        <label className="ath-check"><input type="checkbox" aria-label={`Enable ${plugin.name}`} checked={state.enabled[plugin.id] ?? false}
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, justifyContent: 'space-between' }} onContextMenu={event => {
+          if (locked) return
+          event.preventDefault(); event.stopPropagation()
+          openContext(plugin.id, event.currentTarget.querySelector('input')!, { x: event.clientX, y: event.clientY })
+        }} onKeyDown={event => {
+          if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) return
+          event.preventDefault(); event.stopPropagation(); openContext(plugin.id, event.target as HTMLElement)
+        }}>
+        <label className="ath-check" style={{ minWidth: 0 }}><input type="checkbox" aria-label={`Enable ${plugin.name}`} checked={state.enabled[plugin.id] ?? false}
           onChange={e => toggle(plugin.id, e.target.checked)} /><strong>{plugin.name}</strong> · {plugin.description}</label>
+        <button type="button" aria-label={`Actions for ${plugin.name} plugin`} aria-haspopup="menu" aria-expanded={context?.id === plugin.id}
+          onClick={event => openContext(plugin.id, event.currentTarget)}>⋯</button>
+        </div>
         <p className="ath-hint">{index + 1}. System plugin · version {plugin.version}</p>
-        <details><summary>{plugin.name} documentation</summary><p>{plugin.documentation}</p>
+        <details ref={node => { if (node) documentation.current.set(plugin.id, node); else documentation.current.delete(plugin.id) }}><summary>{plugin.name} documentation</summary><p>{plugin.documentation}</p>
           <a href={plugin.documentation_url} target="_blank" rel="noreferrer">Original {plugin.name} documentation</a></details>
         {plugin.configurable && <button type="button" aria-expanded={configuring === plugin.name}
           onClick={() => setConfiguring(value => value === plugin.name ? null : plugin.name)}>Configure {plugin.name}</button>}
         {plugin.configurable && configuring === plugin.name && <AthenaPluginConfiguration key={plugin.name} reader={plugin.name}
-          onPendingChange={value => { configurationRunning.current = value; setConfigurationPending(value); onPendingChange?.(value || running.current) }} />}
+          onPendingChange={value => { configurationRunning.current = value; setConfigurationPending(value); if (value) setContext(null); onPendingChange?.(value || running.current) }} />}
       </section>)}
     </fieldset>
     {unavailable.length > 0 && <details><summary>Settings for {unavailable.length} unavailable plugins</summary>
@@ -100,5 +121,14 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
       }
     }} />
     <p><a href="https://bruceravel.github.io/demeter/documents/Athena/other/plugin.html" target="_blank" rel="noreferrer">Athena guide: file type plugins</a></p>
+    {context && contextPlugin && !locked && <AthenaContextMenu key={context.id} label={`${contextPlugin.name} plugin actions`}
+      anchor={context.anchor} returnFocus={context.returnFocus} onClose={() => setContext(null)} items={[
+        { id: 'documentation', label: `Show documentation for the ${contextPlugin.name} plugin`, onSelect: () => {
+          const details = documentation.current.get(contextPlugin.id)
+          if (details) { details.open = true; details.querySelector('summary')?.focus() }
+        } },
+        ...(contextPlugin.configurable ? [{ id: 'configure', label: `Configure the ${contextPlugin.name} plugin`,
+          onSelect: () => setConfiguring(contextPlugin.name) }] : []),
+      ]} />}
   </section>
 }

@@ -317,6 +317,410 @@ function identityResponse(project: AthenaProject, id: string) {
   } })
 }
 
+describe("AthenaWorkbench native context actions", () => {
+  function groupContext() {
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for current group' }))
+    return screen.getByRole('menu', { name: 'Actions for Foil scan' })
+  }
+
+  function fieldContext(label: string) {
+    fireEvent.click(screen.getByRole('button', { name: `Actions for ${label}` }))
+    return screen.getByRole('menu', { name: 'Actions for Foil scan' })
+  }
+
+  it('keeps the selected group when right-clicking another row and closes the menu when selection changes', async () => {
+    await openSaved()
+    const other = screen.getByRole('button', { name: /^Sample scan/ })
+    fireEvent.contextMenu(other, { clientX: 40, clientY: 80 })
+    const menu = screen.getByRole('menu', { name: 'Actions for Foil scan' })
+    expect(within(menu).getByRole('menuitem', { name: 'Current group: Foil scan' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitem', { name: 'Show the text of the current group’s data file' })).toBeDisabled()
+    expect(plotProps().active?.id).toBe('foil')
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(1)
+    expect(api).toHaveBeenCalledOnce()
+    selectGroup('Sample scan')
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(plotProps().active?.id).toBe('sample')
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(1.2)
+  })
+
+  it.each(['visible', 'Shift+F10', 'ContextMenu'])('opens group actions with %s without changing the saved selection or defaults', async method => {
+    const project = await openSaved()
+    const trigger = screen.getByRole('button', { name: 'Actions for current group' })
+    trigger.focus()
+    if (method === 'visible') fireEvent.click(trigger)
+    else fireEvent.keyDown(trigger, { key: method === 'Shift+F10' ? 'F10' : 'ContextMenu', shiftKey: method === 'Shift+F10' })
+    expect(screen.getByRole('menuitem', { name: 'Rename current group…' })).toHaveFocus()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    expect(trigger).toHaveFocus(); expect(screen.queryByRole('menu')).toBeNull()
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+    expect(api).toHaveBeenCalledOnce()
+  })
+
+  it('renames the current group with an explicit label after right-clicking a different row', async () => {
+    const project = await openSaved()
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Sample scan/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rename current group…' }))
+    const dialog = screen.getByRole('dialog', { name: 'Rename current group' })
+    expect(within(dialog).getByRole('textbox', { name: 'New group label' })).toHaveValue('Foil scan')
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'New group label' }), { target: { value: 'Reviewed foil' } })
+    api.mockResolvedValueOnce(nextProject(project, { foil: { label: 'Reviewed foil' } }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Rename group' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'metadata', group_ids: ['foil'], options: { label: 'Reviewed foil' },
+    })
+    expect(plotProps().active?.label).toBe('Reviewed foil')
+  })
+
+  it.each([
+    ['Copy current group', 'duplicate', ['foil']],
+    ['Remove current group', 'delete', ['foil']],
+    ['Remove marked groups', 'delete', ['sample', 'oxide']],
+  ] as const)('sends the intended IDs for %s even if a different row was right-clicked', async (label, action, ids) => {
+    const project = await openSaved()
+    api.mockResolvedValueOnce(nextProject(project, {}))
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Unused reference/ }))
+    fireEvent.click(screen.getByRole('menuitem', { name: label }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply parameters' })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action, group_ids: [...ids], options: {},
+    })
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it('copies native ALL to hidden marked groups, excludes the source, and preserves frozen skipped drafts', async () => {
+    const initial = projectFixture()
+    initial.groups[0].marked = true
+    const project = await openSaved(initial)
+    selectGroup('Oxide standard'); editNumber(/^Rbkg/, 4)
+    const frozen = nextProject(project, { oxide: { frozen: true } })
+    api.mockResolvedValueOnce(frozen)
+    fireEvent.click(screen.getByRole('button', { name: 'Freeze group' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Unfreeze group' })).toBeEnabled())
+    selectGroup('Foil scan'); editNumber(/^Rbkg/, 2.5)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: 'Foil' } })
+    expect(screen.queryByRole('button', { name: /^Sample scan/ })).toBeNull()
+    const next = nextProject(frozen, { sample: { parameters: { ...parameters, rbkg: 2.5 } } })
+    const warning = 'Native phase correction is retained as source metadata but is not applied by Athena Web.'
+    next.last_operation = { action: 'context_parameters', skipped_group_ids: ['oxide'], warnings: [warning] }
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(groupContext()).getByRole('menuitem', { name: 'Set marked groups’ values to the current' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply parameters' })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: frozen.version, action: 'context_parameters', group_ids: ['sample', 'oxide'],
+      options: { mode: 'copy', section: 'all', source_id: 'foil', values: { ...parameters, rbkg: 2.5 } },
+    })
+    expect(screen.getByRole('status')).toHaveTextContent('1 group skipped')
+    expect(screen.getByRole('status')).toHaveTextContent(warning)
+    expect(plotProps().active?.parameters.rbkg).toBe(1)
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(2.5)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: '' } })
+    selectGroup('Sample scan'); expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(2.5)
+    selectGroup('Oxide standard'); expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(4)
+    expect(plotProps().active?.parameters.rbkg).toBe(1.4)
+  })
+
+  it.each([
+    ['Pre-edge start', 'Pre-edge start', ['pre1', 'pre2']],
+    ['Post-edge start', 'Post-edge start', ['norm1', 'norm2']],
+    ['FT k min', 'FT k min', ['kmin', 'kmax']],
+  ] as const)('copies both endpoints from the %s menu and resets just that range', async (control, label, keys) => {
+    const project = await openSaved()
+    editNumber(/^Rbkg/, 2.6)
+    const next = nextProject(project, {})
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(fieldContext(control)).getByRole('menuitem', { name: `Set marked groups to current ${label}` }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply parameters' })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'copy_parameters', group_ids: ['sample', 'oxide'],
+      options: { parameters: [...keys], source_id: 'foil', values: { ...parameters, step: 1, rbkg: 2.6, background_standard_id: null } },
+    })
+    api.mockResolvedValueOnce(nextProject(next, {}))
+    fireEvent.click(within(fieldContext(control)).getByRole('menuitem', { name: `Restore default ${label}` }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply parameters' })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: next.version, action: 'reset_parameters', group_ids: ['foil'], options: { parameters: [...keys] },
+    })
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(2.6)
+    expect(plotProps().active?.parameters.rbkg).toBe(1)
+  })
+
+  it('copies displayed automatic numbers as explicit values without turning the source automatic recipe into overrides', async () => {
+    const initial = projectFixture()
+    initial.groups[0].parameters = { ...parameters, pre1: null, pre2: null, e0: null, nnorm: null }
+    initial.groups[0].result!.effective = { e0: 8979.125, edge_step: 1.3, pre1: -145.5, pre2: -72.25, nnorm: 2 }
+    const project = await openSaved(initial)
+    expect(screen.getByRole('spinbutton', { name: 'Pre-edge start eV relative' })).toHaveValue(-145.5)
+    api.mockResolvedValueOnce(nextProject(project, {}))
+    fireEvent.click(within(fieldContext('Pre-edge start')).getByRole('menuitem', { name: 'Set marked groups to current Pre-edge start' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply parameters' })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'copy_parameters', group_ids: ['sample', 'oxide'], options: {
+        parameters: ['pre1', 'pre2'], source_id: 'foil',
+        values: { ...parameters, e0: 8979.125, step: 1.3, pre1: -145.5, pre2: -72.25, nnorm: 2, background_standard_id: null },
+      },
+    })
+    expect(plotProps().active?.parameters).toMatchObject({ e0: null, pre1: null, pre2: null, nnorm: null })
+    expect(screen.queryByRole('button', { name: 'Discard parameter changes' })).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Polynomial degree' })).toHaveValue('')
+  })
+
+  it('allows a frozen group as the copy source while disabling reset of its own values', async () => {
+    const project = await openSaved()
+    const frozen = nextProject(project, { foil: { frozen: true } })
+    api.mockResolvedValueOnce(frozen)
+    fireEvent.click(screen.getByRole('button', { name: 'Freeze group' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Unfreeze group' })).toBeEnabled())
+    const trigger = screen.getByRole('button', { name: 'Actions for Rbkg' })
+    expect(trigger).toBeEnabled()
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toBeDisabled()
+    fireEvent.keyDown(trigger, { key: 'F10', shiftKey: true })
+    expect(screen.getByRole('menuitem', { name: 'Restore default Rbkg' })).toBeDisabled()
+    const copy = screen.getByRole('menuitem', { name: 'Set marked groups to current Rbkg' })
+    expect(copy).toBeEnabled()
+    api.mockResolvedValueOnce(nextProject(frozen, {}))
+    fireEvent.click(copy)
+    await waitFor(() => expect(screen.queryByRole('menu')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: frozen.version, action: 'copy_parameters', group_ids: ['sample', 'oxide'],
+      options: { parameters: ['rbkg'], source_id: 'foil', values: { ...parameters, step: 1, background_standard_id: null } },
+    })
+    expect(plotProps().active?.frozen).toBe(true)
+  })
+
+  it('uses the E₀ shortcut method on the current saved group and keeps unrelated drafts', async () => {
+    const project = await openSaved()
+    editNumber(/^E₀/, 9100); editNumber(/^Rbkg/, 2.8)
+    api.mockResolvedValueOnce(e0Response(project, 'zero_crossing', { foil: 8982.25 }))
+    fireEvent.click(within(fieldContext('E₀')).getByRole('menuitem', { name: 'Set E₀ to the second-derivative zero crossing' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Apply parameters' })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'set_e0', group_ids: ['foil'], options: { method: 'zero_crossing' },
+    })
+    expect(screen.getByRole('spinbutton', { name: 'E₀ eV' })).toHaveValue(8982.25)
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(2.8)
+    expect(plotProps().active?.parameters.rbkg).toBe(1)
+  })
+
+  it('opens source text as a read-only report for the current group', async () => {
+    const initial = projectFixture()
+    initial.groups[0].source.mapping = { upload_id: 'upload-foil' }
+    const project = await openSaved(initial)
+    const text = '# Original μ 铜 <script>data</script>\n8960 0.1\n8980 0.8\n'
+    api.mockResolvedValueOnce({ filename: 'foil.xmu', text })
+    fireEvent.click(within(groupContext()).getByRole('menuitem', { name: 'Show the text of the current group’s data file' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Original data file' })
+    await waitFor(() => expect(within(dialog).getByLabelText('Original data file').textContent).toBe(text))
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/groups/foil/source-text`, undefined, undefined, expect.any(AbortSignal))
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(within(dialog).queryByRole('textbox')).toBeNull()
+    expect(document.querySelector('script')).toBeNull()
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+  })
+
+  it('requests measurement uncertainties for all marked groups including hidden and frozen groups without saving', async () => {
+    const initial = projectFixture(); initial.groups[2].frozen = true
+    const project = await openSaved(initial)
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: 'Foil' } })
+    api.mockResolvedValueOnce({ version: project.version, kind: 'measurement_uncertainty', results: [
+      { group_id: 'sample', label: 'Sample scan', epsilon_k: 0.001, epsilon_r: 0.002 },
+      { group_id: 'oxide', label: 'Oxide standard', epsilon_k: 0.003, epsilon_r: 0.004 },
+    ] })
+    fireEvent.click(within(groupContext()).getByRole('menuitem', { name: 'Show measurement uncertainties · marked groups' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Measurement uncertainties' })
+    expect(await within(dialog).findByRole('heading', { name: 'Oxide standard' })).toBeVisible()
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/context-report`, {
+      version: project.version, group_ids: ['sample', 'oxide'], kind: 'measurement_uncertainty',
+    }, undefined, expect.any(AbortSignal))
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(within(dialog).queryByRole('textbox')).toBeNull()
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+  })
+
+  it('keeps number input editing menus and field accessible names independent of action triggers', async () => {
+    await openSaved()
+    const rbkg = screen.getByRole('spinbutton', { name: 'Rbkg Å' })
+    expect(rbkg).toHaveAccessibleName('Rbkg Å')
+    expect(fireEvent.contextMenu(rbkg)).toBe(true)
+    fireEvent.keyDown(rbkg, { key: 'F10', shiftKey: true })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('combobox', { name: 'Polynomial degree' })).toHaveAccessibleName('Polynomial degree')
+    expect(screen.getByRole('checkbox', { name: 'Flatten normalized data' })).toHaveAccessibleName('Flatten normalized data')
+    expect(api).toHaveBeenCalledOnce()
+  })
+
+  it.each([
+    ['Sample scan', 'Foil scan is the reference for Sample scan'],
+    ['Foil scan', 'Foil scan is the reference for Sample scan'],
+    ['Unused reference', 'Unused reference has no linked reference'],
+  ])('identifies reference direction from %s without changing the saved project', async (label, message) => {
+    const initial = projectFixture()
+    initial.groups[1].reference_id = 'foil'
+    const project = await openSaved(initial)
+    selectGroup(label)
+    const selected = project.groups.find(g => g.label === label)!
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Energy shift' }))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Identify this group’s reference' }))
+    expect(screen.getByRole('status')).toHaveTextContent(message)
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(plotProps().active).toEqual(selected)
+    expect(project.version).toBe(7)
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
+    expect(localStorage.getItem(storageKey)).toBe(project.id)
+    expect(screen.queryByRole('button', { name: 'Discard parameter changes' })).toBeNull()
+  })
+
+  it('closes into a new empty project and reopens the unchanged saved project without deleting its groups', async () => {
+    const project = await openSaved()
+    editNumber(/^Rbkg/, 2.7)
+    const empty = projectFixture({ id: 'new-empty-project', name: 'Untitled project', version: 0, groups: [], journal: '' })
+    api.mockResolvedValueOnce(empty)
+    fireEvent.click(within(groupContext()).getByRole('menuitem', { name: 'Close project' }))
+    await screen.findByText('A place for every scan.')
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ['/projects', {}]])
+    expect(localStorage.getItem(storageKey)).toBe(empty.id)
+    expect(screen.queryByRole('button', { name: /^Foil scan/ })).toBeNull()
+    api.mockResolvedValueOnce([{ id: project.id, name: project.name, count: project.groups.length, updated: project.updated }])
+    fireEvent.click(screen.getByRole('button', { name: 'Open project' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Open a project' })
+    const previous = await within(dialog).findByRole('button', { name: /^Copper study/ })
+    api.mockResolvedValueOnce(project)
+    fireEvent.click(previous)
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(plotProps().active).toEqual(project.groups[0])
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(1)
+    expect(screen.queryByRole('button', { name: 'Discard parameter changes' })).toBeNull()
+    expect(localStorage.getItem(storageKey)).toBe(project.id)
+    expect(api.mock.calls.filter(([path]) => path.endsWith('/command'))).toEqual([])
+  })
+
+  it.each(['pointer on nested row text', 'keyboard on row'])('restores context focus to the invoked row after %s without selecting it', async method => {
+    await openSaved()
+    const row = screen.getByRole('button', { name: /^Sample scan/ })
+    row.focus()
+    if (method === 'pointer on nested row text') fireEvent.contextMenu(within(row).getByText('Sample scan'))
+    else fireEvent.keyDown(row, { key: 'F10', shiftKey: true })
+    expect(screen.getByRole('menu', { name: 'Actions for Foil scan' })).toBeVisible()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    expect(row).toHaveFocus()
+    expect(plotProps().active?.id).toBe('foil')
+    expect(api).toHaveBeenCalledOnce()
+  })
+
+  it('persists edited Importance and omits it from subsequent unrelated metadata saves', async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit group information' }))
+    let dialog = screen.getByRole('dialog', { name: 'Group information' })
+    editNumber(/^Importance$/, 3.5, dialog)
+    const next = nextProject(project, { foil: { source: { ...project.groups[0].source, importance: 3.5 } } })
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save group' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'metadata', group_ids: ['foil'],
+      options: { label: 'Foil scan', notes: '', multiplier: 1, offset: 0, reference_id: null, importance: 3.5 },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit group information' }))
+    dialog = screen.getByRole('dialog', { name: 'Group information' })
+    expect(within(dialog).getByRole('spinbutton', { name: 'Importance' })).toHaveValue(3.5)
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Notes' }), { target: { value: 'Reviewed metadata' } })
+    api.mockResolvedValueOnce(nextProject(next, { foil: { notes: 'Reviewed metadata' } }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save group' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: next.version, action: 'metadata', group_ids: ['foil'],
+      options: { label: 'Foil scan', notes: 'Reviewed metadata', multiplier: 1, offset: 0, reference_id: null },
+    })
+    expect(plotProps().active?.source.importance).toBe(3.5)
+  })
+
+  it('keeps frozen Importance read-only while allowing unrelated group metadata to save', async () => {
+    const initial = projectFixture(); initial.groups[0].source.importance = 2
+    const project = await openSaved(initial)
+    const frozen = nextProject(project, { foil: { frozen: true } })
+    api.mockResolvedValueOnce(frozen)
+    fireEvent.click(screen.getByRole('button', { name: 'Freeze group' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Unfreeze group' })).toBeEnabled())
+    fireEvent.click(screen.getByRole('button', { name: 'Edit group information' }))
+    const dialog = screen.getByRole('dialog', { name: 'Group information' })
+    expect(within(dialog).getByRole('spinbutton', { name: 'Importance' })).toBeDisabled()
+    expect(within(dialog).getByRole('spinbutton', { name: 'Importance' })).toHaveValue(2)
+    expect(within(dialog).getByRole('button', { name: 'Actions for Importance' })).toBeEnabled()
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Notes' }), { target: { value: 'Frozen spectrum annotation' } })
+    api.mockResolvedValueOnce(nextProject(frozen, { foil: { notes: 'Frozen spectrum annotation' } }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save group' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: frozen.version, action: 'metadata', group_ids: ['foil'],
+      options: { label: 'Foil scan', notes: 'Frozen spectrum annotation', multiplier: 1, offset: 0, reference_id: null },
+    })
+    expect(plotProps().active?.source.importance).toBe(2)
+    expect(plotProps().active?.frozen).toBe(true)
+  })
+
+  it('refreshes reset metadata fields from the server while retaining unrelated form drafts', async () => {
+    const initial = projectFixture()
+    initial.groups[0] = { ...initial.groups[0], multiplier: 3, offset: 2, source: { ...initial.groups[0].source, importance: 4 } }
+    const project = await openSaved(initial)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit group information' }))
+    const dialog = screen.getByRole('dialog', { name: 'Group information' })
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Group label' }), { target: { value: 'Draft label' } })
+    editNumber(/^Importance$/, 7, dialog); editNumber(/^Plot multiplier$/, 6, dialog); editNumber(/^Plot offset$/, 5, dialog)
+    const resetPlot = nextProject(project, { foil: { multiplier: 1, offset: 0 } })
+    api.mockResolvedValueOnce(resetPlot)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Actions for Plot parameters' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Restore default plot parameters' }))
+    await waitFor(() => expect(within(dialog).getByRole('spinbutton', { name: 'Plot multiplier' })).toHaveValue(1))
+    expect(within(dialog).getByRole('spinbutton', { name: 'Plot offset' })).toHaveValue(0)
+    expect(within(dialog).getByRole('spinbutton', { name: 'Importance' })).toHaveValue(7)
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'context_parameters', group_ids: ['foil'], options: { mode: 'reset', section: 'plot' },
+    })
+    const resetImportance = nextProject(resetPlot, { foil: { source: { ...project.groups[0].source, importance: 1 } } })
+    api.mockResolvedValueOnce(resetImportance)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Actions for Importance' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: 'Restore default Importance' }))
+    await waitFor(() => expect(within(dialog).getByRole('spinbutton', { name: 'Importance' })).toHaveValue(1))
+    expect(within(dialog).getByRole('textbox', { name: 'Group label' })).toHaveValue('Draft label')
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: resetPlot.version, action: 'context_parameters', group_ids: ['foil'], options: { mode: 'reset', field: 'importance' },
+    })
+    api.mockResolvedValueOnce(nextProject(resetImportance, { foil: { label: 'Draft label' } }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save group' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: resetImportance.version, action: 'metadata', group_ids: ['foil'],
+      options: { label: 'Draft label', notes: '', multiplier: 1, offset: 0, reference_id: null },
+    })
+  })
+
+  it.each(['set to one', 'pixel ratio'])('refreshes current Importance after %s and retains other metadata drafts', async mode => {
+    const initial = projectFixture()
+    initial.groups[0].marked = true; initial.groups[2].frozen = true
+    initial.groups[0].source = { ...initial.groups[0].source, importance: 4, xdi_metadata: { attributes: { bla: { pixel_ratio: 0.25 } } } }
+    const project = await openSaved(initial)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit group information' }))
+    const dialog = screen.getByRole('dialog', { name: 'Group information' })
+    editNumber(/^Importance$/, 9, dialog)
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Notes' }), { target: { value: 'Keep this draft' } })
+    const importance = mode === 'set to one' ? 1 : 0.25
+    const next = nextProject(project, { foil: { source: { ...project.groups[0].source, importance } } })
+    if (mode === 'pixel ratio') next.last_operation = { action: 'context_parameters', skipped_group_ids: ['oxide'] }
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Actions for Importance' }))
+    fireEvent.click(within(dialog).getByRole('menuitem', { name: mode === 'set to one'
+      ? 'Set Importance to 1 for all groups' : 'Set Importance for marked data to BLA pixel ratio' }))
+    await waitFor(() => expect(within(dialog).getByRole('spinbutton', { name: 'Importance' })).toHaveValue(importance))
+    expect(within(dialog).getByRole('textbox', { name: 'Notes' })).toHaveValue('Keep this draft')
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: mode === 'set to one' ? 'metadata' : 'context_parameters',
+      group_ids: mode === 'set to one' ? ['foil', 'sample', 'unused'] : ['foil', 'sample', 'oxide'],
+      options: mode === 'set to one' ? { importance: 1 } : { mode: 'pixel_ratio', field: 'importance' },
+    })
+  })
+})
+
 describe("AthenaWorkbench absorber and edge identity", () => {
   it("displays saved native identity before effective fallback or Unknown, without lookups or activating import policy", async () => {
     const initial = projectFixture()
