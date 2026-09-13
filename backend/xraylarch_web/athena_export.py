@@ -93,7 +93,7 @@ def _same(a, b):
 
 def _result(group):
     if group.get('processing_error') or not group.get('result'):
-        raise ValueError(f"{group['label']}: apply valid processing parameters before exporting this data form.")
+        raise ValueError(f"{group['label']}: process valid parameters before exporting this data form.")
     return group['result']
 
 
@@ -110,7 +110,7 @@ def _energy(group, form):
     if form in ('norm', 'nder', 'nsec'):
         a = _result(group)['arrays']
         if not _same(x, _axis(a['energy'], 'Processed energy')):
-            raise ValueError('Processed energy is stale; apply parameters before export.')
+            raise ValueError('Processed energy is stale; reprocess this spectrum before export.')
         resolved = 'flat' if form == 'norm' and group['parameters']['flatten'] else 'norm'
         y = _array(a[resolved], resolved)
     if form in ('der', 'nder', 'sec', 'nsec'):
@@ -196,7 +196,7 @@ def single(group, options):
         else:
             result = _result(group); a = result['arrays']; eff = result['effective']
             if not _same(x, _axis(a['energy'], 'Processed energy')):
-                raise ValueError('Processed energy is stale; apply parameters before export.')
+                raise ValueError('Processed energy is stale; reprocess this spectrum before export.')
             pre, post = _array(a['pre_edge'], 'Pre-edge'), _array(a['post_edge'], 'Post-edge')
             normalized = _array(a['norm'], 'Normalized absorption'); flat = _array(a['flat'], 'Flattened absorption')
             if not group['parameters']['flatten'] and not (group.get('is_normalized') or group['data_type'] in ('norm', 'xmudat')):

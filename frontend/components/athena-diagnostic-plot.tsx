@@ -45,7 +45,7 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close }: {
   const ids = groups.map(g => g.id)
   const options: Options = { version: project.version, view, group_ids: ids, kweight: weight.trim() === '' ? null : Number(weight), q_component: component }
   const reason = groups.length !== (view === 'biquad' ? 2 : 1) ? 'Close this window and mark exactly two groups for Bi-Quad, or choose a current-group plot.'
-    : groups.some(g => !g.result?.effective.exafs || g.processing_error) ? 'Apply valid EXAFS parameters to every selected spectrum before making this plot.'
+    : groups.some(g => !g.result?.effective.exafs || g.processing_error) ? 'Process or reprocess valid EXAFS parameters for every selected spectrum before making this plot.'
     : view !== 'kq' && groups.some(g => ['chi', 'xanes', 'detector'].includes(g.data_type)) ? 'Quad and Bi-Quad require energy spectra with all four plot spaces.'
     : options.kweight !== null && (!Number.isFinite(options.kweight) || options.kweight < 0 || options.kweight > 4) ? 'Choose a finite plot k weight from zero to four.' : ''
   const key = JSON.stringify([project.id, options]), current = data?.key === key && !reason ? data.value : null

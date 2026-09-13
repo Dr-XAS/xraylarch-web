@@ -133,7 +133,7 @@ def _curve(group, form, role):
     resolved = form
     if form in ("norm", "nder", "nsec"):
         if group.get("processing_error"):
-            raise ScientificError(f"{label}: apply valid processing parameters before using normalized difference forms: {group['processing_error']}")
+            raise ScientificError(f"{label}: process valid normalization parameters before using normalized difference forms: {group['processing_error']}")
         flatten = parameters.get("flatten", effective.get("flatten", True))
         if form == "norm":
             if not isinstance(flatten, bool):
@@ -146,7 +146,7 @@ def _curve(group, form, role):
         processed_x, y = _pair(arrays.get("energy"), arrays[array_name],
                                name=f"{label} processed {array_name}", minimum=MIN_POINTS)
         if processed_x.shape != x.shape or not np.allclose(processed_x, x, rtol=0, atol=1e-9):
-            raise ScientificError(f"{label}: processed energy does not match the shifted source axis; apply parameters again.")
+            raise ScientificError(f"{label}: processed energy does not match the shifted source axis; reprocess this spectrum.")
     if form in ("der", "nder", "sec", "nsec"):
         y = deriv(y) / deriv(x)
         if form in ("sec", "nsec"):

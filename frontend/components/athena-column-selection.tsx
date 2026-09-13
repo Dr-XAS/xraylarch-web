@@ -34,7 +34,10 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
   const problem = columnProblem(mapping)
   const hasReference = !!(mapping.reference_numerator || mapping.reference_denominator)
   return <>
-    <p><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{remaining > 1 ? ` · ${remaining} files remaining` : ""}</span></p>
+    <div className={styles.importHeader}>
+      <p className={styles.fileSummary}><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{remaining > 1 ? ` · ${remaining} files remaining` : ""}</span></p>
+      <div className={`ath-modal-actions ${styles.importActions}`} role="group" aria-label="Import actions"><button type="button" disabled={busy} onClick={chooseAnother}>Choose another file</button><button type="button" className="ath-primary" disabled={busy || !!problem || (!!inspection.file_plugin?.review_required && !reviewed)} onClick={() => importCurrent(reviewed)}>{busy ? "Importing…" : "Import spectrum"}</button></div>
+    </div>
     {inspection.file_plugin && <section aria-label="File conversion"><strong>{inspection.file_plugin.description}</strong><p className="ath-hint">{inspection.file_plugin.summary}</p></section>}
     <div className={styles.layout}>
       <div className={styles.controls}>
@@ -106,7 +109,6 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
         </fieldset>
         {inspection.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
         {inspection.file_plugin?.review_required && !reviewed && <p role="status">Review the I0 correction plot and confirm it before importing this file.</p>}
-        <div className="ath-modal-actions"><button disabled={busy} onClick={chooseAnother}>Choose another file</button><button className="ath-primary" disabled={busy || !!problem || (!!inspection.file_plugin?.review_required && !reviewed)} onClick={() => importCurrent(reviewed)}>{busy ? "Importing…" : "Import spectrum"}</button></div>
       </div>
       <div className={`${styles.preview} ${inspection.reader_preview ? styles.readerPreviews : ''}`}>
         {inspection.reader_preview && <AthenaReaderPreview value={inspection.reader_preview} required={!!inspection.file_plugin?.review_required}

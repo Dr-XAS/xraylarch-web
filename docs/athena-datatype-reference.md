@@ -32,7 +32,7 @@ detector records. [Legacy detector project handling](athena-detector-reference.m
 
 Group → Change data type offers all three native scopes/destinations and allows
 choosing a different current group. It identifies each selected source type,
-shows eligibility, preserves unapplied parameter drafts, and reports processing
+shows eligibility, preserves parameter edits queued for automatic processing, and reports processing
 errors. Cancel makes no request. Frozen energy groups are included, matching
 the inspected type handler; frozen parameter controls remain protected.
 

@@ -81,6 +81,22 @@ def two_groups(store, xas_arrays):
     return import_mu(store, project, x + 4.2, y, filename="shifted.dat")
 
 
+def test_duplicate_is_inserted_immediately_after_its_source(store, two_groups):
+    originals = deepcopy(two_groups["groups"])
+    source = originals[0]
+    result = command(store, two_groups, "duplicate", [source["id"]])
+    duplicate = result["groups"][1]
+
+    assert [g["id"] for g in result["groups"]] == [source["id"], duplicate["id"], originals[1]["id"]]
+    assert duplicate["id"] != source["id"]
+    assert duplicate["label"] == source["label"] + " · copy"
+    assert result["groups"][2] == originals[1]
+    assert store.load(result["id"])["groups"] == result["groups"]
+    undone = command(store, result, "undo")
+    assert undone["groups"] == originals
+    assert command(store, undone, "redo")["groups"] == result["groups"]
+
+
 def test_create_inspect_and_import_persist_across_store_instances(store, xas_arrays):
     x, y = xas_arrays
     created = store.create()
@@ -614,8 +630,10 @@ def test_copy_series_later_invalid_setting_cannot_save_partial_copies(store, two
 def test_identical_copper_spectra_have_zero_log_amplitude_and_phase(store, rwindow):
     p = command(store, store.create(), "example")
     copper = p["groups"][0]
+    original_ids = {g["id"] for g in p["groups"]}
     p = command(store, p, "duplicate", [copper["id"]])
-    ids = [copper["id"], p["groups"][-1]["id"]]
+    duplicate_id = next(g["id"] for g in p["groups"] if g["id"] not in original_ids)
+    ids = [copper["id"], duplicate_id]
     p = command(store, p, "parameters", ids, e0=copper["result"]["effective"]["e0"], kmax=8, rwindow=rwindow, dr=0)
     analysis = store.analyze(p["id"], Command(version=p["version"], action="log_ratio", group_ids=ids,
         options={"kmin": 3, "kmax": 7, "array": "norm"}))
@@ -899,18 +917,19 @@ def test_copy_energy_shift_moves_native_e0_once_and_skips_frozen_pair(store, nat
     p = native_reference_project
     ids = [g["id"] for g in p["groups"]]
     p = command(store, p, "duplicate", [ids[0]])
-    source_id = p["groups"][-1]["id"]
+    source_id = next(g["id"] for g in p["groups"] if g["id"] not in set(ids))
     p = command(store, p, "parameters", [source_id], energy_shift=-1.25)
     source = deepcopy(group(p, source_id))
     p = command(store, p, "copy_parameters", ids, source_id=source_id, parameter="energy_shift")
     assert group(p, source_id) == source
-    assert [g["parameters"]["energy_shift"] for g in p["groups"]] == [-1.25] * 3
-    assert [g["parameters"]["e0"] for g in p["groups"]] == [8978.75, 8979.75, 8978.75]
+    expected_ids = [*ids, source_id]
+    assert [group(p, ident)["parameters"]["energy_shift"] for ident in expected_ids] == [-1.25] * 3
+    assert [group(p, ident)["parameters"]["e0"] for ident in expected_ids] == [8978.75, 8979.75, 8978.75]
     p = command(store, p, "metadata", [ids[1]], frozen=True)
-    frozen_pair = deepcopy(p["groups"][:2])
+    frozen_pair = {ident: deepcopy(group(p, ident)) for ident in ids}
     changed = command(store, p, "copy_parameters", [*ids, source_id], source_id=source_id,
                       parameter="energy_shift", values={"energy_shift": 4})
-    assert changed["groups"][:2] == frozen_pair
+    assert all(group(changed, ident) == frozen_pair[ident] for ident in ids)
     assert changed["last_operation"]["skipped_group_ids"] == sorted(ids)
     assert group(changed, source_id)["parameters"]["e0"] == 8984
     assert group(changed, source_id)["processing_error"] is None

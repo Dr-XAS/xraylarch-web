@@ -24,7 +24,7 @@ export function AthenaDatatype({ project, activeId, selectGroup, busy, error, cl
   }
   return <form className="ath-modal-body" onSubmit={event => { event.preventDefault(); void submit() }}>
     <p className="ath-hint">Correct how saved data are processed. μ(E) and XANES fit the normalization; normalized μ(E) uses the supplied signal as normalized data. XANES omits EXAFS processing.</p>
-    <p className="ath-hint">Raw data, calibration, saved parameters and reference links are retained. Unapplied parameter edits remain drafts. Like Athena, this type correction also applies to frozen energy groups.</p>
+    <p className="ath-hint">Raw data, calibration, saved parameters and reference links are retained. Main-pane parameter edits process automatically before this dialog opens. Like Athena, this type correction also applies to frozen energy groups.</p>
     <fieldset disabled={busy} className="ath-e0-fields"><div className="ath-fields">
       <label className="ath-field"><span>Change data type for</span><select value={scope} onChange={event => { edit(); setScope(event.target.value) }}>
         <option value="current">Current group</option><option value="marked">All marked groups</option><option value="all">All groups</option>

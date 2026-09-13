@@ -2,10 +2,11 @@
 
 import dynamic from "next/dynamic"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
+import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div> })
 const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47", "#967055"]
-export type Space = "E" | "k" | "R" | "q"
+export type Space = PlotSpace
 interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string
   background: boolean; window: boolean; component: string; offset: number
@@ -36,16 +37,10 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     data.push(trace)
     return trace
   }
-  const xKey = { E: "energy", k: "k", R: "r", q: "q" }[space]
-  const yKey = { E: energyMode, k: "weighted_chi", R: `chir_${component}`, q: `chiq_${component}` }[space]
   const displayed = groups.flatMap((g, index) => {
-    if (g.data_type === 'detector' && (space !== 'E' || energyMode !== 'mu')) return []
-    const rawChi = !g.result && g.data_type === "chi"
-    const arrays: Record<string, number[]> = g.result?.arrays ?? (rawChi
-      ? { k: g.energy, chi: g.mu }
-      : { energy: g.energy.map(e => e + g.parameters.energy_shift), mu: g.mu })
-    const x = arrays[xKey], y = arrays[rawChi && space === "k" ? "chi" : yKey]
-    if (!x?.length || !y?.length || x.length !== y.length) return []
+    const coordinates = spectrumTraceCoordinates(g, space, energyMode, component)
+    if (!coordinates) return []
+    const { arrays, rawChi, x, y } = coordinates
     const effectiveWeight = g.result?.effective.kweight
     const weight = rawChi ? 0 : typeof effectiveWeight === "number" ? effectiveWeight : g.parameters.kweight
     const transform = (values: number[]) => values.map(v => v * g.multiplier + g.offset + index * offset)
@@ -113,13 +108,20 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const hasData = data.some(d => (d.x as number[])?.length)
   if (!hasData) return <div className="ath-no-plot"><span>{space}</span><h3>{groups.length ? "No data in this plot space" : "Your spectra, in perspective."}</h3><p>{groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or open the copper foil example to begin."}</p></div>
   const canPick = picking && !analysisVisible && space !== "q"
+  const xRange = analysisVisible || (range[0] === null && range[1] === null)
+    ? { autorange: true as const }
+    : range[0] !== null && range[1] !== null
+      ? { range }
+      : range[0] !== null
+        ? { range: [range[0], null], autorange: "max" as const }
+        : { range: [null, range[1]], autorange: "min" as const }
   return <div className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`}><Plot data={data} onClick={event => {
     const x = event.points?.[0]?.x
     if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
   }} layout={{
     autosize: true, margin: { l: 72, r: 25, t: 24, b: 86 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Arial, sans-serif", color: "#586661", size: 12 },
-    xaxis: { title: { text: xTitle, standoff: 16 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...(range[0] !== null && range[1] !== null && !analysisVisible ? { range } : { autorange: true }) },
+    xaxis: { title: { text: xTitle, standoff: 16 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...xRange },
     yaxis: { title: { text: yTitle, standoff: 15 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", automargin: true },
     ...(analysisVisible && analysis?.kind === "log_ratio" ? { yaxis2: { title: {text: "Phase difference (rad)"}, overlaying: "y", side: "right", showgrid: false, automargin: true } } : {}),
     legend: { orientation: "h", y: -0.22, x: 0 }, hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${range.join()}`,

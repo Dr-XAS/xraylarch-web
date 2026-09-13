@@ -336,7 +336,7 @@ def test_invalid_raw_inputs_fail_without_processing_or_modification(damage, mess
 @pytest.mark.parametrize("damage,message", [
     ("missing-flat", "no flat array"), ("missing-norm", "no norm array"),
     ("length", "equal length"), ("stale-axis", "shifted source axis"),
-    ("failed-processing", "apply valid processing"), ("invalid-flatten", "flatten must be a boolean"),
+    ("failed-processing", "process valid normalization"), ("invalid-flatten", "flatten must be a boolean"),
 ])
 def test_normalized_forms_require_valid_saved_arrays_and_preferences(damage, message):
     x = np.arange(8960.0, 9041.0)

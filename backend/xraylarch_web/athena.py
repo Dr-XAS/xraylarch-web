@@ -2425,12 +2425,15 @@ class AthenaStore:
                         for tied in self.reference_family(p, group["id"]):
                             tied["reference_id"] = None
                 elif action == "duplicate":
+                    created = {}
                     for g in groups:
                         clone = copy.deepcopy(g)
                         clone.update(id=uid(), label=g["label"] + " · copy", frozen=False, reference_id=None)
                         from .athena_xdi_history import inherit_source
                         clone['source']['xdi_metadata'] = inherit_source(g, 'duplicate', {})
-                        p["groups"].append(clone)
+                        created[g['id']] = clone
+                    p['groups'] = [item for parent in p['groups'] for item in
+                                   ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
                 elif action == "copy_series":
                     key = options.get("parameter")
                     if key not in ("e0", "rbkg", "kmin", "kmax", "dk", "rmin", "rmax", "energy_shift"):
@@ -2461,7 +2464,7 @@ class AthenaStore:
                             g["source"].setdefault("warnings", []).append("Background standard was removed; its link was cleared.")
                             g["background_standard_id"] = None
                         if g["id"] in affected:
-                            g.update(result=None, processing_error="A background standard was removed. Apply parameters to recalculate this group and its dependents.")
+                            g.update(result=None, processing_error="A background standard was removed. Reprocess this group to recalculate it and its dependents.")
                 elif action == 'calibrate' and 'coordinate' in options:
                     calibrated, preview = self._calibration_results(p, request)
                     p['groups'] = calibrated['groups']

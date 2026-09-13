@@ -25,6 +25,13 @@ const readerSuggestions: InspectionResponse['plugin_suggestions'] = {
   transmission: { energy_column: 'c0', numerator: ['c1'], denominator: 'c2', mode: 'transmission', units: 'eV', data_type: 'mu' },
   fluorescence: { energy_column: 'c0', numerator: ['c3'], denominator: 'c1', mode: 'fluorescence', units: 'eV', data_type: 'mu' },
 }
+it('places the file and import actions above the column controls', () => {
+  render(<Harness />)
+  const actions = screen.getByRole('group', { name: 'Import actions' })
+  expect(actions).toContainElement(screen.getByRole('button', { name: 'Choose another file' }))
+  expect(actions).toContainElement(screen.getByRole('button', { name: 'Import spectrum' }))
+  expect(actions.compareDocumentPosition(screen.getByLabelText('Data type')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})
 it('applies native transmission/fluorescence suggestions only on request and preserves other import choices', () => {
   render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
   expect(accepted()).toEqual(initial)
