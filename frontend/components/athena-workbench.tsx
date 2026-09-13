@@ -32,6 +32,7 @@ import { AthenaPointEdit, type PointEditDraft } from './athena-point-edit'
 import { AthenaCalibration, type CalibrationDraft } from './athena-calibration'
 import { AthenaAlignment, type AlignmentDraft } from './athena-alignment'
 import { AthenaMergePlot } from './athena-merge-plot'
+import { AthenaDiagnosticPlot } from './athena-diagnostic-plot'
 import { AthenaMerge, type MergeDraft } from './athena-merge'
 import { AthenaRebin } from './athena-rebin'
 import { AthenaDispersive } from './athena-dispersive'
@@ -95,7 +96,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
+type ModalName = "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
 
@@ -883,7 +884,7 @@ export function AthenaWorkbench() {
     <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>ATHENA <span>WEB</span></h1><p>X-ray absorption spectroscopy</p></div></div>
       <nav aria-label="Main menu">{["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
         {label === "Edit" && <>{(['all', 'marked'] as const).map(scope => <button key={scope} disabled={!project?.groups.length || !!busy} onClick={() => { setReportScope(scope); openTool('parameter_report') }}><Download size={15} />Excel report on {scope} groups…</button>)}</>}
-        {label === "Plot" && <button disabled={!active||!hasSavedMerge(active)||!!busy} onClick={()=>openTool('merge_plot')}>Saved merge spread…</button>}
+        {label === "Plot" && <><button disabled={!active||!!busy} onClick={()=>openTool('diagnostic_plot')}>Diagnostic plots…</button><button disabled={!active||!hasSavedMerge(active)||!!busy} onClick={()=>openTool('merge_plot')}>Saved merge spread…</button></>}
         {label === "Energy" && <><button disabled={!project || !!busy} onClick={() => { cancelPick(); setMenu(""); setError(""); setModal("e0") }}>Select E₀…</button><button disabled={!!busy} onClick={() => { cancelPick(); setMenu(""); setModal("edge_policy") }}>Enforce element and edge…</button><button disabled={!edgePolicy} onClick={stopEdgePolicy}>Stop enforcing element and edge</button></>}
         {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("groups")}>Mark / freeze groups…</button>}
         {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("datatype")}>Change data type…</button>}
@@ -975,6 +976,7 @@ export function AthenaWorkbench() {
       setMessage(`Difference groups saved · ${added?.length ?? next.groups.length - project.groups.length} created`)
     }} onBusyChange={setBusy} close={() => setModal(null)} disabled={!!busy} />}
     {modal === 'merge_plot' && project && active && <Modal title="Saved merge spread" wide close={()=>setModal(null)}><AthenaMergePlot key={project.id} project={project} groupId={active.id} selectGroup={setActiveId} close={()=>setModal(null)}/></Modal>}
+    {modal === 'diagnostic_plot' && project && active && <Modal title="Diagnostic plots" wide close={()=>setModal(null)}><AthenaDiagnosticPlot key={project.id} project={project} groupId={active.id} selectGroup={setActiveId} close={()=>setModal(null)}/></Modal>}
     {modal === "merge" && project && <Modal title="Merge marked groups" wide close={() => { if (!busy) setModal(null) }}><AthenaMerge key={project.id} project={project} initialDraft={mergeDraft} initialArray={mergeInitialArray} rememberDraft={setMergeDraft} disabled={!!busy} setBusy={setBusy} saved={(next,id) => { accept(next); setActiveId(id); setMessage('Merged spectra saved') }} close={() => setModal(null)} /></Modal>}
     {modal === "align" && project && <Modal title="Align scans" wide close={() => { if (!busy) setModal(null) }}><AthenaAlignment key={`${project.id}:${activeId}`} project={project} activeId={activeId} selectGroup={setActiveId} initialDraft={alignmentDraft} rememberDraft={setAlignmentDraft} disabled={!!busy} setBusy={setBusy} saved={next => { accept(next); setMessage('Energy alignment saved') }} close={() => setModal(null)} /></Modal>}
     {modal === "dispersive" && project && <Modal title="Dispersive energy calibration" wide close={() => { if (!busy) setModal(null) }}><AthenaDispersive project={project} activeId={activeId} setBusy={setBusy} onSaved={next => { const added=next.groups.find(g=>!project.groups.some(old=>old.id===g.id)); accept(next); if(added)setActiveId(added.id) }} /></Modal>}

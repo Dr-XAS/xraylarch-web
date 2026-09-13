@@ -1750,6 +1750,8 @@ class AthenaStore:
                 data_type=dtype,parameters=p,source=source,project=project,
                 is_normalized=False if dtype=='chi' else first.get('is_normalized',False),
                 background_standard_id=None if dtype=='chi' else first.get('background_standard_id'))
+            # Native merge clones the first contributor's plot attributes.
+            g['multiplier'],g['offset']=first['multiplier'],first['offset']
             g['marked']=role=='sample'
             prepared.append(g)
             rows.append(dict(role=role,label=g['label'],data_type=dtype,parameters=g['parameters'],
@@ -1774,6 +1776,18 @@ class AthenaStore:
         project = self.load(ident)
         self.check(project, options.version)
         result = saved_merge_plot(self.group(project, group_id), options)
+        self.check(self.load(ident), options.version)
+        return dict(project_id=ident, version=options.version,
+                    options=options.model_dump(), result=result)
+
+    def plot_special(self, ident, request):
+        from .athena_special_plot import SpecialPlotOptions, special_plot
+        options = SpecialPlotOptions.model_validate(request)
+        project = self.load(ident)
+        self.check(project, options.version)
+        if options.view == 'biquad' and options.group_ids != [g['id'] for g in project['groups'] if g['marked']]:
+            fail('Mark exactly two groups to make a Bi-Quad plot.')
+        result = special_plot([self.group(project, gid) for gid in options.group_ids], options)
         self.check(self.load(ident), options.version)
         return dict(project_id=ident, version=options.version,
                     options=options.model_dump(), result=result)
@@ -3546,6 +3560,10 @@ def build_athena_router(settings: Settings):
     @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
     def plot_saved_merge(ident: str, group_id: str, request: dict):
         return guarded(lambda:store.plot_saved_merge(ident,group_id,request))
+
+    @router.post('/projects/{ident}/plots/special')
+    def plot_special(ident: str, request: dict):
+        return guarded(lambda: store.plot_special(ident, request))
 
     @router.post('/projects/{ident}/alignment/preview')
     def preview_alignment(ident: str, request: Command):

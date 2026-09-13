@@ -150,6 +150,13 @@ N and C open the three merge spaces. See the
 [merge reference](docs/athena-merge-reference.md) for original Demeter/Larch
 comparisons and the documented discrepancy in native noise weighting.
 
+**Plot → Saved merge spread…** reopens standard-deviation plots for any
+saved merge, including historical native `.prj` files. Compare ± standard
+deviation or scaled scatter, choose normalized/flattened displays or a χ(k)
+plot weight, and retain the group's scale and offset. Source data stay
+unchanged. See the [saved-spread reference](docs/athena-merge-plot-reference.md)
+for executed native plotting rules and original project examples.
+
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
 display smoothing, and find the unsmoothed second-derivative zero crossing.
