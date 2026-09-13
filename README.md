@@ -248,6 +248,10 @@ Open [http://localhost:3004](http://localhost:3004). The frontend proxies API
 requests to `http://127.0.0.1:8006` unless `BACKEND_URL` supplies another local
 backend address.
 
+Uploads accept up to 256 source columns by default, including multi-element
+detector scans. `XRAYLARCH_MAX_COLUMNS` overrides this limit for the backend.
+LabVIEW scans with a numbered column list retain those labels in source order.
+
 ### Check before sharing a local build
 
 Run these commands from the repository root. The browser test starts its own

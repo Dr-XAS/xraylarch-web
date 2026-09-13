@@ -1821,6 +1821,145 @@ describe("AthenaWorkbench project import integration", () => {
   })
 })
 
+describe("AthenaWorkbench automatic normalization values", () => {
+  function automaticProject() {
+    const project = projectFixture()
+    project.groups[0].parameters = { ...parameters, e0: null, step: null, pre1: null, pre2: null, norm1: null, norm2: null, nnorm: null }
+    project.groups[0].result!.effective = { e0: 8979.125, edge_step: 0.0000123456789, pre1: -145, pre2: -72.5, norm1: 25, norm2: 620, nnorm: 2 }
+    return project
+  }
+
+  it("shows calculated normalization values without changing the automatic recipe or creating a draft", async () => {
+    const project = await openSaved(automaticProject())
+    for (const [label, value] of [
+      [/^E₀/, 8979.125], [/^Edge step/, 0.0000123456789],
+      [/^Pre-edge start/, -145], [/^Pre-edge end/, -72.5],
+      [/^Post-edge start/, 25], [/^Post-edge end/, 620],
+    ] as const) {
+      const input = screen.getByRole("spinbutton", { name: label })
+      expect(input).toHaveValue(value)
+      fireEvent.focus(input)
+      fireEvent.blur(input)
+      expect(input).toHaveValue(value)
+    }
+    const degree = screen.getByRole("combobox", { name: "Polynomial degree" })
+    expect(degree).toHaveValue("")
+    expect(within(degree).getByRole("option", { name: "2 (Auto)" })).toHaveProperty("selected", true)
+    expect(screen.getAllByText("Automatic", { exact: true })).toHaveLength(6)
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    expect(screen.getByText("Up to date")).toBeVisible()
+    for (const key of ["e0", "step", "pre1", "pre2", "norm1", "norm2", "nnorm"] as const) {
+      expect(plotProps().active!.parameters[key]).toBeNull()
+    }
+    expect(plotProps().active!.parameters).toEqual(project.groups[0].parameters)
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
+  })
+
+  it("applies only edited parameters and refreshes automatic numbers from the returned result", async () => {
+    const project = await openSaved(automaticProject())
+    editNumber(/^Energy shift/, 2)
+    const saved = project.groups[0]
+    const next = nextProject(project, { foil: {
+      parameters: { ...saved.parameters, energy_shift: 2 },
+      result: { ...saved.result!, effective: { ...saved.result!.effective, e0: 8981.125, norm2: 200, nnorm: 1 } },
+    } })
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { energy_shift: 2 },
+    })
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8981.125)
+    expect(screen.getByRole("spinbutton", { name: /^Post-edge end/ })).toHaveValue(200)
+    const degree = screen.getByRole("combobox", { name: "Polynomial degree" })
+    expect(degree).toHaveValue("")
+    expect(within(degree).getByRole("option", { name: "1 (Auto)" })).toHaveProperty("selected", true)
+    expect(plotProps().active!.parameters).toMatchObject({ e0: null, norm2: null, nnorm: null })
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+  })
+
+  it("keeps a cleared override empty during editing, restores automatic display on blur, and saves null", async () => {
+    const initial = automaticProject()
+    initial.groups[0].parameters.pre1 = -150
+    const project = await openSaved(initial)
+    const input = screen.getByRole("spinbutton", { name: /^Pre-edge start/ })
+    expect(input).toHaveValue(-150)
+    expect(screen.getByText("Used in saved result: -145")).toBeVisible()
+    fireEvent.focus(input)
+    editNumber(/^Pre-edge start/, "")
+    expect(input).toHaveValue(null)
+    expect(screen.getByRole("button", { name: /Discard parameter changes/ })).toBeVisible()
+    fireEvent.blur(input)
+    expect(input).toHaveValue(-145)
+    expect(screen.queryByText("Used in saved result: -145")).not.toBeInTheDocument()
+
+    const saved = project.groups[0]
+    api.mockResolvedValueOnce(nextProject(project, { foil: {
+      parameters: { ...saved.parameters, pre1: null },
+      result: { ...saved.result!, effective: { ...saved.result!.effective, pre1: -140 } },
+    } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { pre1: null },
+    })
+    expect(screen.getByRole("spinbutton", { name: /^Pre-edge start/ })).toHaveValue(-140)
+    expect(plotProps().active!.parameters.pre1).toBeNull()
+  })
+
+  it("keeps explicit overrides distinct even when they equal the displayed automatic values", async () => {
+    const project = await openSaved(automaticProject())
+    const input = screen.getByRole("spinbutton", { name: /^E₀/ })
+    fireEvent.focus(input)
+    editNumber(/^E₀/, "")
+    editNumber(/^E₀/, 8979.125)
+    fireEvent.blur(input)
+    fireEvent.change(screen.getByRole("combobox", { name: "Polynomial degree" }), { target: { value: "2" } })
+    expect(screen.getByRole("button", { name: /Discard parameter changes/ })).toBeVisible()
+    api.mockResolvedValueOnce(nextProject(project, { foil: {
+      parameters: { ...project.groups[0].parameters, e0: 8979.125, nnorm: 2 },
+    } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/ }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { e0: 8979.125, nnorm: 2 },
+    })
+  })
+
+  it("does not carry a temporarily empty field across groups and restores automatic display on discard", async () => {
+    const initial = automaticProject()
+    initial.groups[1].parameters.e0 = null
+    initial.groups[1].result!.effective.e0 = 7112.5
+    await openSaved(initial)
+    fireEvent.focus(screen.getByRole("spinbutton", { name: /^E₀/ }))
+    editNumber(/^E₀/, "")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    selectGroup("Sample scan")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(7112.5)
+    selectGroup("Foil scan")
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979.125)
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    editNumber(/^Pre-edge start/, -130)
+    fireEvent.click(screen.getByRole("button", { name: /Discard parameter changes/ }))
+    expect(screen.getByRole("spinbutton", { name: /^Pre-edge start/ })).toHaveValue(-145)
+    expect(plotProps().active!.parameters.pre1).toBeNull()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps zero automatic degree visible and leaves unavailable automatic values blank", async () => {
+    const project = automaticProject()
+    project.groups[0].result!.effective = { nnorm: 0 }
+    await openSaved(project)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^Edge step/ })).toHaveValue(null)
+    const degree = screen.getByRole("combobox", { name: "Polynomial degree" })
+    expect(degree).toHaveValue("")
+    expect(within(degree).getByRole("option", { name: "0 (Auto)" })).toHaveProperty("selected", true)
+    expect(plotProps().active!.parameters.nnorm).toBeNull()
+  })
+})
+
 describe("AthenaWorkbench group selection and drafts", () => {
   it("keeps restored scalar drafts clean across reordered standard and undo recipes, preserving other groups' edits", async () => {
     const project = projectFixture()
@@ -1833,6 +1972,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
     const pickE0 = armPick("E₀")
     act(() => pickE0(8985, "E"))
     editNumber(/^E₀/, "")
+    fireEvent.blur(screen.getByRole("spinbutton", { name: /^E₀/ }))
     editNumber(/^Spline energy min/, 100)
     editNumber(/^Spline k min/, 0)
 
@@ -1858,12 +1998,14 @@ describe("AthenaWorkbench group selection and drafts", () => {
     fireEvent.click(screen.getByRole("button", { name: "Undo" }))
     await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/ })).toBeEnabled())
     expectCleanFoil()
-    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979)
+    expect(plotProps().active!.parameters.e0).toBeNull()
     expect(screen.getByRole("spinbutton", { name: /^Spline k min/ })).toHaveValue(0)
     expect(screen.getByRole("combobox", { name: "Background removal standard" })).toHaveValue("")
     expect(api.mock.calls.slice(1).map(([, body]) => (body as { action: string }).action)).toEqual(["background_standard", "undo"])
 
     // Automatic E0 is still different from an explicit value equal to its readout.
+    editNumber(/^E₀/, "")
     editNumber(/^E₀/, 8979)
     expect(screen.getByRole("button", { name: /Discard parameter changes/ })).toBeVisible()
     selectGroup("Sample scan")
@@ -2154,8 +2296,17 @@ describe("AthenaWorkbench parameter copy and reset", () => {
     expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8982)
     selectGroup("Sample scan")
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
-    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979)
     expect(screen.getByRole("spinbutton", { name: /^Energy shift/ })).toHaveValue(6)
+    api.mockResolvedValueOnce(nextProject(next, { sample: {
+      parameters: { ...next.groups[1].parameters, e0: null, energy_shift: 6 },
+    } }))
+    fireEvent.click(screen.getByRole("button", { name: /^Apply parameters$/i }))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Apply parameters$/i })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: next.version, action: "parameters", group_ids: ["sample"], options: { e0: null, energy_shift: 6 },
+    })
+    expect(plotProps().active!.parameters.e0).toBeNull()
     selectGroup("Unused reference")
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(4)
     expect(plotProps().active).toEqual(project.groups[3])
@@ -2211,7 +2362,8 @@ describe("AthenaWorkbench parameter copy and reset", () => {
       version: project.version, action: "reset_parameters", group_ids: ["foil"], options: { section: "all" },
     })
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1)
-    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979)
+    expect(plotProps().active!.parameters.e0).toBeNull()
     expect(screen.getByRole("spinbutton", { name: /^Energy shift/ })).toHaveValue(6)
     expect(plotProps().active?.parameters.energy_shift).toBe(4.5)
     expect(screen.getByRole("button", { name: /discard parameter changes/i })).toBeVisible()
@@ -2272,7 +2424,8 @@ describe("AthenaWorkbench parameter copy and reset", () => {
     expect(api.mock.calls.slice(-2)).toEqual([expected, expected])
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.9)
-    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(null)
+    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8979)
+    expect(plotProps().active!.parameters.e0).toBeNull()
   })
 
   it.each(["none marked", "all marked frozen"])("disables copy and reset for %s and allows choosing other destinations", async condition => {

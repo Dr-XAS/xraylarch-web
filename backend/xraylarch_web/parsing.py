@@ -8,8 +8,10 @@ from pathlib import Path, PurePath
 import numpy as np
 from larch.io import read_ascii, read_csv, read_xdi
 
+from .config import DEFAULT_MAX_COLUMNS
 from .contracts import ColumnInfo, FieldIssue, ParsedUpload
 from .errors import WebInputError
+from .parsing_labview import labview_table
 
 _ROLE_NAMES = {
     "energy": "energy",
@@ -24,7 +26,6 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _NAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
 _COMMENT_PREFIXES = ("#", ";", "!")
 _DEFAULT_MAX_POINTS = 250_000
-_DEFAULT_MAX_COLUMNS = 64
 _XDAC_MARKER = re.compile(r"XDAC V\d+(?:\.\d+)* Datafile V\d+(?:\.\d+)*")
 _MRCAT_MARKER = re.compile(r"MRCAT_XAFS V\d+(?:\.\d+)* Datafile")
 _XDAC_SEPARATOR = re.compile(r"-{7,}")
@@ -116,10 +117,16 @@ def _read_group(path: Path, suffix: str):
     # EDC ends its header with numeric detector offsets, which Larch otherwise
     # mistakes for column names. Read the original bytes with Larch and only
     # replace labels/units using the explicitly delimited detector header.
-    table = _x11a_table(path.read_text(encoding="utf-8-sig"))
+    text = path.read_text(encoding="utf-8-sig")
+    table = _x11a_table(text)
     if table is not None:
         group.array_labels = list(table[0])
         group.array_units = ["eV", *([None] * (len(table[0]) - 1))]
+    # LabVIEW's numbered list identifies source columns even when its long,
+    # fixed-width heading line is not parsed correctly by Larch.
+    table = labview_table(text)
+    if table is not None:
+        group.array_labels = list(table[0])
     return group
 
 
@@ -185,6 +192,9 @@ def _beamline_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], 
     x11a = _x11a_table(text)
     if x11a is not None:
         return x11a
+    labview = labview_table(text)
+    if labview is not None:
+        return labview
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return None
@@ -357,7 +367,7 @@ def parse_upload(
     filename: str,
     max_bytes: int = 50_000_000,
     max_points: int = _DEFAULT_MAX_POINTS,
-    max_columns: int = _DEFAULT_MAX_COLUMNS,
+    max_columns: int = DEFAULT_MAX_COLUMNS,
 ) -> ParsedUpload:
     """Parse a bounded XAS upload without executing or persisting user paths."""
     if len(data) > max_bytes:

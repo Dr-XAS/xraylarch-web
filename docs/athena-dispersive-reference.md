@@ -116,7 +116,7 @@ and reversal rather than claiming an exact replay of that whole recipe.
 Native normalization/optimizer execution, the recipe's large gzip time-series
 CSV handling, measured SLRI data, automatic calibration upon file selection,
 and the complete native preference tree remain open. The current table input
-limit is 64 columns; large time-series matrices need a separate selection
+limit is 256 columns by default (`XRAYLARCH_MAX_COLUMNS` overrides it); larger time-series matrices need a separate selection
 workflow. No Artemis functionality is included.
 
 [Backend tests](../backend/tests/test_athena_dispersive.py) check all retained
