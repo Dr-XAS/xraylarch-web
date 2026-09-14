@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+repo_root=$(cd "$(dirname "$0")/.." && pwd)
+XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
+fail_test() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+test_root=$(mktemp -d)
+trap 'rm -rf -- "$test_root"' EXIT
+release="$test_root/build"
+mkdir -p "$release/backend/.venv/bin" "$release/deploy"
+printf '%s\n' '-e ..' 'fastapi==0.116.1' 'xlwt==1.3.0' 'xlrd==2.0.2' > "$release/backend/requirements.txt"
+printf '%s\n' 'fastapi==0.116.1' > "$release/deploy/python-release-constraints.txt"
+run_clean() {
+  printf '%s\n' "$PWD" > "$test_root/cwd"
+  printf '%s\n' "$@" > "$test_root/args"
+  if [[ "$*" == *'pip install'* ]]; then
+    local previous='' argument
+    for argument in "$@"; do
+      [[ "$previous" != --requirement ]] || cp "$argument" "$test_root/installed-requirements"
+      previous="$argument"
+    done
+  fi
+  return "${command_status:-0}"
+}
+declare -F install_backend_requirements >/dev/null || fail_test 'backend requirement install helper is missing'
+install_backend_requirements "$release" || fail_test 'backend dependency installation must succeed'
+[[ "$(cat "$test_root/cwd")" == "$release/backend" ]] || fail_test 'requirements must resolve from backend cwd'
+[[ "$(cat "$test_root/installed-requirements")" == $'fastapi==0.116.1\nxlwt==1.3.0\nxlrd==2.0.2' ]] || fail_test 'install backend dependencies while preserving wheel instead of editable root'
+grep -Fx -- '--constraint' "$test_root/args" >/dev/null || fail_test 'constraints argument missing'
+grep -Fx -- "$release/deploy/python-release-constraints.txt" "$test_root/args" >/dev/null || fail_test 'wrong constraints file'
+command_status=7
+if install_backend_requirements "$release"; then fail_test 'dependency installation failure must propagate'; fi
+command_status=0
+assert_backend_application_import "$release" || fail_test 'app import must succeed'
+[[ "$(cat "$test_root/cwd")" == "$release/backend" ]] || fail_test 'app import must use backend cwd'
+grep -Fx 'from xraylarch_web.main import app' "$test_root/args" >/dev/null || fail_test 'smoke must import complete application'
+command_status=1
+if assert_backend_application_import "$release"; then fail_test 'broken app import must fail'; fi
+command_status=0
+
+
+# Exercise the build pipeline with fake package/build executables: a missing
+# application dependency must prevent publication of a completed release.
+(
+  XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
+  RELEASES_ROOT="$test_root/build-releases"
+  REQUESTED_SHA=0123456789abcdef0123456789abcdef01234567
+  CONDA_BIN=/fake/conda
+  mkdir -p "$RELEASES_ROOT"
+  run_clean() {
+    case "$*" in
+      'git init --quiet '*)
+        local target="${@: -1}"
+        mkdir -p "$target/backend/.venv/bin" "$target/frontend" "$target/deploy"
+        printf '%s\n' '-e ..' 'xlwt==1.3.0' > "$target/backend/requirements.txt"
+        : > "$target/deploy/python-release-constraints.txt"
+        ;;
+      *'rev-parse '*) printf '%s\n' "$REQUESTED_SHA" ;;
+      *'git '*describe*) printf '1.0.0\n' ;;
+      *'pip wheel '*)
+        mkdir -p ../.release-wheel
+        : > ../.release-wheel/xraylarch-test.whl
+        ;;
+      *'pip install --requirement '*'.release-requirements.'*)
+        echo dependencies >> "$test_root/build-events"
+        ;;
+      *'from xraylarch_web.main import app'*)
+        echo app-import >> "$test_root/build-events"
+        return 1
+        ;;
+      *'pip check'*|*'pip freeze'*|*'npm '*)
+        echo premature-success >> "$test_root/build-events"
+        ;;
+    esac
+  }
+  if build_release; then fail_test 'build must fail when full application import fails'; fi
+  [[ "$(cat "$test_root/build-events")" == $'dependencies\napp-import' ]] || fail_test 'build must install backend requirements then import app before completion checks'
+  [[ ! -e "$RELEASES_ROOT/$REQUESTED_SHA" ]] || fail_test 'failed application import must not publish immutable release'
+)
+
+RELEASES_ROOT="$test_root/releases"
+REQUESTED_SHA=0123456789abcdef0123456789abcdef01234567
+mkdir -p "$RELEASES_ROOT"
+release="$RELEASES_ROOT/$REQUESTED_SHA"
+events="$test_root/events"
+verify_remote_branch_tip() { echo remote >> "$events"; return "${remote_status:-0}"; }
+build_release() { echo build >> "$events"; }
+activate_release() { echo activate >> "$events"; }
+assert_release_identity() {
+  echo identity >> "$events"
+  [[ -d "$release" && ! -L "$release" && -f "$release/.xraylarch-release.sha" ]]
+}
+assert_backend_application_import() { echo smoke >> "$events"; return "${smoke_status:-0}"; }
+: > "$events"
+perform_deploy || fail_test 'absent release must build'
+[[ "$(cat "$events")" == $'remote\nbuild\nactivate' ]] || fail_test 'new release must build after remote verification'
+mkdir -p "$release"
+printf '%s\n' "$REQUESTED_SHA" > "$release/.xraylarch-release.sha"
+: > "$events"
+perform_deploy || fail_test 'completed release must be retryable'
+[[ "$(cat "$events")" == $'remote\nidentity\nsmoke\nactivate' ]] || fail_test 'retry must validate and smoke existing release without rebuilding'
+smoke_status=1
+: > "$events"
+if perform_deploy; then fail_test 'broken existing application must fail'; fi
+! grep -Eq 'build|activate' "$events" || fail_test 'broken existing app must remain untouched'
+smoke_status=0
+rm "$release/.xraylarch-release.sha"
+: > "$events"
+if perform_deploy; then fail_test 'incomplete release must fail'; fi
+! grep -Eq 'build|activate|smoke' "$events" || fail_test 'incomplete release must remain untouched'
+rmdir "$release"
+ln -s "$test_root/missing" "$release"
+: > "$events"
+if perform_deploy; then fail_test 'broken symlink release must fail'; fi
+[[ -L "$release" ]] || fail_test 'symlink must not be removed'
+! grep -Eq 'build|activate|smoke' "$events" || fail_test 'symlink release must remain untouched'
+remote_status=1
+: > "$events"
+if perform_deploy; then fail_test 'remote mismatch must fail'; fi
+[[ "$(cat "$events")" == remote ]] || fail_test 'remote must be verified before release actions'
+printf 'release dependency and retry tests passed\n'
