@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 from xraylarch_web.athena import AthenaStore, Command
 from xraylarch_web.athena_calibration import CalibrationOptions, calibration_curve, calibration_shift, zero_crossing
 from xraylarch_web.athena_smoothing_preferences import SGPreferenceRequest
+from reference.native_larch_replay import replay_calibration
 from xraylarch_web.config import Settings
 from xraylarch_web.errors import WebInputError
 from xraylarch_web.main import create_app
@@ -42,7 +43,10 @@ def test_original_calibration_methods_and_display_kernels(row):
         choice=CalibrationOptions(observed=case['observed'],target=case['target'],display=['mu','norm','derivative','second'][case['display']],
             smoothing=case['smoothing'],smoothing_method='three_point' if case['backend']=='ifeffit' else 'savitzky_golay',sg_window=31,sg_order=9)
         plotted=calibration_curve(src,choice)
-        np.testing.assert_allclose(plotted['y'],row['plot_y'],rtol=2e-12,atol=2e-13)
+        expected = row['plot_y']
+        if case['smoothing'] and case['backend'] == 'larch':
+            expected = replay_calibration(native['commands'], NATIVE['inputs'][row['input']]['arrays'])
+        np.testing.assert_allclose(plotted['y'],expected,rtol=2e-12,atol=2e-13)
         assert plotted['x']==src['energy']
 
 

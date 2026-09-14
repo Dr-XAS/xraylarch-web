@@ -14,6 +14,50 @@ const props = () => ({ projectId: 'project', groupId: 'cu', onSaved: vi.fn(), on
 const response = (comments: string, version = 4) => ({ id: 'project', version, groups: [{ id: 'cu', source: { xdi_metadata: { comments_text: comments } } }] })
 afterEach(() => { cleanup(); api.mockReset() })
 
+it('right-clicks an XDI field to validate that saved value without changing draft comments', async () => {
+  api.mockResolvedValueOnce(data).mockResolvedValueOnce({ version: 3, group_id: 'cu', engine: 'Larch XDI', valid: true,
+    results: [{ family: 'Element', tag: 'symbol', value: 'Cu', valid: true, code: 0, message: '' }] })
+  const p = props(); render(<dialog open aria-label="Metadata"><AthenaXDIControls {...p} /></dialog>)
+  const field = await screen.findByRole('rowheader', { name: 'symbol' })
+  fireEvent.change(screen.getByLabelText('XDI comments'), { target: { value: 'Unsaved draft' } })
+  fireEvent.contextMenu(field, { clientX: 30, clientY: 60 })
+  const menu = within(screen.getByRole('dialog')).getByRole('menu', { name: 'Element.symbol actions' })
+  expect(within(menu).getAllByRole('menuitem')).toHaveLength(1)
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Validate Element.symbol' }))
+  expect(await screen.findByRole('region', { name: 'Validation results' })).toHaveTextContent('1 field checked · 0 need attention')
+  expect(api).toHaveBeenLastCalledWith('/projects/project/groups/cu/xdi/validate', { version: 3, family: 'Element', tag: 'symbol' })
+  expect(api).toHaveBeenCalledTimes(2); expect(p.onSaved).not.toHaveBeenCalled()
+  expect(screen.getByLabelText('XDI comments')).toHaveValue('Unsaved draft')
+  expect(screen.queryByRole('menu')).toBeNull()
+})
+
+it.each(['visible', 'Shift+F10', 'ContextMenu'])('exposes field actions through %s and keeps family and comment editing menus native', async method => {
+  api.mockResolvedValueOnce(data); render(<AthenaXDIControls {...props()} />)
+  const trigger = await screen.findByRole('button', { name: 'Actions for Element.symbol' })
+  trigger.focus()
+  if (method === 'visible') fireEvent.click(trigger)
+  else fireEvent.keyDown(trigger, { key: method === 'Shift+F10' ? 'F10' : 'ContextMenu', shiftKey: method === 'Shift+F10' })
+  expect(screen.getByRole('menuitem', { name: 'Validate Element.symbol' })).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+  expect(trigger).toHaveFocus()
+  expect(fireEvent.contextMenu(screen.getByRole('button', { name: 'Element' }))).toBe(true)
+  expect(fireEvent.contextMenu(screen.getByLabelText('XDI comments'))).toBe(true)
+  fireEvent.keyDown(screen.getByLabelText('XDI comments'), { key: 'F10', shiftKey: true })
+  expect(screen.queryByRole('menu')).toBeNull(); expect(api).toHaveBeenCalledOnce()
+})
+
+it('dismisses a field menu when changing groups instead of validating the previous group’s field', async () => {
+  api.mockResolvedValueOnce(data).mockResolvedValueOnce({ ...data, version: 6, group_id: 'fe', label: 'Fe foil' })
+  const p = props(); const view = render(<AthenaXDIControls {...p} />)
+  fireEvent.contextMenu(await screen.findByRole('rowheader', { name: 'symbol' }))
+  expect(screen.getByRole('menu')).toBeVisible()
+  view.rerender(<AthenaXDIControls {...p} groupId="fe" />)
+  await screen.findByText('Fe foil')
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(api).toHaveBeenCalledTimes(2)
+  expect(api).toHaveBeenLastCalledWith('/projects/project/groups/fe/xdi', undefined, 'GET', expect.any(AbortSignal))
+})
+
 it('shows exact read-only acquisition and accumulated process text independently of editable comments', async () => {
   const process = 'Earlier μ 铜; <script>text</script>\nRemoved multi-electron excitation; '
   api.mockResolvedValueOnce({ ...data, history: { process, start_time: '2001-06-26T22:27:31', end_time: null, inherited: true } })
@@ -86,6 +130,8 @@ it('saves exact independent comments, confirms the returned revision, and blocks
   fireEvent.click(screen.getByRole('button', { name: 'Save comments' }))
   expect(screen.getByRole('button', { name: 'Save comments' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Close metadata' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Actions for Element.symbol' })).toBeDisabled()
+  fireEvent.contextMenu(screen.getByRole('rowheader', { name: 'symbol' })); expect(screen.queryByRole('menu')).toBeNull()
   fireEvent.click(screen.getByRole('button', { name: 'Save comments' }))
   expect(api).toHaveBeenCalledTimes(2)
   await act(async () => { finish(response(text)) })

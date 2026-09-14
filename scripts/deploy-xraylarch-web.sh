@@ -5,7 +5,7 @@ umask 077
 
 APP_SLUG="xraylarch-web"
 REPOSITORY="https://github.com/Dr-XAS/xraylarch-web.git"
-APPROVED_BRANCH="codex/xraylarch-web-v1"
+APPROVED_BRANCH="master"
 APP_ROOT="/local/apps/${APP_SLUG}"
 RELEASES_ROOT="${APP_ROOT}/releases"
 CURRENT_LINK="${APP_ROOT}/current"
@@ -875,10 +875,70 @@ assert_frontend_runtime_supported() {
     || { fail "drxas-node20 must provide Node.js 20.9 or newer"; return 1; }
 }
 
+install_backend_requirements() (
+  local release="$1" requirements
+  cd "${release}/backend" || return 1
+  requirements=$(mktemp "${release}/backend/.release-requirements.XXXXXX") || return 1
+  trap 'rm -f -- "$requirements"' EXIT
+  # The root package is already installed from its versioned wheel. Only omit
+  # the editable root entry; install every dependency declared by the web app.
+  awk '!/^[[:space:]]*-e[[:space:]]+\.\.[[:space:]]*$/' requirements.txt > "$requirements" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pip install \
+    --requirement "$requirements" --constraint "${release}/deploy/python-release-constraints.txt"
+)
+
+assert_backend_application_import() (
+  local release="$1"
+  cd "${release}/backend" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -c 'from xraylarch_web.main import app'
+)
+
+# Shared with the fresh-environment CI job: do not duplicate this dependency
+# sequence in workflow YAML or allow build_release to bypass its checks.
+install_release_backend() (
+  local release="$1" wheel
+  cd "${release}/backend" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pip install \
+    --requirement "${release}/deploy/python-release-constraints.txt" \
+    --constraint "${release}/deploy/python-release-constraints.txt" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pip install \
+    --no-deps --no-build-isolation --upgrade \
+    'setuptools==79.0.1' 'wheel==0.47.0' 'setuptools-scm==9.2.2' || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pip wheel \
+    --no-deps --no-build-isolation --wheel-dir "${release}/.release-wheel" "$release" || return 1
+  wheel=$(find "${release}/.release-wheel" -maxdepth 1 -type f -name 'xraylarch-*.whl' -print -quit) || return 1
+  [[ -n "$wheel" ]] || { fail "release wheel was not built"; return 1; }
+  run_clean "${release}/backend/.venv/bin/python" -m pip install --no-deps "$wheel" || return 1
+  install_backend_requirements "$release" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -c 'import larch, xraylarch_web' || return 1
+  assert_backend_application_import "$release" || return 1
+  rm -rf -- "${release}/.release-wheel" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pip check || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt
+)
+
+# Run the same dependency/runtime gate in CI and before publishing a release.
+# Tests must never see the live workspace database, including during collection.
+verify_release_backend() (
+  local release="$1" verification_data
+  [[ -n "$CANDIDATE_DATA" && -d "$CANDIDATE_DATA" ]] || { fail "candidate data directory is missing"; return 1; }
+  verification_data=$(mktemp -d "${CANDIDATE_DATA}/backend-verification.XXXXXX") || return 1
+  trap 'rm -rf -- "$verification_data"' EXIT
+  DATA_ROOT="$verification_data"
+  cd "${release}/backend" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pytest -p no:cacheprovider \
+    --basetemp "$verification_data/pytest" --collect-only -qq tests || return 1
+  # Cover API, persistence, processing and XLS dependencies; scientific golden
+  # reference tolerances remain a separate validation scope.
+  run_clean "${release}/backend/.venv/bin/python" -m pytest -p no:cacheprovider -q --basetemp "$verification_data/pytest" \
+    tests/test_api.py tests/test_athena_api.py tests/test_athena_parameter_report.py \
+    tests/test_processing.py tests/test_workspace.py
+)
+
 build_release() {
   local release temporary release_version
   release=$(release_path "$REQUESTED_SHA") || return 1
-  [[ ! -e "$release" ]] || { fail "immutable release path already exists: $release"; return 1; }
+  [[ ! -e "$release" && ! -L "$release" ]] || { fail "immutable release path already exists: $release"; return 1; }
   temporary=$(mktemp -d "${RELEASES_ROOT}/.${REQUESTED_SHA}.build.XXXXXX") || return 1
   trap '[[ -n "${temporary:-}" && -d "$temporary" ]] && rm -rf -- "$temporary"' RETURN
   run_clean git init --quiet "$temporary" || return 1
@@ -890,7 +950,8 @@ build_release() {
   release_version=$(run_clean git -C "$temporary" describe --tags --match '[0-9]*' --always "$REQUESTED_SHA") || { fail "release SHA has no version tag"; return 1; }
   [[ "$release_version" != "$REQUESTED_SHA" ]] || { fail "release SHA has no reachable version tag"; return 1; }
   run_clean "$CONDA_BIN" run --no-capture-output -n drxas-deploy python -m venv "${temporary}/backend/.venv" || return 1
-  ( cd "${temporary}/backend" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --requirement "${temporary}/deploy/python-release-constraints.txt" --constraint "${temporary}/deploy/python-release-constraints.txt" && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --no-deps --no-build-isolation --upgrade 'setuptools==79.0.1' 'wheel==0.47.0' 'setuptools-scm==9.2.2' && run_clean "${temporary}/backend/.venv/bin/python" -m pip wheel --no-deps --no-build-isolation --wheel-dir "${temporary}/.release-wheel" "${temporary}" && wheel=$(find "${temporary}/.release-wheel" -maxdepth 1 -type f -name 'xraylarch-*.whl' -print -quit) && [[ -n "$wheel" ]] && run_clean "${temporary}/backend/.venv/bin/python" -m pip install --no-deps "$wheel" && run_clean "${temporary}/backend/.venv/bin/python" -c 'import larch, xraylarch_web' && rm -rf "${temporary}/.release-wheel" && run_clean "${temporary}/backend/.venv/bin/python" -m pip check && run_clean "${temporary}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt ) || return 1
+  install_release_backend "$temporary" || return 1
+  verify_release_backend "$temporary" || return 1
   assert_frontend_runtime_supported || return 1
   ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"
@@ -901,7 +962,18 @@ build_release() {
   trap - RETURN
 }
 
-perform_deploy() { verify_remote_branch_tip && build_release && activate_release "$REQUESTED_SHA"; }
+perform_deploy() {
+  local release
+  verify_remote_branch_tip || return 1
+  release=$(release_path "$REQUESTED_SHA") || return 1
+  if [[ -e "$release" || -L "$release" ]]; then
+    assert_release_identity "$REQUESTED_SHA" || return 1
+    assert_backend_application_import "$release" || return 1
+  else
+    build_release || return 1
+  fi
+  activate_release "$REQUESTED_SHA"
+}
 perform_rollback() { assert_release_identity "$REQUESTED_SHA" && activate_release "$REQUESTED_SHA"; }
 
 perform_migrate() {

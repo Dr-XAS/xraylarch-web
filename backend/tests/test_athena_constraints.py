@@ -177,11 +177,16 @@ def test_retying_untying_and_undo_do_not_leave_dangling_links(workspace):
 def test_duplicate_and_copy_series_detach_reference_links(workspace):
     store, p = workspace
     p = run(store, p, "tie_reference", [0, 1])
+    original_ids = {g["id"] for g in p["groups"]}
     p = run(store, p, "duplicate", [0])
+    duplicate_id = next(g["id"] for g in p["groups"] if g["id"] not in original_ids)
+    before_series_ids = {g["id"] for g in p["groups"]}
     p = run(store, p, "copy_series", [0], parameter="energy_shift", start=1, stop=2, count=2)
-    assert all(g["reference_id"] is None for g in p["groups"][4:])
+    series_ids = [g["id"] for g in p["groups"] if g["id"] not in before_series_ids]
+    derived_ids = [duplicate_id, *series_ids]
+    assert all(g["reference_id"] is None for g in p["groups"] if g["id"] in derived_ids)
     p = run(store, p, "parameters", [0], energy_shift=3)
-    assert [g["parameters"]["energy_shift"] for g in p["groups"][4:]] == [0, 1, 2]
+    assert [next(g for g in p["groups"] if g["id"] == ident)["parameters"]["energy_shift"] for ident in derived_ids] == [0, 1, 2]
 
 
 def test_reading_frozen_groups_for_merge_does_not_edit_sources(workspace):

@@ -124,7 +124,7 @@ export function AthenaSmoothing({ project, activeId, selectGroup, setBusy, saved
           <summary>Session and saved SG preferences</summary>
           <SmoothingDefaults preferences={preferences} disabled={disabled}/>
         </details>}
-        <p className="ath-hint">Frozen source groups can be compared and copied. Apply any parameter changes in the main pane before opening this tool.</p>
+        <p className="ath-hint">Frozen source groups can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</p>
         <a href="https://bruceravel.github.io/demeter/documents/Athena/process/smooth.html" target="_blank" rel="noreferrer">Document section: smoothing</a>
       </fieldset>
       <section className={styles.results} aria-label="Smoothing preview results">

@@ -1,0 +1,15 @@
+.ath-app .ath-context-label { display: inline-flex; align-items: center; gap: 4px; min-width: 0; width: 100%; }
+.ath-context-label > span { display: inline-flex; align-items: baseline; justify-content: space-between; gap: 5px; min-width: 0; flex: 1; }
+.ath-app .ath-context-trigger { flex: 0 0 20px; padding: 0 3px; min-height: 20px; line-height: 1; color: #71866b; border: 1px solid transparent; font-size: 15px; background: transparent; }
+.ath-app .ath-context-trigger:hover, .ath-app .ath-context-trigger:focus-visible { background: #eef4e8; border-color: #bbceb4; outline: 2px solid #16736b; outline-offset: 1px; }
+.ath-param-fields summary > .ath-context-label { width: calc(100% - 13px); vertical-align: middle; }
+.ath-check > .ath-context-label { width: auto; flex: 1; }
+.ath-param-current > strong { min-width: 0; flex: 1; }
+.ath-context-report table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.ath-context-report th, .ath-context-report td { padding: 8px; text-align: left; border-bottom: 1px solid #e1e8d8; overflow-wrap: anywhere; }
+.ath-context-report dl { display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 7px 15px; font-size: 12px; }
+.ath-context-report dl > div { display: contents; }
+.ath-context-report dd { margin: 0; overflow-wrap: anywhere; }
+.ath-context-report dt { color: #71866b; }
+.ath-context-report article + article { margin-top: 20px; border-top: 1px solid #e1e8d8; }
+.ath-modal .ath-context-report pre { max-height: 60vh; }

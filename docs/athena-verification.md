@@ -3072,3 +3072,84 @@ frontend API proxy returned a healthy backend response. Scientific tests
 used temporary projects on 13004/18006; no existing local scientific project
 was edited as part of verification. The local application is available at
 [localhost:3004](http://localhost:3004).
+
+## 2026-09-13 — Persistent merge spread and native plot transformations
+
+**Plot → Saved merge spread…** now reopens stored scatter for native/web
+merged groups, including after closing the merge panel, restarting the
+backend, refreshing the page or importing an original Athena PRJ. The
+[saved-spread contract](athena-merge-plot-reference.md) records implementation
+paths, pointwise array requirements, norm/flat selection, fractional k
+weighting, group scale/offset and explicit native quirks. Valid native
+`is_merge` flags with aligned scatter are treated as applied plotting state.
+New native merges also inherit the first contributor's multiplier/offset,
+without scaling or shifting the arrays being saved.
+
+Independent reference execution covers **46 observations**. Original Perl
+plot dispatch, base-energy/k methods, seven actual gnuplot templates and
+`Data::points` produce the compared numerical point files. Processing and
+object accessors are explicit bridges. The final replay exactly reproduces
+the oracle; its zero-scatter variance case records the native template
+division failure, while the web displays a zero spread with an explanation.
+The initial reference harness's unhandled template failure/stale point file
+was caught by that test and corrected using BROKEN capture and separate
+case directories. Every successful native x/y value is compared with
+relative tolerance 2e-13/absolute 5e-11; no tolerance was relaxed.
+
+Checks on the shared evolving tree:
+
+- Focused merge and saved-plot backend tests: **104 passed**, one dependency
+  warning, 17.35 s, before the final plot-attribute inheritance addition.
+- Full backend: **3371 passed**, 1437 warnings, 262.03 s. This run preceded
+  the final two-line inheritance fix and its three additional tests.
+- Final affected merge, saved-plot and constraint regressions: **140 passed**,
+  one dependency warning, 30.62 s, including all three new inheritance cases.
+  Saved-plot coverage now has 63 cases including reference observations,
+  restart/frozen/native exchange, invalid scatter, HTTP conflicts and legacy
+  population semantics. These focused counts overlap the full suite.
+- Focused frontend viewer/workbench: **179 passed**, two files, 60.70 s.
+  The ten viewer cases check request/trace handoff, immediate stale clearing,
+  delayed group replies, malformed data, retry and stable display controls.
+- Full frontend: **635 passed**, 39 files, 60.49 s. This includes the other
+  shared workspace changes present during the run.
+- Production build with `NEXT_BUILD_DIR=.next-verify`: **passed**, including
+  TypeScript and all four static pages. The separate `next typegen`/`tsc`
+  typecheck also passed.
+
+The browser spec `athena-merge-plot.spec.ts` uses three unmodified existing
+Larch project examples: **AsScorodite.prj** for energy merges, **Fe.prj** for
+normalized merges, and **bal3ybco.prj** for χ merges. All three desktop
+workflows passed in the initial run. That run's three mobile workflows
+passed plotting/refresh but stopped at a hidden sidebar Open-project
+shortcut. The test was corrected to use the visible **File → Open project…**
+entry, and all three complete mobile cases passed in **41.6 s**. No product
+code or numerical assertion was changed for that locator failure.
+
+The six successful workflows compare actual Plotly arrays with the read-only
+backend output, change norm/flat/energy forms or k weight, check the exact
+unchanged stored project, refresh, export PRJ, remove all web sidecar lines,
+reimport and compare the resulting plots and stored scatter. Viewports are
+1500×1100 and 390×844. Screenshots were inspected for readable controls,
+legends, axes and mobile scrolling; dialog overflow and browser exceptions
+are asserted. They do not constitute an executed desktop wx GUI round trip.
+
+Reference, fixture and source hashes pass. The source catalog contains
+**316 unique identities**. Documentation links and `git diff --check` pass.
+All **107 original requirement IDs, ordering and statuses remain intact**;
+PL-13 and PR-04 now reference the implemented subset and remaining work.
+Global plot states/routing, other special plots, preference exchange and
+the rest of the Athena matrix remain active work. Artemis remains excluded.
+
+Evidence is preserved under `/tmp/athena-spread-evidence/first-browser/`
+(desktop successes and initial mobile locator failures) and `final-mobile/`.
+Logs: `/tmp/athena-spread-native.log`, `athena-spread-replay.log`,
+`athena-spread-focused.log`, `athena-spread-final-regressions.log`,
+`athena-spread-full-backend.log`, `athena-spread-frontend-focused.log`,
+`athena-spread-full-frontend.log`, `athena-spread-browser.log`,
+`athena-spread-browser-mobile.log`, `athena-spread-build.log` and
+`athena-spread-typecheck-final.log`, all in `/tmp`.
+
+Local frontend 3004, backend 8006 and the frontend proxy remained healthy
+at the final read-only check. Browser scientific tests used separate
+13004/18006 services and temporary projects. No existing local scientific
+project was edited for these checks.

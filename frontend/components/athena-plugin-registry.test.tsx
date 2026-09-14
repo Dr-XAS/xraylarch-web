@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { StrictMode } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { AthenaPluginRegistry } from './athena-plugin-registry'
 import { loadPluginRegistry, savePluginRegistry, importPluginRegistry, loadPluginConfiguration, applyPluginConfiguration, type PluginRegistry, type PluginConfiguration } from '@/lib/athena-preferences'
@@ -22,6 +22,48 @@ it('loads native unchecked defaults, documentation, and exchange controls', asyn
   expect(screen.getByRole('link', { name: 'Export Athena registry' })).toHaveAttribute('href', '/api/backend/api/athena/preferences/plugins/export')
 })
 
+it('opens native plugin actions by right click without enabling the reader and shows its local documentation', async () => {
+  render(<dialog open aria-label="Settings"><AthenaPluginRegistry /></dialog>)
+  const toggle = await screen.findByRole('checkbox', { name: 'Enable X10C' })
+  fireEvent.contextMenu(toggle, { clientX: 55, clientY: 80 })
+  const menu = within(screen.getByRole('dialog')).getByRole('menu', { name: 'X10C plugin actions' })
+  expect(within(menu).getAllByRole('menuitem')).toHaveLength(1)
+  expect(toggle).not.toBeChecked(); expect(savePluginRegistry).not.toHaveBeenCalled()
+  fireEvent.click(within(menu).getByRole('menuitem', { name: 'Show documentation for the X10C plugin' }))
+  expect(screen.getByText('Transmission uses columns 4 and 6.')).toBeVisible()
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(savePluginRegistry).not.toHaveBeenCalled()
+})
+
+it.each(['visible', 'Shift+F10', 'ContextMenu'])('exposes plugin actions through %s and restores focus on Escape', async method => {
+  render(<AthenaPluginRegistry />)
+  const toggle = await screen.findByRole('checkbox', { name: 'Enable X10C' })
+  const trigger = method === 'visible' ? screen.getByRole('button', { name: 'Actions for X10C plugin' }) : toggle
+  trigger.focus()
+  if (method === 'visible') fireEvent.click(trigger)
+  else fireEvent.keyDown(trigger, { key: method === 'Shift+F10' ? 'F10' : 'ContextMenu', shiftKey: method === 'Shift+F10' })
+  expect(screen.getByRole('menuitem', { name: 'Show documentation for the X10C plugin' })).toHaveFocus()
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+  expect(screen.queryByRole('menu')).toBeNull(); expect(trigger).toHaveFocus()
+  expect(savePluginRegistry).not.toHaveBeenCalled()
+})
+
+it('offers native Configure only for configurable readers and leaves configuration input editing alone', async () => {
+  vi.mocked(loadPluginRegistry).mockResolvedValue({ ...blank, plugins: [{ ...blank.plugins[0], configurable: true }] })
+  vi.mocked(loadPluginConfiguration).mockResolvedValue({ reader: 'X10C', version: 0, session_id: 'session', values: { i0: 6 },
+    saved: { i0: 6 }, defaults: { i0: 6 }, unsaved: false,
+    fields: [{ name: 'i0', title: 'I0 column', type: 'integer', minimum: 1, maximum: 14 }] })
+  render(<AthenaPluginRegistry />)
+  fireEvent.contextMenu(await screen.findByRole('checkbox', { name: 'Enable X10C' }))
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Configure the X10C plugin' }))
+  const input = await screen.findByRole('spinbutton', { name: 'I0 column' })
+  expect(input).toHaveValue(6)
+  expect(fireEvent.contextMenu(input)).toBe(true)
+  fireEvent.keyDown(input, { key: 'F10', shiftKey: true })
+  expect(screen.queryByRole('menu')).toBeNull()
+  expect(savePluginRegistry).not.toHaveBeenCalled(); expect(applyPluginConfiguration).not.toHaveBeenCalled()
+})
+
 it('saves one toggle immediately, serializes pending changes and retains unknown native flags', async () => {
   vi.mocked(loadPluginRegistry).mockResolvedValue({ ...blank, enabled: { [unknown]: true } })
   let finish!: (value: PluginRegistry) => void
@@ -31,6 +73,8 @@ it('saves one toggle immediately, serializes pending changes and retains unknown
   fireEvent.click(toggle)
   expect(savePluginRegistry).toHaveBeenCalledWith({ version: 0, enabled: { [unknown]: true, [id]: true } })
   expect(toggle).toBeDisabled(); expect(toggle).not.toBeChecked()
+  expect(screen.getByRole('button', { name: 'Actions for X10C plugin' })).toBeDisabled()
+  fireEvent.contextMenu(toggle); expect(screen.queryByRole('menu')).toBeNull()
   fireEvent.click(toggle); expect(savePluginRegistry).toHaveBeenCalledTimes(1)
   await act(async () => finish({ ...blank, version: 1, enabled: { [unknown]: true, [id]: true } }))
   expect(toggle).toBeChecked(); expect(toggle).toBeEnabled()

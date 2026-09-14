@@ -57,7 +57,7 @@ def saved_merge_plot(group, options):
     if suffix in ('norm', 'flat'):
         arrays = (group.get('result') or {}).get('arrays', {})
         if not arrays.get(suffix) or not arrays.get('energy'):
-            raise ScientificError('Apply valid normalization parameters before displaying this merge in normalized units.')
+            raise ScientificError('Process valid normalization parameters before displaying this merge in normalized units.')
         px, y = _pair(arrays['energy'], arrays[suffix], minimum=3)
         if px.shape != x.shape or not np.allclose(px, x, rtol=0, atol=1e-9):
             raise ScientificError('Processed energy no longer matches the saved scatter grid. Reprocess the group.')

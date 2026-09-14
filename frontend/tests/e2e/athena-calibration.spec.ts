@@ -118,10 +118,11 @@ test('mobile actual point pick, cancel, retained smoothing and concurrent-edit r
 for(const viewport of [{width:1500,height:1150},{width:390,height:844}])test(`measured outer fit limits survive normalized calibration and bare PRJ at ${viewport.width}px`,async({page},info)=>{
   test.setTimeout(120000);await page.setViewportSize(viewport)
   const initial=await load(page)
+  const applying=page.waitForResponse(r=>r.url().endsWith('/command')&&r.request().postDataJSON().action==='parameters')
   await page.getByRole('spinbutton',{name:/^Pre-edge start/}).fill('-1000')
   await page.getByRole('spinbutton',{name:/^Post-edge end/}).fill('5000')
-  const applying=page.waitForResponse(r=>r.url().endsWith('/command')&&r.request().postDataJSON().action==='parameters')
-  await page.getByRole('button',{name:'Apply parameters',exact:true}).click()
+  await page.getByRole('spinbutton',{name:/^Post-edge end/}).press('Tab')
+  await expect(page.getByRole('button',{name:'Apply parameters',exact:true})).toHaveCount(0)
   const applied=await applying;expect(applied.ok()).toBe(true);const project=await applied.json() as AthenaProject
   expect(project.groups[0].processing_error).toBeNull()
   await expect(page.getByRole('spinbutton',{name:/^Pre-edge start/})).toHaveValue('-1000')

@@ -80,7 +80,7 @@ export function AthenaParameterReport({ project, initialScope, close, onBusyChan
       </select></label>
     </div>
     <p>{selected.length} groups in project list order. Frozen groups are included.</p>
-    <p className="ath-hint">The XLS report contains all 28 parameter columns. Applied values take precedence over saved settings. Apply pending parameter edits before exporting. Unused or unavailable settings are identified in the report notes.</p>
+    <p className="ath-hint">The XLS report contains all 28 parameter columns. Processed values take precedence over saved settings. Main-pane edits process automatically; wait for processing to finish before exporting. Unused or unavailable settings are identified in the report notes.</p>
     {!selected.length && <p role="status">Mark at least one group or choose All groups.</p>}
     {loading && <p role="status">Preparing parameter report…</p>}
     {error && <p className="ath-error" role="alert">{error}</p>}

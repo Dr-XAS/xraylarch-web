@@ -103,7 +103,7 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
         {(['shift', 'amplitude', 'width'] as const).map((field, i) => <label className="ath-field" key={field}><span>{['Energy shift (eV)', 'Scale by (edge-step fraction)', 'Broadening (eV)'][i]}</span><input type="number" step="any" value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value }))} /></label>)}
         <button type="button" disabled={!pickable} aria-pressed={picking} onClick={() => setPicking(v => !v)}>{picking ? 'Cancel energy-shift pick' : 'Pick energy shift'}</button>
         <p className="ath-hint">Primary E₀: {typeof e0 === 'number' ? `${e0.toFixed(3)} eV` : 'unavailable'}. Pick an E or k point to set the excitation energy above E₀. Broadening uses a Lorentzian HWHM; values below 0.01 eV become 0.01. Negative scale becomes zero.</p>
-        <p className="ath-hint">The corrected group keeps the source recipe and is processed again. Frozen sources can be compared and copied. Parameter drafts in the main pane must be applied before opening this tool.</p>
+        <p className="ath-hint">The corrected group keeps the source recipe and is processed again. Frozen sources can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</p>
       </fieldset>
       <section className={styles.results} aria-label="MEE preview results">
         <div className={styles.views}>{(['E', 'k', 'R'] as const).map(view => <button key={view} disabled={disabled} aria-pressed={space === view} onClick={() => { setSpace(view); setPicking(false) }}>{view === 'E' ? 'Plot in energy' : `Plot in ${view}`}</button>)}</div>

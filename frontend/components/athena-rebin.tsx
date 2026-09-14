@@ -79,7 +79,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
         {project.groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
       </select></label>
       <p>Edge energy: {active?.parameters.e0 ?? active?.result?.effective.e0 ?? 'Unavailable'} eV</p>
-      <p className="ath-hint">Uses saved processing parameters. Apply edits in the main inspector first. Frozen sources can be used to create new groups.</p>
+      <p className="ath-hint">Uses saved processing parameters. Main-inspector edits process automatically; wait for processing to finish before using this tool. Frozen sources can be used to create new groups.</p>
       <div className="ath-fields">{([
         ['emin', 'Edge region start · eV relative to E₀'], ['emax', 'Edge region end · eV relative to E₀'],
         ['pre', 'Pre-edge grid · eV'], ['xanes', 'XANES grid · eV'], ['exafs', 'EXAFS grid · Å⁻¹'], ['width', 'Smoothing width · points'],

@@ -70,7 +70,6 @@ common_env=(
   XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher"
   XRAYLARCH_WEB_REPO_DIR="$test_root/repo"
   XRAYLARCH_WEB_DEPLOY_SCRIPT="$test_root/deploy.sh"
-  XRAYLARCH_WEB_BRANCH=codex/xraylarch-web-v1
   XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful"
   XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log"
   XRAYLARCH_WEB_WATCH_INTERVAL=60
@@ -80,6 +79,8 @@ env "${common_env[@]}" \
   XRAYLARCH_WEB_SIBLING_PROFILE=goldendale \
   XRAYLARCH_WEB_WATCH_PATH=/opt/miniconda/bin:/usr/bin \
   "$helper" || fail "missing watcher screen must be created"
+grep -Fx 'XRAYLARCH_WEB_BRANCH=master' "$test_root/screen-start.log" >/dev/null ||
+  fail "bootstrap must default to the live master branch"
 grep -Fx 'XRAYLARCH_WEB_SIBLING_PROFILE=goldendale' "$test_root/screen-start.log" >/dev/null ||
   fail "bootstrap must pass the Goldendale profile"
 grep -Fx 'PATH=/opt/miniconda/bin:/usr/bin' "$test_root/screen-start.log" >/dev/null ||

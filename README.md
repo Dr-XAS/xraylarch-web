@@ -36,6 +36,12 @@ Open [http://localhost:3004](http://localhost:3004) using the local commands
 below, then import spectra or load the measured copper foil example. The
 earlier single-spectrum interface is at `/classic`.
 
+The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
+processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
+**Auto** uses the processed k-weight, or choose a weight from 0–4. Both views
+share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
+6 Å without phase correction. The plot refreshes after spectrum processing.
+
 The Athena import dialog shows a live plot while selecting columns. It also
 recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`
 while preserving the supplied normalization. Detector choices and previewed
@@ -47,6 +53,14 @@ groups after import. The type button next to Freeze also supports Athena's
 Ctrl+Alt-click μ(E)/XANES toggle, preserving the normalized-input flag. Legacy
 project records explicitly typed as detector signals display their counts
 without normalization or EXAFS processing.
+
+Right-click the group list or processing labels, or use their **⋯** buttons,
+for Athena's current-group actions, paired parameter copies and reports.
+Plot tabs also offer native shortcuts; **Plot shortcuts…** exposes the same
+comparisons without right-clicking. Plugin and XDI field menus provide reader
+documentation/configuration and saved-field validation. See the
+[context-menu reference](docs/athena-context-menu-reference.md) for the pinned
+native inventory, tested scientific reports and remaining desktop differences.
 
 Athena import also recognizes native NSLS X10C, Lytle encoder, SSRL ASCII,
 SSRL binary, SSRL MicroEXAFS and SPEC zapline mono files. It converts them before column selection
@@ -141,6 +155,13 @@ before saving. The result stays open for comparison; Undo/Redo and native
 N and C open the three merge spaces. See the
 [merge reference](docs/athena-merge-reference.md) for original Demeter/Larch
 comparisons and the documented discrepancy in native noise weighting.
+
+**Plot → Saved merge spread…** reopens standard-deviation plots for any
+saved merge, including historical native `.prj` files. Compare ± standard
+deviation or scaled scatter, choose normalized/flattened displays or a χ(k)
+plot weight, and retain the group's scale and offset. Source data stay
+unchanged. See the [saved-spread reference](docs/athena-merge-plot-reference.md)
+for executed native plotting rules and original project examples.
 
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
@@ -302,7 +323,7 @@ the planned `3004`/`8006` listeners. The host scripts are
 The scripts are a release package, not permission to write to Dr.XAS. A first
 host install, any GitHub push, and every host deployment require an explicit
 gate after a fresh host preflight. When that gate exists, the future operator
-uses only a full SHA from `codex/xraylarch-web-v1`:
+uses only a full SHA from `master`:
 
 ```bash
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh deploy <full-sha>

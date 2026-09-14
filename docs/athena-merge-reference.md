@@ -105,8 +105,10 @@ The web project retains provenance, contributors, coefficients, exclusions
 and `source.raw_arrays.stddev`. Native PRJ export writes the actual `stddev`
 array and `is_merge=e/n/k`; these arrays and reference links survive a bare
 native round trip with all `# Athena-Web` sidecar lines removed. Native
-`is_merge` remains preserved metadata on import; it does not reconstruct all
-web contributor provenance or reopen the merge-result panel. The existing
+`is_merge` now enables **Plot → Saved merge spread…** when its aligned scatter
+is available; it does not reconstruct missing web contributor provenance.
+The [saved-spread reference](athena-merge-plot-reference.md) covers persistent
+viewing, current norm/flat curves, native scale/offset and k weights. The existing
 current-group CSV endpoint names native scatter `merge_stddev`. Historical
 API merge requests without `method: "demeter-larch"` retain their previous
 custom arithmetic; the dedicated UI always requests the native method.
@@ -148,10 +150,10 @@ spread views, Undo/Redo, and export/reimport bare PRJ. References in this
 browser fixture deliberately reuse each measured transmission channel;
 they are constructed linked references, not additional independent scans.
 
-This establishes a merge subset. Full native plot dispatch with per-group
-multipliers, offsets, reprocessed normalized displays and k weighting, spread
-inspection after closing/reloading or importing a historical merged PRJ,
-native preference-file exchange and an actual desktop GUI round trip remain
-open. PR-04/PR-05 retain their original matrix statuses; this evidence does
+This establishes a merge subset. Persistent spread inspection and its native
+display modifiers now have separate executed-reference and browser evidence
+in the [saved-spread contract](athena-merge-plot-reference.md). Global plot
+states, native preference-file exchange and an actual desktop GUI round trip
+remain open. PR-04/PR-05 retain their original matrix statuses; this evidence does
 not claim full Athena parity. See the dated checkpoint in
 [verification notes](athena-verification.md).

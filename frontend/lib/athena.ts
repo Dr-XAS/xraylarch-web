@@ -98,7 +98,7 @@ export interface AthenaProject {
   id: string; name: string; version: number; groups: AthenaGroup[]; journal: string
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]
   analyses?: Analysis[]
-  last_operation?: { action: string; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string> }
+  last_operation?: { action: string; warnings?: string[]; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string> }
 }
 export interface Analysis {
   id?: string; created?: string

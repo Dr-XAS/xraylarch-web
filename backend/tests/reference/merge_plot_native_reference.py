@@ -50,7 +50,7 @@ sub get_array{my($s,$n)=@_;return wantarray?@{$s->{arrays}{$n}}:scalar@{$s->{arr
 sub dispose{push@main::commands,$_[1]}
 sub template{my($s,$kind,$name)=@_;my$c=$s->co;my$p=$s->po;
  push@main::used,$name;my$t=Text::Template->new(TYPE=>'STRING',SOURCE=>$main::v->{templates}{$name})or die$name;
- my$out=$t->fill_in(HASH=>{D=>\$s,S=>\$s,C=>\$c,P=>\$p,PT=>undef},PACKAGE=>'Render');die$Text::Template::ERROR if !defined$out;return$out}
+ my$error;my$out=$t->fill_in(HASH=>{D=>\$s,S=>\$s,C=>\$c,P=>\$p,PT=>undef},PACKAGE=>'Render',BROKEN=>sub{$error=$_[0]{error};return''});die$error if$error;die$Text::Template::ERROR if !defined$out;return$out}
 '''
     for s,names in [(data,['get_kweight','nsuff']),(plots,['plot','_plot_command','_plotk_command','stddevplot','varianceplot']),
                     (mu,['_plotE_command','_plotE_string']),(arrays,['points'])]:
@@ -61,7 +61,7 @@ my$p=bless{New=>1,e_mu=>1,e_norm=>$v->{e_norm},showlegend=>1,xlabel=>'',ylabel=>
 my$c=bless{},'Config';my$m=bless{plot=>$p},'Mode';
 my$d=bless{%{$v->{data}},po=>$p,co=>$c,mo=>$m},'Data';
 my$error='';eval{$d->plot($v->{view})};$error=$@ if$@;
-my@curves=map{open my$f,'<',$_ or die$!;[map{[map{0+$_}split]}<$f>]}@files;
+my@curves=map{open my$f,'<',$_ or die$!;[map{[map{0+$_}split]}<$f>]}grep{-f $_}@files;
 print JSON::PP->new->canonical->encode({curves=>\@curves,error=>$error?'native error':undef,templates=>\@used,updates=>\@updates});
 '''
     (args.output/'native.pl').write_text(code)
@@ -87,7 +87,9 @@ print JSON::PP->new->canonical->encode({curves=>\@curves,error=>$error?'native e
         a=row['arrays'];data=dict(arrays=a,is_merge=row['how'],group='g',name='Measured merge',datatype='chi' if row['how']=='k' else 'xmu',
              plottable=1,bkg_flatten=int(row['display']=='flat'),bkg_eshift=2.375 if row['how']!='k' else 0,bkg_e0=7112,plot_multiplier=row['scale'],y_offset=row['offset'])
         payload=dict(data=data,view=row['view'],e_norm=int(row['display']!='mu'),weight=row['weight'],templates=templates)
-        proc=subprocess.run(['perl','native.pl'],input=json.dumps(payload),cwd=args.output,env=env,text=True,capture_output=True,timeout=30)
+        directory=args.output/f'case-{i}';directory.mkdir(exist_ok=True)
+        for old in directory.glob('points-*.dat'):old.unlink()
+        proc=subprocess.run(['perl',str((args.output/'native.pl').resolve())],input=json.dumps(payload),cwd=directory,env=env,text=True,capture_output=True,timeout=30)
         if proc.returncode:raise RuntimeError(proc.stderr)
         row.update(id=i,native=json.loads(proc.stdout))
     return dict(sources=hashes,rows=records)

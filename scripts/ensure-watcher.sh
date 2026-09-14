@@ -14,7 +14,7 @@ FLOCK_BIN="${FLOCK_BIN:-$(command -v flock 2>/dev/null || true)}"
 
 REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-${APP_ROOT}/control}"
 DEPLOY_SCRIPT="${XRAYLARCH_WEB_DEPLOY_SCRIPT:-${APP_ROOT}/ops/deploy-xraylarch-web.sh}"
-BRANCH="${XRAYLARCH_WEB_BRANCH:-codex/xraylarch-web-v1}"
+BRANCH="${XRAYLARCH_WEB_BRANCH:-master}"
 LAST_SUCCESSFUL_STATE="${XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE:-${APP_ROOT}/state/last-successful}"
 LOG="${XRAYLARCH_WEB_WATCH_LOG:-/tmp/xraylarch-web-watch.log}"
 POLL_INTERVAL="${XRAYLARCH_WEB_WATCH_INTERVAL:-60}"

@@ -36,6 +36,7 @@ from .athena_beamline_metadata import BeamlineDefaults
 from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
 from .athena_export import DataExport
+from .athena_context import ContextReport, ContextPlot
 from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
@@ -1749,6 +1750,8 @@ class AthenaStore:
                 data_type=dtype,parameters=p,source=source,project=project,
                 is_normalized=False if dtype=='chi' else first.get('is_normalized',False),
                 background_standard_id=None if dtype=='chi' else first.get('background_standard_id'))
+            # Native merge clones the first contributor's plot attributes.
+            g['multiplier'],g['offset']=first['multiplier'],first['offset']
             g['marked']=role=='sample'
             prepared.append(g)
             rows.append(dict(role=role,label=g['label'],data_type=dtype,parameters=g['parameters'],
@@ -1773,6 +1776,27 @@ class AthenaStore:
         project = self.load(ident)
         self.check(project, options.version)
         result = saved_merge_plot(self.group(project, group_id), options)
+        self.check(self.load(ident), options.version)
+        return dict(project_id=ident, version=options.version,
+                    options=options.model_dump(), result=result)
+
+    def plot_wavelet(self, ident, group_id, request):
+        from .athena_wavelet import WaveletOptions, wavelet_plot
+        options = WaveletOptions.model_validate(request)
+        project = self.load(ident)
+        self.check(project, options.version)
+        result = wavelet_plot(self.group(project, group_id), options)
+        self.check(self.load(ident), options.version)
+        return dict(project_id=ident, version=options.version, **result)
+
+    def plot_special(self, ident, request):
+        from .athena_special_plot import SpecialPlotOptions, special_plot
+        options = SpecialPlotOptions.model_validate(request)
+        project = self.load(ident)
+        self.check(project, options.version)
+        if options.view == 'biquad' and options.group_ids != [g['id'] for g in project['groups'] if g['marked']]:
+            fail('Mark exactly two groups to make a Bi-Quad plot.')
+        result = special_plot([self.group(project, gid) for gid in options.group_ids], options)
         self.check(self.load(ident), options.version)
         return dict(project_id=ident, version=options.version,
                     options=options.model_dump(), result=result)
@@ -2253,7 +2277,7 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
+                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "context_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
                 if action == 'rebin':
                     choice, prepared, reasons = self._rebin_results(p, request)
@@ -2317,6 +2341,13 @@ class AthenaStore:
                     save_comments(groups[0], choice.comments)
                 elif action == "metadata":
                     for g in groups:
+                        if 'importance' in options:
+                            value = options['importance']
+                            if g['frozen']:
+                                fail('Unfreeze the group before changing its importance.')
+                            if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) or value < 0:
+                                fail('Importance must be a finite nonnegative number.')
+                            g['source']['importance'] = float(value)
                         for key in ("label", "notes", "marked", "frozen", "multiplier", "offset", "reference_id"):
                             if key in options:
                                 value = options[key]
@@ -2353,11 +2384,22 @@ class AthenaStore:
                     results, reasons = self.set_e0(p, groups, options)
                     skipped = list(reasons)
                     operation_details = {"e0_results": results, "skipped_reasons": reasons}
+                elif action == 'context_parameters':
+                    from .athena_context import context_parameters
+                    skipped, operation_details = context_parameters(self, p, groups, options)
                 elif action in ("copy_parameters", "reset_parameters"):
                     defaults = AthenaParameters().model_dump()
                     defaults["background_standard_id"] = None
                     parameter, section = options.get("parameter"), options.get("section", "all")
-                    if parameter is not None:
+                    if sum(key in options for key in ('parameter', 'parameters', 'section')) > 1:
+                        fail('Choose one parameter, a parameter list, or one section.')
+                    if 'parameters' in options:
+                        keys = options['parameters']
+                        if (not isinstance(keys, list) or not keys or len(keys) > len(defaults)
+                                or any(not isinstance(key, str) or key not in defaults for key in keys)
+                                or len(set(keys)) != len(keys)):
+                            fail('Choose a nonempty list of distinct processing parameters.')
+                    elif parameter is not None:
                         if parameter not in defaults:
                             fail("Choose a valid processing parameter.")
                         keys = (parameter,)
@@ -2392,12 +2434,15 @@ class AthenaStore:
                         for tied in self.reference_family(p, group["id"]):
                             tied["reference_id"] = None
                 elif action == "duplicate":
+                    created = {}
                     for g in groups:
                         clone = copy.deepcopy(g)
                         clone.update(id=uid(), label=g["label"] + " · copy", frozen=False, reference_id=None)
                         from .athena_xdi_history import inherit_source
                         clone['source']['xdi_metadata'] = inherit_source(g, 'duplicate', {})
-                        p["groups"].append(clone)
+                        created[g['id']] = clone
+                    p['groups'] = [item for parent in p['groups'] for item in
+                                   ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
                 elif action == "copy_series":
                     key = options.get("parameter")
                     if key not in ("e0", "rbkg", "kmin", "kmax", "dk", "rmin", "rmax", "energy_shift"):
@@ -2428,7 +2473,7 @@ class AthenaStore:
                             g["source"].setdefault("warnings", []).append("Background standard was removed; its link was cleared.")
                             g["background_standard_id"] = None
                         if g["id"] in affected:
-                            g.update(result=None, processing_error="A background standard was removed. Apply parameters to recalculate this group and its dependents.")
+                            g.update(result=None, processing_error="A background standard was removed. Reprocess this group to recalculate it and its dependents.")
                 elif action == 'calibrate' and 'coordinate' in options:
                     calibrated, preview = self._calibration_results(p, request)
                     p['groups'] = calibrated['groups']
@@ -2817,6 +2862,9 @@ class AthenaStore:
                 args['rebinned'] = 1
             if identity:
                 args.update(bkg_z=identity["element"], fft_edge=identity["edge"])
+            if 'importance' in source:
+                from .athena_merge import importance
+                args['importance'] = importance(g)
             fraction = source.get("e0_fraction")
             if isinstance(fraction, (int, float)) and not isinstance(fraction, bool) and 0 < fraction <= 1:
                 args["bkg_e0_fraction"] = fraction
@@ -3466,6 +3514,21 @@ def build_athena_router(settings: Settings):
     def command(ident: str, request: Command):
         return guarded(lambda: store.command(ident, request))
 
+    @router.post('/projects/{ident}/context-report')
+    def context_report(ident: str, request: ContextReport):
+        from .athena_context import context_report as report
+        return guarded(lambda: report(store, ident, request))
+
+    @router.post('/projects/{ident}/context-plot')
+    def context_plot(ident: str, request: ContextPlot):
+        from .athena_context import context_plot as plot
+        return guarded(lambda: plot(store, ident, request))
+
+    @router.get('/projects/{ident}/groups/{group_id}/source-text')
+    def source_text(ident: str, group_id: str):
+        from .athena_context import source_text as text
+        return guarded(lambda: text(store, ident, group_id))
+
     @router.get('/projects/{ident}/groups/{group_id}/xdi')
     def xdi_metadata(ident: str, group_id: str):
         return guarded(lambda: store.xdi_metadata(ident, group_id))
@@ -3509,6 +3572,14 @@ def build_athena_router(settings: Settings):
     @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
     def plot_saved_merge(ident: str, group_id: str, request: dict):
         return guarded(lambda:store.plot_saved_merge(ident,group_id,request))
+
+    @router.post('/projects/{ident}/groups/{group_id}/wavelet')
+    def plot_wavelet(ident: str, group_id: str, request: dict):
+        return guarded(lambda: store.plot_wavelet(ident, group_id, request))
+
+    @router.post('/projects/{ident}/plots/special')
+    def plot_special(ident: str, request: dict):
+        return guarded(lambda: store.plot_special(ident, request))
 
     @router.post('/projects/{ident}/alignment/preview')
     def preview_alignment(ident: str, request: Command):

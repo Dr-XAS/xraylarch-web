@@ -7,7 +7,7 @@
 | Application | `xraylarch-web` |
 | Owner and rollback authority | Jeffrey Huang |
 | Repository | `https://github.com/Dr-XAS/xraylarch-web.git` |
-| Authorized branch | `codex/xraylarch-web-v1` |
+| Authorized branch | `master` |
 | Public address | `http://drxas.xray.aps.anl.gov:3004` |
 | Frontend listener | `0.0.0.0:3004` |
 | Backend listener | `127.0.0.1:8006` |
@@ -41,14 +41,19 @@ full 40-character SHA:
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh recover <full-sha>
 ```
 
-`deploy` first requires `refs/heads/codex/xraylarch-web-v1` at the remote to
+`deploy` first requires `refs/heads/master` at the remote to
 equal the requested SHA. It builds a new detached checkout under
 `releases/<sha>`, creates a release-local backend virtual environment from
 `drxas-deploy`, installs the complete pinned set in
 `deploy/python-release-constraints.txt`, records `pip freeze`, runs `pip check`,
 and runs `npm ci` plus the production frontend build through `drxas-node20`.
-Release inputs and artifacts are made read-only after integrity metadata is
-written. The repository checkout is never used as a shared host clone.
+The shared backend installer also installs the web dependencies declared in
+`backend/requirements.txt` under the release constraints, preserving the built
+Larch wheel instead of installing the repository as an editable package. It
+imports the complete backend application and runs `pip check` before recording
+the installed packages. Release inputs and artifacts are made read-only after
+integrity metadata is written. The repository checkout is never used as a shared
+host clone.
 
 The only mutable application state is below
 `/local/apps/xraylarch-web/data`, including private candidate cache, runtime,
@@ -56,6 +61,19 @@ and temporary-home directories. The deployer starts child processes with a
 clean environment and provides only `XRAYLARCH_DATA_ROOT`, `BACKEND_URL`,
 `NEXT_BACKEND_URL`, and non-secret runtime variables. It does not inherit
 provider, email, Slack, or Dr.XAS database secrets.
+
+The web backend release CI job builds a fresh Python 3.12 environment with the
+same installer, collects every backend test module, and executes API, processing,
+workspace, and XLS report tests plus deployment regressions. The shared dependency
+and runtime gate is followed in CI by the full backend scientific test suite.
+[Native numerical reference portability](../docs/athena-numerical-reference-portability.md)
+describes how those tests retain strict native comparisons across numerical libraries.
+The deployer runs the same gate against disposable candidate data before
+publishing a new immutable release, so direct pushes must pass it before cutover. New web dependencies belong in `backend/requirements.txt`; version
+constraints must remain compatible with `deploy/python-release-constraints.txt`.
+A failed installation or application import blocks the candidate build before
+activation. A retry of a completed release revalidates its identity and backend
+import before staging; incomplete or invalid releases are never overwritten.
 
 The active release stays on `3004` and `8006`. Before any cutover, the
 deployer runs the target release in the two candidate screens on private
@@ -170,7 +188,7 @@ profile and conda-containing PATH:
 
 The existing five-minute watcher-liveness job invokes the same helper after its
 other scoped watcher checks. The watcher polls
-`origin/codex/xraylarch-web-v1` every 60 seconds, resolves the branch to an
+`origin/master` every 60 seconds, resolves the branch to an
 exact full SHA, health-checks the canonical active SHA, invokes `recover` when
 health fails, and only then invokes `deploy` for a new SHA. The deployer remains
 the sole authority for candidate staging, process identity, cutover, rollback,

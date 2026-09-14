@@ -178,8 +178,10 @@ def test_combination_exports_distinguish_scatter_from_measurement_error(client):
 def test_failed_normalization_does_not_prevent_exporting_an_exact_zero_sum(client):
     p = example(client)
     gid = p["groups"][0]["id"]
+    original_ids = {g["id"] for g in p["groups"]}
     p = command(client, p, "duplicate", [gid]).json()
-    response = command(client, p, "sum", [gid, p["groups"][-1]["id"]], array="mu", weights=[1, -1])
+    duplicate_id = next(g["id"] for g in p["groups"] if g["id"] not in original_ids)
+    response = command(client, p, "sum", [gid, duplicate_id], array="mu", weights=[1, -1])
     assert response.status_code == 200, response.text
     p = response.json()
     summed = p["groups"][-1]

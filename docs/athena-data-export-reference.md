@@ -3,8 +3,8 @@
 **File → Export column data…** exports the current group, combines marked
 groups into one table, or downloads a ZIP containing one file per marked
 group. The dialog previews the actual columns, first five rows, full header
-and any interpolation notices before downloading. It uses applied processing
-parameters; unapplied parameter drafts must be applied first. The earlier
+and any interpolation notices before downloading. It uses processed parameters;
+main-pane edits are queued for automatic processing before export. The earlier
 plot-space CSV export remains available separately.
 
 The implementation is in

@@ -103,7 +103,7 @@ export function AthenaDataExport({ project, groupId, close, onBusyChange }: {
     {supportsWeight && weight === 'kw' && <><label className="ath-check"><input type="checkbox" checked={sharedWeight} disabled={downloading} onChange={e => setSharedWeight(e.target.checked)} />Use a shared output weight</label><p className="ath-hint">By default, each group uses its saved arbitrary weight, or its applied FT weight if no separate value was imported.</p></>}
     {supportsMultipliers && <label className="ath-check"><input type="checkbox" checked={multipliers} disabled={downloading} onChange={e => setMultipliers(e.target.checked)} />Apply each group's plot multiplier</label>}
     <p>{selected.length} group{selected.length === 1 ? '' : 's'} selected{scope !== 'current' && ' in project list order'}: {selected.map(g => g.label).join(', ') || 'none'}</p>
-    <p className="ath-hint">Exports use applied parameters and include acquisition metadata, saved XDI comments and processing settings. Apply any parameter edits before exporting.</p>
+    <p className="ath-hint">Exports use processed parameters and include acquisition metadata, saved XDI comments and processing settings. Main-pane edits process automatically; wait for processing to finish before exporting.</p>
     {scope === 'marked' && <p className="ath-hint">The first marked group supplies the axis. Energy data are linearly interpolated; any extrapolation is listed below. k/R/q grids must match; separate files retain each group's grid.</p>}
     {scope === 'each' && <p className="ath-hint">The ZIP contains one column file per marked group. Duplicate labels receive distinct filenames.</p>}
     {badWeight && <p role="alert">Enter a finite output weight from 0 through 4.</p>}

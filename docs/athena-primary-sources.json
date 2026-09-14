@@ -1982,6 +1982,48 @@
       "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newk.tmpl",
       "sha256": "415dc740c2e03af886fac938536d9a256bd6bb447f25931f1d535cd6e0aea238",
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newk.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Plot/Other.pm",
+      "sha256": "a67cc0dba7babdcae3d7938bff9e5c7ae7c4c9dc89d9f8038e8f021302ddaf8b",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Plot/Other.pm",
+      "git_blob_sha1": "950b8bfa936d05c9d4b4a83dc2632576b8d57495",
+      "bytes": 4612
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/biquad.tmpl",
+      "sha256": "4ddba50062cb1edc503cff79f32a56fb84f010e89d0739b6b1fa528b950cdfb2",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/biquad.tmpl",
+      "git_blob_sha1": "71b8dfcee713e68aa99744f6b809469a91752147",
+      "bytes": 3446
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newq.tmpl",
+      "sha256": "3e6556f9e3f0e39072c99769e67a73ac84333a2d6406c3b060afc03596ecc270",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newq.tmpl",
+      "git_blob_sha1": "85695bec2b76b67f6c62c9f09d256b6219837aa4",
+      "bytes": 1302
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overq.tmpl",
+      "sha256": "c0fb986abc6aa66ab85cbdce36f01f3eeac4e9800f2785e62c8315950efee1e4",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overq.tmpl",
+      "git_blob_sha1": "049f6d0d451c007423fa2cb906d7611da1ed207e",
+      "bytes": 1037
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/quad.tmpl",
+      "sha256": "d9dcd282f6f7f017c4ed16c7e9ca2e429526f1df76653c8df2ed1f21b1eb84cb",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/quad.tmpl",
+      "git_blob_sha1": "cff0e3fecc7d595c59d79b6577d54e1fd1f5ea40",
+      "bytes": 3204
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/k123.tmpl",
+      "sha256": "6dfd435ba031e3d56248162148957357abea83e68ccd63a3086515dd8b6793ce",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/k123.tmpl",
+      "git_blob_sha1": "2402f100b0dd0442a5942c61734d2865d7cb989c",
+      "bytes": 263
     }
   ]
 }

@@ -347,8 +347,9 @@ def test_derived_groups_keep_only_applicable_live_standard_links(workspace, acti
     before = deepcopy(project)
     selected = [ids["consumer"]] if action in ("duplicate", "smooth") else [ids["consumer"], ids["other"]]
     project = run(store, project, action, selected, **options)
-    derived = project["groups"][-1]
-    assert project["groups"][:4] == before["groups"]
+    original_ids = {group["id"] for group in before["groups"]}
+    derived = next(group for group in project["groups"] if group["id"] not in original_ids)
+    assert [group for group in project["groups"] if group["id"] in original_ids] == before["groups"]
     assert derived["reference_id"] is None
     assert derived["background_standard_id"] == (ids["standard"] if linked else None)
     assert derived["processing_error"] is None

@@ -11,7 +11,7 @@ type Handoff = {
   data: Trace[]
   onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
   layout: {
-    xaxis: { title: { text: string }; range?: number[] }
+    xaxis: { title: { text: string }; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
     yaxis: { title: { text: string } }
     yaxis2?: { title: { text: string } }
   }
@@ -180,6 +180,18 @@ describe("AthenaPlot coordinate picking", () => {
     expect(onPickX).not.toHaveBeenCalled()
     handoff().onClick!({ points: [{ x: 0 }] })
     expect(onPickX).toHaveBeenCalledExactlyOnceWith(0, "E")
+  })
+})
+
+describe("AthenaPlot range overrides", () => {
+  it.each([
+    { range: [null, null], axis: { autorange: true } },
+    { range: [8960, null], axis: { range: [8960, null], autorange: "max" } },
+    { range: [null, 9000], axis: { range: [null, 9000], autorange: "min" } },
+    { range: [8960, 9000], axis: { range: [8960, 9000] } },
+  ] as const)("supports automatic and one-sided bounds: $range", ({ range, axis }) => {
+    show({ range: [...range] })
+    expect(handoff().layout.xaxis).toMatchObject(axis)
   })
 })
 
