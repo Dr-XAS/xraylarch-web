@@ -317,7 +317,7 @@ the planned `3004`/`8006` listeners. The host scripts are
 The scripts are a release package, not permission to write to Dr.XAS. A first
 host install, any GitHub push, and every host deployment require an explicit
 gate after a fresh host preflight. When that gate exists, the future operator
-uses only a full SHA from `codex/xraylarch-web-v1`:
+uses only a full SHA from `master`:
 
 ```bash
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh deploy <full-sha>

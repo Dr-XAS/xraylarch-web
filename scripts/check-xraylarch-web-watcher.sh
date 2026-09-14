@@ -9,7 +9,7 @@ DEPLOY_STATE="${XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE:-${APP_ROOT}/state/last-succ
 LOG="${XRAYLARCH_WEB_WATCH_LOG:-/tmp/xraylarch-web-watch.log}"
 SCREEN_NAME="${XRAYLARCH_WEB_WATCH_SCREEN:-xraylarch-web-watch}"
 REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/apps/xraylarch-web/control}"
-BRANCH="${XRAYLARCH_WEB_BRANCH:-codex/xraylarch-web-v1}"
+BRANCH="${XRAYLARCH_WEB_BRANCH:-master}"
 
 usage() {
   printf 'Usage: %s status\n' "$(basename "$0")"

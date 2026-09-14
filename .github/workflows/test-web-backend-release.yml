@@ -1,0 +1,49 @@
+name: Web backend release dependencies
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  release-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check deployment and watcher regressions
+        shell: bash
+        run: |
+          bash tests/test_deploy_xraylarch_web.sh
+          bash tests/test_deploy_release_dependencies.sh
+          bash tests/test_watcher.sh
+          bash tests/test_watcher_bootstrap.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build the release backend and verify dependencies in a clean environment
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m venv "$GITHUB_WORKSPACE/backend/.venv"
+          XRAYLARCH_WEB_TEST_MODE=1 source scripts/deploy-xraylarch-web.sh
+          SAFE_PATH="$(dirname "$(command -v python)"):/usr/local/bin:/usr/bin:/bin"
+          DATA_ROOT="$RUNNER_TEMP/xraylarch-release-data"
+          CANDIDATE_DATA="$RUNNER_TEMP/xraylarch-release-candidate"
+          CLEAN_HOME="$CANDIDATE_DATA/home"
+          mkdir -p "$DATA_ROOT" "$CLEAN_HOME" "$CANDIDATE_DATA/runtime/pycache"
+          install_release_backend "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE/backend"
+          # Collect every backend test module to catch missing imports across features.
+          run_clean "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pytest -p no:cacheprovider --collect-only -q tests
+          # Exercise real API, processing, persistence, and XLS dependencies.
+          # Scientific golden-reference tolerances remain a separate validation scope.
+          run_clean "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pytest -p no:cacheprovider -q \
+            tests/test_api.py tests/test_athena_api.py tests/test_athena_parameter_report.py \
+            tests/test_processing.py tests/test_workspace.py

@@ -18,10 +18,10 @@ sha=0123456789abcdef0123456789abcdef01234567
 cat >"$test_root/bin/git" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-if [[ "$*" == *' fetch origin codex/xraylarch-web-v1 -q' ]]; then
+if [[ "$*" == *' fetch origin refs/heads/master:refs/remotes/origin/master -q' ]]; then
   exit 0
 fi
-if [[ "$*" == *' rev-parse origin/codex/xraylarch-web-v1' ]]; then
+if [[ "$*" == *' rev-parse origin/master' ]]; then
   printf '%s\n' "${TEST_REMOTE_SHA:?}"
   exit 0
 fi
@@ -177,7 +177,7 @@ status_output=$(XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
   XRAYLARCH_WEB_WATCH_LOG="$test_root/watcher.log" \
   XRAYLARCH_WEB_REPO_DIR="$test_root/repo" \
   "$status_script" status)
-[[ "$status_output" == *"branch=codex/xraylarch-web-v1"* ]] || fail "status must report branch"
+[[ "$status_output" == *"branch=master"* ]] || fail "status must report branch"
 [[ "$status_output" == *"observed_sha=$sha"* ]] || fail "status must report observed SHA"
 goldendale_status=$(XRAYLARCH_WEB_SIBLING_PROFILE=goldendale XRAYLARCH_WEB_WATCH_STATE_ROOT="$test_root/state/watcher" \
   XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE="$test_root/last-successful" \

@@ -38,15 +38,19 @@ if assert_backend_application_import "$release"; then fail_test 'broken app impo
 command_status=0
 
 
-# Exercise the build pipeline with fake package/build executables: a missing
-# application dependency must prevent publication of a completed release.
+# CI and deployment must execute the same complete installer. Every dependency
+# gate must fail before the immutable release or frontend can be published.
+declare -F install_release_backend >/dev/null || fail_test 'shared release installer is missing'
+for failure in constraints wheel backend app check freeze; do
 (
   XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
-  RELEASES_ROOT="$test_root/build-releases"
+  RELEASES_ROOT="$test_root/build-releases-$failure"
   REQUESTED_SHA=0123456789abcdef0123456789abcdef01234567
   CONDA_BIN=/fake/conda
   mkdir -p "$RELEASES_ROOT"
+  events="$test_root/build-events-$failure"
   run_clean() {
+    local stage=''
     case "$*" in
       'git init --quiet '*)
         local target="${@: -1}"
@@ -56,25 +60,44 @@ command_status=0
         ;;
       *'rev-parse '*) printf '%s\n' "$REQUESTED_SHA" ;;
       *'git '*describe*) printf '1.0.0\n' ;;
+      *'pip install --requirement '*'/deploy/python-release-constraints.txt '*) stage=constraints ;;
       *'pip wheel '*)
+        stage=wheel
         mkdir -p ../.release-wheel
         : > ../.release-wheel/xraylarch-test.whl
         ;;
-      *'pip install --requirement '*'.release-requirements.'*)
-        echo dependencies >> "$test_root/build-events"
-        ;;
-      *'from xraylarch_web.main import app'*)
-        echo app-import >> "$test_root/build-events"
-        return 1
-        ;;
-      *'pip check'*|*'pip freeze'*|*'npm '*)
-        echo premature-success >> "$test_root/build-events"
-        ;;
+      *'pip install --requirement '*'.release-requirements.'*) stage=backend ;;
+      *'from xraylarch_web.main import app'*) stage=app ;;
+      *'pip check'*) stage=check ;;
+      *'pip freeze'*) stage=freeze ;;
+      *'node -e '*|*'npm '*) fail_test 'frontend must not run after backend failure' ;;
+    esac
+    if [[ -n "$stage" ]]; then
+      echo "$stage" >> "$events"
+      [[ "$stage" != "$failure" ]] || return 7
+    fi
+  }
+  if build_release; then fail_test "build must fail on $failure failure"; fi
+  [[ "$(tail -n 1 "$events")" == "$failure" ]] || fail_test "build continued after $failure failure"
+  [[ ! -e "$RELEASES_ROOT/$REQUESTED_SHA" ]] || fail_test "$failure failure published immutable release"
+)
+done
+(
+  XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
+  RELEASES_ROOT="$test_root/helper-call"
+  REQUESTED_SHA=0123456789abcdef0123456789abcdef01234567
+  CONDA_BIN=/fake/conda
+  mkdir -p "$RELEASES_ROOT"
+  run_clean() {
+    case "$*" in
+      *'rev-parse '*) printf '%s\n' "$REQUESTED_SHA" ;;
+      *'git '*describe*) printf '1.0.0\n' ;;
     esac
   }
-  if build_release; then fail_test 'build must fail when full application import fails'; fi
-  [[ "$(cat "$test_root/build-events")" == $'dependencies\napp-import' ]] || fail_test 'build must install backend requirements then import app before completion checks'
-  [[ ! -e "$RELEASES_ROOT/$REQUESTED_SHA" ]] || fail_test 'failed application import must not publish immutable release'
+  install_release_backend() { echo shared > "$test_root/shared-called"; return 7; }
+  if build_release; then fail_test 'build ignored shared installer failure'; fi
+  [[ "$(cat "$test_root/shared-called")" == shared ]] || fail_test 'production must call shared installer'
+  [[ ! -e "$RELEASES_ROOT/$REQUESTED_SHA" ]] || fail_test 'shared installer failure published release'
 )
 
 RELEASES_ROOT="$test_root/releases"
