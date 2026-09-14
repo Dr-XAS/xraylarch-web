@@ -24,6 +24,8 @@ def detector_scale(group, channel):
     raw = source.get('raw_arrays', {}).get(channel)
     _, y = _pair(group['energy'], [] if raw is None else raw, name=f'{group["label"]} · {channel}')
     captured = source.get('detector_plot_scales', {})
+    if not isinstance(captured, dict):
+        raise ScientificError('Captured detector scales must be an object.')
     if channel in captured:
         return _number(captured[channel], f'Captured {channel} scale')
     native = source.get('native', {})

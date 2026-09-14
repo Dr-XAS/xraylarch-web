@@ -10,30 +10,43 @@ function clampHeight(height: number) {
   return Math.min(maximumHeight, Math.max(minimumHeight, Math.round(height)))
 }
 
-function saveHeight(height: number | null) {
+function saveHeight(storageKey: string, height: number | null) {
   try {
-    if (height === null) localStorage.removeItem(athenaPlotHeightKey)
-    else localStorage.setItem(athenaPlotHeightKey, String(height))
+    if (height === null) localStorage.removeItem(storageKey)
+    else localStorage.setItem(storageKey, String(height))
   } catch { /* The plot remains resizable when storage is unavailable. */ }
 }
 
-export function ResizablePlotCard({ children }: { children: ReactNode }) {
+interface Props {
+  children: ReactNode
+  className?: string
+  storageKey?: string
+  plotSelector?: string
+  defaultHeight?: number
+  resizeLabel?: string
+  controlsId?: string
+}
+
+export function ResizablePlotCard({
+  children, className = "", storageKey = athenaPlotHeightKey, plotSelector = ".ath-plot, .ath-no-plot",
+  defaultHeight = 380, resizeLabel = "Resize spectrum plot height", controlsId = "athena-spectrum-viewer",
+}: Props) {
   const cardRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; startY: number; startHeight: number; preferred: number | null } | null>(null)
   const heightRef = useRef<number | null>(null)
   const [height, setHeight] = useState<number | null>(null)
-  const [measuredHeight, setMeasuredHeight] = useState(380)
+  const [measuredHeight, setMeasuredHeight] = useState(defaultHeight)
   const [dragging, setDragging] = useState(false)
 
   function plotHeight() {
-    return cardRef.current?.querySelector<HTMLElement>(".ath-plot, .ath-no-plot")?.getBoundingClientRect().height || 380
+    return cardRef.current?.querySelector<HTMLElement>(plotSelector)?.getBoundingClientRect().height || defaultHeight
   }
 
   function resize(next: number | null, persist = false) {
     const fitted = next === null ? null : clampHeight(next)
     heightRef.current = fitted
     setHeight(fitted)
-    if (persist) saveHeight(fitted)
+    if (persist) saveHeight(storageKey, fitted)
   }
 
   function beginResize(event: PointerEvent<HTMLDivElement>) {
@@ -51,7 +64,7 @@ export function ResizablePlotCard({ children }: { children: ReactNode }) {
     dragRef.current = null
     setDragging(false)
     if (cancel) resize(drag.preferred)
-    else saveHeight(heightRef.current)
+    else saveHeight(storageKey, heightRef.current)
   }
 
   function reset() {
@@ -78,7 +91,7 @@ export function ResizablePlotCard({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem(athenaPlotHeightKey)
+      const stored = localStorage.getItem(storageKey)
       const preferred = Number(stored)
       if (stored?.trim() && Number.isFinite(preferred) && preferred > 0) resize(preferred)
     } catch { /* Keep the responsive default for an unavailable preference. */ }
@@ -91,7 +104,7 @@ export function ResizablePlotCard({ children }: { children: ReactNode }) {
       observer?.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [])
+  }, [storageKey, plotSelector, defaultHeight])
 
   useEffect(() => {
     // react-plotly's resize handler listens to the window, not its container.
@@ -103,8 +116,11 @@ export function ResizablePlotCard({ children }: { children: ReactNode }) {
     if (!dragging) return
     const cursor = document.body.style.cursor
     const selection = document.body.style.userSelect
+    const anchoring = document.body.style.overflowAnchor
     document.body.style.cursor = "row-resize"
     document.body.style.userSelect = "none"
+    // Height changes must not scroll the page and feed back into the drag distance.
+    document.body.style.overflowAnchor = "none"
     function move(event: globalThis.PointerEvent) {
       const drag = dragRef.current
       if (drag?.pointerId === event.pointerId) resize(drag.startHeight + event.clientY + window.scrollY - drag.startY)
@@ -123,18 +139,19 @@ export function ResizablePlotCard({ children }: { children: ReactNode }) {
     return () => {
       document.body.style.cursor = cursor
       document.body.style.userSelect = selection
+      document.body.style.overflowAnchor = anchoring
       window.removeEventListener("pointermove", move)
       window.removeEventListener("pointerup", finish)
       window.removeEventListener("pointercancel", cancel)
       window.removeEventListener("keydown", escape)
     }
-  }, [dragging])
+  }, [dragging, storageKey, plotSelector, defaultHeight])
 
   const style = height === null ? undefined : { "--ath-plot-height": `${height}px` } as CSSProperties
-  return <div ref={cardRef} className="ath-plot-card" style={style} data-plot-resizing={dragging || undefined} data-plot-height={height ?? undefined}>
+  return <div ref={cardRef} className={`ath-plot-card ${className}`.trim()} style={style} data-plot-resizing={dragging || undefined} data-plot-height={height ?? undefined}>
     {children}
     <div className="ath-plot-height-resizer" role="separator" tabIndex={0}
-      aria-label="Resize spectrum plot height" aria-controls="athena-spectrum-viewer" aria-orientation="horizontal"
+      aria-label={resizeLabel} aria-controls={controlsId} aria-orientation="horizontal"
       aria-valuemin={minimumHeight} aria-valuemax={maximumHeight} aria-valuenow={height ?? measuredHeight}
       aria-valuetext={`${height ?? measuredHeight} pixels`}
       title="Drag up or down to resize the plot. Use Up/Down arrows for precise control; double-click or press Enter to reset."

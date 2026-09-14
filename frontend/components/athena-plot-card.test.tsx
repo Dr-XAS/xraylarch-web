@@ -52,10 +52,12 @@ describe("ResizablePlotCard", () => {
     expect(card.style.getPropertyValue("--ath-plot-height")).toBe("")
 
     fireEvent(grip, pointer("pointerdown", 480))
+    expect(document.body.style.overflowAnchor).toBe("none")
     fireEvent(window, pointer("pointermove", 660))
     expect(card.style.getPropertyValue("--ath-plot-height")).toBe("560px")
     expect(localStorage.getItem(athenaPlotHeightKey)).toBeNull()
     fireEvent(window, pointer("pointerup", 660))
+    expect(document.body.style.overflowAnchor).toBe("")
     expect(Number(localStorage.getItem(athenaPlotHeightKey))).toBe(560)
 
     fireEvent(grip, pointer("pointerdown", 660))

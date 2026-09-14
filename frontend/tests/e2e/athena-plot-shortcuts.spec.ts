@@ -1,4 +1,5 @@
 import { fileURLToPath } from 'node:url'
+import { readFileSync } from 'node:fs'
 import { expect, test, type Page, type Locator } from '@playwright/test'
 import type { AthenaProject } from '../../lib/athena'
 import type { ShortcutPlot } from '../../components/athena-special-plot'
@@ -74,6 +75,21 @@ for (const mobile of [false, true]) test((mobile ? 'mobile' : 'desktop') + ' ori
     if (kind === 'i0sig') {
       expect(value.result.curves).toHaveLength(3)
       expect(value.result.skipped).toHaveLength(0)
+      const legend = dialog.getByRole('list', { name: 'Shortcut curve legend' })
+      await expect(legend.getByRole('button')).toHaveCount(3)
+      const signal = legend.getByRole('button', { name: value.result.curves[2].name, exact: true })
+      await signal.click()
+      await expect.poll(() => dialog.locator('.js-plotly-plot').evaluate(el => (el as HTMLElement & { data: { visible: boolean }[] }).data[2].visible)).toBe(false)
+      await signal.click()
+      await expect.poll(() => dialog.locator('.js-plotly-plot').evaluate(el => (el as HTMLElement & { data: { visible: boolean }[] }).data[2].visible)).toBe(true)
+      const downloading = page.waitForEvent('download')
+      await dialog.getByRole('button', { name: 'Download shortcut SVG', exact: true }).click()
+      const svg = info.outputPath('detector-comparison.svg')
+      await (await downloading).saveAs(svg)
+      const exported = readFileSync(svg, 'utf8')
+      expect(exported).toContain('Signal · scaled by')
+      expect(exported).toContain('I₀ · scaled by')
+      expect(exported).toContain('width="1400"')
       await dialog.screenshot({ path: info.outputPath('detector-comparison.png') })
     }
     if (kind === 'i0') { expect(value.result.curves).toHaveLength(2); expect(value.result.skipped).toHaveLength(4) }

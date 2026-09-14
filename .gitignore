@@ -50,6 +50,7 @@ frontend/node_modules/
 frontend/.next/
 frontend/.next-e2e/
 frontend/.next-verify/
+frontend/.next-wavelet-resize-e2e/
 !backend/tests/fixtures/demeter-athena-json.prj
 !backend/tests/fixtures/athena-detector-probe.prj
 !backend/tests/fixtures/demeter-mee-LaCoO3.prj

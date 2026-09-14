@@ -11,9 +11,11 @@
 .group strong { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .controls label { display: flex; flex-shrink: 0; align-items: center; gap: 7px; font-size: 11px; color: #72816a; }
 .controls select { width: auto; min-width: 80px; font-size: 11px; padding: 5px 8px; }
-.figure { width: 100%; min-width: 0; height: 430px; }
+.viewport { height: var(--ath-plot-height, 430px); min-width: 0; }
+.figure { width: 100%; min-width: 0; height: 100%; }
 .empty { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 8px; min-height: 270px; padding: 30px; text-align: center; color: #74847d; font-size: 12px; }
+.viewport .empty { height: 100%; min-height: 0; }
 .empty p { max-width: 360px; margin: 0; }
 .empty svg { color: #97aa91; }
 .footer { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 7px 15px; padding: 12px 18px; border-top: 1px solid #edf0e8; color: #829078; font-size: 10px; }
-@media(max-width:620px) { .heading { padding: 12px; }.controls { padding: 12px; }.figure { height: 350px; }.footer { padding: 12px; } }
+@media(max-width:620px) { .heading { padding: 12px; }.controls { padding: 12px; }.viewport { height: var(--ath-plot-height, 350px); }.footer { padding: 12px; } }

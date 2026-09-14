@@ -34,12 +34,15 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
   const ids = selected.map(g => g.id), quad = kind === 'quad' || kind === 'biquad'
   const [remote, setRemote] = useState<{ key: string; value: ShortcutPlot } | null>(null)
   const [error, setError] = useState(''), [retry, setRetry] = useState(0), [loading, setLoading] = useState(false)
+  const [hidden, setHidden] = useState<number[]>([])
+  const [exporting, setExporting] = useState(false)
+  const figure = useRef<HTMLDivElement>(null)
   const generation = useRef(0), currentKey = useRef('')
   const options = { version, kind, group_ids: ids, energy_mode: energyMode, component, stack_offset: offset }
   const key = JSON.stringify([projectId, options])
   const available = !!projectId && version !== undefined && !!ids.length && !quad
   const current = available && remote?.key === key ? remote.value : null
-  useLayoutEffect(() => { currentKey.current = key; generation.current++; setRemote(null); setError(''); setLoading(false) }, [key])
+  useLayoutEffect(() => { currentKey.current = key; generation.current++; setRemote(null); setError(''); setLoading(false); setHidden([]) }, [key])
   useEffect(() => {
     if (!available) return
     const abort = new AbortController(), token = ++generation.current
@@ -68,6 +71,29 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, available, retry])
 
+  async function download() {
+    const graph = figure.current?.querySelector('.js-plotly-plot') as (HTMLElement & { layout: Record<string, unknown> }) | null
+    if (!current || !graph) return
+    const requestedKey = key
+    setExporting(true)
+    try {
+      const Plotly = (await import('plotly.js-dist-min')).default
+      const traces = current.result.curves.filter((_, i) => !hidden.includes(i)).map(c => {
+        const chunks = c.name.match(/.{1,60}/gu) ?? [c.name]
+        const name = chunks.map(text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('<br>')
+        return { x: c.x, y: c.y, name, type: 'scatter', mode: 'lines', line: { color: colors[current.result.curves.indexOf(c) % colors.length], width: 1.8 } }
+      })
+      const height = Math.max(700, 100 + traces.reduce((total, t) => total + t.name.split('<br>').length * 18 + 12, 0))
+      const url = await Plotly.toImage({ data: traces, layout: { ...graph.layout, autosize: false, width: 1400, height,
+        margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v', font: { size: 11 } } } }, { format: 'svg', width: 1400, height })
+      if (currentKey.current !== requestedKey) return
+      const link = document.createElement('a'); link.href = url; link.download = `athena-${kind}.svg`
+      document.body.appendChild(link); link.click(); link.remove()
+    } catch (e) {
+      if (currentKey.current === requestedKey) setError(e instanceof Error ? e.message : 'Could not export this plot.')
+    } finally { setExporting(false) }
+  }
+
   if (!ids.length) return <p role="status">{marked ? 'Mark groups to use this plot shortcut.' : 'Select a current group to use this plot shortcut.'}</p>
   if (kind === 'biquad' && ids.length !== 2) return <p role="status">Mark exactly two groups for Athena’s bi-quad plot.</p>
   if (!projectId || version === undefined) return <p role="status">Open a saved project to prepare this diagnostic plot.</p>
@@ -76,13 +102,19 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
   return <section aria-label={athenaSpecialPlotLabels[kind]}>
     <p role="status">{r ? `${r.curves.length} shortcut curves · project revision ${current.version}.` : loading ? 'Preparing Athena shortcut curves…' : 'Shortcut plot unavailable.'}</p>
     <button disabled={loading} onClick={() => { setRemote(null); setError(''); setRetry(n => n + 1) }}>Replot shortcut</button>
+    {!!r?.curves.length && <button disabled={exporting || hidden.length === r.curves.length} onClick={() => { void download() }}>{exporting ? 'Exporting plot…' : 'Download shortcut SVG'}</button>}
     {error && <p role="alert" className="ath-error">{error}</p>}
-    {r && r.curves.length > 0 && <div className={styles.plot} aria-label="Athena shortcut figure"><Plot data={r.curves.map((c, i) => ({ x: c.x, y: c.y, name: c.name, type: 'scatter', mode: 'lines', line: { color: colors[i % colors.length], width: 1.8 } }))}
-      layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: 110 }, font: { family: 'Arial, sans-serif', color: '#586661', size: 12 },
+    {r && r.curves.length > 0 && <div ref={figure} className={styles.plot} aria-label="Athena shortcut figure"><Plot data={r.curves.map((c, i) => ({ x: c.x, y: c.y, name: c.name, visible: !hidden.includes(i), type: 'scatter', mode: 'lines', line: { color: colors[i % colors.length], width: 1.8 } }))}
+      layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: 60 }, font: { family: 'Arial, sans-serif', color: '#586661', size: 12 },
         xaxis: { title: { text: r.x_label }, automargin: true, ...(r.x_range ? { range: r.x_range } : {}) }, yaxis: { title: { text: r.y_label }, automargin: true },
-        paper_bgcolor: '#fff', plot_bgcolor: '#fff', legend: { orientation: 'h', y: -0.24 }, hovermode: 'closest', uirevision: key }}
-      config={{ responsive: true, displaylogo: false, toImageButtonOptions: { format: 'svg', filename: `athena-${kind}` }, modeBarButtonsToRemove: ['lasso2d', 'select2d'] }}
+        paper_bgcolor: '#fff', plot_bgcolor: '#fff', showlegend: false, hovermode: 'closest', uirevision: key }}
+      config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'lasso2d', 'select2d'] }}
       useResizeHandler style={{ width: '100%', height: '100%' }} /></div>}
+    {!!r?.curves.length && <ul className={styles.legend} aria-label="Shortcut curve legend">{r.curves.map((c, i) => <li key={i}>
+      <button type="button" aria-pressed={!hidden.includes(i)} onClick={() => setHidden(previous => previous.includes(i) ? previous.filter(n => n !== i) : [...previous, i])}>
+        <span aria-hidden="true" style={{ background: colors[i % colors.length] }} /><span>{c.name}</span>
+      </button>
+    </li>)}</ul>}
     {r?.notes.map((note, i) => <p className={styles.note} key={i}>{note}</p>)}
     {!!r?.skipped.length && <ul className={styles.notes}>{r.skipped.map((s, i) => <li key={i}>{s.label}{s.channel ? ` · ${s.channel}` : ''}: {s.reason}</li>)}</ul>}
   </section>

@@ -497,6 +497,14 @@ def _native_source(record, filename, kind, settings):
         supported.add('bkg_delta_eshift')
     if args.get('is_merge') in ('e', 'n', 'k') and 'stddev' in source['raw_arrays']:
         supported.add('is_merge')
+    if kind == 'athena-json':
+        for channel in ('i0', 'signal'):
+            key = f'{channel}_scale'
+            try:
+                if channel in source['raw_arrays'] and key in args and np.isfinite(float(args[key])):
+                    supported.add(key)
+            except (ValueError, TypeError, OverflowError):
+                pass
     unapplied = sorted(set(args) - supported)
     if unapplied:
         source["native"]["unapplied_args"] = unapplied
@@ -2061,6 +2069,7 @@ class AthenaStore:
             # that updated edge step. Existing normalization recipes are kept.
             step = (child.get('result') or {}).get('effective', {}).get('edge_step')
             child['mu'], noise_details = add_noise(child['mu'], choice, step, chi=chi, offset=len(prepared))
+            source = child['source']
             source['details'].update(noise_details)
             from .athena_xdi_history import inherit_source
             source['xdi_metadata'] = inherit_source(parent, 'convolve', source)

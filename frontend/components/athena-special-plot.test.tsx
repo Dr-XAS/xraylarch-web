@@ -171,4 +171,33 @@ describe("AthenaSpecialPlot", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Mark groups")
     expect(api).not.toHaveBeenCalled()
   })
+
+  it("keeps complete accessible labels and toggles curve visibility without recalculating", async () => {
+    serve()
+    show("r123")
+    await ready(3)
+    const legend = screen.getByRole('list', { name: 'Shortcut curve legend' })
+    expect(legend).toHaveTextContent('Copper · k-weight 1')
+    const toggle = screen.getByRole('button', { name: 'Copper · k-weight 1' })
+    expect(toggle).toHaveAttribute('aria-pressed', 'true')
+    await act(async () => toggle.click())
+    expect(toggle).toHaveAttribute('aria-pressed', 'false')
+    expect(plotly.mock.calls.at(-1)![0].data[0].visible).toBe(false)
+    expect(api).toHaveBeenCalledTimes(1)
+    await act(async () => toggle.click())
+    expect(plotly.mock.calls.at(-1)![0].data[0].visible).toBe(true)
+  })
+
+  it.each(['project', 'version', 'weights', 'range', 'grid'])("rejects a response with the wrong %s", async damage => {
+    serve(value => {
+      if (damage === 'project') value.project_id = 'another-project'
+      if (damage === 'version') value.version++
+      if (damage === 'weights') value.result.curves[1].kweight = 1
+      if (damage === 'range') value.result.x_range = [10, 1]
+      if (damage === 'grid') value.result.curves[0].x[1] = value.result.curves[0].x[0]
+    })
+    show('r123')
+    expect(await screen.findByRole('alert')).toHaveTextContent('does not match this project')
+    expect(plotly).not.toHaveBeenCalled()
+  })
 })

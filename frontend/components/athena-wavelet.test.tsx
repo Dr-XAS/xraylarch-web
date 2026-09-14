@@ -3,7 +3,8 @@ import "@testing-library/jest-dom/vitest"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { athenaApi, type AthenaGroup, type Parameters } from "@/lib/athena"
-import { AthenaWavelet, type WaveletResult } from "./athena-wavelet"
+import { athenaPlotHeightKey } from "./athena-plot-card"
+import { AthenaWavelet, athenaWaveletHeightKey, type WaveletResult } from "./athena-wavelet"
 
 type Trace = {
   type: string; x: number[]; y: number[]; z: number[][]; colorscale: string
@@ -12,7 +13,7 @@ type Trace = {
 type Axis = { title: { text: string }; tickfont: { family: string; size: number } }
 type PlotProps = {
   data: Trace[]
-  layout: { xaxis: Axis; yaxis: Axis; scene: { xaxis: Axis; yaxis: Axis; zaxis: Axis } }
+  layout: { width?: number; height?: number; xaxis: Axis; yaxis: Axis; scene: { xaxis: Axis; yaxis: Axis; zaxis: Axis } }
   onError: () => void
 }
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="wavelet-plot" />))
@@ -60,8 +61,8 @@ function handoff() {
   return props
 }
 
-beforeEach(() => { vi.useFakeTimers(); api.mockReset(); plot.mockClear() })
-afterEach(() => { cleanup(); vi.useRealTimers() })
+beforeEach(() => { vi.useFakeTimers(); api.mockReset(); plot.mockClear(); localStorage.clear() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe("AthenaWavelet", () => {
   it("explains empty, unprocessed and failed spectra without calculating", async () => {
@@ -134,6 +135,55 @@ describe("AthenaWavelet", () => {
     expect(handoff().data[0].z).toEqual(data.magnitude)
     await calculate()
     expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("resizes the Plotly viewport and keeps a separate saved height across modes and spectrum revisions", async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const card = this.closest<HTMLElement>(".ath-plot-card")
+      const height = Number.parseFloat(card?.style.getPropertyValue("--ath-plot-height") ?? "") || 430
+      return { width: 800, height } as DOMRect
+    })
+    function pointer(type: string, clientY: number) {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      Object.defineProperties(event, {
+        button: { value: 0 }, clientY: { value: clientY }, pointerId: { value: 7 }, isPrimary: { value: true },
+      })
+      return event
+    }
+    localStorage.setItem(athenaPlotHeightKey, "720")
+    serve()
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
+    const grip = screen.getByRole("separator", { name: "Resize wavelet plot height" })
+    expect(grip).toHaveAttribute("aria-controls", "athena-wavelet-viewer")
+    await calculate()
+    expect(handoff().layout).toMatchObject({ width: 800, height: 430 })
+
+    fireEvent(grip, pointer("pointerdown", 500))
+    fireEvent(window, pointer("pointermove", 680))
+    fireEvent(window, new Event("resize"))
+    expect(handoff().layout.height).toBe(610)
+    expect(localStorage.getItem(athenaWaveletHeightKey)).toBeNull()
+    fireEvent(window, pointer("pointerup", 680))
+    expect(localStorage.getItem(athenaWaveletHeightKey)).toBe("610")
+    expect(localStorage.getItem(athenaPlotHeightKey)).toBe("720")
+
+    fireEvent.click(screen.getByRole("button", { name: "3D surface" }))
+    expect(handoff().layout.height).toBe(610)
+    expect(api).toHaveBeenCalledTimes(1)
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
+    expect(grip).toHaveAttribute("aria-valuenow", "610")
+    await calculate()
+    expect(handoff().layout.height).toBe(610)
+
+    view.unmount()
+    render(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
+    await calculate()
+    expect(handoff().layout.height).toBe(610)
+    fireEvent.doubleClick(screen.getByRole("separator", { name: "Resize wavelet plot height" }))
+    fireEvent(window, new Event("resize"))
+    expect(handoff().layout.height).toBe(430)
+    expect(localStorage.getItem(athenaWaveletHeightKey)).toBeNull()
+    expect(localStorage.getItem(athenaPlotHeightKey)).toBe("720")
   })
 
   it.each(["group", "version", "project", "weight"] as const)("ignores a late response after the %s changes", async change => {
