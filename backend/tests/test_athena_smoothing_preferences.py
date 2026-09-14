@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from xraylarch_web.athena import AthenaStore, Command
 from xraylarch_web.athena_smoothing import SmoothOptions, smooth
 from xraylarch_web.athena_smoothing_preferences import SmoothingPreferences, SGValues, SGPreferenceRequest
+from reference.native_larch_replay import replay_smoothing
 from xraylarch_web.config import Settings
 from xraylarch_web.errors import WebInputError
 from xraylarch_web.main import create_app
@@ -39,7 +40,8 @@ def test_native_preference_values_feed_identical_larch_template_output(row):
             smooth(np.arange(len(NATIVE['input_mu'])), NATIVE['input_mu'], choice)
         return
     actual = smooth(np.arange(len(NATIVE['input_mu'])), NATIVE['input_mu'], choice)
-    np.testing.assert_allclose(actual['mu'], row['smoothed_mu'], atol=2e-14, rtol=2e-14)
+    expected = replay_smoothing(row['template'], NATIVE['input_mu'])
+    np.testing.assert_allclose(actual['mu'], expected, atol=2e-14, rtol=2e-14)
 
 
 def test_factory_effective_default_is_nine_despite_literal_four():

@@ -40,3 +40,6 @@ jobs:
           mkdir -p "$DATA_ROOT" "$CLEAN_HOME" "$CANDIDATE_DATA/runtime/pycache"
           install_release_backend "$GITHUB_WORKSPACE"
           verify_release_backend "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE/backend"
+          run_clean "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pytest -p no:cacheprovider -q \
+            --basetemp "$RUNNER_TEMP/xraylarch-full-backend-tests" tests

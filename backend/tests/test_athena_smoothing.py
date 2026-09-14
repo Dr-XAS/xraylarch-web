@@ -12,6 +12,7 @@ import pytest
 
 from xraylarch_web.athena import AthenaStore, Command, ImportRequest
 from xraylarch_web.athena_smoothing import SmoothOptions, smooth
+from reference.native_larch_replay import replay_smoothing
 from xraylarch_web.config import Settings
 from xraylarch_web.main import create_app
 
@@ -46,7 +47,13 @@ def test_every_observation_matches_actual_native_filters_and_boundaries(row):
     choice = SmoothOptions(**{k:v[k] for k in ('method','window','sigma','order','repetitions')})
     actual = smooth(v['x'], v['y'], choice)
     np.testing.assert_array_equal(actual['energy'], row['native']['x'])
-    np.testing.assert_allclose(actual['mu'], row['native']['y'], atol=2e-14, rtol=2e-14)
+    expected = row['native']['y']
+    if choice.method == 'savitzky_golay':
+        # Re-execute the recorded native command: raw Vandermonde SVD roundoff
+        # depends on the numerical library. Keep the comparison tolerance tight.
+        output = 'h.chi' if v['datatype'] == 'chi' else 'h.xmu'
+        expected = replay_smoothing(row['native']['calls'][0], v['y'], output)
+    np.testing.assert_allclose(actual['mu'], expected, atol=2e-14, rtol=2e-14)
     assert actual['details']['output_points'] == len(row['native']['y'])
     if choice.method in ('boxcar', 'gaussian'):
         size = choice.window if choice.window > 0 else 11

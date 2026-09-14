@@ -64,8 +64,10 @@ provider, email, Slack, or Dr.XAS database secrets.
 
 The web backend release CI job builds a fresh Python 3.12 environment with the
 same installer, collects every backend test module, and executes API, processing,
-workspace, and XLS report tests plus deployment regressions. This is a dependency
-and runtime gate; it does not certify the full scientific golden-reference suite.
+workspace, and XLS report tests plus deployment regressions. The shared dependency
+and runtime gate is followed in CI by the full backend scientific test suite.
+[Native numerical reference portability](../docs/athena-numerical-reference-portability.md)
+describes how those tests retain strict native comparisons across numerical libraries.
 The deployer runs the same gate against disposable candidate data before
 publishing a new immutable release, so direct pushes must pass it before cutover. New web dependencies belong in `backend/requirements.txt`; version
 constraints must remain compatible with `deploy/python-release-constraints.txt`.
