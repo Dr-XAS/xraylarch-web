@@ -182,6 +182,8 @@ the saved project. Quad entries in **Plot shortcuts…** use the same verified
 curves. See the [diagnostic plot reference](docs/athena-diagnostic-plot-reference.md)
 for original-template comparisons and the corrected Bi-Quad energy-axis rule.
 
+**Plot shortcuts…** also provides normalized/derivative, detector, marked E₀/I₀/edge-step and k/R three-weight comparisons. Calculations follow the saved group settings in the backend. Curve labels wrap on narrow screens, and SVG downloads include complete legends. See the [shortcut reference](docs/athena-shortcut-plot-reference.md) for detector project-exchange rules and native comparisons.
+
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
 display smoothing, and find the unsmoothed second-derivative zero crossing.
