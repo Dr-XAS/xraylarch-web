@@ -29,7 +29,7 @@ test('real copper type correction: current, frozen, marked, all, drafts and plot
   await page.goto('/')
   const initial = await command(page, () => page.getByRole('button', { name: 'Load copper foil example', exact: true }).click())
   const [first, second, third] = initial.groups
-  await page.getByLabel('Plot marked', { exact: true }).uncheck()
+  await page.getByRole('radio', { name: 'Current spectrum', exact: true }).check()
   await page.getByRole('spinbutton', { name: /^Rbkg/ }).fill('1.9')
   await command(page, () => page.getByRole('button', { name: 'Freeze group', exact: true }).click())
   let panel = await openTypes(page)
@@ -96,7 +96,7 @@ test('normalized XANES survives downloaded .prj and reopened plots', async ({ pa
   expect(actual.data_type).toBe('xanes'); expect(actual.is_normalized).toBe(true)
   expect(actual.result.arrays.norm).toEqual(saved.groups[0].mu)
   await page.reload()
-  await page.getByLabel('Plot marked', { exact: true }).uncheck()
+  await page.getByRole('radio', { name: 'Current spectrum', exact: true }).check()
   await expect(page.getByRole('button', { name: 'Data type: Normalized XANES', exact: true })).toBeVisible()
   await expect.poll(() => energyCurve(page)).toEqual({ x: actual.result.arrays.energy, y: saved.groups[0].mu })
 })

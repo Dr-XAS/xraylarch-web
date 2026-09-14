@@ -65,12 +65,12 @@ afterEach(() => { cleanup(); vi.useRealTimers() })
 
 describe("AthenaWavelet", () => {
   it("explains empty, unprocessed and failed spectra without calculating", async () => {
-    const view = render(<AthenaWavelet />)
+    const view = render(<AthenaWavelet kWeight={null} />)
     expect(screen.getByRole("status")).toHaveTextContent("Select a spectrum")
-    expect(screen.getByLabelText("Wavelet k-weight")).toBeDisabled()
-    view.rerender(<AthenaWavelet projectId="p" version={4} group={{ ...group(), result: null }} />)
+    expect(screen.queryByLabelText("Wavelet k-weight")).not.toBeInTheDocument()
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={{ ...group(), result: null }} />)
     expect(screen.getByRole("status")).toHaveTextContent("require processed EXAFS")
-    view.rerender(<AthenaWavelet projectId="p" version={4} group={{ ...group(), processing_error: "No edge" }} />)
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={{ ...group(), processing_error: "No edge" }} />)
     expect(screen.getByRole("status")).toHaveTextContent("Resolve this spectrum’s processing error")
     await calculate()
     expect(api).not.toHaveBeenCalled()
@@ -79,9 +79,8 @@ describe("AthenaWavelet", () => {
 
   it("requests the current spectrum and revision using the effective Auto k-weight", async () => {
     serve()
-    render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     expect(screen.getByText("Copper foil")).toBeVisible()
-    expect(screen.getByRole("option", { name: "Auto (3)" })).toBeVisible()
     expect(screen.getByRole("status")).toHaveTextContent("Calculating wavelet transform")
     await calculate()
     expect(api).toHaveBeenCalledExactlyOnceWith("/projects/p/groups/Copper/wavelet", { version: 4, kweight: 3, rmax: 6 }, "POST", expect.any(AbortSignal))
@@ -94,14 +93,14 @@ describe("AthenaWavelet", () => {
     serve()
     const current = group()
     delete current.result!.effective.kweight
-    render(<AthenaWavelet projectId="p" version={4} group={current} />)
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={current} />)
     await calculate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 2, rmax: 6 })
-    fireEvent.change(screen.getByLabelText("Wavelet k-weight"), { target: { value: "0" } })
+    view.rerender(<AthenaWavelet kWeight={0} projectId="p" version={4} group={current} />)
     expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
     await calculate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 0, rmax: 6 })
-    fireEvent.change(screen.getByLabelText("Wavelet k-weight"), { target: { value: "" } })
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={current} />)
     await calculate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 2, rmax: 6 })
   })
@@ -109,7 +108,7 @@ describe("AthenaWavelet", () => {
   it("switches the same grid and color range between 2D and 3D in one panel without recalculating", async () => {
     const data = result()
     api.mockResolvedValue(data)
-    render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     const heatmap = handoff().data[0]
     expect(heatmap).toMatchObject({ type: "heatmap", zmin: 0, zmax: 5 })
@@ -137,19 +136,20 @@ describe("AthenaWavelet", () => {
     expect(api).toHaveBeenCalledTimes(1)
   })
 
-  it.each(["group", "version", "project"] as const)("ignores a late response after the %s changes", async change => {
+  it.each(["group", "version", "project", "weight"] as const)("ignores a late response after the %s changes", async change => {
     const previous = deferred(), next = deferred()
     api.mockReturnValueOnce(previous.promise).mockReturnValueOnce(next.promise)
-    const view = render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     const previousSignal = api.mock.calls[0][3]!
     const nextId = change === "group" ? "Iron" : "Copper"
     const nextVersion = change === "version" ? 5 : 4
     const nextProject = change === "project" ? "other-project" : "p"
-    view.rerender(<AthenaWavelet projectId={nextProject} version={nextVersion} group={group(nextId)} />)
+    const nextWeight = change === "weight" ? 1 : null
+    view.rerender(<AthenaWavelet kWeight={nextWeight} projectId={nextProject} version={nextVersion} group={group(nextId)} />)
     expect(previousSignal.aborted).toBe(true)
     await calculate()
-    await act(async () => { next.resolve(result({ project_id: nextProject, group_id: nextId, version: nextVersion, magnitude: [[7, 8, 9, 8], [8, 9, 8, 7], [7, 8, 7, 6]] })) })
+    await act(async () => { next.resolve(result({ project_id: nextProject, group_id: nextId, version: nextVersion, kweight: nextWeight ?? 3, magnitude: [[7, 8, 9, 8], [8, 9, 8, 7], [7, 8, 7, 6]] })) })
     expect(handoff().data[0].z[0][0]).toBe(7)
     await act(async () => { previous.resolve(result()) })
     expect(handoff().data[0].z[0][0]).toBe(7)
@@ -158,10 +158,10 @@ describe("AthenaWavelet", () => {
 
   it("hides the previous revision's result immediately while the new transform is pending", async () => {
     api.mockResolvedValueOnce(result()).mockReturnValueOnce(deferred().promise)
-    const view = render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     expect(screen.getByTestId("wavelet-plot")).toBeVisible()
-    view.rerender(<AthenaWavelet projectId="p" version={5} group={group()} />)
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
     expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
     expect(screen.getByRole("status")).toHaveTextContent("Calculating")
     await calculate()
@@ -171,17 +171,17 @@ describe("AthenaWavelet", () => {
   it("cancels an in-flight request while spectrum processing is pending and calculates the completed revision", async () => {
     const pending = deferred()
     api.mockReturnValueOnce(pending.promise).mockResolvedValueOnce(result({ version: 5 }))
-    const view = render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     const signal = api.mock.calls[0][3]!
-    view.rerender(<AthenaWavelet projectId="p" version={4} group={group()} pending />)
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} pending />)
     expect(signal.aborted).toBe(true)
     expect(screen.getByRole("status")).toHaveTextContent("Waiting for spectrum processing")
     await act(async () => { pending.resolve(result()) })
     await calculate()
     expect(api).toHaveBeenCalledTimes(1)
     expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
-    view.rerender(<AthenaWavelet projectId="p" version={5} group={group()} />)
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
     await calculate()
     expect(screen.getByTestId("wavelet-plot")).toBeVisible()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 5, kweight: 3, rmax: 6 })
@@ -189,7 +189,7 @@ describe("AthenaWavelet", () => {
 
   it("shows the API error and retries the current request", async () => {
     api.mockRejectedValueOnce(new Error("Project changed in another tab.")).mockResolvedValueOnce(result())
-    render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     expect(screen.getByRole("alert")).toHaveTextContent("Project changed in another tab.")
     expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
@@ -211,7 +211,7 @@ describe("AthenaWavelet", () => {
     ["negative magnitude", { magnitude: [[0, 1, 2, 0], [2, -5, 3, 1], [1, 2, 1, 0]] }],
   ] satisfies [string, Partial<WaveletResult>][])("rejects an invalid %s response instead of plotting it", async (_name, overrides) => {
     api.mockResolvedValueOnce(result(overrides))
-    render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     expect(screen.getByRole("alert")).toHaveTextContent("does not match this spectrum")
     expect(plot).not.toHaveBeenCalled()
@@ -219,7 +219,7 @@ describe("AthenaWavelet", () => {
 
   it("can recover from a 3D rendering error by switching to the heatmap", async () => {
     serve()
-    render(<AthenaWavelet projectId="p" version={4} group={group()} />)
+    render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
     fireEvent.click(screen.getByRole("button", { name: "3D surface" }))
     act(() => { handoff().onError() })

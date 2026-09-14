@@ -7,6 +7,7 @@ import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Pa
 import { ApiRequestError } from "@/lib/backend-client"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./athena-plot"
+import { AthenaWavelet } from "./athena-wavelet"
 import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
 import { AthenaWorkbench } from "./athena-workbench"
@@ -34,7 +35,7 @@ vi.mock("./athena-plot", () => ({
   AthenaPlot: vi.fn(() => <div data-testid="athena-plot" />),
 }))
 // Wavelet requests and mode switching have dedicated panel tests.
-vi.mock("./athena-wavelet", () => ({ AthenaWavelet: () => <div data-testid="athena-wavelet" /> }))
+vi.mock("./athena-wavelet", () => ({ AthenaWavelet: vi.fn(() => <div data-testid="athena-wavelet" />) }))
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // Live arithmetic and stale-response behavior have dedicated preview tests.
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div data-testid="column-preview" /> }))
@@ -1592,7 +1593,7 @@ describe("AthenaWorkbench plot picking", () => {
     if (reason === "escape") fireEvent.keyDown(document, { key: "Escape" })
     if (reason === "group") selectGroup("Sample scan")
     if (reason === "space") fireEvent.click(screen.getByRole("tab", { name: /EXAFS/ }))
-    if (reason === "plotted groups") fireEvent.click(screen.getByRole("checkbox", { name: "Plot marked" }))
+    if (reason === "plotted groups") fireEvent.click(screen.getByRole("radio", { name: "Current spectrum" }))
     if (reason === "draft") editNumber(/^Rbkg/, 1.7)
     if (reason === "dialog") await openGroupControls()
     expect(plotProps().picking).toBe(false)
@@ -1737,7 +1738,7 @@ describe("AthenaWorkbench bulk marking and freezing", () => {
     })
     expect(plotProps().active!.id).toBe("foil")
     expect(plotProps().active!.result).toEqual(project.groups[0].result)
-    expect(plotProps().groups.map(g => g.id)).toEqual(label === "Mark all" ? ["foil", "sample", "oxide", "unused"] : label === "Mark none" ? ["foil"] : ["foil", "unused"])
+    expect(plotProps().groups.map(g => g.id)).toEqual(label === "Mark all" ? ["foil", "sample", "oxide", "unused"] : label === "Mark none" ? [] : ["foil", "unused"])
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }))
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(1.8)
   })
@@ -2594,8 +2595,28 @@ describe("AthenaWorkbench group selection and drafts", () => {
     expect(screen.queryByTitle("Pending automatic processing")).not.toBeInTheDocument()
   })
 
+  it("shares the viewer k-weight selector with spectra and wavelet without modifying the project", async () => {
+    const project = await openSaved()
+    const before = structuredClone(project)
+    const selector = screen.getByRole("combobox", { name: "Viewer k-weight" })
+    expect(selector).toHaveValue("")
+    expect(document.querySelector(".ath-center-heading")).toContainElement(selector)
+    expect(screen.queryByRole("combobox", { name: "Wavelet k-weight" })).not.toBeInTheDocument()
+    for (const value of ["3", "0", ""]) {
+      fireEvent.change(selector, { target: { value } })
+      const kWeight = value === "" ? null : Number(value)
+      expect(plotProps().kWeight).toBe(kWeight)
+      expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0].kWeight).toBe(kWeight)
+    }
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(project).toEqual(before)
+  })
+
   it("keeps active selection independent of marks and the plot target", async () => {
     const project = await openSaved()
+    const scope = within(screen.getByRole("radiogroup", { name: "Plot spectra" }))
+    expect(scope.getByRole("radio", { name: "All selected" })).toBeChecked()
+    expect(plotProps().plotScope).toBe("selected")
     selectGroup("Unused reference")
 
     expect(plotProps().active?.id).toBe("unused")
@@ -2604,12 +2625,19 @@ describe("AthenaWorkbench group selection and drafts", () => {
     expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
     expect(api).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /^Plot marked$/i }))
+    fireEvent.click(scope.getByRole("radio", { name: "Current spectrum" }))
+    expect(scope.getByRole("radio", { name: "Current spectrum" })).toBeChecked()
+    expect(plotProps().plotScope).toBe("current")
     expect(plotProps().groups.map(g => g.id)).toEqual(["unused"])
     selectGroup("Foil scan")
     expect(plotProps().groups.map(g => g.id)).toEqual(["foil"])
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Oxide standard" })).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole("checkbox", { name: /^Plot marked$/i }))
+    fireEvent.click(scope.getByRole("radio", { name: "All selected" }))
+    expect(plotProps().groups.map(g => g.id)).toEqual(["sample", "oxide"])
     const next = nextProject(project, { sample: { marked: false } })
     api.mockResolvedValueOnce(next)
     fireEvent.click(screen.getByRole("checkbox", { name: "Mark Sample scan" }))
@@ -3570,6 +3598,137 @@ describe('Athena data-type correction', () => {
     expect(await screen.findByRole('button', { name: 'Data type: Normalized XANES' })).toBeVisible()
     expect(plotProps().active?.frozen).toBe(true)
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+})
+
+describe('AthenaWorkbench plot scope and processing lines', () => {
+  function processedProject() {
+    const project = projectFixture()
+    for (const g of project.groups) Object.assign(g.result!.arrays, {
+      mu: [...g.mu], pre_edge: [0.05, 0.06, 0.07], post_edge: [1, 1.1, 1.2], bkg: [0.1, 0.7, 1.05],
+    })
+    return project
+  }
+
+  it('leaves All selected empty when no groups are marked and can still plot the current spectrum', async () => {
+    const project = projectFixture()
+    for (const g of project.groups) g.marked = false
+    await openSaved(project)
+
+    expect(screen.getByRole('radio', { name: 'All selected' })).toBeChecked()
+    expect(plotProps().groups).toEqual([])
+    expect(plotProps().active?.id).toBe('foil')
+    expect(screen.getByRole('spinbutton', { name: 'Plot minimum' })).toBeDisabled()
+    expect(screen.getByRole('spinbutton', { name: 'Plot maximum' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    expect(plotProps().groups.map(g => g.id)).toEqual(['foil'])
+    expect(screen.getByRole('spinbutton', { name: 'Plot minimum' })).toHaveValue(8960)
+    selectGroup('Unused reference')
+    expect(plotProps().groups.map(g => g.id)).toEqual(['unused'])
+    fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
+    expect(plotProps().groups).toEqual([])
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it('refreshes automatic plot limits for the scope and current spectrum while preserving explicit limits', async () => {
+    const project = projectFixture()
+    project.groups[0].result!.arrays.energy = [8900, 8980, 9050]
+    project.groups[1].result!.arrays.energy = [8950, 8980, 9060]
+    project.groups[2].result!.arrays.energy = [8920, 8980, 9080]
+    await openSaved(project)
+    const minimum = () => screen.getByRole('spinbutton', { name: 'Plot minimum' })
+    const maximum = () => screen.getByRole('spinbutton', { name: 'Plot maximum' })
+
+    expect(minimum()).toHaveValue(8920)
+    expect(maximum()).toHaveValue(9080)
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    expect(minimum()).toHaveValue(8900)
+    expect(maximum()).toHaveValue(9050)
+    selectGroup('Sample scan')
+    expect(minimum()).toHaveValue(8950)
+    expect(maximum()).toHaveValue(9060)
+    expect(plotProps().range).toEqual([null, null])
+
+    fireEvent.change(minimum(), { target: { value: '8965' } })
+    fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
+    expect(minimum()).toHaveValue(8965)
+    expect(maximum()).toHaveValue(9080)
+    expect(plotProps().range).toEqual([8965, null])
+  })
+
+  it('controls pre-edge, post-edge and background independently and restores preferences when individual raw plotting resumes', async () => {
+    await openSaved(processedProject())
+    const pre = screen.getByRole('checkbox', { name: 'Pre-edge line' })
+    const post = screen.getByRole('checkbox', { name: 'Post-edge line' })
+    const background = screen.getByRole('checkbox', { name: 'Background' })
+    for (const control of [pre, post, background]) {
+      expect(control).not.toBeChecked()
+      expect(control).toBeDisabled()
+    }
+
+    fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · raw' }))
+    expect(pre).toBeDisabled()
+    expect(post).toBeDisabled()
+    expect(background).toBeDisabled() // The active, unmarked foil is outside the selected plot.
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    for (const control of [pre, post, background]) expect(control).toBeEnabled()
+    fireEvent.click(pre)
+    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: false, background: false })
+    fireEvent.click(post)
+    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: true, background: false })
+    fireEvent.click(pre)
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: false })
+    fireEvent.click(background)
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: true })
+
+    fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · normalized' }))
+    for (const control of [pre, post, background]) expect(control).toBeDisabled()
+    expect(post).not.toBeChecked()
+    expect(background).not.toBeChecked()
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: false })
+    fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · raw' }))
+    expect(post).toBeChecked()
+    expect(background).toBeChecked()
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: true })
+
+    fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
+    expect(post).toBeDisabled()
+    expect(post).not.toBeChecked()
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: false })
+    selectGroup('Sample scan')
+    expect(background).toBeEnabled()
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: true })
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    expect(post).toBeEnabled()
+    expect(post).toBeChecked()
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: true })
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it('enables each processing line only when its current processed array is usable', async () => {
+    const project = processedProject()
+    delete project.groups[1].result!.arrays.pre_edge
+    project.groups[1].result!.arrays.post_edge = [1, 2]
+    project.groups[1].result!.arrays.bkg = []
+    project.groups[2].result = null
+    await openSaved(project)
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · raw' }))
+    for (const label of ['Pre-edge line', 'Post-edge line', 'Background']) {
+      const control = screen.getByRole('checkbox', { name: label })
+      expect(control).toBeEnabled()
+      fireEvent.click(control)
+    }
+    for (const label of ['Sample scan', 'Oxide standard']) {
+      selectGroup(label)
+      for (const line of ['Pre-edge line', 'Post-edge line', 'Background']) {
+        expect(screen.getByRole('checkbox', { name: line })).toBeDisabled()
+      }
+      expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: false })
+    }
+    selectGroup('Foil scan')
+    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: true, background: true })
   })
 })
 

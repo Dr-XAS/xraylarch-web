@@ -36,10 +36,22 @@ Open [http://localhost:3004](http://localhost:3004) using the local commands
 below, then import spectra or load the measured copper foil example. The
 earlier single-spectrum interface is at `/classic`.
 
+In the spectrum viewer, **All selected** plots the checked data groups;
+**Current spectrum** plots only the highlighted group, independently of its
+checkbox. For an individual **μ(E)** plot, use **Pre-edge line** and
+**Post-edge line** to show either fitted normalization line. **Background**
+separately shows the fitted μ₀(E) background when available.
+
+Drag the handle below the spectrum to resize its height; double-click it to
+restore the default. **Show legend** toggles the single-column legend on the
+right. The **k-weight** selector above the viewer controls the k, R,
+back-transform, and wavelet views together. **Auto** uses each spectrum’s
+processed weight; choosing 0–4 updates the display without changing saved
+processing parameters.
+
 The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
 processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
-**Auto** uses the processed k-weight, or choose a weight from 0–4. Both views
-share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
+both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
 6 Å without phase correction. The plot refreshes after spectrum processing.
 
 The Athena import dialog shows a live plot while selecting columns. It also

@@ -18,6 +18,7 @@ export interface WaveletResult {
 
 interface Props {
   projectId?: string; version?: number; group?: AthenaGroup; pending?: boolean
+  kWeight: number | null
 }
 
 function validGrid(data: WaveletResult) {
@@ -70,15 +71,14 @@ function WaveletFigure({ data, mode }: { data: WaveletResult; mode: "2d" | "3d" 
   </div>
 }
 
-export function AthenaWavelet({ projectId, version, group, pending = false }: Props) {
+export function AthenaWavelet({ projectId, version, group, pending = false, kWeight }: Props) {
   const [mode, setMode] = useState<"2d" | "3d">("2d")
-  const [weight, setWeight] = useState("")
   const [retry, setRetry] = useState(0)
   const [response, setResponse] = useState<{ key: string; data?: WaveletResult; error?: string } | null>(null)
   const arrays = group?.result?.arrays
   const effectiveWeight = group?.result?.effective.kweight
   const defaultWeight = typeof effectiveWeight === "number" ? effectiveWeight : group?.parameters.kweight ?? 2
-  const selectedWeight = weight === "" ? defaultWeight : Number(weight)
+  const selectedWeight = kWeight ?? defaultWeight
   const reason = !projectId || !group ? "Select a spectrum to explore its wavelet transform."
     : pending ? "Waiting for spectrum processing…"
     : group.processing_error ? "Resolve this spectrum’s processing error to view its wavelet transform."
@@ -117,9 +117,6 @@ export function AthenaWavelet({ projectId, version, group, pending = false }: Pr
     </header>
     <div className={styles.controls}>
       <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
-      <label>k-weight <select aria-label="Wavelet k-weight" value={weight} disabled={!group} onChange={event => setWeight(event.target.value)}>
-        <option value="">Auto ({defaultWeight})</option>{[0, 1, 2, 3, 4].map(value => <option key={value} value={value}>{value}</option>)}
-      </select></label>
     </div>
     {reason ? <div className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
       : current?.error ? <div className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>
