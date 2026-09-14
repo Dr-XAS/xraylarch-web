@@ -5,6 +5,8 @@ import { Activity, ArrowDown, ArrowUp, BookOpen, ChevronDown, Copy, Download, Ex
 import { apiBase, athenaApi, resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot, type Space } from "./athena-plot"
+import { AthenaColorLegend } from "./athena-color-legend"
+import { defaultPlotColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { automaticPlotRange } from "./athena-plot-range"
 import { ResizableAthenaWorkspace } from "./athena-workspace"
 import { AthenaWavelet } from "./athena-wavelet"
@@ -287,6 +289,7 @@ export function AthenaWorkbench() {
   const [background, setBackground] = useState(false)
   const [showWindow, setShowWindow] = useState(false)
   const [offset, setOffset] = useState(0)
+  const [plotColors, setPlotColors] = useState<PlotColorSettings>(defaultPlotColors)
   const [range, setRange] = useState<[number | null, number | null]>([null, null])
   const [drafts, setDrafts] = useState<Record<string, Parameters>>({})
   const [autoApplyPlans, setAutoApplyPlans] = useState<Record<string, AutoApplyPlan>>({})
@@ -1127,7 +1130,8 @@ export function AthenaWorkbench() {
         <div className="ath-plot-card"><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onContextMenu={event => { event.preventDefault(); specialPlotShortcut(s) }} title="Right-click for Athena’s special plot" onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div><button type="button" disabled={!active || !!busy} onClick={() => setModal("special_plot")}>Plot shortcuts…</button><label className="ath-check"><input type="checkbox" checked={plotMarked} onChange={e => setPlotMarked(e.target.checked)} />Plot marked</label></div>
           <div className="ath-plot-controls">{space === "E" ? <label className="ath-check"><input type="checkbox" checked={background} disabled={plotEnergyMode !== "mu" || active?.data_type === "detector"} onChange={e => setBackground(e.target.checked)} />Background lines</label> : <><span className="ath-chip">k-weight {active?.parameters.kweight ?? 2}</span>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">Real part</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} onChange={e => setOffset(Number(e.target.value))} /></label></div>
           {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes process automatically.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
-          <AthenaPlot groups={selectedGroups} active={active} space={space} energyMode={plotEnergyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />
+          <AthenaColorLegend value={plotColors} onChange={setPlotColors} disabled={analysisVisible} />
+          <AthenaPlot colorSettings={plotColors} groups={selectedGroups} active={active} space={space} energyMode={plotEnergyMode} component={component} background={background} window={showWindow} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />
           {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
             {(active?.data_type === "detector" ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${active?.data_type === "detector" ? " disabled" : ""}`} key={option.value}><input type="radio" name="ath-energy-plot" value={option.value} checked={plotEnergyMode === option.value} disabled={active?.data_type === "detector"} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
           </div>}
