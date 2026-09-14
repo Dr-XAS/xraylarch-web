@@ -41,13 +41,14 @@ command_status=0
 # CI and deployment must execute the same complete installer. Every dependency
 # gate must fail before the immutable release or frontend can be published.
 declare -F install_release_backend >/dev/null || fail_test 'shared release installer is missing'
-for failure in constraints wheel backend app check freeze; do
+for failure in constraints wheel backend app check freeze collection runtime; do
 (
   XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
   RELEASES_ROOT="$test_root/build-releases-$failure"
   REQUESTED_SHA=0123456789abcdef0123456789abcdef01234567
   CONDA_BIN=/fake/conda
-  mkdir -p "$RELEASES_ROOT"
+  CANDIDATE_DATA="$test_root/candidate-$failure"
+  mkdir -p "$RELEASES_ROOT" "$CANDIDATE_DATA"
   events="$test_root/build-events-$failure"
   run_clean() {
     local stage=''
@@ -70,6 +71,8 @@ for failure in constraints wheel backend app check freeze; do
       *'from xraylarch_web.main import app'*) stage=app ;;
       *'pip check'*) stage=check ;;
       *'pip freeze'*) stage=freeze ;;
+      *'pytest '*--collect-only*) stage=collection ;;
+      *'pytest '*) stage=runtime ;;
       *'node -e '*|*'npm '*) fail_test 'frontend must not run after backend failure' ;;
     esac
     if [[ -n "$stage" ]]; then
@@ -99,6 +102,36 @@ done
   [[ "$(cat "$test_root/shared-called")" == shared ]] || fail_test 'production must call shared installer'
   [[ ! -e "$RELEASES_ROOT/$REQUESTED_SHA" ]] || fail_test 'shared installer failure published release'
 )
+
+# Runtime checks may mutate workspace data: use disposable candidate data even
+# when the enclosing deployer points at the live database.
+for failure in none collection runtime; do
+(
+  XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
+  CANDIDATE_DATA="$test_root/verification-$failure"
+  DATA_ROOT="$test_root/live-data"
+  mkdir -p "$CANDIDATE_DATA" "$DATA_ROOT"
+  printf 'preserve\n' > "$DATA_ROOT/sentinel"
+  run_clean() {
+    [[ "$DATA_ROOT" == "$CANDIDATE_DATA"/backend-verification.* ]] || fail_test 'verification used live data root'
+    [[ -d "$DATA_ROOT" ]] || fail_test 'verification data root must exist'
+    printf '%s\n' "$DATA_ROOT" >> "$CANDIDATE_DATA/observed-roots"
+    local stage=runtime
+    [[ "$*" != *--collect-only* ]] || stage=collection
+    [[ "$stage" != "$failure" ]] || return 7
+  }
+  if verify_release_backend "$test_root/build"; then
+    [[ "$failure" == none ]] || fail_test 'verification ignored test failure'
+  else
+    [[ "$failure" != none ]] || fail_test 'verification failed successful checks'
+  fi
+  [[ "$DATA_ROOT" == "$test_root/live-data" && "$(cat "$DATA_ROOT/sentinel")" == preserve ]] || fail_test 'verification altered live data'
+  while IFS= read -r root; do
+    [[ ! -e "$root" ]] || fail_test 'verification data was not cleaned up'
+  done < "$CANDIDATE_DATA/observed-roots"
+)
+done
+grep -F 'verify_release_backend "$GITHUB_WORKSPACE"' "$repo_root/.github/workflows/test-web-backend-release.yml" >/dev/null || fail_test 'CI must invoke shared runtime verification'
 
 RELEASES_ROOT="$test_root/releases"
 REQUESTED_SHA=0123456789abcdef0123456789abcdef01234567

@@ -39,11 +39,4 @@ jobs:
           CLEAN_HOME="$CANDIDATE_DATA/home"
           mkdir -p "$DATA_ROOT" "$CLEAN_HOME" "$CANDIDATE_DATA/runtime/pycache"
           install_release_backend "$GITHUB_WORKSPACE"
-          cd "$GITHUB_WORKSPACE/backend"
-          # Collect every backend test module to catch missing imports across features.
-          run_clean "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pytest -p no:cacheprovider --collect-only -q tests
-          # Exercise real API, processing, persistence, and XLS dependencies.
-          # Scientific golden-reference tolerances remain a separate validation scope.
-          run_clean "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pytest -p no:cacheprovider -q \
-            tests/test_api.py tests/test_athena_api.py tests/test_athena_parameter_report.py \
-            tests/test_processing.py tests/test_workspace.py
+          verify_release_backend "$GITHUB_WORKSPACE"

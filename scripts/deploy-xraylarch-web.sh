@@ -917,6 +917,24 @@ install_release_backend() (
   run_clean "${release}/backend/.venv/bin/python" -m pip freeze --all > pip-freeze.txt
 )
 
+# Run the same dependency/runtime gate in CI and before publishing a release.
+# Tests must never see the live workspace database, including during collection.
+verify_release_backend() (
+  local release="$1" verification_data
+  [[ -n "$CANDIDATE_DATA" && -d "$CANDIDATE_DATA" ]] || { fail "candidate data directory is missing"; return 1; }
+  verification_data=$(mktemp -d "${CANDIDATE_DATA}/backend-verification.XXXXXX") || return 1
+  trap 'rm -rf -- "$verification_data"' EXIT
+  DATA_ROOT="$verification_data"
+  cd "${release}/backend" || return 1
+  run_clean "${release}/backend/.venv/bin/python" -m pytest -p no:cacheprovider \
+    --basetemp "$verification_data/pytest" --collect-only -qq tests || return 1
+  # Cover API, persistence, processing and XLS dependencies; scientific golden
+  # reference tolerances remain a separate validation scope.
+  run_clean "${release}/backend/.venv/bin/python" -m pytest -p no:cacheprovider -q --basetemp "$verification_data/pytest" \
+    tests/test_api.py tests/test_athena_api.py tests/test_athena_parameter_report.py \
+    tests/test_processing.py tests/test_workspace.py
+)
+
 build_release() {
   local release temporary release_version
   release=$(release_path "$REQUESTED_SHA") || return 1
@@ -933,6 +951,7 @@ build_release() {
   [[ "$release_version" != "$REQUESTED_SHA" ]] || { fail "release SHA has no reachable version tag"; return 1; }
   run_clean "$CONDA_BIN" run --no-capture-output -n drxas-deploy python -m venv "${temporary}/backend/.venv" || return 1
   install_release_backend "$temporary" || return 1
+  verify_release_backend "$temporary" || return 1
   assert_frontend_runtime_supported || return 1
   ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"
