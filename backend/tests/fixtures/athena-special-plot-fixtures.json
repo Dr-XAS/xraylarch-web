@@ -1,0 +1,20 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 90,
+  "source_sha256": {
+    "lib/Demeter/Data.pm": "265550be8d8d76ab5b114aa98b742e242e6d8561255d1109f2d709a1ee01c216",
+    "lib/Demeter/Data/Arrays.pm": "f99081de027ce6352bfee8748be14103c76e1e619528b8d01895fa687bca4490",
+    "lib/Demeter/Data/Plot.pm": "f22bd9d5206b179180b4ee6cfd88693a667ca8b1ffba1bc60e9c069cfd9d46eb",
+    "lib/Demeter/templates/plot/gnuplot/biquad.tmpl": "4ddba50062cb1edc503cff79f32a56fb84f010e89d0739b6b1fa528b950cdfb2",
+    "lib/Demeter/templates/plot/gnuplot/newk.tmpl": "415dc740c2e03af886fac938536d9a256bd6bb447f25931f1d535cd6e0aea238",
+    "lib/Demeter/templates/plot/gnuplot/newq.tmpl": "3e6556f9e3f0e39072c99769e67a73ac84333a2d6406c3b060afc03596ecc270",
+    "lib/Demeter/templates/plot/gnuplot/overq.tmpl": "c0fb986abc6aa66ab85cbdce36f01f3eeac4e9800f2785e62c8315950efee1e4",
+    "lib/Demeter/templates/plot/gnuplot/quad.tmpl": "d9dcd282f6f7f017c4ed16c7e9ca2e429526f1df76653c8df2ed1f21b1eb84cb"
+  },
+  "sha256": {
+    "backend/tests/reference/special_plot_native_reference.py": "fa40fe5d198f4270658d15ac2ef52c44906ea11aea4cfafc7369e6d3801b9991",
+    "backend/tests/fixtures/athena-special-plot-native.json.gz": "6a763db42b32a86264c8b548f807ed73c0d115858caf6742b0e77e28b3dd04a0",
+    "backend/tests/fixtures/demeter-merge-fe.060": "92f698464e3f27390ed554ce65ebb3aa7734cce0844fc1cd7fd7c8d04aae85b4",
+    "backend/tests/fixtures/demeter-merge-fe.061": "79ec765bcb1b71969fc364cf1b0d6b2045b193c3d7268c06e3fe5bd6a69e4abb"
+  }
+}

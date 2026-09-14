@@ -977,9 +977,11 @@ class AthenaStore:
              "parameters": params.model_dump(), "marked": True,
              "frozen": False, "multiplier": 1.0, "offset": 0.0, "notes": "", "reference_id": None,
              "background_standard_id": background_standard_id,
-             "source": source or {}, "result": None, "processing_error": None}
+             "source": copy.deepcopy(source or {}), "result": None, "processing_error": None}
         if not isinstance(g["source"], dict):
             fail("Source metadata must be an object.")
+        from .athena_plot_shortcuts import capture_detector_scales
+        capture_detector_scales(g)
         g["is_difference"] = _is_difference(g if is_difference is None else dict(g, is_difference=is_difference))
         # Imported data remains inspectable even if its saved recipe needs repair.
         try:
@@ -1809,6 +1811,17 @@ class AthenaStore:
         self.check(self.load(ident), options.version)
         return dict(project_id=ident, version=options.version,
                     options=options.model_dump(), result=result)
+
+    def plot_shortcut(self, ident, request):
+        from .athena_plot_shortcuts import ShortcutOptions, shortcut_plot
+        options = ShortcutOptions.model_validate(request)
+        project = self.load(ident)
+        self.check(project, options.version)
+        if options.kind in ('i0', 'e00', 'normscaled') and options.group_ids != [g['id'] for g in project['groups'] if g['marked']]:
+            fail('The marked-group selection changed. Reopen the plot and retry.')
+        result = shortcut_plot([self.group(project, gid) for gid in options.group_ids], options)
+        self.check(self.load(ident), options.version)
+        return dict(project_id=ident, version=options.version, options=options.model_dump(), result=result)
 
     def _alignment_results(self, project, request: Command):
         from .athena_alignment import AlignmentOptions, display_curve, edge, fit_alignment, saved_fit, signature
@@ -2897,6 +2910,19 @@ class AthenaStore:
                 from .athena_alignment import saved_fit
                 alignment = saved_fit(g)
                 args['bkg_delta_eshift'] = (alignment.get('native_shift_stderr') or 0.) if alignment else 0.
+            if g['data_type'] != 'chi':
+                from .athena_plot_shortcuts import detector_scale
+                for channel in ('i0', 'signal'):
+                    values = source.get('raw_arrays', {}).get(channel)
+                    if not isinstance(values, list) or len(values) != len(g['energy']) or any(v is None for v in values):
+                        continue
+                    # Native plotting/serialization gates these arrays on a
+                    # nonempty expression; project loading does not execute it.
+                    args[f'{channel}_string'] = args.get(f'{channel}_string') or f'{g["id"]}.{channel}'
+                    try:
+                        args[f'{channel}_scale'] = detector_scale(g, channel)
+                    except ValueError:
+                        pass  # Keep optional unusable channels as source data.
             # Larch's legacy reader skips an entire args line containing bare
             # undef; explicit null metadata remains exact in the sidecar.
             flat = [v for pair in args.items() if pair[1] is not None for v in pair]
@@ -3593,6 +3619,10 @@ def build_athena_router(settings: Settings):
     @router.post('/projects/{ident}/plots/special')
     def plot_special(ident: str, request: dict):
         return guarded(lambda: store.plot_special(ident, request))
+
+    @router.post('/projects/{ident}/plots/shortcut')
+    def plot_shortcut(ident: str, request: dict):
+        return guarded(lambda: store.plot_shortcut(ident, request))
 
     @router.post('/projects/{ident}/alignment/preview')
     def preview_alignment(ident: str, request: Command):

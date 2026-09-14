@@ -37,8 +37,11 @@ function DiagnosticPanel({ panel, context, groupIds }: { panel: Panel; context: 
   </section>
 }
 
-export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close }: { project: AthenaProject; groupId: string; selectGroup: (id: string) => void; close: () => void }) {
-  const [view, setView] = useState<Options['view']>('quad'), [weight, setWeight] = useState(''), [component, setComponent] = useState<Options['q_component']>('re')
+export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, initialView = 'quad' }: {
+  project: Pick<AthenaProject, 'id' | 'version' | 'groups'>; groupId: string; selectGroup: (id: string) => void;
+  close?: () => void; initialView?: Options['view']
+}) {
+  const [view, setView] = useState<Options['view']>(initialView), [weight, setWeight] = useState(''), [component, setComponent] = useState<Options['q_component']>('re')
   const [data, setData] = useState<{ key: string; value: DiagnosticPlot } | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false), [retry, setRetry] = useState(0)
   const generation = useRef(0), currentKey = useRef('')
   const groups = view === 'biquad' ? project.groups.filter(g => g.marked) : project.groups.filter(g => g.id === groupId)
@@ -95,6 +98,6 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close }: {
     {error && <p role="alert" className="ath-error">{error}</p>}
     {current && <div className={view === 'kq' ? styles.single : styles.grid}>{current.result.panels.map(p => <DiagnosticPanel key={`${key}:${p.id}`} panel={p} context={key} groupIds={ids} />)}</div>}
     {current?.result.notes.map((note, i) => <p className="ath-hint" key={i}>{note}</p>)}
-    <div className="ath-modal-actions"><a href="https://bruceravel.github.io/demeter/documents/Athena/plot/etc.html" target="_blank" rel="noreferrer">Athena plotting guide</a><button onClick={close}>Close diagnostic plots</button></div>
+    <div className="ath-modal-actions"><a href="https://bruceravel.github.io/demeter/documents/Athena/plot/etc.html" target="_blank" rel="noreferrer">Athena plotting guide</a>{close && <button onClick={close}>Close diagnostic plots</button>}</div>
   </div>
 }

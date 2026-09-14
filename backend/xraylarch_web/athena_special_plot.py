@@ -44,7 +44,7 @@ def _arrays(group, weight, notes):
         # AUTOBK's measured support can extend past the last uniform k bin.
         probe.autobk_details = Group(kmax=result['effective'].get('bkg_kmax') or k[-1])
         _transforms(probe, p, {}, notes)
-        for key in ('r', 'chir_mag', 'chir_re', 'q', 'chiq_re', 'chiq_im', 'chiq_mag'):
+        for key in ('r', 'chir_mag', 'chir_re', 'chir_im', 'chir_pha', 'q', 'chiq_re', 'chiq_im', 'chiq_mag'):
             a[key] = getattr(probe, key).tolist()
     a['weighted_chi'] = (chi * k ** weight).tolist()
     return a

@@ -175,6 +175,13 @@ plot weight, and retain the group's scale and offset. Source data stay
 unchanged. See the [saved-spread reference](docs/athena-merge-plot-reference.md)
 for executed native plotting rules and original project examples.
 
+**Plot → Diagnostic plots…** shows native Quad, two-group Bi-Quad and k/q
+comparisons. Inspect raw/background energy curves, weighted EXAFS and Fourier
+components; change the display weight or each panel's range without changing
+the saved project. Quad entries in **Plot shortcuts…** use the same verified
+curves. See the [diagnostic plot reference](docs/athena-diagnostic-plot-reference.md)
+for original-template comparisons and the corrected Bi-Quad energy-axis rule.
+
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
 display smoothing, and find the unsmoothed second-derivative zero crossing.

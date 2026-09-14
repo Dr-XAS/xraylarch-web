@@ -3153,3 +3153,77 @@ Local frontend 3004, backend 8006 and the frontend proxy remained healthy
 at the final read-only check. Browser scientific tests used separate
 13004/18006 services and temporary projects. No existing local scientific
 project was edited for these checks.
+
+### Quad, Bi-Quad and k/q diagnostics — 2026-09-14
+
+`Plot → Diagnostic plots…` now displays backend-produced native Quad,
+Bi-Quad and k/q curves with a common, optionally fractional plot weight.
+Quad/Bi-Quad shortcuts use the same implementation. Quad contains the raw
+energy/background/pre/post curves, weighted χ(k), both R magnitude and real
+part, and real χ(q); Bi-Quad uses exactly two marked flattened energy spectra,
+both weighted χ(k), both R magnitudes and both real χ(q). The k/q component
+selector exposes real, imaginary and magnitude without weighting χ(q) again.
+See the [diagnostic contract](athena-diagnostic-plot-reference.md).
+
+The original Bi-Quad template uses the first group's shift for both energy
+axes. The implementation preserves each group's actual calibrated axis and
+reports this deliberate correction. Native reference tests assert the
+original erroneous axis before checking the corrected web axis. No saved
+calibration, processing parameters or scientific arrays are changed.
+
+Executed evidence for this change:
+
+- **90 original Perl/template/points observations**, recorded and replayed
+  exactly. Measured Fe `.060`/`.061` inputs are independently processed by
+  Larch. Weights 0/1/1.5/2/3/4, all three q components, positive/negative/zero
+  scale and offsets, and unequal group energy shifts are covered. Comparison
+  is `rtol=3e-13`, `atol=5e-11` for native point-file decimal precision.
+- **399 backend tests passed** in 12.53 s: shared Athena processing,
+  diagnostic/reference tests and existing context operations. These include
+  independent Larch transform overrides at `1e-13`, frozen groups, explicit
+  χ(k)-only input, wrong/duplicate/missing selections, invalid arrays, stale
+  requests, a project update during transform calculation, restart and bare
+  native PRJ round trips. The earlier focused run passed 125 checks; the first
+  combined run passed 397 before adding the final two lifecycle cases.
+- **27 focused frontend tests passed** in 4.19 s; the **full frontend suite
+  passed 730 tests across 42 files** in 122.89 s. The full run emits existing
+  nonfatal jsdom canvas diagnostics. The checks cover server curve membership,
+  response validation, stale async results, fractional weights, range edits,
+  error recovery and both plot entry points.
+- **Two real browser workflows passed** in 25.7 s at desktop 1500×1100 and
+  mobile 390×844. Each imports the original `Fe.prj`, exercises Quad/Bi-Quad/kq,
+  changes weight/component/range, compares every Plotly curve with its API
+  response, refreshes and opens the shortcut entry point. Each asserts exact
+  project equality after viewing, absence of browser exceptions and no dialog
+  horizontal overflow. Six plot images were generated; representative mobile
+  energy and desktop R plots were visually inspected. The initial browser
+  run reached all numerical comparisons but failed to locate the shortcut
+  selector by its exact label. Adding an explicit accessible label resolved
+  that failure; the complete workflow then passed on both viewports.
+- Production build, final TypeScript check, reference/source hashes,
+  documentation links and `git diff --check` passed. The catalog now has
+  **322 unique source identities**. All 107 requirement IDs/order/statuses
+  match the current committed matrix; PL-05/PL-12 evidence was expanded.
+
+Reference artifacts: `backend/tests/fixtures/athena-special-plot-native.json.gz`
+and `athena-special-plot-fixtures.json`; driver:
+`backend/tests/reference/special_plot_native_reference.py`. Logs are in `/tmp`:
+`athena-special-native.log`, `athena-special-native-replay.log`,
+`athena-special-backend.log`, `athena-special-regressions-final.log`,
+`athena-special-frontend.log`, `athena-special-full-frontend.log`,
+`athena-special-browser.log`, `athena-special-browser-final.log`,
+`athena-special-build.log` and `athena-special-typecheck-final.log`.
+Browser evidence is copied to `/tmp/athena-special-evidence/final-browser/`;
+the first run and pre-existing evidence are retained separately there.
+
+This validates the executed native plotting methods, templates and point
+writers, with explicit accessor/processing bridges. It does not execute the
+full native Wx/gnuplot interface or establish complete Athena parity.
+Other shortcut numerics, global plot preferences/ranges, transform windows,
+linked cursors and the rest of the original matrix remain open.
+
+Both local development listeners were found stopped during the final check
+and restarted only after confirming the ports were unused. The existing
+backend data root was retained. Frontend 3004, backend 8006 and the frontend
+proxy subsequently returned HTTP 200. Scientific browser tests used isolated
+13004/18006 servers and temporary data; existing local projects were not edited.
