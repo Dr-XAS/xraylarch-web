@@ -14,11 +14,13 @@ import json
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
-from fastapi import APIRouter, File, Query, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, Query, Request, UploadFile
+from fastapi.routing import APIRoute
 from fastapi.responses import Response
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .athena_science import (AthenaParameters, process_spectrum, calibrate_shift,
@@ -41,6 +43,9 @@ from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
 from .storage import WorkspaceStorage
+
+if TYPE_CHECKING:
+    from .integration_service import IntegrationService
 
 
 def uid() -> str:
@@ -745,6 +750,8 @@ class AthenaStore:
         for path in self.storage.root.iterdir():
             if path.is_dir() and (path / "project.json").is_file():
                 p = self.load(path.name)
+                if p.get("integration") is True:
+                    continue
                 output.append({k: p[k] for k in ("id", "name", "updated", "version")} | {"count": len(p["groups"])})
         return sorted(output, key=lambda p: p["updated"], reverse=True)
 
@@ -3396,10 +3403,41 @@ class AthenaStore:
             return saved
 
 
-def build_athena_router(settings: Settings):
-    router = APIRouter(prefix="/api/athena")
-    store = AthenaStore(settings)
+def build_athena_router(
+    settings: Settings,
+    *,
+    store: AthenaStore | None = None,
+    integration_service: "IntegrationService | None" = None,
+):
+    store = store or AthenaStore(settings)
     preferences = AthenaPreferences(settings)
+
+    integrated_routes = {
+        ("GET", "/api/athena/projects/{ident}"),
+        ("POST", "/api/athena/projects/{ident}/command"),
+        ("GET", "/api/athena/projects/{ident}/export"),
+        ("GET", "/api/athena/projects/{ident}/groups/{group_id}/export"),
+    }
+
+    class IntegrationProjectRoute(APIRoute):
+        def get_route_handler(self):
+            handler = super().get_route_handler()
+
+            async def protected(request: Request):
+                prefix = "/api/athena/projects/"
+                parameter = self.path[len(prefix):].split("/", 1)[0] if self.path.startswith(prefix) else ""
+                ident = request.path_params.get(parameter[1:-1].split(":", 1)[0]) if parameter.startswith("{") and parameter.endswith("}") else None
+                if ident is not None and (request.method, self.path) not in integrated_routes:
+                    project = await run_in_threadpool(store.load, ident)
+                    if project.get("integration") is True:
+                        raise HTTPException(status_code=404, detail="Project was not found.")
+                return await handler(request)
+
+            return protected
+
+    # New legacy routes must not silently expand the integrated editor surface.
+    # Authorized routes below still enforce capability, group and lifecycle rules.
+    router = APIRouter(prefix="/api/athena", route_class=IntegrationProjectRoute)
 
     def guarded(call):
         try:
@@ -3465,10 +3503,32 @@ def build_athena_router(settings: Settings):
     async def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
         data = await _read_bounded_upload(file, MAX_REGISTRY_BYTES)
         return guarded(lambda: registry_view(preferences.save_plugins(PluginRegistry(version=version, enabled=decode_registry(data)))))
+    def integration_draft(ident, capability, action, group_ids=(), *, allow_terminal=False):
+        project = store.load(ident)
+        if project.get("integration") is not True:
+            return None
+        if integration_service is None or not capability:
+            raise HTTPException(status_code=404, detail="Project was not found.")
+        from .integration_service import IntegrationAuthorizationError
+        try:
+            draft = integration_service.authorize_project(
+                ident, capability, datetime.now(timezone.utc), allow_terminal=allow_terminal
+            )
+        except IntegrationAuthorizationError as exc:
+            raise HTTPException(status_code=404, detail="Project was not found.") from exc
+        try:
+            integration_service.allowed_operation(action, group_ids=group_ids, draft=draft)
+        except IntegrationAuthorizationError as exc:
+            raise HTTPException(status_code=403, detail="Operation is unavailable.") from exc
+        return draft
 
     @router.get("/projects")
     def list_projects():
-        return store.list()
+        return [
+            summary
+            for summary in store.list()
+            if store.load(summary["id"]).get("integration") is not True
+        ]
 
     @router.get("/edges")
     def absorption_edges(element: str = Query(min_length=1, max_length=32)):
@@ -3476,15 +3536,19 @@ def build_athena_router(settings: Settings):
         return guarded(lambda: edge_catalog(element))
 
     @router.post("/projects")
-    def create_project():
+    def create_project(capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        if capability:
+            raise HTTPException(status_code=403, detail="Operation is unavailable.")
         return store.create()
 
     @router.get("/projects/{ident}")
-    def get_project(ident: str):
+    def get_project(ident: str, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "read_project", allow_terminal=True)
         return store.load(ident)
 
     @router.post("/projects/{ident}/inspect")
-    async def inspect(ident: str, file: UploadFile = File(...)):
+    async def inspect(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "inspect")
         data = await _read_bounded_upload(file, settings.max_upload_bytes)
         return guarded(lambda: store.inspect(ident, data, file.filename or "data.dat"))
 
@@ -3522,7 +3586,8 @@ def build_athena_router(settings: Settings):
         return guarded(lambda: AthenaPreferences(settings).save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
 
     @router.post("/projects/{ident}/import")
-    def import_data(ident: str, request: ImportRequest):
+    def import_data(ident: str, request: ImportRequest, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "import")
         return guarded(lambda: store.import_data(ident, request))
 
     @router.get('/projects/{ident}/uploads/{upload_id}/inspection')
@@ -3546,8 +3611,26 @@ def build_athena_router(settings: Settings):
                         headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @router.post("/projects/{ident}/command")
-    def command(ident: str, request: Command):
-        return guarded(lambda: store.command(ident, request))
+    def command(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        project = store.load(ident)
+        if project.get("integration") is not True:
+            return guarded(lambda: store.command(ident, request))
+        if integration_service is None or not capability:
+            raise HTTPException(status_code=404, detail="Project was not found.")
+        from .integration_service import IntegrationAuthorizationError
+        try:
+            with integration_service.authorized_operation(
+                ident,
+                capability,
+                request.action,
+                request.group_ids,
+                datetime.now(timezone.utc),
+            ):
+                return guarded(lambda: store.command(ident, request))
+        except IntegrationAuthorizationError as exc:
+            status = 404 if "not found" in str(exc) else 403
+            detail = "Project was not found." if status == 404 else "Operation is unavailable."
+            raise HTTPException(status_code=status, detail=detail) from exc
 
     @router.post('/projects/{ident}/context-report')
     def context_report(ident: str, request: ContextReport):
@@ -3573,11 +3656,13 @@ def build_athena_router(settings: Settings):
         return guarded(lambda: store.validate_xdi(ident, group_id, request))
 
     @router.post("/projects/{ident}/analyze")
-    def analyze(ident: str, request: Command):
+    def analyze(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "analyze", request.group_ids)
         return guarded(lambda: store.analyze(ident, request))
 
     @router.post("/projects/{ident}/difference/preview")
-    def preview_difference(ident: str, request: Command):
+    def preview_difference(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "difference", request.group_ids)
         return guarded(lambda: store.preview_difference(ident, request))
 
     @router.post('/projects/{ident}/rebin/preview')
@@ -3645,18 +3730,22 @@ def build_athena_router(settings: Settings):
         return guarded(lambda: store.preview_smoothing(ident, request))
 
     @router.post("/projects/{ident}/restore")
-    async def restore(ident: str, version: int, file: UploadFile = File(...)):
+    async def restore(ident: str, version: int, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "restore")
         data = await _read_bounded_upload(file, settings.max_upload_bytes)
         return guarded(lambda: store.restore(ident, version, data, file.filename or "project.prj"))
 
     @router.post("/projects/{ident}/preview-project")
-    async def preview_project(ident: str, file: UploadFile = File(...)):
+    async def preview_project(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "preview-project")
         data = await _read_bounded_upload(file, settings.max_upload_bytes)
         return guarded(lambda: store.preview_project(ident, data, file.filename or "project.prj"))
 
     @router.get("/projects/{ident}/preview-project/{upload_id}/groups/{group_id:path}")
     def preview_project_group(ident: str, upload_id: str, group_id: str,
-                              mode: Literal["mu", "norm", "flat", "dmude", "chi"] = "mu"):
+                              mode: Literal["mu", "norm", "flat", "dmude", "chi"] = "mu",
+                              capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "preview-project", [group_id])
         return guarded(lambda: store.preview_project_group(ident, upload_id, group_id, mode))
 
     @router.get('/projects/{ident}/preview-project/{upload_id}/file')
@@ -3667,12 +3756,15 @@ def build_athena_router(settings: Settings):
             headers={'Content-Disposition': f"attachment; filename*=UTF-8''{quote(filename, safe='')}"})
 
     @router.post("/projects/{ident}/restore-upload")
-    def restore_upload(ident: str, request: RestoreUploadRequest):
+    def restore_upload(ident: str, request: RestoreUploadRequest, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "restore")
         return guarded(lambda: store.restore_upload(ident, request))
 
     @router.get("/projects/{ident}/export")
     def export(ident: str, format: Literal["json", "prj"] = "json",
-               group_ids: list[str] | None = Query(default=None), marked_only: bool = False):
+               group_ids: list[str] | None = Query(default=None), marked_only: bool = False,
+               capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "export", group_ids or (), allow_terminal=True)
         content = guarded(lambda: store.export_project(ident, format, group_ids, marked_only))
         return Response(content, media_type="application/octet-stream" if format == "prj" else "application/json",
                         headers={"Content-Disposition": f'attachment; filename="athena-project.{format}"'})
@@ -3700,7 +3792,9 @@ def build_athena_router(settings: Settings):
             'X-Athena-Project-Version': str(request.version)})
 
     @router.get("/projects/{ident}/groups/{group_id}/export")
-    def export_group(ident: str, group_id: str, space: Literal["E", "k", "R", "q"] = "E"):
+    def export_group(ident: str, group_id: str, space: Literal["E", "k", "R", "q"] = "E",
+                     capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        integration_draft(ident, capability, "export", [group_id], allow_terminal=True)
         g = store.group(store.load(ident), group_id)
         if g["result"]:
             a = dict(g["result"]["arrays"])

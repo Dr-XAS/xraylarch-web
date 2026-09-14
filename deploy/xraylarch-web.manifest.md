@@ -62,6 +62,15 @@ clean environment and provides only `XRAYLARCH_DATA_ROOT`, `BACKEND_URL`,
 `NEXT_BACKEND_URL`, and non-secret runtime variables. It does not inherit
 provider, email, Slack, or Dr.XAS database secrets.
 
+The backend-only integration launcher additionally reads the optional private
+regular file `/local/apps/xraylarch-web/config/integration.json`, owned by the
+service user with no group/other permissions. Its explicit allowlist contains
+the three integration gates, issuer, audience, HMAC secret and draft TTL. Values
+are validated and passed only in the backend environment, never screen command
+arguments, frontend/build environments or release metadata. Missing configuration
+preserves integration-off behavior; invalid configuration blocks startup.
+Rollback releases predating this launcher use their original clean startup.
+
 The web backend release CI job builds a fresh Python 3.12 environment with the
 same installer, collects every backend test module, and executes API, processing,
 workspace, and XLS report tests plus deployment regressions. The shared dependency

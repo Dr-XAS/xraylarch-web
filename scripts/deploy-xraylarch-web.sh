@@ -575,7 +575,14 @@ launch_component() {
   assert_component_record_available "$name" || return 1
   assert_port_unbound "$port" || return 1
   case "$kind" in
-    backend) launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/python" -m uvicorn xraylarch_web.main:app --host "$host" --port "$port" || return 1 ;;
+    backend)
+      if [[ -f "${release}/backend/xraylarch_web/integration_runtime.py" ]]; then
+        launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/python" -m xraylarch_web.integration_runtime "${APP_ROOT}/config/integration.json" --host "$host" --port "$port" || return 1
+      else
+        # Older rollback targets predate integration and retain their clean launch.
+        launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/python" -m uvicorn xraylarch_web.main:app --host "$host" --port "$port" || return 1
+      fi
+      ;;
     frontend) launch_screen "$name" "${release}/frontend" "$backend_url" "$CONDA_BIN" run --no-capture-output -n drxas-node20 "${release}/frontend/node_modules/.bin/next" start -H "$host" -p "$port" || return 1 ;;
     *) fail "unknown component kind: $kind" ;;
   esac

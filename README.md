@@ -437,3 +437,18 @@ and analysis and to encourage and facilitate a gentle transition to
 transition from GUI-only analyses to scripted and programmatic
 analysis of larger data sets, and allows Larch to be run as a service,
 interacting with other processes or languages via XML-RPC.
+# Optional Dr.XAS integration configuration
+
+The host deployer reads `/local/apps/xraylarch-web/config/integration.json` only
+in the backend child. Create the parent directory privately and make the JSON
+file owner-only (mode `0600`, owned by the service user); symlinks are refused.
+The accepted fields are `integration_api_enabled`, `browser_consume_enabled`,
+`import_enabled` (JSON booleans), `integration_issuer`, `integration_audience`,
+`integration_hmac_secret` (strings), and optional `draft_ttl_seconds` (positive
+integer, at most 604800). All three gates must be true for editor import. The
+issuer, audience and host-generated secret must match Dr.XAS's private backend
+configuration; the secret must contain at least 32 characters. Never commit or
+print this file. Missing configuration keeps integration off; invalid settings
+block startup. The API remains on `127.0.0.1:8006`. Frontend/build processes do
+not receive the integration secret, and legacy rollback releases start with
+integration off.
