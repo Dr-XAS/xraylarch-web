@@ -1780,6 +1780,15 @@ class AthenaStore:
         return dict(project_id=ident, version=options.version,
                     options=options.model_dump(), result=result)
 
+    def plot_wavelet(self, ident, group_id, request):
+        from .athena_wavelet import WaveletOptions, wavelet_plot
+        options = WaveletOptions.model_validate(request)
+        project = self.load(ident)
+        self.check(project, options.version)
+        result = wavelet_plot(self.group(project, group_id), options)
+        self.check(self.load(ident), options.version)
+        return dict(project_id=ident, version=options.version, **result)
+
     def plot_special(self, ident, request):
         from .athena_special_plot import SpecialPlotOptions, special_plot
         options = SpecialPlotOptions.model_validate(request)
@@ -3563,6 +3572,10 @@ def build_athena_router(settings: Settings):
     @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
     def plot_saved_merge(ident: str, group_id: str, request: dict):
         return guarded(lambda:store.plot_saved_merge(ident,group_id,request))
+
+    @router.post('/projects/{ident}/groups/{group_id}/wavelet')
+    def plot_wavelet(ident: str, group_id: str, request: dict):
+        return guarded(lambda: store.plot_wavelet(ident, group_id, request))
 
     @router.post('/projects/{ident}/plots/special')
     def plot_special(ident: str, request: dict):

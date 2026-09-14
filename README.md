@@ -36,6 +36,12 @@ Open [http://localhost:3004](http://localhost:3004) using the local commands
 below, then import spectra or load the measured copper foil example. The
 earlier single-spectrum interface is at `/classic`.
 
+The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
+processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
+**Auto** uses the processed k-weight, or choose a weight from 0–4. Both views
+share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
+6 Å without phase correction. The plot refreshes after spectrum processing.
+
 The Athena import dialog shows a live plot while selecting columns. It also
 recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`
 while preserving the supplied normalization. Detector choices and previewed

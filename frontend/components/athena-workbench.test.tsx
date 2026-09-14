@@ -33,6 +33,8 @@ vi.mock('@/lib/athena-preferences', () => ({
 vi.mock("./athena-plot", () => ({
   AthenaPlot: vi.fn(() => <div data-testid="athena-plot" />),
 }))
+// Wavelet requests and mode switching have dedicated panel tests.
+vi.mock("./athena-wavelet", () => ({ AthenaWavelet: () => <div data-testid="athena-wavelet" /> }))
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // Live arithmetic and stale-response behavior have dedicated preview tests.
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div data-testid="column-preview" /> }))
