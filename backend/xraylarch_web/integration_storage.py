@@ -158,7 +158,11 @@ class IntegrationStorage:
         self.nonces_dir = self.root / "nonces"
         self.handles_dir = self.root / "handles"
         self.projects_dir = self.root / "projects"
-        for path in (self.root, self.drafts_dir, self.nonces_dir, self.handles_dir, self.projects_dir):
+        self.rename_intents_dir = self.root / "rename-intents"
+        for path in (
+            self.root, self.drafts_dir, self.nonces_dir, self.handles_dir,
+            self.projects_dir, self.rename_intents_dir,
+        ):
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(path, 0o700)
 
@@ -266,6 +270,16 @@ class IntegrationStorage:
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
+
+    def _enqueue_cleanup(self, phase: str, filename: str) -> None:
+        """Append one durable work item to the cleanup journal."""
+        line = json.dumps({"phase": phase, "filename": filename}, separators=(",", ":")) + "\n"
+        with self._lock("cleanup"):
+            with open(self.root / ".cleanup-queue.jsonl", "a", encoding="utf-8") as stream:
+                stream.write(line)
+                stream.flush()
+                os.fsync(stream.fileno())
+            self._fsync_directory(self.root)
 
     def _atomic_json(self, path: Path, value: dict) -> None:
         destination = hashlib.sha256(path.name.encode("utf-8")).hexdigest()[:16]
@@ -403,6 +417,7 @@ class IntegrationStorage:
                 if path.exists():
                     raise IntegrationConflictError("Integration project already exists.")
                 self._atomic_json(path, self._serialize_project(record))
+            self._enqueue_cleanup("projects", path.name)
         return record, capability
 
     def load_project(
@@ -556,7 +571,9 @@ class IntegrationStorage:
         value["record_tag"] = self._launch_record_tag(handle, value)
         if len(json.dumps(value, separators=(",", ":")).encode()) > 32_768:
             raise IntegrationConflictError("Integration launch record is too large.")
-        self._atomic_json(self.handles_dir / f"{handle_hash}.json", value)
+        path = self.handles_dir / f"{handle_hash}.json"
+        self._atomic_json(path, value)
+        self._enqueue_cleanup("handles", path.name)
         return handle
 
     def consume_project_launch_handle(self, handle: str, *, now: datetime) -> dict:
@@ -568,16 +585,34 @@ class IntegrationStorage:
             os.replace(path, claimed)
             owned = True
             value = json.loads(claimed.read_text(encoding="utf-8"))
+            if not isinstance(value, dict):
+                raise IntegrationReplayError("Browser launch handle is invalid or already used.")
             tag = value.pop("record_tag")
+            required_strings = ("kind", "handle_hash", "project_id", "sealed_capability", "expires_at")
+            if (
+                not isinstance(tag, str)
+                or any(not isinstance(value.get(field), str) for field in required_strings)
+                or not isinstance(value.get("allowed_operations"), list)
+                or not all(isinstance(item, str) for item in value["allowed_operations"])
+                or not isinstance(value.get("return_reference"), dict)
+                or (value.get("seed_group") is not None and not isinstance(value["seed_group"], dict))
+            ):
+                raise IntegrationReplayError("Browser launch handle is invalid or already used.")
             if not hmac.compare_digest(tag, self._launch_record_tag(handle, value)):
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
-            if (value.get("kind") != "v2-project"
-                    or not hmac.compare_digest(value.get("handle_hash", ""), _hash(handle))
+            if (value["kind"] != "v2-project"
+                    or not hmac.compare_digest(value["handle_hash"], _hash(handle))
                     or _dt(now) >= _dt(value["expires_at"])):
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
             value["capability"] = self._unseal_capability(handle, value.pop("sealed_capability"))
             return value
-        except (OSError, KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        except FileNotFoundError as exc:
+            raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
+        except ValueError as exc:
+            if isinstance(exc, IntegrationReplayError):
+                raise
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
         finally:
             if owned:
@@ -598,6 +633,7 @@ class IntegrationStorage:
                 os.fsync(stream.fileno())
             os.chmod(path, 0o600)
             self._fsync_directory(self.nonces_dir)
+            self._enqueue_cleanup("nonces", path.name)
         except Exception:
             path.unlink(missing_ok=True)
             raise
@@ -677,6 +713,8 @@ class IntegrationStorage:
                         ).isoformat(),
                     },
                 )
+                self._enqueue_cleanup("drafts", draft_path.name)
+                self._enqueue_cleanup("handles", handle_path.name)
             except Exception:
                 draft_path.unlink(missing_ok=True)
                 handle_path.unlink(missing_ok=True)
@@ -807,109 +845,117 @@ class IntegrationStorage:
     def expire_due(
         self, now: datetime, *, max_items: int = 64, max_seconds: float = 0.025,
     ) -> tuple[str, ...]:
-        """Advance durable expiry cleanup within a strict item and time budget."""
+        """Process a durable round-robin queue within strict item/time budgets.
+
+        Record creation adds work directly to this index. Cleanup holds one global
+        lock, so concurrent workers cannot overwrite progress; live records move to
+        the queue tail instead of requiring a scan back through a directory prefix.
+        """
         if max_items <= 0 or max_seconds <= 0:
             return ()
         now = _dt(now)
-        phases = (
-            ("nonces", self.nonces_dir),
-            ("handles", self.handles_dir),
-            ("projects", self.projects_dir),
-            ("drafts", self.drafts_dir),
-        )
-        cursor_path = self.root / ".cleanup-cursor.json"
-        try:
-            cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
-            phase_index = next(
-                index for index, (name, _) in enumerate(phases) if name == cursor["phase"]
-            )
-            after = cursor.get("after")
-            if after is not None and not isinstance(after, str):
-                raise ValueError
-        except (OSError, KeyError, StopIteration, TypeError, ValueError, json.JSONDecodeError):
-            phase_index, after = 0, None
-
+        directories = {
+            "nonces": self.nonces_dir, "handles": self.handles_dir,
+            "projects": self.projects_dir, "drafts": self.drafts_dir,
+        }
+        state_path = self.root / ".cleanup-queue.json"
+        queue_path = self.root / ".cleanup-queue.jsonl"
         deadline = time.monotonic() + max_seconds
-        visited = 0
-        completed_phases = 0
         expired: list[str] = []
-        while (
-            visited < max_items
-            and completed_phases < len(phases)
-            and time.monotonic() < deadline
-        ):
-            phase, directory = phases[phase_index]
-            found_after = after is None
-            completed = True
-            last_seen = after
+        with self._lock("cleanup"):
             try:
-                entries = os.scandir(directory)
-            except OSError:
-                entries = ()
+                state = json.loads(state_path.read_text(encoding="utf-8"))
+                offset, sequence = state["offset"], state["sequence"]
+                if not all(isinstance(value, int) and value >= 0 for value in (offset, sequence)):
+                    raise ValueError
+            except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                offset = sequence = 0
             try:
-                for entry in entries:
-                    if visited >= max_items or time.monotonic() >= deadline:
-                        completed = False
-                        break
-                    if not entry.name.endswith(".json"):
-                        continue
-                    if not found_after:
-                        if entry.name == after:
-                            found_after = True
-                        continue
-                    visited += 1
-                    path = Path(entry.path)
-                    try:
-                        value = json.loads(path.read_text(encoding="utf-8"))
-                        if phase == "nonces":
-                            if now >= _dt(value["expires_at"]):
-                                path.unlink(missing_ok=True)
-                        elif phase == "handles":
-                            if value.get("kind") == "v2-project" and now >= _dt(value["expires_at"]):
-                                path.unlink(missing_ok=True)
-                        elif phase == "projects":
-                            record = self._deserialize_project(value)
-                            if record.status == "active" and record.expires_at is not None and now >= record.expires_at:
-                                with self.project_lock(record.project_id):
-                                    current = self._read_project_unchecked(record.project_id)
-                                    if current.status == "active" and current.expires_at is not None and now >= current.expires_at:
-                                        updated = replace(current, status="expired", updated_at=current.expires_at)
-                                        self._atomic_json(path, self._serialize_project(updated))
-                                        expired.append(current.project_id)
-                        else:
-                            record = self._deserialize(value)
-                            if record.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= record.expires_at:
-                                with self.draft_lock(record.id):
-                                    current = self._read_draft_unchecked(record.id)
-                                    if current.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= current.expires_at:
-                                        updated = replace(
-                                            current, status=DraftStatus.EXPIRED,
-                                            updated_at=current.expires_at - timedelta(microseconds=1),
-                                        )
-                                        self._atomic_json(path, self._serialize(updated))
-                                        self._remove_handle(current.handle_hash)
-                                        expired.append(current.id)
-                    except (OSError, KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
-                        pass
-                    if path.exists():
-                        last_seen = entry.name
-            finally:
-                close = getattr(entries, "close", None)
-                if close is not None:
-                    close()
-
-            if not found_after:
-                # The saved entry disappeared; restart this phase on the next call.
-                last_seen = None
-                completed = False
-            if completed:
-                completed_phases += 1
-                phase_index = (phase_index + 1) % len(phases)
-                after = None
-            else:
-                after = last_seen
-                break
-        self._atomic_json(cursor_path, {"phase": phases[phase_index][0], "after": after})
+                queue_size = queue_path.stat().st_size
+                if offset > queue_size:
+                    offset = 0
+            except FileNotFoundError:
+                pass
+            visited = 0
+            try:
+                stream = open(queue_path, "r", encoding="utf-8")
+            except FileNotFoundError:
+                stream = None
+            if stream is not None:
+                with stream:
+                    stream.seek(offset)
+                    while visited < max_items and time.monotonic() < deadline:
+                        line = stream.readline()
+                        if not line:
+                            break
+                        offset = stream.tell()
+                        visited += 1
+                        keep = False
+                        try:
+                            work = json.loads(line)
+                            phase, filename = work["phase"], work["filename"]
+                            directory = directories[phase]
+                            if not isinstance(filename, str) or Path(filename).name != filename:
+                                raise ValueError
+                            path = directory / filename
+                            value = json.loads(path.read_text(encoding="utf-8"))
+                            if phase == "nonces":
+                                if now >= _dt(value["expires_at"]):
+                                    path.unlink(missing_ok=True)
+                                else:
+                                    keep = True
+                            elif phase == "handles":
+                                if value.get("kind") == "v2-project" and now >= _dt(value["expires_at"]):
+                                    path.unlink(missing_ok=True)
+                                else:
+                                    keep = True
+                            elif phase == "projects":
+                                record = self._deserialize_project(value)
+                                if record.status == "active" and record.expires_at is not None and now >= record.expires_at:
+                                    with self.project_lock(record.project_id):
+                                        current = self._read_project_unchecked(record.project_id)
+                                        if current.status == "active" and current.expires_at is not None and now >= current.expires_at:
+                                            updated = replace(current, status="expired", updated_at=current.expires_at)
+                                            self._atomic_json(path, self._serialize_project(updated))
+                                            expired.append(current.project_id)
+                                keep = record.status == "active" and record.expires_at is not None
+                            else:
+                                record = self._deserialize(value)
+                                if record.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= record.expires_at:
+                                    with self.draft_lock(record.id):
+                                        current = self._read_draft_unchecked(record.id)
+                                        if current.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= current.expires_at:
+                                            updated = replace(
+                                                current, status=DraftStatus.EXPIRED,
+                                                updated_at=current.expires_at - timedelta(microseconds=1),
+                                            )
+                                            self._atomic_json(path, self._serialize(updated))
+                                            self._remove_handle(current.handle_hash)
+                                            expired.append(current.id)
+                                keep = record.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED}
+                        except FileNotFoundError:
+                            pass
+                        except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                            keep = True
+                        if keep:
+                            with open(queue_path, "a", encoding="utf-8") as output:
+                                output.write(line)
+                                output.flush()
+                                os.fsync(output.fileno())
+                        sequence += 1
+            self._atomic_json(state_path, {"offset": offset, "sequence": sequence})
+            if offset >= 1_048_576 and queue_path.exists():
+                with open(queue_path, "rb") as source:
+                    source.seek(offset)
+                    remaining = source.read()
+                temporary = queue_path.with_suffix(".compact")
+                with open(temporary, "wb") as output:
+                    output.write(remaining)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary, queue_path)
+                self._atomic_json(state_path, {"offset": 0, "sequence": sequence})
+                self._fsync_directory(self.root)
         return tuple(sorted(expired))
 
     def remove_draft_artifacts(self, draft_id: str) -> None:

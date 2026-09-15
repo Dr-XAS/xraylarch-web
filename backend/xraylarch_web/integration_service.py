@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import hmac
+import math
 from pathlib import Path
 import re
 import secrets
@@ -345,19 +346,37 @@ class IntegrationService:
     def _processed_project_byte_bound(cls, project: dict) -> int:
         """Conservatively bound JSON growth from processing one seeded group.
 
-        Processing emits 25 finite-float arrays. Each array is no longer than
-        the larger of the source spectrum and configured FFT grids, and a JSON
-        double plus separator needs at most 32 bytes. The fixed allowance covers
-        effective parameters, warnings, and object syntax.
+        Bound each output family by the grid that actually produces it. FFT
+        allocation size alone does not determine serialized R/q lengths: those
+        are truncated by rmax_out/qmax_out. A finite JSON float plus separator
+        needs at most 32 bytes; fixed metadata gets a separate allowance.
         """
         if not project["groups"]:
             return cls._project_bytes(project)
         group = project["groups"][0]
         parameters = group["parameters"]
-        points = max(
-            len(group["energy"]), parameters["nfft"], parameters["reverse_nfft"]
+        source_points = len(group["energy"])
+        e0 = parameters["e0"]
+        if e0 is None:
+            # The edge finder selects an interior measured energy.
+            energy_span = group["energy"][-1] - group["energy"][1]
+        else:
+            energy_span = max(0.0, group["energy"][-1] + parameters["energy_shift"] - e0)
+        available_kmax = math.sqrt(3.80998212 * energy_span)
+        kmax = min(parameters["bkg_kmax"] or available_kmax, available_kmax)
+        k_points = min(parameters["nfft"] // 2, int(1.01 + kmax / parameters["kstep"]))
+        rstep = 3.141592653589793 / (parameters["kstep"] * parameters["nfft"])
+        rmax = parameters["rmax_out"] or max(
+            10.0, parameters["rmax"] + parameters["dr"] / 2 + rstep
         )
-        return cls._project_bytes(project) + 25 * points * 32 + 131_072
+        r_points = min(parameters["nfft"] // 2, int(rmax / rstep) + 2)
+        reverse_nfft = parameters["reverse_nfft"] or parameters["nfft"]
+        reverse_kstep = parameters["reverse_kstep"] or parameters["kstep"]
+        qmax = parameters["qmax_out"] or kmax
+        q_points = min(reverse_nfft // 2, int(qmax / reverse_kstep) + 2)
+        # 9 E-space, 4 k-space, 5 R-space, 5 q-space, and rwin on R.
+        array_values = 9 * source_points + 4 * k_points + 6 * r_points + 5 * q_points
+        return cls._project_bytes(project) + array_values * 32 + 131_072
 
     def create_v2_project(self, request: ProjectBootstrapRequest, *, now: datetime) -> tuple[str, str, ProjectSummary]:
         quota = self._quota(request.persistent)
@@ -430,21 +449,32 @@ class IntegrationService:
         }
 
     def rename_v2_project(self, project_id: str, capability: str, name: str, *, now: datetime) -> ProjectSummary:
+        # Lock order is integration project, then Athena workspace. All coordinated
+        # lifecycle mutations must use this order to avoid cross-store deadlocks.
         with self.storage.project_lock(project_id):
-            record = self.storage._load_active_project(project_id, capability, now)
-            project = self.athena_store.load(project_id)
-            original = dict(project)
-            project["name"] = name
-            stored_bytes = self._project_bytes(project)
-            if record.quota is not None and stored_bytes > record.quota.max_bytes:
-                raise IntegrationConflictError("Integration project byte quota is exhausted.")
-            self.athena_store.storage.write_json(project_id, "project.json", project)
-            try:
-                record = self.storage._set_project_stored_bytes_locked(record, stored_bytes, now=now)
-            except Exception:
-                self.athena_store.storage.write_json(project_id, "project.json", original)
-                raise
-            return self._project_summary(project, record)
+            with self.athena_store.storage.lock(project_id):
+                record = self.storage._load_active_project(project_id, capability, now)
+                intent_path = self.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
+                if intent_path.exists():
+                    # A previous process committed workspace data but stopped before
+                    # accounting. Recover from the committed file, never estimates.
+                    self.athena_store.storage.read_json(project_id, "project.json")
+                    committed_bytes = self.athena_store.storage.path(project_id, "project.json").stat().st_size
+                    record = self.storage._set_project_stored_bytes_locked(record, committed_bytes, now=now)
+                    intent_path.unlink()
+                    self.storage._fsync_directory(self.storage.rename_intents_dir)
+                project = self.athena_store.load(project_id)
+                project["name"] = name
+                candidate_bytes = self._project_bytes(project)
+                if record.quota is not None and candidate_bytes > record.quota.max_bytes:
+                    raise IntegrationConflictError("Integration project byte quota is exhausted.")
+                self.storage._atomic_json(intent_path, {"project_id": project_id, "name": name})
+                self.athena_store.storage.write_json(project_id, "project.json", project)
+                committed_bytes = self.athena_store.storage.path(project_id, "project.json").stat().st_size
+                record = self.storage._set_project_stored_bytes_locked(record, committed_bytes, now=now)
+                intent_path.unlink()
+                self.storage._fsync_directory(self.storage.rename_intents_dir)
+                return self._project_summary(project, record)
 
     def delete_v2_project(self, project_id: str, capability: str, *, now: datetime) -> dict:
         # Retire durable access first.  Cleanup may be retried with the same

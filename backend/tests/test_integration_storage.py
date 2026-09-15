@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -99,16 +100,55 @@ def test_expire_due_is_bounded_and_persists_progress(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "read_text", count_read)
     store.expire_due(NOW, max_items=2)
-    first_cursor = (store.root / ".cleanup-cursor.json").read_text(encoding="utf-8")
+    first_cursor = (store.root / ".cleanup-queue.json").read_text(encoding="utf-8")
     assert len(reads) == 2
     reads.clear()
 
     store.expire_due(NOW, max_items=2)
-    second_cursor = (store.root / ".cleanup-cursor.json").read_text(encoding="utf-8")
+    second_cursor = (store.root / ".cleanup-queue.json").read_text(encoding="utf-8")
 
     assert len(reads) == 2
     assert first_cursor != second_cursor
-    assert json.loads(second_cursor)["phase"] == "nonces"
+    assert json.loads(second_cursor)["sequence"] == 4
+
+
+def test_expire_due_resumes_without_rescanning_a_large_prefix(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(12):
+        store.claim_nonce(
+            nonce=f"queued-nonce-{index:06d}", expires_at=NOW + timedelta(minutes=5)
+        )
+    reads = []
+    original = Path.read_text
+
+    def count_read(path, *args, **kwargs):
+        if path.parent == store.nonces_dir:
+            reads.append(path.name)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_read)
+    store.expire_due(NOW, max_items=3)
+    first = tuple(reads)
+    reads.clear()
+
+    store.expire_due(NOW, max_items=3)
+
+    assert len(reads) == 3
+    assert not set(first) & set(reads)
+
+
+def test_concurrent_expire_due_does_not_regress_persistent_progress(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(12):
+        store.claim_nonce(
+            nonce=f"parallel-nonce-{index:04d}", expires_at=NOW + timedelta(minutes=5)
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        tuple(executor.map(lambda _: store.expire_due(NOW, max_items=3), range(2)))
+
+    state = json.loads((store.root / ".cleanup-queue.json").read_text(encoding="utf-8"))
+    assert state["sequence"] == 6
 
 
 def test_expire_due_tolerates_malformed_drafts_per_item(tmp_path):

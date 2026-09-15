@@ -146,6 +146,86 @@ def test_rename_updates_exact_stored_bytes_and_rejects_over_quota(tmp_path):
         assert json.loads(integration_record.read_text())["stored_bytes"] == actual
 
 
+def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, monkeypatch):
+    from xraylarch_web.athena import AthenaStore
+    from xraylarch_web.integration_service import IntegrationService
+    from xraylarch_web.integration_storage import IntegrationStorage
+
+    configured = settings(tmp_path)
+    storage = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    service = IntegrationService(configured, AthenaStore(configured), storage)
+    from xraylarch_web.integration_contracts import ProjectBootstrapRequest
+    project_id, capability, _ = service.create_v2_project(
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+    )
+    original = storage._set_project_stored_bytes_locked
+    failed = False
+
+    def interrupt(record, stored_bytes, *, now):
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise OSError("process stopped after workspace commit")
+        return original(record, stored_bytes, now=now)
+
+    monkeypatch.setattr(storage, "_set_project_stored_bytes_locked", interrupt)
+    with pytest.raises(OSError, match="process stopped"):
+        service.rename_v2_project(project_id, capability, "Committed", now=NOW)
+    assert json.loads((tmp_path / "athena" / project_id / "project.json").read_text())["name"] == "Committed"
+    assert list((tmp_path / "integration" / "rename-intents").glob("*.json"))
+
+    summary = service.rename_v2_project(project_id, capability, "Recovered", now=NOW)
+
+    workspace_path = tmp_path / "athena" / project_id / "project.json"
+    assert summary.name == "Recovered"
+    assert summary.stored_bytes == workspace_path.stat().st_size
+    assert not list((tmp_path / "integration" / "rename-intents").glob("*.json"))
+
+
+def test_rename_holds_integration_then_workspace_lock(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from xraylarch_web.athena import AthenaStore
+    from xraylarch_web.integration_service import IntegrationService
+    from xraylarch_web.integration_storage import IntegrationStorage
+    from xraylarch_web.integration_contracts import ProjectBootstrapRequest
+
+    configured = settings(tmp_path)
+    storage = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    athena = AthenaStore(configured)
+    service = IntegrationService(configured, athena, storage)
+    project_id, capability, _ = service.create_v2_project(
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+    )
+    held = []
+    project_lock = storage.project_lock
+    workspace_lock = athena.storage.lock
+
+    @contextmanager
+    def traced_project_lock(value):
+        with project_lock(value):
+            held.append("integration")
+            try:
+                yield
+            finally:
+                held.pop()
+
+    @contextmanager
+    def traced_workspace_lock(value):
+        assert held == ["integration"]
+        with workspace_lock(value):
+            held.append("workspace")
+            try:
+                yield
+            finally:
+                held.pop()
+
+    monkeypatch.setattr(storage, "project_lock", traced_project_lock)
+    monkeypatch.setattr(athena.storage, "lock", traced_workspace_lock)
+
+    service.rename_v2_project(project_id, capability, "After", now=NOW)
+    assert held == []
+
+
 def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monkeypatch):
     import xraylarch_web.integration_routes as integration_routes
     clock = [NOW]
@@ -275,6 +355,35 @@ def test_v2_create_purges_expired_project_handles(tmp_path, monkeypatch):
                                                       nonce="i" * 32, timestamp=clock[0]))
         assert response.status_code == 200
         assert not handle_path.exists()
+
+
+def test_seeded_creation_accepts_high_nfft_when_bounded_outputs_fit_quota(tmp_path):
+    from test_integration_contracts import launch_payload
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, CoreProcessingRecipe, canonical_sha256
+
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    recipe_payload = launch_payload()
+    recipe_payload["recipe"]["forward_ft"]["nfft"] = 65_536
+    recipe_payload["recipe"]["reverse_ft"]["nfft"] = 65_536
+    spectrum = AuthoritativeSpectrum(
+        energy=tuple(8800.0 + index * 2 for index in range(551)),
+        mu=tuple(0.7 + math.atan((8800.0 + index * 2 - 8980.0) / 4.0) / math.pi for index in range(551)),
+    )
+    recipe = CoreProcessingRecipe.model_validate(recipe_payload["recipe"])
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"),
+            "recipe": recipe.model_dump(mode="json"), "spectrum_sha256": canonical_sha256(spectrum),
+            "recipe_sha256": canonical_sha256(recipe)}
+
+    with TestClient(create_app(settings(tmp_path))) as client:
+        response = request(client, "POST", "/api/integration/v2/projects", {
+            "contract_version": 2, "name": "High nfft", "persistent": False,
+            "source": source, "seed": seed,
+        }, nonce="j" * 32)
+
+    assert response.status_code == 200, response.text
+    project_id = response.json()["project_id"]
+    assert (tmp_path / "athena" / project_id / "project.json").stat().st_size < 50_000_000
 
 
 def test_seeded_creation_rejects_processed_size_bound_before_processing(tmp_path, monkeypatch):
