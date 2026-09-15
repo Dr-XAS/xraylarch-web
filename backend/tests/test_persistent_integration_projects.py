@@ -317,7 +317,7 @@ def test_v2_launch_handle_rejects_tampering_expires_and_is_purged(store, capabil
     )
     path = store.handles_dir / f"{hashlib.sha256(handle.encode()).hexdigest()}.json"
     value = json.loads(path.read_text(encoding="utf-8"))
-    value["sealed_capability"] = "A" + value["sealed_capability"][1:]
+    value["sealed_capability"] = ("B" if value["sealed_capability"][0] == "A" else "A") + value["sealed_capability"][1:]
     path.write_text(json.dumps(value), encoding="utf-8")
     with pytest.raises(IntegrationReplayError):
         store.consume_project_launch_handle(handle, now=NOW)
