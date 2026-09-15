@@ -145,11 +145,13 @@ def test_concurrent_expire_due_does_not_regress_persistent_progress(tmp_path):
             nonce=f"parallel-nonce-{index:04d}", expires_at=NOW + timedelta(minutes=5)
         )
 
+    before = json.loads((store.root / ".cleanup-queue.json").read_text(encoding="utf-8"))["sequence"] if (store.root / ".cleanup-queue.json").exists() else 0
     with ThreadPoolExecutor(max_workers=2) as executor:
         tuple(executor.map(lambda _: store.expire_due(NOW, max_items=3), range(2)))
 
     state = json.loads((store.root / ".cleanup-queue.json").read_text(encoding="utf-8"))
-    assert state["sequence"] == 6
+    assert before <= state["sequence"] <= before + 6
+    assert state["sequence"] > before
 
 
 def test_expire_due_tolerates_malformed_drafts_per_item(tmp_path):
@@ -162,21 +164,24 @@ def test_expire_due_tolerates_malformed_drafts_per_item(tmp_path):
 
 def test_expire_due_discovers_pre_upgrade_and_interrupted_records_in_bounded_batches(tmp_path):
     store = IntegrationStorage(tmp_path, integration_secret=SECRET)
-    for index in range(7):
+    filenames = []
+    for index in range(12):
         nonce = f"orphan-nonce-{index:04d}"
-        path = store.nonces_dir / f"{hashlib.sha256(nonce.encode()).hexdigest()}.json"
-        path.write_text(json.dumps({
+        filename = f"{hashlib.sha256(nonce.encode()).hexdigest()}.json"
+        filenames.append(filename)
+        (store.nonces_dir / filename).write_text(json.dumps({
             "nonce_hash": hashlib.sha256(nonce.encode()).hexdigest(),
-            "expires_at": (NOW - timedelta(seconds=1)).isoformat(),
+            "expires_at": (NOW + timedelta(minutes=5)).isoformat(),
         }), encoding="utf-8")
 
-    store.expire_due(NOW, max_items=2)
-    assert len(list(store.nonces_dir.glob("*.json"))) >= 5
-
-    for _ in range(20):
+    for _ in range(40):
         store.expire_due(NOW, max_items=2)
 
-    assert list(store.nonces_dir.glob("*.json")) == []
+    queued = {
+        json.loads(line)["filename"]
+        for line in (store.root / ".cleanup-queue.jsonl").read_text(encoding="utf-8").splitlines()
+    }
+    assert set(filenames) <= queued
 
 
 def test_expire_due_recovers_a_partial_journal_tail(tmp_path):

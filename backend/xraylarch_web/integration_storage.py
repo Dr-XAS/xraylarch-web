@@ -323,56 +323,62 @@ class IntegrationStorage:
         phase, active = phases[phase_index]
         cursor_path = self.root / f".cleanup-discovery-{phase}.json"
         try:
-            cursor = json.loads(cursor_path.read_text(encoding="utf-8")).get("cursor", "")
-            if not isinstance(cursor, str):
+            cursor_state = json.loads(cursor_path.read_text(encoding="utf-8"))
+            cursor = cursor_state.get("cursor", "")
+            pending = cursor_state.get("pending", [])
+            if not isinstance(cursor, str) or not all(isinstance(name, str) for name in pending):
                 raise ValueError
         except (FileNotFoundError, TypeError, ValueError, json.JSONDecodeError):
-            cursor = ""
-        names: list[str] = []
-        libc = ctypes.CDLL(None, use_errno=True)
-        descriptor = os.open(active, os.O_RDONLY)
-        try:
-            buffer = ctypes.create_string_buffer(16_384)
-            if sys.platform == "darwin":
-                read_entries = getattr(libc, "__getdirentries64")
-                read_entries.argtypes = [
-                    ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
-                    ctypes.POINTER(ctypes.c_longlong),
-                ]
-                read_entries.restype = ctypes.c_ssize_t
-                base = ctypes.c_longlong(int(cursor or "0"))
-                count = read_entries(descriptor, buffer, len(buffer), ctypes.byref(base))
-                name_offset = 21
-            elif sys.platform.startswith("linux"):
-                read_entries = libc.syscall
-                read_entries.restype = ctypes.c_long
-                os.lseek(descriptor, int(cursor or "0"), os.SEEK_SET)
-                # Linux getdents64; Python exposes no bounded resumable directory API.
-                syscall_number = 217 if os.uname().machine in {"x86_64", "amd64"} else 61
-                count = read_entries(syscall_number, descriptor, buffer, len(buffer))
-                name_offset = 19
-            else:
-                raise OSError("Bounded integration cleanup discovery is unsupported.")
-            if count < 0:
-                raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
-            position = 0
-            while position < count and len(names) < max_items and time.monotonic() < deadline:
-                inode = int.from_bytes(buffer[position:position + 8], sys.byteorder)
-                record_length = int.from_bytes(buffer[position + 16:position + 18], sys.byteorder)
-                if record_length <= 0:
-                    break
-                raw_name = bytes(buffer[position + name_offset:position + record_length])
-                name = raw_name.split(b"\0", 1)[0].decode("utf-8", "surrogateescape")
-                position += record_length
-                if inode and name not in {".", ".."}:
-                    names.append(name)
-            next_cursor = str(os.lseek(descriptor, 0, os.SEEK_CUR))
-            complete = count == 0
-        finally:
-            os.close(descriptor)
+            cursor, pending = "", []
+        complete = False
+        if not pending:
+            libc = ctypes.CDLL(None, use_errno=True)
+            descriptor = os.open(active, os.O_RDONLY)
+            try:
+                buffer = ctypes.create_string_buffer(16_384)
+                if sys.platform == "darwin":
+                    read_entries = getattr(libc, "__getdirentries64")
+                    read_entries.argtypes = [
+                        ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
+                        ctypes.POINTER(ctypes.c_longlong),
+                    ]
+                    read_entries.restype = ctypes.c_ssize_t
+                    os.lseek(descriptor, int(cursor or "0"), os.SEEK_SET)
+                    base = ctypes.c_longlong()
+                    count = read_entries(descriptor, buffer, len(buffer), ctypes.byref(base))
+                    name_offset = 21
+                elif sys.platform.startswith("linux"):
+                    read_entries = libc.syscall
+                    read_entries.restype = ctypes.c_long
+                    os.lseek(descriptor, int(cursor or "0"), os.SEEK_SET)
+                    # Linux getdents64; Python exposes no bounded resumable directory API.
+                    syscall_number = 217 if os.uname().machine in {"x86_64", "amd64"} else 61
+                    count = read_entries(syscall_number, descriptor, buffer, len(buffer))
+                    name_offset = 19
+                else:
+                    raise OSError("Bounded integration cleanup discovery is unsupported.")
+                if count < 0:
+                    raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
+                position = 0
+                while position < count:
+                    inode = int.from_bytes(buffer[position:position + 8], sys.byteorder)
+                    record_length = int.from_bytes(buffer[position + 16:position + 18], sys.byteorder)
+                    if record_length <= 0:
+                        break
+                    raw_name = bytes(buffer[position + name_offset:position + record_length])
+                    name = raw_name.split(b"\0", 1)[0].decode("utf-8", "surrogateescape")
+                    position += record_length
+                    if inode and name not in {".", ".."}:
+                        pending.append(name)
+                cursor = str(os.lseek(descriptor, 0, os.SEEK_CUR))
+                complete = count == 0
+            finally:
+                os.close(descriptor)
+        names = pending[:max_items]
         for filename in names:
             self._append_cleanup_locked(phase, filename)
-        if complete:
+        pending = pending[len(names):]
+        if complete and not pending:
             cursor_path.unlink(missing_ok=True)
             next_phase = (phase_index + 1) % len(phases)
             self._atomic_json(
@@ -381,7 +387,7 @@ class IntegrationStorage:
                 )},
             )
         else:
-            self._atomic_json(cursor_path, {"cursor": next_cursor})
+            self._atomic_json(cursor_path, {"cursor": cursor, "pending": pending})
         return len(names)
 
     def _atomic_json(self, path: Path, value: dict) -> None:
