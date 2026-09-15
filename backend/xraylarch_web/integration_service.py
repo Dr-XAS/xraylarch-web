@@ -95,7 +95,6 @@ class IntegrationService:
         self.settings = settings
         self.athena_store = athena_store
         self.storage = storage
-        self._v2_handles: dict[str, tuple[str, str, datetime]] = {}
 
     @staticmethod
     def _headers(headers: Mapping[str, str]) -> dict[str, str]:
@@ -152,6 +151,8 @@ class IntegrationService:
 
     def _verify_v2(self, *, method: str, path: str, raw_body: bytes,
                    headers: Mapping[str, str], now: datetime) -> tuple[str, datetime]:
+        if hasattr(headers, "getlist") and any(len(headers.getlist(name)) != 1 for name in _REQUIRED_HEADERS):
+            raise IntegrationAuthenticationError("Integration authentication failed.")
         values = self._headers(headers)
         issuer = values["x-drxas-issuer"]
         audience = values["x-drxas-audience"]
@@ -188,9 +189,11 @@ class IntegrationService:
         return nonce, timestamp
 
     def verify_v2_request(self, *, method: str, path: str, raw_body: bytes,
-                          headers: Mapping[str, str], now: datetime) -> None:
-        nonce, timestamp = self._verify_v2(method=method, path=path, raw_body=raw_body,
-                                           headers=headers, now=now)
+                          headers: Mapping[str, str], now: datetime) -> tuple[str, datetime]:
+        return self._verify_v2(method=method, path=path, raw_body=raw_body,
+                               headers=headers, now=now)
+
+    def claim_v2_nonce(self, nonce: str, timestamp: datetime) -> None:
         self.storage.claim_nonce(
             nonce=nonce, expires_at=timestamp + timedelta(seconds=300, microseconds=1)
         )
@@ -335,38 +338,63 @@ class IntegrationService:
 
     def create_v2_project(self, request: ProjectBootstrapRequest, *, now: datetime) -> tuple[str, str, ProjectSummary]:
         quota = self._quota(request.persistent)
-        # The storage record is written before workspace mutation; its quota and
-        # lock are therefore the authority for this lifecycle.
-        existing = [path for path in self.storage.projects_dir.glob("*.json")]
-        if len(existing) >= quota.max_projects:
-            raise IntegrationConflictError("Integration project quota is exhausted.")
-        project = self.athena_store.create()
+        # Reserve durable capacity before creating an Athena workspace.
+        project_id = uid()
+        record, capability = self.storage.create_project_record(
+            project_id=project_id, persistent=request.persistent, quota=quota,
+            source=request.source, now=now,
+        )
         try:
-            project["name"] = request.name
-            project["integration"] = True
-            self.athena_store.storage.write_json(project["id"], "project.json", project)
-            record, capability = self.storage.create_project_record(
-                project_id=project["id"], persistent=request.persistent, quota=quota,
-                source=request.source, now=now,
-            )
-            return project["id"], capability, self._project_summary(project, record)
+            self.athena_store.storage.workspace_dir(project_id, create=True)
+            project = {
+                "id": project_id, "format": "athena-web", "schema_version": 1,
+                "name": request.name, "version": 0, "groups": [], "journal": "",
+                "history": [], "undo": [], "redo": [], "analyses": [],
+                "created": athena_now(), "updated": athena_now(), "integration": True,
+            }
+            if request.source is not None:
+                group_id = uid()
+                project["groups"].append({
+                    "id": group_id, "label": "Dr.XAS source", "energy": [], "mu": [],
+                    "data_type": "mu", "parameters": AthenaParameters().model_dump(),
+                    "marked": True, "frozen": True, "multiplier": 1.0, "offset": 0.0,
+                    "notes": "Pending Dr.XAS seed", "reference_id": None,
+                    "background_standard_id": None, "source": request.source.model_dump(mode="json"),
+                    "result": None, "processing_error": "Awaiting bounded source seed.",
+                    "is_difference": False,
+                })
+            self.athena_store.storage.write_json(project_id, "project.json", project)
+            return project_id, capability, self._project_summary(project, record)
         except Exception:
-            shutil.rmtree(self.athena_store.storage.workspace_dir(project["id"]), ignore_errors=True)
+            self.storage.delete_project_record(project_id, capability, now=now)
+            shutil.rmtree(self.athena_store.storage.workspace_dir(project_id), ignore_errors=True)
             raise
 
     def launch_v2_project(self, project_id: str, capability: str, *, now: datetime) -> str:
-        self.storage.load_project(project_id, capability, now=now)
-        handle = secrets.token_urlsafe(32)
-        self._v2_handles[handle] = (project_id, capability, now + timedelta(seconds=300))
-        return handle
-
-    def consume_v2_handle(self, handle: str, *, now: datetime) -> tuple[str, str, ProjectSummary]:
-        value = self._v2_handles.pop(handle, None)
-        if value is None or now > value[2]:
-            raise IntegrationNotFoundError("Integration project was not found.")
-        project_id, capability, _ = value
         record = self.storage.load_project(project_id, capability, now=now)
-        return project_id, capability, self._project_summary(self.athena_store.load(project_id), record)
+        project = self.athena_store.load(project_id)
+        seed_group = None
+        if project["groups"]:
+            group = project["groups"][0]
+            seed_group = {"group_id": group["id"], "label": group["label"],
+                          "source": group.get("source")}
+        return self.storage.create_project_launch_handle(
+            project_id=project_id, capability=capability, expires_at=now + timedelta(seconds=300),
+            seed_group=seed_group, allowed_operations=("read_project",),
+            return_reference={"project_id": project_id, "persistent": record.persistent},
+        )
+
+    def consume_v2_handle(self, handle: str, *, now: datetime) -> dict:
+        value = self.storage.consume_project_launch_handle(handle, now=now)
+        project_id, capability = value["project_id"], value["capability"]
+        record = self.storage.load_project(project_id, capability, now=now)
+        return {
+            "project_id": project_id, "capability": capability,
+            "project": self._project_summary(self.athena_store.load(project_id), record).model_dump(mode="json"),
+            "seed_group": value["seed_group"],
+            "allowed_operations": value["allowed_operations"],
+            "return_reference": value["return_reference"],
+        }
 
     def rename_v2_project(self, project_id: str, capability: str, name: str, *, now: datetime) -> ProjectSummary:
         record = self.storage.load_project(project_id, capability, now=now)
@@ -376,8 +404,20 @@ class IntegrationService:
         return self._project_summary(project, record)
 
     def delete_v2_project(self, project_id: str, capability: str, *, now: datetime) -> dict:
-        self.storage.delete_project_record(project_id, capability, now=now)
-        return {"project_id": project_id, "status": "deleted"}
+        # Retire durable access first.  Cleanup may be retried with the same
+        # capability only by an authorized caller before retirement; it can never
+        # make the record active again.
+        try:
+            self.storage.delete_project_record(project_id, capability, now=now)
+        except IntegrationNotFoundError:
+            raise
+        try:
+            shutil.rmtree(self.athena_store.storage.workspace_dir(project_id), ignore_errors=False)
+        except FileNotFoundError:
+            pass
+        except OSError:
+            return {"project_id": project_id, "status": "deleted", "cleanup_pending": True}
+        return {"project_id": project_id, "status": "deleted", "cleanup_pending": False}
 
     def reserve_v2_export(self, project_id: str, capability: str, selections: tuple[SelectedGroupRef, ...], reservation_id: str, *, now: datetime) -> ExportReservation:
         return self.storage.reserve_export(project_id, capability, selections, reservation_id, now=now)

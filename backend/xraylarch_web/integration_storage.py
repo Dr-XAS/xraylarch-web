@@ -377,11 +377,27 @@ class IntegrationStorage:
             updated_at=now,
             expires_at=None if persistent else now + timedelta(seconds=quota.ttl_seconds),
         )
-        with self.project_lock(project_id):
-            path = self._project_path(project_id)
-            if path.exists():
-                raise IntegrationConflictError("Integration project already exists.")
-            self._atomic_json(path, self._serialize_project(record))
+        # Capacity is reserved atomically with the durable record.  Counting at
+        # the service layer races concurrent requests and includes retired files.
+        with self._lock("project-create"):
+            active = 0
+            for path in self.projects_dir.glob("*.json"):
+                try:
+                    current = self._deserialize_project(json.loads(path.read_text(encoding="utf-8")))
+                except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                    continue
+                if current.status == "active" and current.expires_at is not None and now >= current.expires_at:
+                    current = replace(current, status="expired", updated_at=current.expires_at)
+                    self._atomic_json(path, self._serialize_project(current))
+                if current.status == "active" and current.persistent == persistent:
+                    active += 1
+            if quota is not None and active >= quota.max_projects:
+                raise IntegrationConflictError("Integration project quota is exhausted.")
+            with self.project_lock(project_id):
+                path = self._project_path(project_id)
+                if path.exists():
+                    raise IntegrationConflictError("Integration project already exists.")
+                self._atomic_json(path, self._serialize_project(record))
         return record, capability
 
     def load_project(
@@ -398,9 +414,24 @@ class IntegrationStorage:
             self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
             return rotated
 
+    def authorize_project_cleanup(self, project_id: str, capability: str, *, now: datetime) -> ProjectRecord:
+        with self.project_lock(project_id):
+            record = self._read_project_unchecked(project_id)
+            if (record.status not in {"active", "deleted"}
+                    or not isinstance(capability, str)
+                    or not hmac.compare_digest(record.capability_hash, _hash(capability))):
+                raise IntegrationNotFoundError("Integration project was not found.")
+            return record
+
     def delete_project_record(self, project_id: str, capability: str, *, now: datetime) -> ProjectRecord:
         with self.project_lock(project_id):
-            record = self._load_active_project(project_id, capability, now)
+            record = self._read_project_unchecked(project_id)
+            if (record.status not in {"active", "deleted"}
+                    or not isinstance(capability, str)
+                    or not hmac.compare_digest(record.capability_hash, _hash(capability))):
+                raise IntegrationNotFoundError("Integration project was not found.")
+            if record.status == "deleted":
+                return record
             updated = replace(record, status="deleted", updated_at=_dt(now))
             self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
             return updated
@@ -462,6 +493,39 @@ class IntegrationStorage:
 
     def abort_export_reservation(self, project_id: str, capability: str, reservation_id: str, *, now: datetime) -> ExportReservation:
         return self._complete_export_reservation(project_id, capability, reservation_id, now=now, status="aborted")
+
+    def create_project_launch_handle(self, *, project_id: str, capability: str,
+                                     expires_at: datetime, seed_group: dict | None,
+                                     allowed_operations: tuple[str, ...],
+                                     return_reference: dict) -> str:
+        self._validate_project_id(project_id)
+        handle = secrets.token_urlsafe(32)
+        handle_hash = _hash(handle)
+        self._atomic_json(self.handles_dir / f"{handle_hash}.json", {
+            "kind": "v2-project", "handle_hash": handle_hash, "project_id": project_id,
+            "capability": capability, "expires_at": _dt(expires_at).isoformat(),
+            "seed_group": seed_group, "allowed_operations": list(allowed_operations),
+            "return_reference": return_reference,
+        })
+        return handle
+
+    def consume_project_launch_handle(self, handle: str, *, now: datetime) -> dict:
+        self._validate_opaque(handle)
+        path = self.handles_dir / f"{_hash(handle)}.json"
+        claimed = path.with_suffix(".consumed")
+        try:
+            os.replace(path, claimed)
+            value = json.loads(claimed.read_text(encoding="utf-8"))
+            if (value.get("kind") != "v2-project"
+                    or not hmac.compare_digest(value.get("handle_hash", ""), _hash(handle))
+                    or _dt(now) > _dt(value["expires_at"])):
+                raise IntegrationReplayError("Browser launch handle is invalid or already used.")
+            return value
+        except FileNotFoundError as exc:
+            raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
+        finally:
+            claimed.unlink(missing_ok=True)
+            self._fsync_directory(self.handles_dir)
 
     def claim_nonce(self, *, nonce: str, expires_at: datetime) -> None:
         self._validate_opaque(nonce)

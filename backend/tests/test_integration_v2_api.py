@@ -20,15 +20,12 @@ AUDIENCE = "xraylarch-web"
 
 
 def settings(tmp_path, **overrides):
-    return Settings(
-        data_root=tmp_path,
-        integration_api_enabled=True,
-        browser_consume_enabled=True,
-        integration_issuer=ISSUER,
-        integration_audience=AUDIENCE,
-        integration_hmac_secret=SECRET,
-        **overrides,
-    )
+    defaults = {
+        "integration_api_enabled": True, "browser_consume_enabled": True,
+        "integration_issuer": ISSUER, "integration_audience": AUDIENCE,
+        "integration_hmac_secret": SECRET,
+    }
+    return Settings(data_root=tmp_path, **(defaults | overrides))
 
 
 def signed_headers(method, path, raw, *, nonce="n" * 32, timestamp=NOW):
@@ -159,12 +156,66 @@ def test_export_reservation_transitions_are_idempotent(tmp_path):
         assert request(client, "POST", f"{reserve_path}/abort", {}, nonce="a" * 32, capability=capability).status_code == 409
 
 
+def test_delete_retires_access_before_retryable_workspace_cleanup(tmp_path, monkeypatch):
+    from xraylarch_web.integration_service import shutil as service_shutil
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = create(client)
+        project_id, capability = created["project_id"], created["capability"]
+        original = service_shutil.rmtree
+        monkeypatch.setattr(service_shutil, "rmtree", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("busy")))
+        first = request(client, "DELETE", f"/api/integration/v2/projects/{project_id}", {}, nonce="u" * 32, capability=capability)
+        assert first.status_code == 200
+        assert first.json()["cleanup_pending"] is True
+        monkeypatch.setattr(service_shutil, "rmtree", original)
+        retry = request(client, "DELETE", f"/api/integration/v2/projects/{project_id}", {}, nonce="v" * 32, capability=capability)
+        assert retry.status_code == 200
+        assert retry.json()["cleanup_pending"] is False
+        assert not (tmp_path / "athena" / project_id).exists()
+
+
 def test_v2_routes_are_registered_at_the_versioned_root(tmp_path):
     app = create_app(settings(tmp_path))
     paths = {route.path for route in app.routes}
 
     assert "/api/integration/v2/projects" in paths
     assert "/api/integration/v1/api/integration/v2/projects" not in paths
+
+
+def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_path):
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = request(client, "POST", "/api/integration/v2/projects", {
+            "contract_version": 2, "name": "Seeded", "persistent": True, "source": source,
+        }, nonce="z" * 32)
+        assert created.status_code == 200
+        payload = created.json()
+        launched = request(client, "POST", f"/api/integration/v2/projects/{payload['project_id']}/launch",
+                           {"capability": payload["capability"]}, nonce="y" * 32,
+                           capability=payload["capability"])
+        consumed = client.post("/api/integration/v2/browser/consume", json={"handle": launched.json()["handle"]})
+        assert consumed.status_code == 200
+        assert consumed.json()["seed_group"]["source"] == source
+        assert consumed.json()["allowed_operations"] == ["read_project"]
+
+
+def test_v2_browser_consume_obeys_feature_gate(tmp_path):
+    with TestClient(create_app(settings(tmp_path, browser_consume_enabled=False))) as client:
+        assert client.post("/api/integration/v2/browser/consume", json={"handle": "x" * 22}).status_code == 404
+
+
+def test_v2_invalid_payload_does_not_consume_nonce_and_rejects_duplicate_auth_headers(tmp_path):
+    with TestClient(create_app(settings(tmp_path))) as client:
+        path = "/api/integration/v2/projects"
+        raw = b'{"contract_version":2}'
+        signed = signed_headers("POST", path, raw, nonce="x" * 32)
+        assert client.post(path, content=raw, headers=signed).status_code == 422
+        valid = json.dumps({"contract_version": 2, "name": "Retry", "persistent": True}, separators=(",", ":")).encode()
+        retry = signed_headers("POST", path, valid, nonce="x" * 32)
+        assert client.post(path, content=valid, headers=retry).status_code == 200
+        duplicate = signed_headers("POST", path, valid, nonce="w" * 32)
+        duplicate_headers = list(duplicate.items()) + [("X-DrXAS-Issuer", ISSUER)]
+        assert client.post(path, content=valid, headers=duplicate_headers).status_code == 401
 
 
 def test_browser_consume_rejects_service_credentials_and_health_advertises_v2(tmp_path):
