@@ -8,7 +8,10 @@ import { numeratorRange } from "@/lib/athena-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
 
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div /> }))
-afterEach(cleanup)
+vi.mock("@/lib/athena", () => ({
+  get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ""}/api/backend/api/athena` },
+}))
+afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 const columns = ["energy", "i0", "it", "detA", "detB", "ref"].map((name, index) => ({ name, index, column_id: `c${index}`,
   numeric: true, unit: null, role_hint: null, preview: [1, 2, 3] }))
 const initial: ColumnMapping = { energy_column: "c0", numerator: ["c1"], denominator: "c2", mode: "transmission", units: "eV",
@@ -81,6 +84,15 @@ it('shows file conversion and separate original/converted downloads without chan
   expect(screen.getByRole('link', { name: 'Download converted file' })).toHaveAttribute('href', '/api/backend/api/athena/projects/p/uploads/u/file?variant=converted')
   expect(accepted()).toEqual(initial)
 })
+it('prefixes original and converted upload downloads under the configured mount', () => {
+  vi.stubEnv('NEXT_PUBLIC_APP_BASE_PATH', '/advanced-xas/app')
+  render(<Harness inspection={{ source_preview: 'source', converted_preview: 'converted' }} />)
+  fireEvent.click(screen.getByText('Source file contents (first section)'))
+  fireEvent.click(screen.getByText('Converted columns'))
+  expect(screen.getByRole('link', { name: 'Download original file' })).toHaveAttribute('href', '/advanced-xas/app/api/backend/api/athena/projects/p/uploads/u/file')
+  expect(screen.getByRole('link', { name: 'Download converted file' })).toHaveAttribute('href', '/advanced-xas/app/api/backend/api/athena/projects/p/uploads/u/file?variant=converted')
+})
+
 it('offers the original full file for ordinary tables without a conversion label', () => {
   render(<Harness />)
   fireEvent.click(screen.getByText('Source file contents (first section)'))

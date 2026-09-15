@@ -2,7 +2,7 @@ const configured = process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ""
 
 function normalizeBasePath(value: string): string {
   if (value === "") return ""
-  if (!value.startsWith("/") || value.endsWith("/") || value.includes("..")) {
+  if (!value.startsWith("/") || value.endsWith("/") || value.includes("..") || /[\\\\?#]|\/\//.test(value)) {
     throw new Error("NEXT_PUBLIC_APP_BASE_PATH must be an absolute normalized path")
   }
   return value

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { InspectionResponse, ScanInspectionResponse } from '@/lib/contracts'
+import { apiBase } from '@/lib/athena'
 import { columnExpression, initialColumnMapping, type ColumnMapping } from '@/lib/athena-import'
 import { AthenaImportPreview } from './athena-import-preview'
 import styles from './athena-column-selection.module.css'
@@ -52,7 +53,7 @@ export function AthenaScanSelection({ collection, projectId, version, busy, onCo
         {shown && <><p className="ath-hint">{shown.file_plugin?.summary}</p><p className="ath-formula">{columnExpression(mapping, shown.columns)}</p>
           <AthenaImportPreview key={shown.upload_id} projectId={projectId} version={version} uploadId={shown.upload_id} mapping={mapping} disabled={busy} />
           <p className="ath-hint">This preview uses the reader’s suggested columns. You can change them in the next step.</p>
-          <a href={`/api/backend/api/athena/projects/${projectId}/uploads/${shown.upload_id}/file`} download>Download original SPEC file</a></>}
+          <a href={`${apiBase}/projects/${projectId}/uploads/${shown.upload_id}/file`} download>Download original SPEC file</a></>}
       </div>
     </div>
   </section>

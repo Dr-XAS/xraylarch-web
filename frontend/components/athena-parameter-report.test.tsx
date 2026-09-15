@@ -4,7 +4,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { athenaApi, type AthenaProject } from '@/lib/athena'
 import { AthenaParameterReport } from './athena-parameter-report'
 
-vi.mock('@/lib/athena', () => ({ athenaApi: vi.fn() }))
+vi.mock('@/lib/athena', () => ({
+  get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend/api/athena` },
+  athenaApi: vi.fn(),
+}))
 const api = vi.mocked(athenaApi)
 const project = { id:'p', version:4, groups:[{id:'a',label:'Cu',marked:true},{id:'b',label:'Fe',marked:false}] } as AthenaProject
 const positions = Array.from({length:32},(_,i)=>i).filter(i=>![5,19,25,29].includes(i))
@@ -54,11 +57,26 @@ it('ignores a late all-groups preview after selecting marked groups',async()=>{
 })
 
 it('keeps choices on a revision conflict and does not save a stale report',async()=>{
-  api.mockResolvedValue(report());vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response(JSON.stringify({error:{code:'stale_revision',message:'Changed elsewhere'}}),{status:409})))
+  const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({error:{code:'stale_revision',message:'Changed elsewhere'}}),{status:409}))
+  api.mockResolvedValue(report());vi.stubGlobal('fetch',fetcher)
   render(<AthenaParameterReport {...props()}/>);await ready()
   fireEvent.click(screen.getByRole('button',{name:'Download Excel report'}))
   expect(await screen.findByRole('alert')).toHaveTextContent(/changed|elsewhere/i)
+  expect(fetcher).toHaveBeenCalledWith('/api/backend/api/athena/projects/p/parameter-report', expect.any(Object))
   expect(screen.getByLabelText('Report groups')).toHaveValue('all')
+})
+
+it.each([
+  ['', '/api/backend/api/athena/projects/p/parameter-report'],
+  ['/advanced-xas/app', '/advanced-xas/app/api/backend/api/athena/projects/p/parameter-report'],
+])('requests the parameter report from the configured mount path',async(basePath, expectedUrl)=>{
+  vi.stubEnv('NEXT_PUBLIC_APP_BASE_PATH',basePath)
+  api.mockResolvedValue(report())
+  const fetcher=vi.fn().mockResolvedValue(new Response(JSON.stringify({error:{code:'stale_revision',message:'Changed elsewhere'}}),{status:409}))
+  vi.stubGlobal('fetch',fetcher)
+  render(<AthenaParameterReport {...props()}/>);await ready()
+  fireEvent.click(screen.getByRole('button',{name:'Download Excel report'}))
+  await waitFor(()=>expect(fetcher).toHaveBeenCalledWith(expectedUrl,expect.any(Object)))
 })
 
 it('requires XLS attachment bytes and releases the busy guard on failure',async()=>{

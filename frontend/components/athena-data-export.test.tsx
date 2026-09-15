@@ -4,7 +4,10 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { athenaApi, type AthenaProject } from '@/lib/athena'
 import { AthenaDataExport } from './athena-data-export'
 
-vi.mock('@/lib/athena', () => ({ athenaApi: vi.fn() }))
+vi.mock('@/lib/athena', () => ({
+  get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend/api/athena` },
+  athenaApi: vi.fn(),
+}))
 const api = vi.mocked(athenaApi)
 const project = { id: 'p', version: 4, groups: [{ id: 'cu', label: 'Cu foil', marked: true }, { id: 'fe', label: 'Fe foil', marked: true }] } as AthenaProject
 const data = { version: 4, project_id: 'p', files: [{ filename: 'cu.xmu', rows: 408, group_ids: ['cu'],
@@ -79,7 +82,25 @@ it('reports download conflicts without starting a browser download', async () =>
   fireEvent.click(screen.getByRole('button', { name: 'Download column file' }))
   expect(await screen.findByRole('alert')).toHaveTextContent('Reload this project')
   expect(click).not.toHaveBeenCalled()
+  expect(fetcher).toHaveBeenCalledWith('/api/backend/api/athena/projects/p/export-data', expect.any(Object))
   expect(JSON.parse(fetcher.mock.calls[0][1].body)).toMatchObject({ version: 4, group_id: 'cu' })
+})
+
+it.each([
+  ['', '/api/backend/api/athena/projects/p/export-data'],
+  ['/advanced-xas/app', '/advanced-xas/app/api/backend/api/athena/projects/p/export-data'],
+])('requests the data export from the configured mount path', async (basePath, expectedUrl) => {
+  vi.stubEnv('NEXT_PUBLIC_APP_BASE_PATH', basePath)
+  api.mockResolvedValue(data)
+  const fetcher = vi.fn().mockResolvedValue(new Response('# column data', { headers: {
+    'X-Athena-Project-Version': '4', 'Content-Disposition': 'attachment; filename="Cu.xmu"',
+  } }))
+  vi.stubGlobal('fetch', fetcher)
+  vi.stubGlobal('URL', { createObjectURL: vi.fn().mockReturnValue('blob:export'), revokeObjectURL: vi.fn() })
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+  render(<AthenaDataExport {...props()} />); await ready()
+  fireEvent.click(screen.getByRole('button', { name: 'Download column file' }))
+  await waitFor(() => expect(fetcher).toHaveBeenCalledWith(expectedUrl, expect.any(Object)))
 })
 
 it('downloads only confirmed nonempty content and blocks duplicate pending downloads', async () => {
