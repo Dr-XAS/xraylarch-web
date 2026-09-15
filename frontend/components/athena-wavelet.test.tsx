@@ -7,7 +7,7 @@ import { athenaPlotHeightKey } from "./athena-plot-card"
 import { AthenaWavelet, athenaWaveletHeightKey, type WaveletResult } from "./athena-wavelet"
 
 type Trace = {
-  type: string; x: number[]; y: number[]; z: number[][]; colorscale: string
+  type: string; x: number[]; y: number[]; z: number[][]; colorscale: [number, string][]
   zmin?: number; zmax?: number; cmin?: number; cmax?: number
 }
 type Axis = { title: { text: string }; tickfont: { family: string; size: number } }

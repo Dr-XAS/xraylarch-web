@@ -3,15 +3,16 @@
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
+import { DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
 import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div> })
-const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47", "#967055"]
 export type Space = PlotSpace
 interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string
   background: boolean; window: boolean; component: string; offset: number
   plotScope?: "selected" | "current"; preEdge?: boolean; postEdge?: boolean; showLegend?: boolean; kWeight?: number | null
+  colormap?: AthenaColormap
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
   picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
@@ -31,7 +32,7 @@ function windowOnGrid(k: number[], window: number[], q: number[]) {
   return { x, y }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, kWeight = null, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, kWeight = null, colormap = DEFAULT_COLORMAP, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
   const data: Record<string, unknown>[] = []
@@ -62,12 +63,12 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   }
   const energyForms = [...new Set(displayed.map(trace => energyForm(trace.g)))]
   const mixedEnergyForms = space === "E" && energyForms.length > 1
-  for (const trace of displayed) {
-    const { g, index, x, y, rawChi, weight, transform } = trace
+  for (const [colorIndex, trace] of displayed.entries()) {
+    const { g, x, y, rawChi, weight, transform } = trace
     const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "") + (mixedEnergyForms ? ` (${energyForm(g)})` : "")
     // R/q products already include the forward k-weight. Apply display
     // multiplier/offset only, never another k- or q-dependent weighting.
-    add(x, transform(y), name, colors[index % colors.length])
+    add(x, transform(y), name, spectrumColor(colormap, colorIndex, displayed.length))
   }
   const current = displayed.find(trace => trace.g.id === active?.id)
   const a = current?.arrays

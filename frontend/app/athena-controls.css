@@ -1,10 +1,10 @@
 .ath-pick-field { display: flex; align-items: flex-start; gap: 3px; min-width: 0; }
 .ath-pick-field > .ath-field { flex: 1; min-width: 0; }
-.ath-app .ath-pick-button { margin-top: 22px; padding: 3px; min-width: 24px; min-height: 30px; color: #276f98; border: 1px solid #d8e3e8; font-size: 19px; line-height: 1; }
-.ath-app .ath-pick-button[aria-pressed=true] { background: #dcedf8; border-color: #276f98; }
-.ath-pick-prompt { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-block: 1px solid #cbdfe9; background: #eff7fb; font-size: 12px; line-height: 1.5; }
+.ath-app .ath-pick-button { margin-top: 22px; padding: 3px; min-width: 24px; min-height: 30px; color: var(--ath-primary); border: 1px solid var(--ath-line); font-size: 19px; line-height: 1; }
+.ath-app .ath-pick-button[aria-pressed=true] { background: var(--ath-primary-soft); border-color: var(--ath-primary); }
+.ath-pick-prompt { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-block: 1px solid var(--ath-primary-line); background: var(--ath-primary-soft); font-size: 12px; line-height: 1.5; }
 .ath-pick-prompt > span { flex: 1; }
-.ath-pick-prompt kbd { font-size: 10px; color: #657a85; }
+.ath-pick-prompt kbd { font-size: 10px; color: var(--ath-muted); }
 .ath-plot.ath-picking .nsewdrag { cursor: crosshair !important; }
 .ath-group-controls > * + * { margin-top: 12px; }
 .ath-group-controls fieldset { border: 1px solid var(--ath-line); border-radius: 5px; padding: 12px; }
@@ -16,11 +16,11 @@
 .ath-e0-report ul { padding-left: 20px; }
 .ath-e0-report li { margin-block: 8px; }
 .ath-e0-report output { font-variant-numeric: tabular-nums; font-weight: 600; }
-.ath-edge-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 20px; border-bottom: 1px solid var(--ath-line); background: #f4f8fa; font-size: 12px; line-height: 1.5; }
+.ath-edge-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 20px; border-bottom: 1px solid var(--ath-line); background: var(--ath-surface-muted); font-size: 12px; line-height: 1.5; }
 .ath-edge-policy-bar > span { flex: 1; min-width: 220px; }
 .ath-import-policy { padding: 10px; margin-bottom: 12px; border: 1px solid var(--ath-line); border-radius: 5px; font-size: 12px; line-height: 1.5; }
-.ath-group-identity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; font-size: 12px; color: #405c6b; }
-.ath-group-identity strong { color: #173d52; }
+.ath-group-identity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; font-size: 12px; color: var(--ath-ink); }
+.ath-group-identity strong { color: var(--ath-ink); }
 @media (max-width: 700px) { .ath-pick-prompt { align-items: flex-start; flex-direction: column; } }
 
 .ath-plugin-entry { border-bottom: 1px solid var(--ath-line); padding: 12px 0; }
@@ -35,5 +35,5 @@
 .ath-plugin-configuration .ath-hint { overflow-wrap: anywhere; }
 @media (max-width: 620px) { .ath-plugin-configuration .ath-fields { grid-template-columns: 1fr; } }
 .ath-scan-list { list-style: none; margin: 12px 0; padding: 0; max-height: 360px; overflow: auto; }
-.ath-scan-list li { border-bottom: 1px solid #dce5d3; padding: 12px 0; overflow-wrap: anywhere; }
+.ath-scan-list li { border-bottom: 1px solid var(--ath-line); padding: 12px 0; overflow-wrap: anywhere; }
 .ath-scan-list p { margin: 6px 0; }

@@ -49,6 +49,10 @@ back-transform, and wavelet views together. **Auto** uses each spectrum’s
 processed weight; choosing 0–4 updates the display without changing saved
 processing parameters.
 
+The **Colormap** selector above the viewer colors multiple spectra and both
+wavelet views together. It defaults to **magma**, with viridis, plasma,
+inferno, cividis, YlGnBu, and rainbow also available.
+
 The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
 processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
 both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
