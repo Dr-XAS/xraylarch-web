@@ -57,9 +57,11 @@ def type_for(schema: dict) -> str:
 def declaration(model: type) -> str:
     schema = model.model_json_schema()
     properties = schema["properties"]
+    required = set(schema.get("required", ()))
     lines = [f"export interface {model.__name__} {{"]
     for name in sorted(properties):
-        lines.append(f"  readonly {name}: {type_for(properties[name])};")
+        marker = "" if name in required else "?"
+        lines.append(f"  readonly {name}{marker}: {type_for(properties[name])};")
     lines.append("}")
     return "\n".join(lines)
 

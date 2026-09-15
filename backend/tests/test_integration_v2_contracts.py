@@ -165,6 +165,17 @@ def test_guest_quota_cannot_exceed_account_quota(monkeypatch):
         Settings.from_environment()
 
 
+def test_generated_typescript_matches_json_schema_requiredness():
+    root = Path(__file__).resolve().parents[2]
+    generated = (root / "frontend/lib/generated/integration-contracts.ts").read_text()
+    assert "readonly contract_version?: 2;" in generated
+    assert "readonly source?: ExistingDrXasSource | AthenaUploadedSource | null;" in generated
+    assert "readonly kind?: 'athena_upload';" in generated
+    assert "readonly name: string;" in generated
+    assert "readonly persistent: boolean;" in generated
+    assert "readonly original_filename: string;" in generated
+
+
 def test_v2_contract_generator_is_deterministic_in_a_fresh_checkout():
     root = Path(__file__).resolve().parents[2]
     generated = root / "frontend/lib/generated/integration-contracts.ts"

@@ -5,21 +5,21 @@ export interface JsonObject { readonly [key: string]: JsonValue; }
 export type JsonValue = null | boolean | number | string | ReadonlyArray<JsonValue> | JsonObject;
 
 export interface ProjectBootstrapRequest {
-  readonly contract_version: 2;
+  readonly contract_version?: 2;
   readonly name: string;
   readonly persistent: boolean;
-  readonly source: ExistingDrXasSource | AthenaUploadedSource | null;
+  readonly source?: ExistingDrXasSource | AthenaUploadedSource | null;
 }
 
 export interface ProjectLaunch {
   readonly capability: string;
-  readonly contract_version: 2;
+  readonly contract_version?: 2;
   readonly project: ProjectSummary;
   readonly project_id: string;
 }
 
 export interface ProjectSummary {
-  readonly contract_version: 2;
+  readonly contract_version?: 2;
   readonly expires_at: string | null;
   readonly file_count: number;
   readonly group_count: number;
@@ -36,14 +36,14 @@ export interface SelectedGroupRef {
 }
 
 export interface SelectedGroupExportRequest {
-  readonly contract_version: 2;
+  readonly contract_version?: 2;
   readonly project_id: string;
   readonly project_version: number;
   readonly selections: ReadonlyArray<SelectedGroupRef>;
 }
 
 export interface SelectedGroupExportBatch {
-  readonly contract_version: 2;
+  readonly contract_version?: 2;
   readonly project_id: string;
   readonly project_version: number;
   readonly sources: ReadonlyArray<ExistingDrXasSource | AthenaUploadedSource>;
@@ -52,20 +52,20 @@ export interface SelectedGroupExportBatch {
 export interface ExistingDrXasSource {
   readonly artifact_id: string;
   readonly artifact_version: number;
-  readonly kind: 'drxas';
+  readonly kind?: 'drxas';
   readonly source_sha256: string;
   readonly turn_id: string;
 }
 
 export interface AthenaUploadedSource {
-  readonly kind: 'athena_upload';
+  readonly kind?: 'athena_upload';
   readonly original_filename: string;
   readonly parse_metadata: Readonly<Record<string, JsonValue>>;
   readonly raw_sha256: string;
 }
 
 export interface ExportReservation {
-  readonly contract_version: 2;
+  readonly contract_version?: 2;
   readonly project_id: string;
   readonly project_version: number;
   readonly reservation_id: string;
