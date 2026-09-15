@@ -1,3 +1,4 @@
+import { backendUrl } from "./app-url"
 import { decodeApiError } from "./backend-client"
 
 export type Parameters = {
@@ -105,7 +106,7 @@ export interface Analysis {
   kind: string; project_version: number; group_ids: string[]; options: Record<string, unknown>
   result: Record<string, unknown>
 }
-export const apiBase = "/api/backend/api/athena"
+export const apiBase = backendUrl("/api/athena")
 export async function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(apiBase + path, {
     signal,

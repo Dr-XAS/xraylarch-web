@@ -1,13 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { BackendClient } from "./backend-client"
-
 afterEach(() => {
+  vi.unstubAllEnvs()
   vi.unstubAllGlobals()
+  vi.resetModules()
 })
 
 describe("BackendClient", () => {
   it("calls the default browser fetch without binding it to the client", async () => {
+    vi.stubEnv("NEXT_PUBLIC_APP_BASE_PATH", "")
+    vi.resetModules()
+    const { BackendClient } = await import("./backend-client")
     const nativeStyleFetch = vi.fn(function (this: unknown) {
       if (this !== undefined) throw new TypeError("Illegal invocation")
       return Promise.resolve(new Response(JSON.stringify({
