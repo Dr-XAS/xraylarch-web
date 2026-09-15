@@ -698,12 +698,15 @@ class IntegrationStorage:
         with self.project_lock(project_id):
             record = self._load_active_project(project_id, owner_capability, now)
             capability = secrets.token_urlsafe(32)
+            session_expires_at = _dt(expires_at)
+            if record.expires_at is not None:
+                session_expires_at = min(session_expires_at, record.expires_at)
             value = {
                 "project_id": project_id,
                 "capability_hash": _hash(capability),
                 "owner_capability_hash": record.capability_hash,
                 "allowed_operations": list(allowed_operations),
-                "expires_at": _dt(expires_at).isoformat(),
+                "expires_at": session_expires_at.isoformat(),
             }
             self._atomic_json(self.sessions_dir / f"{_hash(capability)}.json", value)
             return capability
@@ -717,17 +720,23 @@ class IntegrationStorage:
         path = self.sessions_dir / f"{_hash(capability)}.json"
         try:
             value = json.loads(path.read_text(encoding="utf-8"))
+            record = self._read_project_unchecked(project_id)
+            if (
+                record.status == "active"
+                and record.expires_at is not None
+                and _dt(now) >= record.expires_at
+            ):
+                record = replace(record, status="expired", updated_at=record.expires_at)
+                self._atomic_json(
+                    self._project_path(project_id), self._serialize_project(record)
+                )
             if (
                 value.get("project_id") != project_id
                 or not hmac.compare_digest(value["capability_hash"], _hash(capability))
                 or _dt(now) >= _dt(value["expires_at"])
                 or not isinstance(value.get("allowed_operations"), list)
                 or not all(isinstance(item, str) for item in value["allowed_operations"])
-            ):
-                raise IntegrationNotFoundError("Integration project was not found.")
-            record = self._read_project_unchecked(project_id)
-            if (
-                record.status != "active"
+                or record.status != "active"
                 or not hmac.compare_digest(
                     value["owner_capability_hash"], record.capability_hash
                 )

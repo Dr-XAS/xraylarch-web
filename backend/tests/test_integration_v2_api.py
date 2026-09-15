@@ -682,6 +682,82 @@ def _browser_session(client, integrated, *, nonce="l" * 32):
     return consumed.json()
 
 
+def test_guest_browser_session_expires_with_project_without_cleanup(tmp_path, monkeypatch):
+    import xraylarch_web.athena as athena_module
+    import xraylarch_web.integration_routes as integration_routes
+
+    clock = [NOW]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0] if tz is None else clock[0].astimezone(tz)
+
+    monkeypatch.setattr(integration_routes, "_now", lambda: clock[0])
+    monkeypatch.setattr(athena_module, "datetime", Clock)
+    app = create_app(settings(tmp_path, integration_guest_ttl_seconds=10))
+    with TestClient(app) as client:
+        guest = create(client, persistent=False)
+        clock[0] = NOW + timedelta(seconds=9)
+        session = _browser_session(client, guest)
+        session_path = (
+            tmp_path / "integration" / "sessions"
+            / f"{hashlib.sha256(session['capability'].encode()).hexdigest()}.json"
+        )
+        session_record = json.loads(session_path.read_text(encoding="utf-8"))
+        assert datetime.fromisoformat(session_record["expires_at"]) == NOW + timedelta(seconds=10)
+
+        clock[0] = NOW + timedelta(seconds=11)
+        denied = client.get(
+            f"/api/athena/projects/{guest['project_id']}",
+            headers=project_headers(session["capability"]),
+        )
+
+    assert denied.status_code == 404
+    assert denied.json() == {"detail": "Project was not found."}
+    project_record = json.loads(
+        (tmp_path / "integration" / "projects" / f"{guest['project_id']}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert project_record["status"] == "expired"
+
+
+@pytest.mark.parametrize("revoke", ("rotate", "delete"))
+def test_browser_session_is_immediately_revoked_by_owner_lifecycle(tmp_path, revoke):
+    with TestClient(create_app(settings(tmp_path))) as client:
+        integrated = create(client)
+        session = _browser_session(client, integrated)
+        project_id = integrated["project_id"]
+        if revoke == "rotate":
+            response = request(
+                client,
+                "POST",
+                f"/api/integration/v2/projects/{project_id}/capability/rotate",
+                {},
+                nonce="r" * 32,
+                capability=integrated["capability"],
+            )
+        else:
+            response = request(
+                client,
+                "DELETE",
+                f"/api/integration/v2/projects/{project_id}",
+                {},
+                nonce="d" * 32,
+                capability=integrated["capability"],
+            )
+        denied = client.get(
+            f"/api/athena/projects/{project_id}",
+            headers=project_headers(session["capability"]),
+        )
+
+    assert response.status_code == 200, response.text
+    assert denied.status_code == 404
+    if revoke == "rotate":
+        assert denied.json() == {"detail": "Project was not found."}
+
+
 def test_browser_session_enforces_authoritative_operation_scope(tmp_path):
     with TestClient(create_app(settings(tmp_path))) as client:
         integrated = create(client)
