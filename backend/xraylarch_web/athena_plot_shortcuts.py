@@ -63,15 +63,19 @@ def shortcut_plot(groups, options):
     curves, notes, skipped = [], [], []
     x_label, y_label, x_range = 'Energy (eV)', 'μ(E)', None
 
-    def add(group, x, y, name, scale=1., offset=0., **extra):
+    def add(
+        group, x, y, name, scale=1., offset=0., *, coalesce_zero=True, **extra
+    ):
         x, y = _pair(x, y, name=name)
         scale, offset = _number(scale, 'Plot scale'), _number(offset, 'Plot offset')
-        # Original Data::points coalesces a literal zero scale to one.
-        effective_scale = scale or 1.
+        # Original Data::points coalesces a literal numeric zero to one. Factors
+        # produced by sprintf are strings, however, so Perl keeps "0.000" as a
+        # truthy zero-valued scale.
+        effective_scale = 1. if scale == 0 and coalesce_zero else scale
         y = effective_scale * y + offset
         if not np.isfinite(y).all():
             raise ScientificError('Shortcut scaling overflowed. Reduce the input amplitudes or group offset.')
-        if scale == 0:
+        if scale == 0 and coalesce_zero:
             notes.append('Native Athena plotting treats a zero plot scale as one.')
         curves.append(dict(group_id=group['id'], name=f'{group["label"]} · {name}', x=x.tolist(), y=y.tolist(),
                            scale=scale, effective_scale=effective_scale, offset=offset, **extra))
@@ -102,7 +106,7 @@ def shortcut_plot(groups, options):
                 raise ScientificError(f'Weight {i+1} has a zero maximum; Athena comparison scaling is undefined.')
             scale = 1. if i == 1 else float(f'{maxima[1] / maxima[i]:.3f}')
             add(g, x, y, f'k-weight {i+1}' + (' · unscaled' if i == 1 else f' · scaled by {scale:.3f}'),
-                scale, (1-i) * spacing, kweight=i+1)
+                scale, (1-i) * spacing, coalesce_zero=False, kweight=i+1)
         notes.append('Weights 1 and 3 use Athena’s three-decimal comparison scales; saved group plot multipliers and offsets are replaced for this view.')
     else:
         y_label = {'normderiv': 'Normalized μ(E) and scaled derivative', 'normscaled': 'Normalized μ(E) × edge step',
@@ -144,7 +148,8 @@ def shortcut_plot(groups, options):
                     x_range = [e0-30, e0+70]
                     add(g, x, processed(suffix), f'{suffix} μ(E)', g['multiplier'], offset)
                     scale = float(f'{.5 / maximum:.3f}')
-                    add(g, x, derivative, f'Normalized derivative · scaled by {scale:.3f}', scale, offset)
+                    add(g, x, derivative, f'Normalized derivative · scaled by {scale:.3f}',
+                        scale, offset, coalesce_zero=False)
                 elif options.kind == 'normscaled':
                     step = _number(effective.get('edge_step'), 'Edge step')
                     add(g, x, processed(suffix), f'{suffix} μ(E) × edge step {step:.6g}', step, offset)

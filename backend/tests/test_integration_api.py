@@ -17,10 +17,13 @@ from xraylarch_web.main import create_app
 from test_integration_contracts import launch_payload
 
 
-NOW = datetime.now(UTC).replace(microsecond=0)
 SECRET = "integration-secret-that-is-long-enough"
 ISSUER = "drxas"
 AUDIENCE = "xraylarch-web"
+
+
+def now():
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def enabled_settings(tmp_path, *, browser=True):
@@ -34,16 +37,18 @@ def enabled_settings(tmp_path, *, browser=True):
     )
 
 
-def body(*, source="1") -> bytes:
+def body(*, source="1", timestamp=None) -> bytes:
+    timestamp = timestamp or now()
     payload = launch_payload()
     payload["source"]["artifact_id"] = f"artifact-{source}"
-    payload["created_at"] = NOW.isoformat()
-    payload["expires_at"] = (NOW + timedelta(minutes=5)).isoformat()
+    payload["created_at"] = timestamp.isoformat()
+    payload["expires_at"] = (timestamp + timedelta(minutes=5)).isoformat()
     return json.dumps(payload, separators=(",", ":")).encode()
 
 
-def headers(raw: bytes, *, nonce="n" * 32, timestamp=NOW,
+def headers(raw: bytes, *, nonce="n" * 32, timestamp=None,
             issuer=ISSUER, audience=AUDIENCE):
+    timestamp = timestamp or now()
     digest = hashlib.sha256(raw).hexdigest()
     stamp = str(int(timestamp.timestamp()))
     canonical = "\n".join((issuer, audience, stamp, nonce, digest)).encode()
@@ -158,7 +163,7 @@ def test_bootstrap_rejects_replay_expiry_wrong_identity_and_tampered_body(tmp_pa
         assert bootstrap(client, raw).status_code == 200
         assert bootstrap(client, raw).status_code in (400, 409)
         assert bootstrap(client, raw, nonce="o" * 32,
-                         timestamp=NOW - timedelta(seconds=301)).status_code == 401
+                         timestamp=now() - timedelta(seconds=301)).status_code == 401
         assert bootstrap(client, raw, nonce="p" * 32, issuer="other").status_code == 401
         assert bootstrap(client, raw, nonce="q" * 32, audience="other").status_code == 401
         tampered = client.post(
@@ -487,7 +492,7 @@ def test_export_requires_a_valid_signature_and_rejects_replay(tmp_path):
         assert export(client, draft_id, cap, nonce="f" * 32, issuer="other").status_code == 401
         assert export(client, draft_id, cap, nonce="g" * 32, audience="other").status_code == 401
         assert export(
-            client, draft_id, cap, nonce="h" * 32, timestamp=NOW - timedelta(seconds=301)
+            client, draft_id, cap, nonce="h" * 32, timestamp=now() - timedelta(seconds=301)
         ).status_code == 401
 
         assert export(client, draft_id, cap, nonce="i" * 32).status_code == 200

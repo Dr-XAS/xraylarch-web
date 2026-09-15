@@ -151,6 +151,11 @@ function PlotRangeInput({ label, value, automatic, disabled, onChange }: {
   }} />
 }
 
+function energyRangeValue(value: number | null, e0: number | null, relative: boolean, direction: 1 | -1) {
+  if (value === null || e0 === null || !relative) return value
+  return Number((value + direction * e0).toPrecision(12))
+}
+
 function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any", pick, showAutomaticValue = false, contextMenu, disabled = false, onEditingChange }: {
   label: string; value: number | null; onChange: (v: number | null) => void; unit?: string
   effective?: unknown; optional?: boolean; step?: string; pick?: ReactNode; showAutomaticValue?: boolean; disabled?: boolean; contextMenu?: (event: ContextEvent) => void
@@ -296,6 +301,7 @@ export function AthenaWorkbench() {
   const [viewerColormap, setViewerColormap] = useState<AthenaColormap>(DEFAULT_COLORMAP)
   const [offset, setOffset] = useState(0)
   const [range, setRange] = useState<[number | null, number | null]>([null, null])
+  const [rangeRelativeToE0, setRangeRelativeToE0] = useState(true)
   const [drafts, setDrafts] = useState<Record<string, Parameters>>({})
   const [autoApplyPlans, setAutoApplyPlans] = useState<Record<string, AutoApplyPlan>>({})
   const autoApplySerial = useRef(0)
@@ -375,6 +381,10 @@ export function AthenaWorkbench() {
   const combinationReady = marked.length >= 2 && (combineArray === "chi" ? canCombineChi : combineArray === "norm" ? canCombineNorm : combineArray === "mu" ? canCombineMu : true)
   const referenceE0 = parameters?.e0 ?? active?.result?.effective.e0
   const draftE0 = typeof referenceE0 === "number" && Number.isFinite(referenceE0) ? referenceE0 : null
+  const relativeRange = space === "E" && !analysisVisible && rangeRelativeToE0 && draftE0 !== null
+  const displayedRange = range.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
+  const displayedAutomaticRange = automaticRange.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
+  const absoluteRangeValue = (value: number | null) => energyRangeValue(value, draftE0, relativeRange, 1)
   function pickContext(plotSpace = space, showAnalysis = analysisVisible) {
     return JSON.stringify([project?.id, project?.version, active?.id, active?.frozen, plotSpace, showAnalysis, energyMode, component, plotScope, viewerKWeight, selectedGroups.map(g => g.id), modal, busy, parameters])
   }
@@ -1122,7 +1132,7 @@ export function AthenaWorkbench() {
   const fileInput = useRef<HTMLInputElement>(null)
 
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
-    <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>ATHENA <span>WEB</span></h1><p>X-ray absorption spectroscopy</p></div></div>
+    <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>Larch-Web</h1><p>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</p></div></div>
       <nav aria-label="Main menu">{["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
         {label === "Edit" && <>{(['all', 'marked'] as const).map(scope => <button key={scope} disabled={!project?.groups.length || !!busy} onClick={() => { setReportScope(scope); openTool('parameter_report') }}><Download size={15} />Excel report on {scope} groups…</button>)}</>}
         {label === "Plot" && <><button disabled={!active||!!busy||parameterUpdatePending} onClick={()=>openTool('diagnostic_plot')}>Diagnostic plots…</button><button disabled={!active||!hasSavedMerge(active)||!!busy} onClick={()=>openTool('merge_plot')}>Saved merge spread…</button></>}
@@ -1192,7 +1202,7 @@ export function AthenaWorkbench() {
           {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
             {(active?.data_type === "detector" ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${active?.data_type === "detector" ? " disabled" : ""}`} key={option.value}><input type="radio" name="ath-energy-plot" value={option.value} checked={plotEnergyMode === option.value} disabled={active?.data_type === "detector"} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
           </div>}
-          <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div><label>Range <PlotRangeInput label="Plot minimum" value={analysisVisible ? null : range[0]} automatic={automaticRange[0]} disabled={analysisVisible || automaticRange[0] === null} onChange={value => setRange([value, range[1]])} /></label><span>to</span><PlotRangeInput label="Plot maximum" value={analysisVisible ? null : range[1]} automatic={automaticRange[1]} disabled={analysisVisible || automaticRange[1] === null} onChange={value => setRange([range[0], value])} />{active && project && <a title="Export current group data" href={`${apiBase}/projects/${project.id}/groups/${active.id}/export?space=${space}`} onClick={event => { if (parameterActionBlocked()) event.preventDefault() }}><Download size={14} />CSV</a>}</div></div>
+          <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div>{space === "E" && <label className="ath-check ath-range-relative" title={draftE0 === null ? "E₀ is unavailable for the current spectrum" : `Use the current spectrum’s E₀ (${draftE0} eV) as zero`}><input type="checkbox" checked={relativeRange} disabled={analysisVisible || draftE0 === null} onChange={event => setRangeRelativeToE0(event.target.checked)} />Relative to E₀</label>}<label>Range <PlotRangeInput label="Plot minimum" value={analysisVisible ? null : displayedRange[0]} automatic={displayedAutomaticRange[0]} disabled={analysisVisible || automaticRange[0] === null} onChange={value => setRange([absoluteRangeValue(value), range[1]])} /></label><span>to</span><PlotRangeInput label="Plot maximum" value={analysisVisible ? null : displayedRange[1]} automatic={displayedAutomaticRange[1]} disabled={analysisVisible || automaticRange[1] === null} onChange={value => setRange([range[0], absoluteRangeValue(value)])} />{active && project && <a title="Export current group data" href={`${apiBase}/projects/${project.id}/groups/${active.id}/export?space=${space}`} onClick={event => { if (parameterActionBlocked()) event.preventDefault() }}><Download size={14} />CSV</a>}</div></div>
         </ResizablePlotCard>
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
         <AthenaWavelet colormap={viewerColormap} projectId={project?.id} version={project?.version} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />

@@ -353,6 +353,21 @@ function identityResponse(project: AthenaProject, id: string) {
   } })
 }
 
+describe("AthenaWorkbench branding", () => {
+  it("identifies Larch-Web and links its Xraylarch and Demeter credits", async () => {
+    await openSaved()
+
+    expect(screen.getByRole("heading", { level: 1, name: "Larch-Web" })).toBeVisible()
+    const xraylarch = screen.getByRole("link", { name: "Xraylarch" })
+    const demeter = screen.getByRole("link", { name: "Demeter" })
+    expect(xraylarch).toHaveAttribute("href", "https://xraypy.github.io/xraylarch/")
+    expect(demeter).toHaveAttribute("href", "https://bruceravel.github.io/demeter/")
+    expect(xraylarch).toHaveAttribute("target", "_blank")
+    expect(demeter).toHaveAttribute("target", "_blank")
+    expect(xraylarch.closest("p")).toHaveTextContent("powered by Xraylarch, inspired by Demeter, and developed by the Dr. XAS team.")
+  })
+})
+
 describe("AthenaWorkbench native context actions", () => {
   function groupContext() {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for current group' }))
@@ -2208,7 +2223,7 @@ describe("AthenaWorkbench project loading", () => {
     ]) expect(screen.queryByText(label, { exact: true })).not.toBeInTheDocument()
   })
 
-  it("shows numeric defaults for the current plot range and refreshes them by space", async () => {
+  it("shows energy ranges relative to E₀ by default and preserves absolute plot limits", async () => {
     const project = projectFixture()
     for (const group of project.groups) Object.assign(group.result!.arrays, {
       k: [0, 4, 8, 12], weighted_chi: [0, 1, -1, 0],
@@ -2216,32 +2231,45 @@ describe("AthenaWorkbench project loading", () => {
     await openSaved(project)
     const minimum = () => screen.getByRole("spinbutton", { name: "Plot minimum" })
     const maximum = () => screen.getByRole("spinbutton", { name: "Plot maximum" })
+    const relative = () => screen.getByRole("checkbox", { name: "Relative to E₀" })
 
-    expect(minimum()).toHaveValue(8960)
-    expect(maximum()).toHaveValue(9000)
+    expect(relative()).toBeChecked()
+    expect(relative().closest("label")).toHaveAttribute("title", "Use the current spectrum’s E₀ (8979 eV) as zero")
+    expect(minimum()).toHaveValue(-19)
+    expect(maximum()).toHaveValue(21)
     expect(minimum()).toHaveAttribute("step", "any")
     expect(maximum()).toHaveAttribute("step", "any")
     expect(plotProps().range).toEqual([null, null])
 
-    fireEvent.change(minimum(), { target: { value: "8970" } })
+    fireEvent.change(minimum(), { target: { value: "-9" } })
+    expect(minimum()).toHaveValue(-9)
+    expect(maximum()).toHaveValue(21)
+    expect(plotProps().range).toEqual([8970, null])
+
+    fireEvent.click(relative())
     expect(minimum()).toHaveValue(8970)
     expect(maximum()).toHaveValue(9000)
+    expect(plotProps().range).toEqual([8970, null])
+    fireEvent.click(relative())
+    expect(minimum()).toHaveValue(-9)
     expect(plotProps().range).toEqual([8970, null])
 
     fireEvent.change(minimum(), { target: { value: "" } })
     expect(minimum()).toHaveValue(null)
     expect(plotProps().range).toEqual([null, null])
     fireEvent.blur(minimum())
-    expect(minimum()).toHaveValue(8960)
+    expect(minimum()).toHaveValue(-19)
 
     fireEvent.click(screen.getByRole("tab", { name: /EXAFS/ }))
+    expect(screen.queryByRole("checkbox", { name: "Relative to E₀" })).not.toBeInTheDocument()
     expect(minimum()).toHaveValue(0)
     expect(maximum()).toHaveValue(12)
     expect(plotProps().range).toEqual([null, null])
 
     fireEvent.click(screen.getByRole("tab", { name: /Energy/ }))
-    expect(minimum()).toHaveValue(8960)
-    expect(maximum()).toHaveValue(9000)
+    expect(relative()).toBeChecked()
+    expect(minimum()).toHaveValue(-19)
+    expect(maximum()).toHaveValue(21)
   })
 
   it("retries the saved project after a load failure instead of creating a new workspace", async () => {
@@ -3623,7 +3651,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
     expect(plotProps().groups.map(g => g.id)).toEqual(['foil'])
-    expect(screen.getByRole('spinbutton', { name: 'Plot minimum' })).toHaveValue(8960)
+    expect(screen.getByRole('spinbutton', { name: 'Plot minimum' })).toHaveValue(-19)
     selectGroup('Unused reference')
     expect(plotProps().groups.map(g => g.id)).toEqual(['unused'])
     fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
@@ -3640,20 +3668,20 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     const minimum = () => screen.getByRole('spinbutton', { name: 'Plot minimum' })
     const maximum = () => screen.getByRole('spinbutton', { name: 'Plot maximum' })
 
-    expect(minimum()).toHaveValue(8920)
-    expect(maximum()).toHaveValue(9080)
+    expect(minimum()).toHaveValue(-59)
+    expect(maximum()).toHaveValue(101)
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
-    expect(minimum()).toHaveValue(8900)
-    expect(maximum()).toHaveValue(9050)
+    expect(minimum()).toHaveValue(-79)
+    expect(maximum()).toHaveValue(71)
     selectGroup('Sample scan')
-    expect(minimum()).toHaveValue(8950)
-    expect(maximum()).toHaveValue(9060)
+    expect(minimum()).toHaveValue(-29)
+    expect(maximum()).toHaveValue(81)
     expect(plotProps().range).toEqual([null, null])
 
-    fireEvent.change(minimum(), { target: { value: '8965' } })
+    fireEvent.change(minimum(), { target: { value: '-14' } })
     fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
-    expect(minimum()).toHaveValue(8965)
-    expect(maximum()).toHaveValue(9080)
+    expect(minimum()).toHaveValue(-14)
+    expect(maximum()).toHaveValue(101)
     expect(plotProps().range).toEqual([8965, null])
   })
 
