@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+from pathlib import Path
 import stat
 
 import pytest
@@ -80,6 +81,42 @@ def test_expire_due_retains_malformed_nonce_records_without_crashing(tmp_path):
 
     assert store.expire_due(NOW) == ()
     assert malformed.is_file()
+
+
+def test_expire_due_is_bounded_and_persists_progress(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(6):
+        store.claim_nonce(
+            nonce=f"nonce-{index:011d}", expires_at=NOW + timedelta(minutes=5)
+        )
+    reads = []
+    original = Path.read_text
+
+    def count_read(path, *args, **kwargs):
+        if path.parent == store.nonces_dir:
+            reads.append(path.name)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_read)
+    store.expire_due(NOW, max_items=2)
+    first_cursor = (store.root / ".cleanup-cursor.json").read_text(encoding="utf-8")
+    assert len(reads) == 2
+    reads.clear()
+
+    store.expire_due(NOW, max_items=2)
+    second_cursor = (store.root / ".cleanup-cursor.json").read_text(encoding="utf-8")
+
+    assert len(reads) == 2
+    assert first_cursor != second_cursor
+    assert json.loads(second_cursor)["phase"] == "nonces"
+
+
+def test_expire_due_tolerates_malformed_drafts_per_item(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    (store.drafts_dir / "broken.json").write_bytes(b"\xff")
+    (store.drafts_dir / "truncated.json").write_text('{"id":', encoding="utf-8")
+
+    assert store.expire_due(NOW, max_items=20) == ()
 
 
 def test_draft_persists_only_hashes_and_private_permissions(tmp_path):

@@ -265,6 +265,38 @@ def test_v2_launch_handle_rejects_complete_record_tampering(store, capability, f
         store.consume_project_launch_handle(handle, now=NOW)
 
 
+@pytest.mark.parametrize("contents", (b"\xff", b'{"kind":"v2-project"'))
+def test_v2_launch_handle_normalizes_corrupt_records(store, capability, contents):
+    handle = store.create_project_launch_handle(
+        project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=60),
+        seed_group=None, allowed_operations=("read_project",),
+        return_reference={"project_id": "p1", "persistent": True},
+    )
+    path = store.handles_dir / f"{hashlib.sha256(handle.encode()).hexdigest()}.json"
+    path.write_bytes(contents)
+
+    with pytest.raises(IntegrationReplayError):
+        store.consume_project_launch_handle(handle, now=NOW)
+
+
+def test_v2_launch_handle_normalizes_read_errors(store, capability, monkeypatch):
+    handle = store.create_project_launch_handle(
+        project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=60),
+        seed_group=None, allowed_operations=("read_project",),
+        return_reference={"project_id": "p1", "persistent": True},
+    )
+    original = Path.read_text
+
+    def fail_read(path, *args, **kwargs):
+        if path.suffix == ".consumed":
+            raise OSError("unreadable")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+    with pytest.raises(IntegrationReplayError):
+        store.consume_project_launch_handle(handle, now=NOW)
+
+
 def test_v2_launch_handle_rejects_tampering_expires_and_is_purged(store, capability):
     handle = store.create_project_launch_handle(
         project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=1),

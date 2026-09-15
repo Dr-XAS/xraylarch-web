@@ -14,6 +14,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import time
 from typing import Iterator, Callable
 import unicodedata
 
@@ -415,11 +416,16 @@ class IntegrationStorage:
             raise ValueError("Integration project byte count is invalid.")
         with self.project_lock(project_id):
             record = self._load_active_project(project_id, capability, now)
-            if record.quota is not None and stored_bytes > record.quota.max_bytes:
-                raise IntegrationConflictError("Integration project byte quota is exhausted.")
-            updated = replace(record, stored_bytes=stored_bytes, updated_at=_dt(now))
-            self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
-            return updated
+            return self._set_project_stored_bytes_locked(record, stored_bytes, now=now)
+
+    def _set_project_stored_bytes_locked(
+        self, record: ProjectRecord, stored_bytes: int, *, now: datetime,
+    ) -> ProjectRecord:
+        if record.quota is not None and stored_bytes > record.quota.max_bytes:
+            raise IntegrationConflictError("Integration project byte quota is exhausted.")
+        updated = replace(record, stored_bytes=stored_bytes, updated_at=_dt(now))
+        self._atomic_json(self._project_path(record.project_id), self._serialize_project(updated))
+        return updated
 
     def rotate_project_capability(self, project_id: str, capability: str, *, now: datetime) -> str:
         with self.project_lock(project_id):
@@ -571,7 +577,7 @@ class IntegrationStorage:
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
             value["capability"] = self._unseal_capability(handle, value.pop("sealed_capability"))
             return value
-        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        except (OSError, KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
         finally:
             if owned:
@@ -798,53 +804,112 @@ class IntegrationStorage:
         (self.handles_dir / f"{handle_hash}.consumed").unlink(missing_ok=True)
         self._fsync_directory(self.handles_dir)
 
-    def expire_due(self, now: datetime) -> tuple[str, ...]:
+    def expire_due(
+        self, now: datetime, *, max_items: int = 64, max_seconds: float = 0.025,
+    ) -> tuple[str, ...]:
+        """Advance durable expiry cleanup within a strict item and time budget."""
+        if max_items <= 0 or max_seconds <= 0:
+            return ()
         now = _dt(now)
-        for path in tuple(self.nonces_dir.glob("*.json")):
-            try:
-                expires_at = _dt(json.loads(path.read_text(encoding="utf-8"))["expires_at"])
-            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if now >= expires_at:
-                path.unlink(missing_ok=True)
-        self._fsync_directory(self.nonces_dir)
-        for path in tuple(self.handles_dir.glob("*.json")):
-            try:
-                value = json.loads(path.read_text(encoding="utf-8"))
-                if value.get("kind") == "v2-project" and now >= _dt(value["expires_at"]):
-                    path.unlink(missing_ok=True)
-            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-                continue
-        self._fsync_directory(self.handles_dir)
+        phases = (
+            ("nonces", self.nonces_dir),
+            ("handles", self.handles_dir),
+            ("projects", self.projects_dir),
+            ("drafts", self.drafts_dir),
+        )
+        cursor_path = self.root / ".cleanup-cursor.json"
+        try:
+            cursor = json.loads(cursor_path.read_text(encoding="utf-8"))
+            phase_index = next(
+                index for index, (name, _) in enumerate(phases) if name == cursor["phase"]
+            )
+            after = cursor.get("after")
+            if after is not None and not isinstance(after, str):
+                raise ValueError
+        except (OSError, KeyError, StopIteration, TypeError, ValueError, json.JSONDecodeError):
+            phase_index, after = 0, None
 
+        deadline = time.monotonic() + max_seconds
+        visited = 0
+        completed_phases = 0
         expired: list[str] = []
-        for path in tuple(self.projects_dir.glob("*.json")):
+        while (
+            visited < max_items
+            and completed_phases < len(phases)
+            and time.monotonic() < deadline
+        ):
+            phase, directory = phases[phase_index]
+            found_after = after is None
+            completed = True
+            last_seen = after
             try:
-                record = self._deserialize_project(json.loads(path.read_text(encoding="utf-8")))
-            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if record.status == "active" and record.expires_at is not None and now >= record.expires_at:
-                with self.project_lock(record.project_id):
-                    current = self._read_project_unchecked(record.project_id)
-                    if current.status == "active" and current.expires_at is not None and now >= current.expires_at:
-                        updated = replace(current, status="expired", updated_at=current.expires_at)
-                        self._atomic_json(path, self._serialize_project(updated))
-                        expired.append(current.project_id)
+                entries = os.scandir(directory)
+            except OSError:
+                entries = ()
+            try:
+                for entry in entries:
+                    if visited >= max_items or time.monotonic() >= deadline:
+                        completed = False
+                        break
+                    if not entry.name.endswith(".json"):
+                        continue
+                    if not found_after:
+                        if entry.name == after:
+                            found_after = True
+                        continue
+                    visited += 1
+                    path = Path(entry.path)
+                    try:
+                        value = json.loads(path.read_text(encoding="utf-8"))
+                        if phase == "nonces":
+                            if now >= _dt(value["expires_at"]):
+                                path.unlink(missing_ok=True)
+                        elif phase == "handles":
+                            if value.get("kind") == "v2-project" and now >= _dt(value["expires_at"]):
+                                path.unlink(missing_ok=True)
+                        elif phase == "projects":
+                            record = self._deserialize_project(value)
+                            if record.status == "active" and record.expires_at is not None and now >= record.expires_at:
+                                with self.project_lock(record.project_id):
+                                    current = self._read_project_unchecked(record.project_id)
+                                    if current.status == "active" and current.expires_at is not None and now >= current.expires_at:
+                                        updated = replace(current, status="expired", updated_at=current.expires_at)
+                                        self._atomic_json(path, self._serialize_project(updated))
+                                        expired.append(current.project_id)
+                        else:
+                            record = self._deserialize(value)
+                            if record.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= record.expires_at:
+                                with self.draft_lock(record.id):
+                                    current = self._read_draft_unchecked(record.id)
+                                    if current.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= current.expires_at:
+                                        updated = replace(
+                                            current, status=DraftStatus.EXPIRED,
+                                            updated_at=current.expires_at - timedelta(microseconds=1),
+                                        )
+                                        self._atomic_json(path, self._serialize(updated))
+                                        self._remove_handle(current.handle_hash)
+                                        expired.append(current.id)
+                    except (OSError, KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
+                        pass
+                    if path.exists():
+                        last_seen = entry.name
+            finally:
+                close = getattr(entries, "close", None)
+                if close is not None:
+                    close()
 
-        for path in tuple(self.drafts_dir.glob("*.json")):
-            record = self._deserialize(json.loads(path.read_text(encoding="utf-8")))
-            if record.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= record.expires_at:
-                with self.draft_lock(record.id):
-                    current = self._read_draft_unchecked(record.id)
-                    if current.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= current.expires_at:
-                        updated = replace(
-                            current,
-                            status=DraftStatus.EXPIRED,
-                            updated_at=current.expires_at - timedelta(microseconds=1),
-                        )
-                        self._atomic_json(path, self._serialize(updated))
-                        self._remove_handle(current.handle_hash)
-                        expired.append(current.id)
+            if not found_after:
+                # The saved entry disappeared; restart this phase on the next call.
+                last_seen = None
+                completed = False
+            if completed:
+                completed_phases += 1
+                phase_index = (phase_index + 1) % len(phases)
+                after = None
+            else:
+                after = last_seen
+                break
+        self._atomic_json(cursor_path, {"phase": phases[phase_index][0], "after": after})
         return tuple(sorted(expired))
 
     def remove_draft_artifacts(self, draft_id: str) -> None:

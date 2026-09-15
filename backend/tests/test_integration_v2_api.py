@@ -118,6 +118,34 @@ def test_create_launch_rename_rotate_and_delete_project(tmp_path):
         assert deleted.json()["status"] == "deleted"
 
 
+def test_rename_updates_exact_stored_bytes_and_rejects_over_quota(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = create(client, name="A")
+        project_id, capability = created["project_id"], created["capability"]
+        renamed = request(
+            client, "PATCH", f"/api/integration/v2/projects/{project_id}",
+            {"name": "A longer project name"}, nonce="r" * 32, capability=capability,
+        )
+        assert renamed.status_code == 200
+        actual = (tmp_path / "athena" / project_id / "project.json").stat().st_size
+        assert renamed.json()["stored_bytes"] == actual
+
+        integration_record = tmp_path / "integration" / "projects" / f"{project_id}.json"
+        metadata = json.loads(integration_record.read_text(encoding="utf-8"))
+        assert metadata["stored_bytes"] == actual
+        metadata["quota"]["max_bytes"] = actual
+        integration_record.write_text(json.dumps(metadata, separators=(",", ":")), encoding="utf-8")
+
+        rejected = request(
+            client, "PATCH", f"/api/integration/v2/projects/{project_id}",
+            {"name": "A much longer project name"}, nonce="s" * 32, capability=capability,
+        )
+        assert rejected.status_code == 409
+        assert json.loads((tmp_path / "athena" / project_id / "project.json").read_text())["name"] == "A longer project name"
+        assert json.loads(integration_record.read_text())["stored_bytes"] == actual
+
+
 def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monkeypatch):
     import xraylarch_web.integration_routes as integration_routes
     clock = [NOW]
@@ -249,6 +277,52 @@ def test_v2_create_purges_expired_project_handles(tmp_path, monkeypatch):
         assert not handle_path.exists()
 
 
+def test_seeded_creation_rejects_processed_size_bound_before_processing(tmp_path, monkeypatch):
+    from test_integration_contracts import launch_payload
+    from xraylarch_web.athena import AthenaStore
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
+
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    recipe_payload = launch_payload()
+    spectrum = AuthoritativeSpectrum(
+        energy=tuple(8800.0 + index * 2 for index in range(551)),
+        mu=tuple(0.7 + math.atan((8800.0 + index * 2 - 8980.0) / 4.0) / math.pi for index in range(551)),
+    )
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"),
+            "recipe": recipe_payload["recipe"], "spectrum_sha256": canonical_sha256(spectrum),
+            "recipe_sha256": recipe_payload["recipe_sha256"]}
+    request_payload = {"contract_version": 2, "name": "Bounded", "persistent": True,
+                       "source": source, "seed": seed}
+    original_process = AthenaStore.process
+    monkeypatch.setattr(AthenaStore, "process", lambda *args: None)
+    raw_root = tmp_path / "raw"
+    with TestClient(create_app(settings(raw_root))) as client:
+        raw = request(client, "POST", "/api/integration/v2/projects", request_payload,
+                      nonce="d" * 32).json()
+    raw_size = (raw_root / "athena" / raw["project_id"] / "project.json").stat().st_size
+
+    monkeypatch.setattr(AthenaStore, "process", original_process)
+    processed_root = tmp_path / "processed"
+    with TestClient(create_app(settings(processed_root))) as client:
+        processed = request(client, "POST", "/api/integration/v2/projects", request_payload,
+                            nonce="e" * 32).json()
+    processed_size = (processed_root / "athena" / processed["project_id"] / "project.json").stat().st_size
+    assert raw_size < processed_size
+    quota = (raw_size + processed_size) // 2
+
+    calls = []
+    monkeypatch.setattr(AthenaStore, "process", lambda *args: calls.append(args))
+    bounded_root = tmp_path / "bounded"
+    with TestClient(create_app(settings(bounded_root, integration_max_bytes=quota,
+                                        integration_guest_max_bytes=quota))) as client:
+        response = request(client, "POST", "/api/integration/v2/projects", request_payload,
+                           nonce="f" * 32)
+
+    assert response.status_code == 409
+    assert calls == []
+
+
 def test_seeded_creation_rejects_byte_quota_before_workspace_mutation(tmp_path, monkeypatch):
     from test_integration_contracts import launch_payload
     source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
@@ -286,6 +360,38 @@ def test_source_only_project_is_honestly_empty(tmp_path):
         consumed = client.post("/api/integration/v2/browser/consume", json={"handle": launched.json()["handle"]})
         assert consumed.json()["seed_group"] is None
         assert consumed.json()["project"]["group_count"] == 0
+
+
+@pytest.mark.parametrize("contents", (b"\xff", b'{"kind":"v2-project"'))
+def test_browser_consume_returns_uniform_not_found_for_corrupt_launch_record(tmp_path, contents):
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = create(client)
+        launched = request(
+            client, "POST", f"/api/integration/v2/projects/{created['project_id']}/launch",
+            {"capability": created["capability"]}, nonce="x" * 32,
+            capability=created["capability"],
+        )
+        handle = launched.json()["handle"]
+        path = tmp_path / "integration" / "handles" / f"{hashlib.sha256(handle.encode()).hexdigest()}.json"
+        path.write_bytes(contents)
+
+        response = client.post("/api/integration/v2/browser/consume", json={"handle": handle})
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Integration project was not found."}
+
+
+def test_browser_consume_does_not_run_global_cleanup(tmp_path, monkeypatch):
+    from xraylarch_web.integration_storage import IntegrationStorage
+
+    monkeypatch.setattr(
+        IntegrationStorage, "expire_due",
+        lambda *args, **kwargs: pytest.fail("unauthenticated consume must not trigger cleanup"),
+    )
+    with TestClient(create_app(settings(tmp_path))) as client:
+        response = client.post("/api/integration/v2/browser/consume", json={"handle": "x" * 22})
+
+    assert response.status_code == 404
 
 
 def test_v2_browser_consume_obeys_feature_gate(tmp_path):

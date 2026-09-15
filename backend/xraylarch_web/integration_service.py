@@ -341,6 +341,24 @@ class IntegrationService:
     def _project_bytes(project: dict) -> int:
         return len(json.dumps(project, allow_nan=False, separators=(",", ":")).encode())
 
+    @classmethod
+    def _processed_project_byte_bound(cls, project: dict) -> int:
+        """Conservatively bound JSON growth from processing one seeded group.
+
+        Processing emits 25 finite-float arrays. Each array is no longer than
+        the larger of the source spectrum and configured FFT grids, and a JSON
+        double plus separator needs at most 32 bytes. The fixed allowance covers
+        effective parameters, warnings, and object syntax.
+        """
+        if not project["groups"]:
+            return cls._project_bytes(project)
+        group = project["groups"][0]
+        parameters = group["parameters"]
+        points = max(
+            len(group["energy"]), parameters["nfft"], parameters["reverse_nfft"]
+        )
+        return cls._project_bytes(project) + 25 * points * 32 + 131_072
+
     def create_v2_project(self, request: ProjectBootstrapRequest, *, now: datetime) -> tuple[str, str, ProjectSummary]:
         quota = self._quota(request.persistent)
         project_id = uid()
@@ -360,8 +378,9 @@ class IntegrationService:
                 "result": None, "processing_error": None, "is_difference": False,
             }
             project["groups"].append(group)
-        # Reject the full proposed source payload before any Athena processing.
-        if self._project_bytes(project) > quota.max_bytes:
+        # Processing materializes many derived arrays. Reject against their
+        # conservative serialized ceiling before spending CPU or mutating Athena.
+        if self._processed_project_byte_bound(project) > quota.max_bytes:
             raise IntegrationConflictError("Integration project byte quota is exhausted.")
         if request.seed is not None:
             self.athena_store.process(project["groups"][0])
@@ -411,11 +430,21 @@ class IntegrationService:
         }
 
     def rename_v2_project(self, project_id: str, capability: str, name: str, *, now: datetime) -> ProjectSummary:
-        record = self.storage.load_project(project_id, capability, now=now)
-        project = self.athena_store.load(project_id)
-        project["name"] = name
-        self.athena_store.storage.write_json(project_id, "project.json", project)
-        return self._project_summary(project, record)
+        with self.storage.project_lock(project_id):
+            record = self.storage._load_active_project(project_id, capability, now)
+            project = self.athena_store.load(project_id)
+            original = dict(project)
+            project["name"] = name
+            stored_bytes = self._project_bytes(project)
+            if record.quota is not None and stored_bytes > record.quota.max_bytes:
+                raise IntegrationConflictError("Integration project byte quota is exhausted.")
+            self.athena_store.storage.write_json(project_id, "project.json", project)
+            try:
+                record = self.storage._set_project_stored_bytes_locked(record, stored_bytes, now=now)
+            except Exception:
+                self.athena_store.storage.write_json(project_id, "project.json", original)
+                raise
+            return self._project_summary(project, record)
 
     def delete_v2_project(self, project_id: str, capability: str, *, now: datetime) -> dict:
         # Retire durable access first.  Cleanup may be retried with the same
