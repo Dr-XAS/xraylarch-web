@@ -1,0 +1,10 @@
+{
+  "case_count": 66,
+  "sha256": {
+    "backend/tests/reference/shortcut_plot_native_reference.py": "2dea0f8519f72c4286e7433e4d16765b80b6c28ae3a435c8cba5a4f8a509efa7",
+    "backend/tests/reference/special_plot_native_reference.py": "fa40fe5d198f4270658d15ac2ef52c44906ea11aea4cfafc7369e6d3801b9991",
+    "backend/tests/fixtures/athena-shortcut-plot-native.json.gz": "6140bc854596cc2f51dc6699db8ca183a89414ed5387e516c10d7b0a8eea5696",
+    "backend/tests/fixtures/demeter-merge-fe.060": "92f698464e3f27390ed554ce65ebb3aa7734cce0844fc1cd7fd7c8d04aae85b4",
+    "backend/tests/fixtures/demeter-merge-fe.061": "79ec765bcb1b71969fc364cf1b0d6b2045b193c3d7268c06e3fe5bd6a69e4abb"
+  }
+}

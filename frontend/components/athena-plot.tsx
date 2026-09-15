@@ -1,14 +1,18 @@
 "use client"
 
 import dynamic from "next/dynamic"
+import { useEffect, useRef, useState } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
+import { DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
+import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div> })
-const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47", "#967055"]
-export type Space = "E" | "k" | "R" | "q"
+export type Space = PlotSpace
 interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string
   background: boolean; window: boolean; component: string; offset: number
+  plotScope?: "selected" | "current"; preEdge?: boolean; postEdge?: boolean; showLegend?: boolean; kWeight?: number | null
+  colormap?: AthenaColormap
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
   picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
@@ -28,7 +32,25 @@ function windowOnGrid(k: number[], window: number[], q: number[]) {
   return { x, y }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+// Place bounds at their exact energies on the displayed signal, interpolating
+// between measured samples without extrapolating beyond the spectrum.
+function signalAtEnergy(energy: number[], mu: number[], target: number) {
+  if (!Number.isFinite(target) || !energy.length || energy.length !== mu.length) return null
+  const first = energy[0], last = energy[energy.length - 1]
+  const tolerance = 8 * Number.EPSILON * Math.max(1, Math.abs(target), Math.abs(first), Math.abs(last))
+  if (target < first - tolerance || target > last + tolerance) return null
+  const x = Math.max(first, Math.min(last, target))
+  const right = energy.findIndex(value => value >= x)
+  if (right < 0) return null
+  if (energy[right] === x) return Number.isFinite(mu[right]) ? { x, y: mu[right] } : null
+  if (right === 0 || !Number.isFinite(mu[right - 1]) || !Number.isFinite(mu[right])) return null
+  const fraction = (x - energy[right - 1]) / (energy[right] - energy[right - 1])
+  return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
+}
+
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, kWeight = null, colormap = DEFAULT_COLORMAP, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+  const plotRef = useRef<HTMLDivElement>(null)
+  const [plotWidth, setPlotWidth] = useState(0)
   const data: Record<string, unknown>[] = []
   const add = (x: number[], y: number[], name: string, color: string, dash = "solid") => {
     if (!Array.isArray(x) || !Array.isArray(y) || !x.length || x.length !== y.length) return
@@ -36,17 +58,12 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     data.push(trace)
     return trace
   }
-  const xKey = { E: "energy", k: "k", R: "r", q: "q" }[space]
-  const yKey = { E: energyMode, k: "weighted_chi", R: `chir_${component}`, q: `chiq_${component}` }[space]
   const displayed = groups.flatMap((g, index) => {
-    const rawChi = !g.result && g.data_type === "chi"
-    const arrays: Record<string, number[]> = g.result?.arrays ?? (rawChi
-      ? { k: g.energy, chi: g.mu }
-      : { energy: g.energy.map(e => e + g.parameters.energy_shift), mu: g.mu })
-    const x = arrays[xKey], y = arrays[rawChi && space === "k" ? "chi" : yKey]
-    if (!x?.length || !y?.length || x.length !== y.length) return []
+    const coordinates = spectrumTraceCoordinates(g, space, energyMode, component, kWeight)
+    if (!coordinates) return []
+    const { arrays, rawChi, x, y } = coordinates
     const effectiveWeight = g.result?.effective.kweight
-    const weight = rawChi ? 0 : typeof effectiveWeight === "number" ? effectiveWeight : g.parameters.kweight
+    const weight = space === "k" && kWeight !== null ? kWeight : rawChi ? 0 : typeof effectiveWeight === "number" ? effectiveWeight : g.parameters.kweight
     const transform = (values: number[]) => values.map(v => v * g.multiplier + g.offset + index * offset)
     return [{ g, index, arrays, x, y, weight, rawChi, transform }]
   })
@@ -55,24 +72,58 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const energyTitle = ({ mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", d2mude: "d²μ/dE² (eV⁻²)" } as Record<string, string>)[energyMode]
   const differenceTitle = energyMode === "dmude" ? "d(difference)/dE (eV⁻¹)" : energyMode === "d2mude" ? "d²(difference)/dE² (eV⁻²)" : "Difference signal"
   const energyForm = (group: AthenaGroup) => {
+    if (group.data_type === 'detector') return 'Detector signal'
     if (!isDifferenceGroup(group)) return energyTitle
     const label = group.source.y_label
     return ["mu", "norm", "flat"].includes(energyMode) && typeof label === "string" && label.trim() ? label : differenceTitle
   }
   const energyForms = [...new Set(displayed.map(trace => energyForm(trace.g)))]
   const mixedEnergyForms = space === "E" && energyForms.length > 1
-  for (const trace of displayed) {
-    const { g, index, x, y, rawChi, weight, transform } = trace
+  for (const [colorIndex, trace] of displayed.entries()) {
+    const { g, x, y, rawChi, weight, transform } = trace
     const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "") + (mixedEnergyForms ? ` (${energyForm(g)})` : "")
     // R/q products already include the forward k-weight. Apply display
     // multiplier/offset only, never another k- or q-dependent weighting.
-    add(x, transform(y), name, colors[index % colors.length])
+    add(x, transform(y), name, spectrumColor(colormap, colorIndex, displayed.length))
   }
   const current = displayed.find(trace => trace.g.id === active?.id)
   const a = current?.arrays
   if (current && a && background && space === "E" && energyMode === "mu") {
-    for (const [key, name, color] of [["pre_edge", "Pre-edge line", "#b29874"], ["post_edge", "Post-edge polynomial", "#8f87aa"], ["bkg", "Background μ₀(E)", "#ddaa58"]]) {
-      if (a[key]?.length === a.energy.length) add(a.energy, current.transform(a[key]), `${name} · ${current.g.label}`, color, "dash")
+    if (a.bkg?.length === a.energy.length) add(a.energy, current.transform(a.bkg), `Background μ₀(E) · ${current.g.label}`, "#ddaa58", "dash")
+  }
+  if (current && a && current.g.result && plotScope === "current" && space === "E" && energyMode === "mu"
+    && current.g.data_type !== "detector" && current.g.data_type !== "chi" && !isDifferenceGroup(current.g)) {
+    // Effective values describe the fitted arrays, including automatic values
+    // and bounds clipped to measured support. Energy is already shifted.
+    const effective = current.g.result.effective
+    const value = (key: "e0" | "pre1" | "pre2" | "norm1" | "norm2") => {
+      const resolved = key in effective ? effective[key] : current.g.parameters[key]
+      return typeof resolved === "number" && Number.isFinite(resolved) ? resolved : null
+    }
+    const e0 = value("e0")
+    for (const [enabled, key, label, color, start, end] of [
+      [preEdge, "pre_edge", "Pre-edge", "#b29874", "pre1", "pre2"],
+      [postEdge, "post_edge", "Post-edge", "#8f87aa", "norm1", "norm2"],
+    ] as const) {
+      if (!enabled || a[key]?.length !== a.energy.length) continue
+      const legendgroup = `${current.g.id}:${key}`
+      const line = add(a.energy, current.transform(a[key]), `${label} line · ${current.g.label}`, color, "dash")
+      if (line) line.legendgroup = legendgroup
+      if (e0 === null) continue
+      const points = ([start, end] as const).flatMap((bound, index) => {
+        const relative = value(bound)
+        if (relative === null) return []
+        const point = signalAtEnergy(current.x, current.y, e0 + relative)
+        return point ? [{ ...point, relative, label: `${label} ${index === 0 ? "start" : "end"}`, symbol: index === 0 ? "circle" : "diamond" }] : []
+      })
+      if (points.length) data.push({
+        type: "scatter", mode: "markers", name: `${label} bounds · ${current.g.label}`, legendgroup, showlegend: false,
+        x: points.map(point => point.x), y: current.transform(points.map(point => point.y)),
+        text: points.map(point => point.label), customdata: points.map(point => point.relative),
+        marker: { color, size: 11, symbol: points.map(point => point.symbol), line: { color: "#ffffff", width: 1.5 } },
+        cliponaxis: false,
+        hovertemplate: "%{text}<br>Energy = %{x:.3f} eV<br>E − E₀ = %{customdata:.3f} eV<br>μ(E) = %{y:.5f}<extra></extra>",
+      })
     }
   }
   if (current && a && showWindow && space !== "E") {
@@ -109,17 +160,48 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     }
   }
   const hasData = data.some(d => (d.x as number[])?.length)
-  if (!hasData) return <div className="ath-no-plot"><span>{space}</span><h3>{groups.length ? "No data in this plot space" : "Your spectra, in perspective."}</h3><p>{groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or open the copper foil example to begin."}</p></div>
+  useEffect(() => {
+    const element = plotRef.current
+    if (!element) return
+    const measure = () => setPlotWidth(element.clientWidth)
+    measure()
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
+    observer?.observe(element)
+    return () => observer?.disconnect()
+  }, [hasData])
+
+  // Keep filenames readable without letting the legend consume a narrow plot.
+  // Only display names wrap; hover labels retain the original full name.
+  const legendLineLength = Math.max(10, Math.floor((plotWidth * 0.4 - 48) / 7))
+  const plotData = !showLegend || !plotWidth ? data : data.map(trace => {
+    const name = String(trace.name ?? "")
+    if (name.length <= legendLineLength) return trace
+    const characters = Array.from(name)
+    const lines: string[] = []
+    for (let index = 0; index < characters.length; index += legendLineLength) lines.push(characters.slice(index, index + legendLineLength).join(""))
+    return { ...trace, name: lines.join("<br>"), meta: { legendLabel: name },
+      hovertemplate: typeof trace.hovertemplate === "string" ? trace.hovertemplate.replace("%{fullData.name}", "%{meta.legendLabel}") : undefined }
+  })
+  const noSelection = !groups.length && active && plotScope === "selected" && !analysisVisible
+  if (!hasData) return <div ref={plotRef} className="ath-no-plot"><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}</h3><p>{noSelection ? "Check data groups or choose Current spectrum to plot the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or open the copper foil example to begin."}</p></div>
   const canPick = picking && !analysisVisible && space !== "q"
-  return <div className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`}><Plot data={data} onClick={event => {
+  const xRange = analysisVisible || (range[0] === null && range[1] === null)
+    ? { autorange: true as const }
+    : range[0] !== null && range[1] !== null
+      ? { range }
+      : range[0] !== null
+        ? { range: [range[0], null], autorange: "max" as const }
+        : { range: [null, range[1]], autorange: "min" as const }
+  return <div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`}><Plot data={plotData} onClick={event => {
     const x = event.points?.[0]?.x
     if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
   }} layout={{
-    autosize: true, margin: { l: 72, r: 25, t: 24, b: 86 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+    autosize: true, margin: { l: 72, r: 25, t: 24, b: 60 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Arial, sans-serif", color: "#586661", size: 12 },
-    xaxis: { title: { text: xTitle, standoff: 16 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...(range[0] !== null && range[1] !== null && !analysisVisible ? { range } : { autorange: true }) },
+    hoverlabel: { namelength: -1 },
+    xaxis: { title: { text: xTitle, standoff: 16 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...xRange },
     yaxis: { title: { text: yTitle, standoff: 15 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", automargin: true },
     ...(analysisVisible && analysis?.kind === "log_ratio" ? { yaxis2: { title: {text: "Phase difference (rad)"}, overlaying: "y", side: "right", showgrid: false, automargin: true } } : {}),
-    legend: { orientation: "h", y: -0.22, x: 0 }, hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${range.join()}`,
+    showlegend: showLegend, legend: { orientation: "v", x: 1.02, xanchor: "left", y: 1, yanchor: "top", maxheight: 1 }, hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${range.join()}-${plotScope}-${plotScope === "current" ? active?.id ?? "" : ""}-${kWeight ?? "auto"}`,
   }} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>
 }

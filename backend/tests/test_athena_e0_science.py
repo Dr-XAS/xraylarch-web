@@ -396,9 +396,9 @@ def test_white_line_rejects_missing_margin_and_oversized_refinement_grid():
         compute_e0(x, y, {}, method="white_line", data_type="norm", seed_e0=20000)
 
 
-def test_invalid_normalization_ranges_are_not_silently_clipped(clean_edge):
+def test_normalization_interval_without_measured_overlap_is_rejected(clean_edge):
     with pytest.raises(ScientificError, match="norm1/norm2"):
-        compute_e0(*clean_edge, {"norm1": 300, "norm2": 1000}, method="fraction")
+        compute_e0(*clean_edge, {"norm1": 600, "norm2": 1000}, method="fraction")
 
 
 @pytest.mark.parametrize("method,options", [

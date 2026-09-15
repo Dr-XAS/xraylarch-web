@@ -1,0 +1,90 @@
+{
+  "revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "harness_sha256": "8c15da87f9e1e2a4fe6951e486a8644d2d6a36cc8316d9a838b3259bea119c07",
+  "sources": [
+    {
+      "path": "lib/Demeter/Plugins/B18.pm",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/B18.pm",
+      "sha256": "843e7d739f893ff72fe18e975b2bc094f59ccbf8a4fc0406a339ea1936091d5f",
+      "git_blob_sha1": "1810b0faa616b0638df4ba68e17d272f1636d9aa",
+      "bytes": 2468
+    },
+    {
+      "path": "lib/Demeter/Plugins/BM23.pm",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/Plugins/BM23.pm",
+      "sha256": "6cd8e1b68ed645a31f4cb94e8b86d3559881c130877a3c28975a2a125e248a3c",
+      "git_blob_sha1": "d640f62e53ce76993d6cf8d853e0ffa872b224b8",
+      "bytes": 2731
+    }
+  ],
+  "files": [
+    {
+      "file": "constructed-b18.dat",
+      "kind": "constructed probe",
+      "derived_from": "demeter-re4chan.000",
+      "source_sha256": "6b86fda488c7247fe41d1713faea6d60ada796f353fb2c177158c34bec107ed2",
+      "description": "Synthetic 43-column B18 layout; 36 fluorescence counts distributed with weights 1..36 from X23 channel-1 absorption. Not a measured B18 acquisition.",
+      "sha256": "efb01c88c09178f524a2973d1380fa991806bdb4142bdf09bec5a616f271c8b9",
+      "bytes": 266049
+    },
+    {
+      "file": "constructed-bm23.dat",
+      "kind": "constructed probe",
+      "derived_from": "demeter-re4chan.000",
+      "source_sha256": "6b86fda488c7247fe41d1713faea6d60ada796f353fb2c177158c34bec107ed2",
+      "description": "Synthetic 5-column BM23 header; X23 channel-1 detector arrays retained and energy divided by 1000. Not a measured BM23 acquisition.",
+      "sha256": "900388d7a1a41e6fb3ba48e8a1fc5d3e9ed254023f542a0a59bd1553d2c9bbef",
+      "bytes": 14412
+    },
+    {
+      "file": "constructed-bm23-multiscan.dat",
+      "kind": "constructed probe",
+      "derived_from": "demeter-re4chan.000",
+      "source_sha256": "6b86fda488c7247fe41d1713faea6d60ada796f353fb2c177158c34bec107ed2",
+      "description": "Two consecutive copies of the constructed BM23 scan; exercises collection splitting without concatenating energy sweeps.",
+      "sha256": "a51c816cd20b7d8ed16685480d7319f2b5b4098ae9ffa9aa6e5838af9fd2e820",
+      "bytes": 28721
+    }
+  ],
+  "references": [
+    {
+      "name": "b18-larch",
+      "reader": "B18",
+      "backend": "larch",
+      "input": "constructed-b18.dat",
+      "input_sha256": "efb01c88c09178f524a2973d1380fa991806bdb4142bdf09bec5a616f271c8b9",
+      "file": "header-b18-larch-native.json.gz",
+      "sha256": "26665ac1896c296361950dccae715225f6c71925e3009974259921bf9197a3c2",
+      "shape": [
+        387,
+        43
+      ]
+    },
+    {
+      "name": "b18-ifeffit",
+      "reader": "B18",
+      "backend": "ifeffit",
+      "input": "constructed-b18.dat",
+      "input_sha256": "efb01c88c09178f524a2973d1380fa991806bdb4142bdf09bec5a616f271c8b9",
+      "file": "header-b18-ifeffit-native.json.gz",
+      "sha256": "4badc7f5d6908d176bb217d314b6b2cb205f41d73bfede372cad38b6c1f32ec9",
+      "shape": [
+        193,
+        43
+      ]
+    },
+    {
+      "name": "bm23-larch",
+      "reader": "BM23",
+      "backend": "larch",
+      "input": "constructed-bm23.dat",
+      "input_sha256": "900388d7a1a41e6fb3ba48e8a1fc5d3e9ed254023f542a0a59bd1553d2c9bbef",
+      "file": "header-bm23-larch-native.json.gz",
+      "sha256": "d2fc806aaa64391f80226f9eaf4a12120fb23ef1cb7283c53fd627837e842514",
+      "shape": [
+        387,
+        5
+      ]
+    }
+  ]
+}

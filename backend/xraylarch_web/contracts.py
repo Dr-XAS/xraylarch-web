@@ -1,3 +1,4 @@
+import copy
 from dataclasses import dataclass
 from typing import Literal, Mapping
 
@@ -174,10 +175,12 @@ class ParsedUpload:
     warnings: tuple[str, ...]
     issues: tuple[FieldIssue, ...]
     source_bytes: bytes
+    xdi_metadata: dict | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "source_bytes", bytes(self.source_bytes))
         object.__setattr__(self, "arrays", dict(self.arrays))
+        object.__setattr__(self, "xdi_metadata", copy.deepcopy(self.xdi_metadata))
 
     def inspection(self) -> UploadInspection:
         return UploadInspection(

@@ -7,7 +7,8 @@ from pathlib import Path
 
 _DEFAULT_MAX_UPLOAD_BYTES = 50_000_000
 _DEFAULT_MAX_POINTS = 250_000
-_DEFAULT_MAX_COLUMNS = 64
+# Multi-element detector scans can carry more than 64 source channels.
+DEFAULT_MAX_COLUMNS = 256
 _DEFAULT_MAX_NFFT = 262_144
 _DEFAULT_DRAFT_TTL_SECONDS = 7 * 24 * 60 * 60
 _MAX_DRAFT_TTL_SECONDS = 7 * 24 * 60 * 60
@@ -20,7 +21,7 @@ class Settings:
     data_root: Path
     max_upload_bytes: int = _DEFAULT_MAX_UPLOAD_BYTES
     max_points: int = _DEFAULT_MAX_POINTS
-    max_columns: int = _DEFAULT_MAX_COLUMNS
+    max_columns: int = DEFAULT_MAX_COLUMNS
     max_nfft: int = _DEFAULT_MAX_NFFT
     integration_api_enabled: bool = False
     browser_consume_enabled: bool = False
@@ -108,7 +109,7 @@ class Settings:
             ),
             max_points=integer_setting("XRAYLARCH_MAX_POINTS", _DEFAULT_MAX_POINTS),
             max_columns=integer_setting(
-                "XRAYLARCH_MAX_COLUMNS", _DEFAULT_MAX_COLUMNS
+                "XRAYLARCH_MAX_COLUMNS", DEFAULT_MAX_COLUMNS
             ),
             max_nfft=integer_setting("XRAYLARCH_MAX_NFFT", _DEFAULT_MAX_NFFT),
             integration_api_enabled=boolean_setting(

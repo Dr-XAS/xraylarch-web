@@ -1,0 +1,36 @@
+{
+  "xdi_revision": "ed21ad5aa3a066f569e13e607679b2542fc93fa7",
+  "inputs": [
+    {
+      "source": "https://raw.githubusercontent.com/XraySpectroscopy/XAS-Data-Interchange/ed21ad5aa3a066f569e13e607679b2542fc93fa7/data/cu_metal_rt.xdi",
+      "file": "xdi-ed21ad5aa3a066f569e13e607679b2542fc93fa7/data/cu_metal_rt.xdi",
+      "sha256": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+      "git_blob_sha1": "121a1887c5d1beb71400701b389f9ef790d5bab4",
+      "bytes": 19763,
+      "fixture": "xdi-official-cu_metal_rt.xdi"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/XraySpectroscopy/XAS-Data-Interchange/ed21ad5aa3a066f569e13e607679b2542fc93fa7/data/fe2o3_rt.xdi",
+      "file": "xdi-ed21ad5aa3a066f569e13e607679b2542fc93fa7/data/fe2o3_rt.xdi",
+      "sha256": "4a1c4cec3e00d62734406a872d8a114ebd7d7c1b66050a61ec4017b03abd2a5a",
+      "git_blob_sha1": "91c8032d34b6f255bc90eec9c80245cad2715009",
+      "bytes": 16684,
+      "fixture": "xdi-official-fe2o3_rt.xdi"
+    }
+  ],
+  "native_oracle": {
+    "fixture": "athena-xdi-native.json.gz",
+    "sha256": "0240fd6103d7ecf1dc258a8e1f0ec604f342f7670b57ea99a94a0d92d64aeca8",
+    "cases": 3,
+    "harness": "backend/tests/reference/xdi_native_reference.py",
+    "harness_sha256": "4005fc2224acba35c6be5a10211558f704ffb96cac5547acb12112ce1f865110"
+  },
+  "controls_oracle": {
+    "fixture": "athena-xdi-controls-native.json",
+    "sha256": "1ce8c762430fadd1b0e0757c7bd1ce5c0efbe51da15568ae704535f52e377bc5",
+    "validation_cases": 70,
+    "comment_cases": 4,
+    "harness": "backend/tests/reference/xdi_controls_native_reference.py",
+    "harness_sha256": "1908554e5f609f7602dc8ea7b4db16365298b1dd8cadd0e36bf8818922b6fa95"
+  }
+}

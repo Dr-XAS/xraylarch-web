@@ -195,11 +195,16 @@ def test_explicit_xanes_uses_xanes_post_ranges_even_on_a_long_scan(copper):
     final_processing(x, y, result)
 
 
-def test_short_xanes_explicit_post_endpoint_is_not_clipped():
+def test_short_xanes_keeps_explicit_post_request_and_reports_measured_fit_endpoint():
     x = np.linspace(8779, 9049, 1081)
     y = .2 + 1.8 * expit((x - 8983) / 2.5)
-    with pytest.raises(ScientificError, match="explicit ranges are not clipped"):
-        initialize_import(x, y, {"norm1": 15, "norm2": 70}, policy=CU_POLICY)
+    result=initialize_import(x,y,{"norm1":15,"norm2":70},policy=CU_POLICY)
+    assert result['parameters']['norm2']==70
+    processed=process_spectrum(x,y,result['parameters'],result['data_type'])
+    assert processed['effective']['norm2']==x[-1]-result['parameters']['e0']
+    assert any('Normalization norm2' in w for w in result['warnings'])
+    direct=Group();pre_edge(x,y,group=direct,**{k:result['parameters'][k] for k in ['e0','pre1','pre2','norm1','norm2','nnorm']})
+    np.testing.assert_allclose(processed['arrays']['norm'],direct.norm,rtol=2e-12,atol=2e-13)
 
 
 def test_short_scan_does_not_silently_disable_explicit_fnorm():
@@ -218,11 +223,14 @@ def test_automatic_preedge_start_follows_measured_boundary_when_fraction_moves_d
     final_processing(x, y, result)
 
 
-def test_explicit_preedge_start_is_not_clipped_after_fraction_moves_down():
+def test_explicit_preedge_request_survives_fraction_refinement_with_visible_fit_limit():
     x = np.linspace(8939, 9479, 1081)
     y = .2 + 1.8 * expit((x - 8977) / 1)
-    with pytest.raises(ScientificError, match="explicit ranges are not clipped"):
-        initialize_import(x, y, {"pre1": -40}, policy=CU_POLICY)
+    result=initialize_import(x,y,{"pre1":-40},policy=CU_POLICY)
+    assert result['parameters']['pre1']==-40
+    processed=process_spectrum(x,y,result['parameters'],result['data_type'])
+    assert processed['effective']['pre1']==x[0]-result['parameters']['e0']
+    assert any('Normalization pre1' in w for w in result['warnings'])
 
 
 @pytest.mark.parametrize("fraction", [.2, .5, .8, 1])
@@ -303,7 +311,7 @@ def test_invalid_policy_does_not_fall_back_to_another_seed(copper, policy):
 
 
 @pytest.mark.parametrize("params", [
-    {"pre1": -500}, {"pre2": -300}, {"norm1": 450, "norm2": 800},
+    {"norm1":499.5,"norm2":800}, {"pre2": -300}, {"norm1": 600, "norm2": 800},
     {"bkg_kmax": 15}, {"bkg_kmax": 8, "kmax": 9},
     {"bkg_kmax": 7.98, "kmax": 7.98}, {"bkg_kmin": 10},
     {"kmin": 11}, {"kmin": 9, "dk": 4}, {"bkg_kmin": 9, "bkg_dk": 10},

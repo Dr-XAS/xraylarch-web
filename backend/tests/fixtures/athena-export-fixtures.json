@@ -1,0 +1,23 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "basis": "Constructed arrays and accessors; actual Perl Text::Template and Larch execution",
+  "native_oracle": {
+    "fixture": "athena-export-templates-native.json",
+    "sha256": "e23cf169e54af136d40267a8d87f7e18a5ebb3f48f5b751ead3a567e32243c16",
+    "cases": 41,
+    "harness": "backend/tests/reference/export_templates_native_reference.py",
+    "harness_sha256": "e6d99839b2d5aa29a20855cf3d3f6b28a4bc50fa5bd1d81267a35641a8567c2e"
+  },
+  "text_template": {
+    "version": "1.61",
+    "source": "https://archive.ubuntu.com/ubuntu/pool/universe/libt/libtext-template-perl/libtext-template-perl_1.61-1_all.deb",
+    "package_sha256": "8473881900e54a4b75f270e7a6d265fbbbb97ad535fede97ee801fa07886060f",
+    "module": "Text/Template.pm",
+    "module_sha256": "2fd5ae88bc1210b0335f703139a2a4d24755a66b823d9d055d8dee4c79c48250"
+  },
+  "larch": {
+    "version": "2026.3.1.post61+gf5272011f",
+    "writer": "larch/io/columnfile.py",
+    "writer_sha256": "fdf4cca0ad61ab81d21222831c05472ae360d7aa92a0f96202eba68b5e577981"
+  }
+}

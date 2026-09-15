@@ -201,7 +201,8 @@ def detector_request(store, project, x, y, reference_mu, *, reverse=False):
     return request, i0, transmitted, reference
 
 
-def test_policy_applies_independently_to_sorted_kev_sample_and_reference(store, xas_arrays):
+def test_policy_enforces_sample_while_sorted_kev_reference_finds_own_e0(store, xas_arrays):
+    from xraylarch_web.athena_e0 import compute_e0
     x, y = xas_arrays
     reference_mu = np.interp(x - 4, x, y)
     project = store.create()
@@ -211,14 +212,19 @@ def test_policy_applies_independently_to_sorted_kev_sample_and_reference(store, 
     assert after["version"] == 1 and len(after["groups"]) == 2
     sample = next(g for g in after["groups"] if g["reference_id"])
     reference = next(g for g in after["groups"] if g["id"] == sample["reference_id"])
+    assert_enforced(sample)
+    assert reference["processing_error"] is None
+    assert reference["source"]["edge_identity"] == {"element": "Cu", "edge": "K", "origin": "reference_sample"}
+    assert "edge_policy" not in reference["source"]
+    assert reference["source"]["e0_selection"]["method"] == "derivative"
     for group, expected_mu in ((sample, y), (reference, reference_mu)):
-        assert_enforced(group)
         np.testing.assert_allclose(group["energy"], x, atol=2e-12, rtol=0)
         np.testing.assert_allclose(group["mu"], expected_mu, atol=1e-14, rtol=0)
         assert group["source"]["mapping"]["units"] == "keV"
         assert group["source"]["row_order"] == list(range(len(x) - 1, -1, -1))
-    # Each channel must get its own fractional edge, not a copied sample E0.
-    assert reference["parameters"]["e0"] - sample["parameters"]["e0"] == pytest.approx(4, abs=0.1)
+    # IO.pm normalizes the reference at its own derivative E0, without the
+    # sample's fractional import enforcement. Same element shares identity.
+    assert reference["parameters"]["e0"] == compute_e0(x, reference_mu, None)["e0"]
     np.testing.assert_allclose(sample["source"]["raw_arrays"]["i0"], i0)
     np.testing.assert_allclose(sample["source"]["raw_arrays"]["signal"], transmitted)
     np.testing.assert_allclose(reference["source"]["raw_arrays"]["i0"], transmitted)
@@ -227,16 +233,19 @@ def test_policy_applies_independently_to_sorted_kev_sample_and_reference(store, 
     assert_saved(store, after)
 
 
-def test_unusable_reference_rolls_back_an_otherwise_valid_sample(store, xas_arrays):
+def test_unusable_reference_remains_inspectable_with_explicit_processing_error(store, xas_arrays):
     x, y = xas_arrays
     project = store.create()
     # All detector counts are valid, but log(It/Ir)=0 has no absorption edge.
     request, *_ = detector_request(store, project, x, y, np.zeros_like(y))
-    before = persisted_files(store, project)
-    with pytest.raises((ScientificError, WebInputError), match="(?i)reference|constant|edge"):
-        store.import_data(project["id"], request)
-    assert_saved(store, project)
-    assert persisted_files(store, project) == before
+    after = store.import_data(project["id"], request)
+    sample, reference = after["groups"]
+    assert_enforced(sample)
+    assert sample["reference_id"] == reference["id"]
+    assert "constant" in reference["processing_error"]
+    assert any("E0 could not" in w for w in reference["source"]["warnings"])
+    np.testing.assert_array_equal(reference["mu"], np.zeros_like(y))
+    assert_saved(store, after)
 
 
 def test_chi_ignores_valid_policy_and_keeps_original_k_axis_and_transform(store):

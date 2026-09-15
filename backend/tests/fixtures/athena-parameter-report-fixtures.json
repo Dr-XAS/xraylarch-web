@@ -1,0 +1,51 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "basis": "Unchanged native Report/header/row and clamp conversion, real XLS writer/element library, constructed data and GUI accessors",
+  "native_oracle": {
+    "fixture": "athena-parameter-report-native.json",
+    "sha256": "a15c3ee669f3254967048a84bcb316674b1737623704914a37b6fd6ed9cbe297",
+    "harness": "backend/tests/reference/parameter_report_native_reference.py",
+    "harness_sha256": "4e1cfb869b2fd0ce708e5f0070bd20f2770aec6aaf028e6f5bc5c1b878f998f4",
+    "scopes": [
+      "all",
+      "marked"
+    ],
+    "parameter_columns": 28,
+    "typed_data_rows": 5,
+    "clamp_cases": 13,
+    "element_names": 118
+  },
+  "native_modules": {
+    "Chemistry/Elements.pm": "d62f537457ccb56db506c6c8dda8bfd62f6103315fa0c4bf544ff57f149dbdd9",
+    "Spreadsheet/WriteExcel.pm": "38aa225399383d6e429609bdd6813eb2671c42f0180eb15bbe6a07906c187715",
+    "Spreadsheet/WriteExcel/Format.pm": "083a619e76b41d9731c2ce1e29ed4c898f3a77a6438cbe8053ad78843d78a1ce",
+    "Spreadsheet/WriteExcel/Workbook.pm": "0845b99b38babeb09f4a005557a7cb3408c43c97dc5aa20b76e87d82c3345c04",
+    "Spreadsheet/WriteExcel/Worksheet.pm": "da0b43a722bcae7318d31740668d57538b0bc296287da7922cd510a699166042"
+  },
+  "native_packages": [
+    {
+      "package": "libspreadsheet-writeexcel-perl_2.40-4_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libs/libspreadsheet-writeexcel-perl/libspreadsheet-writeexcel-perl_2.40-4_all.deb",
+      "sha256": "836a6b29bc27346d8338dd8398aa4fd0278df988cbbd3b41a992ba5a0efa42d8"
+    },
+    {
+      "package": "libparse-recdescent-perl_1.967015+dfsg-4_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libp/libparse-recdescent-perl/libparse-recdescent-perl_1.967015+dfsg-4_all.deb",
+      "sha256": "e89938dd038853435f49f1fbdabf0f9ef0253970f80d6dbdf7d0bedd79b2e01a"
+    },
+    {
+      "package": "libole-storage-lite-perl_0.24-1_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libo/libole-storage-lite-perl/libole-storage-lite-perl_0.24-1_all.deb",
+      "sha256": "53c553e991579fa598a1ba275c9edb3104eb98ae572436a57fa0cb080c97b59e"
+    },
+    {
+      "package": "libchemistry-elements-perl_1.081-1_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libc/libchemistry-elements-perl/libchemistry-elements-perl_1.081-1_all.deb",
+      "sha256": "9f62d261a9e54463ef70569507495e27584d28d0231bb79d0d88143328506d60"
+    }
+  ],
+  "web_dependencies": {
+    "xlwt": "1.3.0",
+    "xlrd": "2.0.2"
+  }
+}

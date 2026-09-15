@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest"
+import { StrictMode, type ComponentProps } from "react"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { athenaApi, type AthenaProject } from "@/lib/athena"
@@ -16,13 +17,13 @@ function preview(name = "first", ids = ["a", "b", "c"]) {
       data_type: "mu", points: 1201, x: [8970, 8980, 8990], y: [index, index + .5, index + 1],
       notes: `Notes for ${id}`, reference_id: index === 0 ? ids[1] : null}))}
 }
-function setup() {
+function setup(extra: Partial<ComponentProps<typeof AthenaProjectImport>> = {}) {
   let current: AthenaProject = {id: "workspace", version: 0, name: "Existing project", groups: [],
     journal: "Keep", updated: "2026-09-07", history: [], undo: [], redo: []}
   const imported = vi.fn((next: AthenaProject) => { current = next })
   const complete = vi.fn(), busy = vi.fn()
   const result = (version: number) => ({...current, version})
-  render(<AthenaProjectImport getProject={() => current} onImported={imported} onComplete={complete} onBusyChange={busy} />)
+  render(<StrictMode><AthenaProjectImport getProject={() => current} onImported={imported} onComplete={complete} onBusyChange={busy} {...extra} /></StrictMode>)
   return {imported, complete, busy, result}
 }
 function choose(names = ["first"]) {
@@ -38,6 +39,29 @@ beforeEach(() => { api.mockReset(); api.mockRejectedValue(new Error("Unexpected 
 afterEach(cleanup)
 
 describe("Athena project preview and selection", () => {
+  it("consumes a batch forwarded from Import data exactly once in StrictMode", async () => {
+    const initialFiles = [new File(["project"], "first.PRJ")]
+    api.mockResolvedValueOnce(preview())
+    setup({ initialFiles }); await ready()
+    expect(api).toHaveBeenCalledTimes(1)
+    expect((api.mock.calls[0][1] as FormData).get("file")).toBe(initialFiles[0])
+  })
+
+  it("hands a mixed batch back to raw import after releasing its busy state", async () => {
+    const remaining = [new File(["data"], "scan.xmu"), new File(["project"], "last.prj")]
+    const handoff = vi.fn()
+    api.mockResolvedValueOnce(preview())
+    const state = setup({ initialFiles: [new File(["project"], "first.prj"), ...remaining], onRemainingFiles: handoff })
+    await ready()
+    handoff.mockImplementation(() => { expect(state.busy).toHaveBeenLastCalledWith("") })
+    api.mockResolvedValueOnce(state.result(1))
+    fireEvent.click(screen.getByRole("button", { name: "Import all groups" }))
+    await waitFor(() => expect(handoff).toHaveBeenCalledWith(remaining))
+    expect(state.imported).toHaveBeenCalledOnce()
+    expect(state.complete).not.toHaveBeenCalled()
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
   it("rejects a mismatched preview signal instead of labelling raw values as normalized", async () => {
     setup(); api.mockResolvedValueOnce(preview()); choose(); await ready()
     api.mockResolvedValueOnce({mode: "mu", data_type: "mu", label: "Sample", x: [8970, 8980, 8990], y: [1, 2, 3], warnings: []})
@@ -223,4 +247,57 @@ describe("Athena project batches and recovery", () => {
     fireEvent.click(screen.getByRole("button", {name: "Retry preview"})); await ready()
     expect(imports()).toHaveLength(0)
   })
+})
+
+describe('Detector project preview', () => {
+  it('previews counts with a detector axis label and no normalization or derivative options', async () => {
+    const data = preview('detector', ['counts']); data.groups[0].data_type = 'detector'
+    api.mockResolvedValueOnce(data); setup(); choose(['detector']); await ready('detector')
+    const select = screen.getByRole('combobox', { name: 'Preview signal' }) as HTMLSelectElement
+    expect([...select.options].map(option => option.text)).toEqual(['Detector signal'])
+    await waitFor(() => expect(plot).toHaveBeenCalled())
+    const props = plot.mock.calls.at(-1)![0]
+    expect(props.data[0].y).toEqual(data.groups[0].y)
+    expect(props.layout.yaxis).toEqual({ title: { text: 'Detector signal' }, automargin: true })
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+})
+
+it('uses the converted project snapshot once, with independent channel preview, then reinspects the original file', async () => {
+  const staged = { ...preview(), file_plugin: { id: 'X23A2MultiChannel', description: 'Four channels', summary: 'Paired I0 and It' } }
+  const file = new File(['XDAC'], 'channels.000')
+  setup({ initialFiles: [file], initialPreview: staged }); await ready()
+  expect(api).not.toHaveBeenCalled()
+  expect(screen.getByRole('link', { name: 'Download original file' })).toHaveAttribute('href', expect.stringContaining('/upload-first/file?variant=source'))
+  expect(screen.getByRole('link', { name: 'Download converted project' })).toHaveAttribute('href', expect.stringContaining('/upload-first/file?variant=converted'))
+  fireEvent.click(checkbox('Reference foil'))
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Oxide, group 3' }))
+  await waitFor(() => expect(plot.mock.calls.at(-1)?.[0].data[0].y).toEqual(staged.groups[2].y))
+  const next = { ...staged, upload_id: 'reinspected', groups: staged.groups.slice(0, 2) }
+  api.mockResolvedValueOnce(next)
+  fireEvent.click(screen.getByRole('button', { name: 'Reinspect source file' }))
+  await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2))
+  expect(screen.getAllByRole('checkbox').every(c => (c as HTMLInputElement).checked)).toBe(true)
+  expect(api).toHaveBeenCalledTimes(1)
+  expect(api.mock.calls[0][0]).toBe('/projects/workspace/preview-project')
+  expect((api.mock.calls[0][1] as FormData).get('file')).toBe(file)
+  expect(imports()).toHaveLength(0)
+})
+
+it('disables stale project import after failed conversion and retries the same original without losing the queue', async () => {
+  const staged = { ...preview(), file_plugin: { id: '10BMMultiChannel', description: 'Four channels', summary: 'Paired I0 and It' } }
+  const files = [new File(['MRCAT'], 'channels.dat'), new File(['columns'], 'later.dat')], handoff = vi.fn()
+  const state = setup({ initialFiles: files, initialPreview: staged, onRemainingFiles: handoff }); await ready()
+  api.mockRejectedValueOnce(new Error('Invalid detector columns'))
+  fireEvent.click(screen.getByRole('button', { name: 'Reinspect source file' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Invalid detector columns')
+  expect(screen.queryByRole('button', { name: 'Import all groups' })).not.toBeInTheDocument()
+  api.mockResolvedValueOnce({ ...staged, upload_id: 'retry' })
+  fireEvent.click(screen.getByRole('button', { name: 'Retry preview' })); await ready()
+  expect((api.mock.calls[1][1] as FormData).get('file')).toBe(files[0])
+  api.mockResolvedValueOnce(state.result(1))
+  fireEvent.click(screen.getByRole('button', { name: 'Import all groups' }))
+  await waitFor(() => expect(handoff).toHaveBeenCalledWith([files[1]]))
+  expect(imports()).toHaveLength(1)
+  expect(imports()[0][1]).toEqual({ version: 0, upload_id: 'retry', group_ids: ['a','b','c'] })
 })

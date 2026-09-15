@@ -1,0 +1,772 @@
+{
+  "revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "file": {
+    "path": "t/filetypes/x23a2med.dat",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/x23a2med.dat",
+    "sha256": "f218b99aa4f5367e00130f23ff60ca0ccb2c9b7ea3cddce245fa1af961c9bd0f",
+    "git_blob_sha1": "89195295d796705d8cd3278893efc9c2ae39fc98",
+    "bytes": 102154,
+    "file": "demeter-x23a2med.dat"
+  },
+  "harness_sha256": "bf3aab3e480821f6f5e4c15a0a2ae66ed21a8d4224ff1195f5f70e0a89b29522",
+  "references": [
+    {
+      "name": "defaults",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-defaults-native.json.gz",
+      "sha256": "d3b7fe3cad87f999eff280c72e88193aa379ced42de5f21b7aef6b7b4b7cf979",
+      "shape": [
+        422,
+        8
+      ],
+      "native": {
+        "default": {
+          "ln": 0,
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6",
+          "energy": "$1"
+        },
+        "attrs": {
+          "nelements": 4,
+          "dts": "280 280 280 280",
+          "maxints": "4 4 4 4"
+        },
+        "produced_output": 1,
+        "fluorescence": {
+          "energy": "$1",
+          "numerator": "$3+$4+$5+$6",
+          "denominator": "$2",
+          "ln": 0
+        },
+        "transmission": {
+          "denominator": "$7",
+          "ln": 1,
+          "energy": "$1",
+          "numerator": "$2"
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "corr4",
+          "it",
+          "iref"
+        ],
+        "recognized": true
+      }
+    },
+    {
+      "name": "zero-deadtime",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 0,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 0,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 0,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 0,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-zero-deadtime-native.json.gz",
+      "sha256": "f0dc0f08e02d97a5bd293c156b609d77d1c0ad3ae94a58367e600e13502a6697",
+      "shape": [
+        422,
+        8
+      ],
+      "native": {
+        "recognized": true,
+        "produced_output": 1,
+        "fluorescence": {
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6",
+          "ln": 0,
+          "energy": "$1"
+        },
+        "default": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6"
+        },
+        "attrs": {
+          "dts": "0 0 0 0",
+          "nelements": 4,
+          "maxints": "0 0 0 0"
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "corr4",
+          "it",
+          "iref"
+        ],
+        "transmission": {
+          "energy": "$1",
+          "ln": 1,
+          "numerator": "$2",
+          "denominator": "$7"
+        }
+      }
+    },
+    {
+      "name": "constant-time",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "constant",
+        "intcol": "inttime",
+        "inttime": 2.0
+      },
+      "file": "x23a2med-constant-time-native.json.gz",
+      "sha256": "3b64295678fffb512912bcda546a74749da2654ee9c631efc646c93bde7e1e53",
+      "shape": [
+        422,
+        8
+      ],
+      "native": {
+        "attrs": {
+          "dts": "280 280 280 280",
+          "nelements": 4,
+          "maxints": "4 4 4 4"
+        },
+        "recognized": true,
+        "transmission": {
+          "ln": 1,
+          "numerator": "$2",
+          "denominator": "$7",
+          "energy": "$1"
+        },
+        "produced_output": 1,
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "corr4",
+          "it",
+          "iref"
+        ],
+        "default": {
+          "energy": "$1",
+          "numerator": "$3+$4+$5+$6",
+          "denominator": "$2",
+          "ln": 0
+        },
+        "fluorescence": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6"
+        }
+      }
+    },
+    {
+      "name": "1-channels",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-1-channels-native.json.gz",
+      "sha256": "f05c628975a541a838ca73a8a48cf0e5d2aa0cee6d1671c6c0ef38051b4de74e",
+      "shape": [
+        16,
+        5
+      ],
+      "native": {
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "it",
+          "iref"
+        ],
+        "recognized": true,
+        "attrs": {
+          "dts": "280",
+          "maxints": "3",
+          "nelements": 1
+        },
+        "produced_output": 1,
+        "default": {
+          "numerator": "$3",
+          "denominator": "$2",
+          "ln": 0,
+          "energy": "$1"
+        },
+        "transmission": {
+          "numerator": "$2",
+          "denominator": "$4",
+          "ln": 1,
+          "energy": "$1"
+        },
+        "fluorescence": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2",
+          "numerator": "$3"
+        }
+      }
+    },
+    {
+      "name": "2-channels",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-2-channels-native.json.gz",
+      "sha256": "6696f3a8b48c3aae3f7eda968634a24aad36f77ee9b9fb4b8dee75409844e190",
+      "shape": [
+        16,
+        6
+      ],
+      "native": {
+        "produced_output": 1,
+        "attrs": {
+          "maxints": "3 3",
+          "dts": "280 280",
+          "nelements": 2
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "it",
+          "iref"
+        ],
+        "transmission": {
+          "numerator": "$2",
+          "ln": 1,
+          "energy": "$1",
+          "denominator": "$7"
+        },
+        "fluorescence": {
+          "energy": "$1",
+          "denominator": "$2",
+          "numerator": "$3+$4",
+          "ln": 0
+        },
+        "recognized": true,
+        "default": {
+          "numerator": "$3+$4",
+          "ln": 0,
+          "denominator": "$2",
+          "energy": "$1"
+        }
+      }
+    },
+    {
+      "name": "3-channels",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-3-channels-native.json.gz",
+      "sha256": "e62dd3130be63e4d2d50a9f27ff387eb9722d921d0d2eba545f92f6151924691",
+      "shape": [
+        16,
+        7
+      ],
+      "native": {
+        "attrs": {
+          "nelements": 3,
+          "dts": "280 280 280",
+          "maxints": "3 3 3"
+        },
+        "default": {
+          "ln": 0,
+          "denominator": "$2",
+          "energy": "$1",
+          "numerator": "$3+$4+$5"
+        },
+        "transmission": {
+          "numerator": "$2",
+          "denominator": "$7",
+          "ln": 1,
+          "energy": "$1"
+        },
+        "produced_output": 1,
+        "recognized": true,
+        "fluorescence": {
+          "numerator": "$3+$4+$5",
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2"
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "it",
+          "iref"
+        ]
+      }
+    },
+    {
+      "name": "zero-slow-channel",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-zero-slow-channel-native.json.gz",
+      "sha256": "1f5a4a9619e6fe7003a27acbfcceea136e58383113d168c6311fcb14e0c14830",
+      "shape": [
+        16,
+        7
+      ],
+      "native": {
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "it",
+          "iref"
+        ],
+        "produced_output": 1,
+        "recognized": true,
+        "fluorescence": {
+          "numerator": "$3+$4+$5",
+          "ln": 0,
+          "energy": "$1",
+          "denominator": "$2"
+        },
+        "default": {
+          "ln": 0,
+          "numerator": "$3+$4+$5",
+          "denominator": "$2",
+          "energy": "$1"
+        },
+        "transmission": {
+          "energy": "$1",
+          "denominator": "$7",
+          "numerator": "$2",
+          "ln": 1
+        },
+        "attrs": {
+          "nelements": 3,
+          "dts": "280 280 280",
+          "maxints": "3 3 3"
+        }
+      }
+    },
+    {
+      "name": "all-zero-slow",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-all-zero-slow-native.json.gz",
+      "sha256": "9ce0f96d2a13ae8fc30d37cf44bf140afeeba1fe7f639704fcc983cca8fdd754",
+      "shape": [
+        0,
+        0
+      ],
+      "native": {
+        "attrs": {
+          "nelements": 4,
+          "dts": "",
+          "maxints": ""
+        },
+        "fluorescence": {
+          "denominator": "$2",
+          "ln": 0,
+          "energy": "$1",
+          "numerator": "$3+$4+$5+$6"
+        },
+        "transmission": {
+          "energy": "$1",
+          "denominator": "$7",
+          "ln": 1,
+          "numerator": "$2"
+        },
+        "produced_output": 0,
+        "labels": [],
+        "recognized": true,
+        "default": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6"
+        }
+      }
+    },
+    {
+      "name": "low-fast",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-low-fast-native.json.gz",
+      "sha256": "6c91939e069cd9d24f31f439404da1510433faeb2a13aec38f5fa64fbf56811d",
+      "shape": [
+        16,
+        8
+      ],
+      "native": {
+        "produced_output": 1,
+        "default": {
+          "denominator": "$2",
+          "ln": 0,
+          "energy": "$1",
+          "numerator": "$3+$4+$5+$6"
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "corr4",
+          "it",
+          "iref"
+        ],
+        "recognized": true,
+        "attrs": {
+          "maxints": "3 3 3 3",
+          "nelements": 4,
+          "dts": "280 280 280 280"
+        },
+        "transmission": {
+          "ln": 1,
+          "energy": "$1",
+          "denominator": "$7",
+          "numerator": "$2"
+        },
+        "fluorescence": {
+          "ln": 0,
+          "energy": "$1",
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6"
+        }
+      }
+    },
+    {
+      "name": "iteration-cap",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 10000,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-iteration-cap-native.json.gz",
+      "sha256": "fad1d80861628f9349a486381574af745e9e01dcf8a80c1b0325c9975da4c274",
+      "shape": [
+        16,
+        8
+      ],
+      "native": {
+        "attrs": {
+          "nelements": 4,
+          "maxints": "20 3 3 3",
+          "dts": "10000 280 280 280"
+        },
+        "default": {
+          "numerator": "$3+$4+$5+$6",
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2"
+        },
+        "fluorescence": {
+          "denominator": "$2",
+          "ln": 0,
+          "energy": "$1",
+          "numerator": "$3+$4+$5+$6"
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "corr1",
+          "corr2",
+          "corr3",
+          "corr4",
+          "it",
+          "iref"
+        ],
+        "recognized": true,
+        "transmission": {
+          "ln": 1,
+          "denominator": "$7",
+          "energy": "$1",
+          "numerator": "$2"
+        },
+        "produced_output": 1
+      }
+    },
+    {
+      "name": "multiedge",
+      "values": {
+        "energy": "nergy",
+        "i0": "i0",
+        "dt1": 280,
+        "roi1": "ifch1",
+        "fast1": "iffast1",
+        "slow1": "ifslow1",
+        "dt2": 280,
+        "roi2": "ifch2",
+        "fast2": "iffast2",
+        "slow2": "ifslow2",
+        "dt3": 280,
+        "roi3": "ifch3",
+        "fast3": "iffast3",
+        "slow3": "ifslow3",
+        "dt4": 280,
+        "roi4": "ifch4",
+        "fast4": "iffast4",
+        "slow4": "ifslow4",
+        "multiedge_regex": "roi\\d_\\d",
+        "time": "column",
+        "intcol": "inttime",
+        "inttime": 1.0
+      },
+      "file": "x23a2med-multiedge-native.json.gz",
+      "sha256": "b923f5f8dcf3e6d97386f4b2413c4d6d8cb6ccfeb40f993df03d8ce6d36a6231",
+      "shape": [
+        16,
+        12
+      ],
+      "native": {
+        "attrs": {
+          "nelements": 4,
+          "maxints": "3 3 3 3",
+          "dts": "280 280 280 280"
+        },
+        "labels": [
+          "energy",
+          "i0",
+          "c1_1",
+          "c1_2",
+          "c1_3",
+          "c1_4",
+          "c2_1",
+          "c2_2",
+          "c2_3",
+          "c2_4",
+          "it",
+          "iref"
+        ],
+        "default": {
+          "energy": "$1",
+          "ln": 0,
+          "denominator": "$2",
+          "numerator": "$3+$4+$5+$6"
+        },
+        "transmission": {
+          "ln": 1,
+          "denominator": "$7",
+          "numerator": "$2",
+          "energy": "$1"
+        },
+        "fluorescence": {
+          "ln": 0,
+          "numerator": "$3+$4+$5+$6",
+          "denominator": "$2",
+          "energy": "$1"
+        },
+        "produced_output": 1,
+        "recognized": true
+      }
+    }
+  ]
+}

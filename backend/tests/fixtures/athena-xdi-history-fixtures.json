@@ -1,0 +1,28 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 30,
+  "source_sha256": {
+    "lib/Demeter/Data/XDI.pm": "26a5007b1fd9401de3247be537f0ef675b07d397ddcf74b555542ffa608e425e",
+    "lib/Demeter/Data/Process.pm": "953a1b3392a33b64c9d1a0ade21d6b75762261880de483329a829c49d99f2865",
+    "lib/Demeter/Diff.pm": "673c570e8310ffca354832ee93b1ae873b4de9c71b84f2b55e7bea7b73b9c528",
+    "lib/Demeter/UI/Athena/Group.pm": "3cc70f81c3130d2c069a4c38f483db005cbb091edb90e424c7cce1d36c98f13d",
+    "lib/Demeter/UI/Athena/IO.pm": "e595761d78809f12a5b7327454a121114b5c97e648945442d101fc00d2b7c54a",
+    "lib/Demeter/UI/Athena/Series.pm": "a105d4b5e55ec6d2f38ea61ca670fdfeba49dd146bc19655fe6799aa26daa61a",
+    "lib/Demeter/UI/Athena/Summer.pm": "bc31560f2e5289d79ffd7d777de79fbbf39ee8f6bc9ef2f4efdc7bb1a9616627"
+  },
+  "native_modules": {
+    "Xray/XDI.pm": "28a9676f10c1fd6944761ed17c276785c66c4db4f89bba79be45f8cc9c9af194",
+    "Xray/XDI/WriterPP.pm": "731271d466b820599de7eba8906a0f7c1faf217d30394de82d20d988b8337cf4",
+    "Xray/XDIFile.pm": "4bbb42213e66331cb206dd0ecc0d04d7170472ac66536625cd83c0f75416f37b"
+  },
+  "xdi_version": "1.00",
+  "sha256": {
+    "backend/tests/reference/xdi_history_native_reference.py": "833fd7c2d0e7138e0beecbb702b651248339331058a67ee051f19331c83178a3",
+    "backend/tests/fixtures/athena-xdi-history-native.json.gz": "f790610bbe0541fb6882cf80fee74fab4b6c67a4548af4c995e4760a327a0fbd",
+    "backend/tests/fixtures/xdi-official-cu_metal_rt.xdi": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+    "backend/tests/fixtures/xdi-official-fe2o3_rt.xdi": "4a1c4cec3e00d62734406a872d8a114ebd7d7c1b66050a61ec4017b03abd2a5a"
+  },
+  "basis": "Unmodified Data::XDI::xdi_make_clone and actual Xray::XDI reader, Moose deep clone, and serializer. Only group xdi/bkg_z/fft_edge accessors are bridged. Cu/Fe measured tables retain every observation; scan times, prior process and special-character metadata are controlled probe inputs.",
+  "determinism": "PERL_HASH_SEED=0 and PERL_PERTURB_KEYS=0 stabilize native Moose attribute traversal and Data::Dumper order. Other hash seeds can cause native file-trigger rereads and metadata loss. The web preserves captured metadata without rereading the source path.",
+  "boundary": "Positive timestamp removal is a primitive probe, not an assertion that a particular Athena UI operation uses it. Sum and other web-only processing descriptions are not exact native caller assertions. No desktop GUI lifecycle replay."
+}

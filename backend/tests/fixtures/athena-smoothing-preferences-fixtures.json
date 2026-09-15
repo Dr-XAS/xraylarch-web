@@ -1,0 +1,51 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 13,
+  "source_sha256": {
+    "lib/Demeter/Config.pm": "f5399a087b6f04fb5cfd56953c7c709303b2c126bd646d7f49ed43d0db91a7f8",
+    "lib/Demeter/IniReader.pm": "85e957d589ef220b30aac1cc193dc83af8d17bd98d53fbb5024d35cfe80dd21d",
+    "lib/Demeter/UI/Wx/Config.pm": "294b14ea7aa4214d80d006b5f721a7e5339a9ac8373884fd5834e5bb8d4df1fe",
+    "lib/Demeter/configuration/process.demeter_conf": "aa81973fbf7623f23a87a7ebbf550790f68e58ecf98b71ae333eb1e5c8f5a148",
+    "lib/Demeter/templates/process/larch/smooth.tmpl": "9a9eaa9c4f3e21557207be1ad8febcfdf162c822cad7d662e4154f2bcf305068"
+  },
+  "native_modules": {
+    "Config/INI/Reader.pm": "6694aca616c31e9bf679eb2d148bec56ee45e210ff4408df8b48ddd6abcba9a7",
+    "Config/INI/Writer.pm": "a894ef9f64a45f4d83895c7b6417626f7548ac1fd5f78cbf283141dba1d2beda",
+    "Demeter/IniReader.pm": "85e957d589ef220b30aac1cc193dc83af8d17bd98d53fbb5024d35cfe80dd21d",
+    "Regexp/Assemble.pm": "8475d592bc7ddf6edb1adf128d01694fe436299a6af5d30fa1e5e2076ee01ca7",
+    "Text/Template.pm": "2fd5ae88bc1210b0335f703139a2a4d24755a66b823d9d055d8dee4c79c48250"
+  },
+  "sha256": {
+    "backend/tests/reference/smoothing_preferences_native_reference.py": "234bdd1c423e89d6c8647dae65af41539326642b5a3e84ec03b731a29b6bcb00",
+    "backend/tests/fixtures/athena-smoothing-preferences-native.json.gz": "65a3f5dc1b37a4723056a91a4899fc9ccf2fadfead2e94e3da8c91496ef04325",
+    "backend/tests/fixtures/xdi-official-cu_metal_rt.xdi": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467"
+  },
+  "reference_packages": [
+    {
+      "Package": "libregexp-assemble-perl",
+      "Version": "0.38-2",
+      "Filename": "pool/universe/libr/libregexp-assemble-perl/libregexp-assemble-perl_0.38-2_all.deb",
+      "SHA256": "5ee37d49a489646a9682295bd580fb7aaba82f24351ec98cacf078811cbc7344"
+    },
+    {
+      "Package": "libmixin-linewise-perl",
+      "Version": "0.111-1",
+      "Filename": "pool/universe/libm/libmixin-linewise-perl/libmixin-linewise-perl_0.111-1_all.deb",
+      "SHA256": "b14e35561b77125513bea78568258a15134f29dbb0287597d790b71bdb698236"
+    },
+    {
+      "Package": "libconfig-ini-perl",
+      "Version": "1:0.029-1",
+      "Filename": "pool/universe/libc/libconfig-ini-perl/libconfig-ini-perl_0.029-1_all.deb",
+      "SHA256": "516f449b3ee0cf4493a022a22336c7f5761b1ab1377b3f673829bb80fffdcd39"
+    },
+    {
+      "Package": "libperlio-utf8-strict-perl",
+      "Version": "0.010-1build4",
+      "Filename": "pool/main/libp/libperlio-utf8-strict-perl/libperlio-utf8-strict-perl_0.010-1build4_amd64.deb",
+      "SHA256": "26251b739b5f433cf76cf3a51b54ef610d1528b39e16dd5c42b2ad799156dce8"
+    }
+  ],
+  "basis": "Unmodified Config parser/set/default/read_ini(smooth)/write_ini and UI::Wx::Config::apply, actual Regexp::Assemble, Demeter::IniReader, Config::INI::Writer, Text::Template and Larch. Moose accessors/mode and wx widgets/callback are explicit bridges. Full preference tree and rendered native GUI are not replayed. Native raw order default 4 is clamped to effective 9."
+}

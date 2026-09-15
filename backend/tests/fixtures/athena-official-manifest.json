@@ -1,0 +1,58 @@
+[
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/cu.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/cu.prj",
+    "sha256": "1efbacc1b8489438f77539668e5db7c2c843bc0af0c83b1f2108986b938f0525",
+    "git_blob_sha1": "4b15bda57af403d761e3802885e8bdb1bcab55c6",
+    "bytes": 16137
+  },
+  {
+    "file": "backend/tests/fixtures/demeter-athena-json.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/athena_json.prj",
+    "sha256": "0ae47681394bb2bd3d3e44092a886bec073fb5b37e8390a996cb6a14b926259f",
+    "git_blob_sha1": "67f91a56c089198b40d8842fa7a67e4dbc809893",
+    "bytes": 361793
+  },
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/fbo.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/FuzzyOverSites/fbo.prj",
+    "sha256": "1e5d40437b0139382cd9f6d999f131f01ccf73eb6efadb076ab00830e96fe603",
+    "git_blob_sha1": "698e9ae118ed6461c2986d50efd40ba124ad5979",
+    "bytes": 5513
+  },
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/methyltin.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Methyltin/methyltin.prj",
+    "sha256": "894ff6612d770d8a7dd7f0d55366fd2aba9b41eb181265a49c914bf9e5f55a73",
+    "git_blob_sha1": "6334a00e6cdf568a08488150263e4fff35dd55be",
+    "bytes": 22376
+  },
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/zirconolite.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/FuzzyOverSites/Zirconolite/zirconolite.prj",
+    "sha256": "521bcd8a5e31a1fd5d22e34e518dc186b85d416d8a8baad9f731085bdb0609e2",
+    "git_blob_sha1": "1db0731706480067303f5f07a2393936637ea89c",
+    "bytes": 50292
+  },
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/HgDNA_data.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/ComplexFit/HgDNA_data.prj",
+    "sha256": "ede960a374bebe0473cbf58375001bb041b45ec1a5c686f53d7e34ad6faa1e92",
+    "git_blob_sha1": "37ffdcdc6f9aa0b0ea3e0545516c314d2a927afe",
+    "bytes": 20642
+  },
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/LaCoO3.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/MEE/LaCoO3.prj",
+    "sha256": "9b5e126dad2514252beff52630a8a961b239aa47739b3eecdbe2c42260a8d0a2",
+    "git_blob_sha1": "206f1e369316629ea24ece3c51f3ffaff1684be0",
+    "bytes": 17860
+  },
+  {
+    "file": "examples/xafsdata/AthenaProjectFiles/diff_ex.prj",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/recipes/Difference/diff.prj",
+    "sha256": "c7152007277746e19cbe6a8ea5805fd06d58477535e4265c4853ae109e83a9a7",
+    "git_blob_sha1": "019f57e7163cc26592c94a1a1b7e15e6e616771e",
+    "bytes": 35186
+  }
+]

@@ -1,0 +1,4 @@
+# Upstream Demeter samples and recorded native outputs are compared byte for
+# byte against the sha256 digests in the *-fixtures.json manifests, so they
+# must never be line-ending normalized.
+* -text

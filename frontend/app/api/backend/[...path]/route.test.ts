@@ -10,6 +10,17 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
+  it("preserves the Athena export revision with attachment bytes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("# saved data\n8970 1", {
+      headers: { "content-type": "text/plain", "content-disposition": 'attachment; filename="Cu.xmu"', "x-athena-project-version": "17" },
+    })))
+    const response = await POST(new Request("http://localhost/api/backend/api/athena/projects/cu/export-data", {
+      method: "POST", body: JSON.stringify({ version: 17 }),
+    }), { params: Promise.resolve({ path: ["api", "athena", "projects", "cu", "export-data"] }) })
+    expect(response.headers.get("x-athena-project-version")).toBe("17")
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="Cu.xmu"')
+    expect(await response.text()).toBe("# saved data\n8970 1")
+  })
   it("forwards normalized preview mode and repeated encoded IDs without mutating the request or route parameters", async () => {
     vi.stubEnv("BACKEND_URL", "http://backend.test:8010/")
     const nativeId = "Fe/foil ?# μ+"

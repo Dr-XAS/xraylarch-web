@@ -3,7 +3,9 @@
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { FolderOpen } from "lucide-react"
-import { athenaApi, type AthenaProject } from "@/lib/athena"
+import { apiBase, athenaApi, type AthenaProject } from "@/lib/athena"
+import { isAthenaProjectFile } from "@/lib/athena-file-types"
+import { AthenaPluginConfiguration } from "./athena-plugin-configuration"
 import styles from "./athena-project-import.module.css"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false })
@@ -13,9 +15,10 @@ interface PreviewGroup {
   x: number[]; y: number[]; notes: string; reference_id: string | null
   background_standard_id?: string | null
 }
-interface ProjectPreview {
+export interface ProjectPreview {
   upload_id: string; filename: string; name: string; journal: string
   groups: PreviewGroup[]; warnings: string[]
+  file_plugin?: { id: string; description: string; summary: string; configurable?: boolean }
 }
 interface PreviewTrace {
   x: number[]; y: number[]; label: string; mode: PreviewMode
@@ -27,13 +30,16 @@ interface Props {
   onComplete: () => void
   onBusyChange: (label: string) => void
   disabled?: boolean
+  initialFiles?: File[]
+  initialPreview?: ProjectPreview | null
+  onRemainingFiles?: (files: File[]) => void
 }
 
 const modeLabels: Record<PreviewMode, string> = {
   mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", chi: "χ(k)",
 }
 
-export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false }: Props) {
+export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, initialFiles, initialPreview, onRemainingFiles }: Props) {
   const [files, setFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<ProjectPreview | null>(null)
   const [selected, setSelected] = useState<string[]>([])
@@ -49,10 +55,14 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
   const [every, setEvery] = useState("2")
   const [start, setStart] = useState("1")
   const [selectionNote, setSelectionNote] = useState("")
+  const [configurationOpen, setConfigurationOpen] = useState(false)
+  const [configurationPending, setConfigurationPending] = useState(false)
   const anchor = useRef<number | null>(null)
+  const initialChoice = useRef<File[] | undefined>(undefined)
   const active = preview?.groups.find(group => group.id === activeId)
   const all = !selected.length || selected.length === preview?.groups.length
-  const locked = !!busy || disabled
+  const compatibilityNotes = [...new Set([...(preview?.warnings ?? []), ...(trace?.warnings ?? [])])]
+  const locked = !!busy || disabled || configurationPending
 
   function project() {
     const current = getProject()
@@ -76,14 +86,21 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     catch (err) { setError(err instanceof Error ? err.message : "Project import failed.") }
     finally { setBusy(""); onBusyChange("") }
   }
-  async function choose(incoming: File[]) {
+  async function choose(incoming: File[], staged?: ProjectPreview | null) {
     if (!incoming.length) return
+    if (!staged && /\.zip$/i.test(incoming[0].name) && onRemainingFiles) {
+      onRemainingFiles(incoming)
+      return
+    }
     setFiles(incoming); setPreview(null); setTrace(null)
-    await task("Reading project preview", async () => { await inspect(incoming[0]) })
+    setConfigurationOpen(false)
+    if (staged) acceptPreview(staged)
+    else await task("Reading project preview", async () => { await inspect(incoming[0]) })
   }
   async function importSelected() {
     if (!preview || !files.length) return
     const wholeBatch = all
+    let remainingData: File[] | null = null
     await task("Importing project groups", async () => {
       let current = preview
       let pending = files
@@ -96,12 +113,27 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
         onImported(imported)
         pending = pending.slice(1); setFiles(pending); setPreview(null); setTrace(null)
         if (!pending.length) { onComplete(); return }
+        if (!isAthenaProjectFile(pending[0]) && onRemainingFiles) {
+          remainingData = pending
+          return
+        }
         current = await inspect(pending[0])
         if (!wholeBatch) return
         selection = [] // Athena imports every remaining project after a whole-project choice.
       }
     })
+    // Release this panel's busy state before the next raw-file inspection.
+    if (remainingData) onRemainingFiles?.(remainingData)
   }
+
+  useEffect(() => {
+    if (initialFiles?.length && initialChoice.current !== initialFiles) {
+      initialChoice.current = initialFiles
+      void choose(initialFiles, initialPreview)
+    }
+    // A supplied file batch is consumed once, including React StrictMode.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFiles])
 
   useEffect(() => {
     let current = true
@@ -155,10 +187,21 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     setSelected(ids); setSelectionNote(`${ids.length} groups selected by position.`); setError("")
   }
 
-  return <section aria-label="Project file import">
+  return <section aria-label="Project file import" className={styles.panel}>
     {!preview && <label className="ath-upload-zone"><FolderOpen size={26} /><strong>Open an Athena project</strong><span>.prj, .json or .gz · multiple projects supported</span><input type="file" aria-label="Open project file" multiple disabled={locked} accept=".prj,.json,.gz" onChange={event => { void choose(Array.from(event.target.files ?? [])); event.target.value = "" }} /></label>}
     {files.length > 0 && <p className={styles.progress} role="status">{busy || `Reviewing ${files[0].name}`} · {files.length} project file{files.length === 1 ? "" : "s"} remaining</p>}
     {preview && <>
+      {preview.file_plugin && <section aria-label="Project file conversion">
+        <h4>{preview.file_plugin.description}</h4><p>{preview.file_plugin.summary}</p>
+        <div className="ath-modal-actions">
+          <a className="ath-button" href={`${apiBase}/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=source`} download>Download original file</a>
+          <a className="ath-button" href={`${apiBase}/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=converted`} download>Download converted project</a>
+          <button disabled={locked} onClick={() => { void choose(files) }}>Reinspect source file</button>
+          {preview.file_plugin.configurable && <button disabled={locked} onClick={() => setConfigurationOpen(value => !value)}>{configurationOpen ? 'Hide reader configuration' : 'Configure reader'}</button>}
+        </div>
+        {configurationOpen && <AthenaPluginConfiguration reader={preview.file_plugin.id} onPendingChange={value => { setConfigurationPending(value); onBusyChange(value ? 'Configuring file reader' : '') }} />}
+        <p className="ath-hint">Groups below use the reader settings from this inspection. Reinspect after changing configuration to recalculate and reset group selection.</p>
+      </section>}
       <h3 className={styles.title}>{preview.name || preview.filename}</h3>
       <div className={styles.layout}>
         <div>
@@ -186,22 +229,21 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
         <div className={styles.details}>
           <h4>Project journal</h4><pre className={styles.journal}>{preview.journal || "No journal entries."}</pre>
           {active && <>
-            <label className="ath-field"><span>Preview signal</span><select disabled={locked} value={mode} onChange={event => setMode(event.target.value as PreviewMode)}>{(active.data_type === "chi" ? ["chi"] : ["mu", "norm", "flat", "dmude"]).map(value => <option value={value} key={value}>{modeLabels[value as PreviewMode]}</option>)}</select></label>
+            <label className="ath-field"><span>Preview signal</span><select disabled={locked} value={mode} onChange={event => setMode(event.target.value as PreviewMode)}>{(active.data_type === "chi" ? ["chi"] : active.data_type === "detector" ? ["mu"] : ["mu", "norm", "flat", "dmude"]).map(value => <option value={value} key={value}>{active.data_type === "detector" ? "Detector signal" : modeLabels[value as PreviewMode]}</option>)}</select></label>
             <div className={styles.plot} aria-label={`Preview of ${active.label}`}>
-              {plotBusy ? <p role="status">Calculating preview…</p> : trace?.x.length && !plotError ? <Plot data={[{x: trace.x.slice(), y: trace.y.slice(), type: "scatter", mode: "lines", name: trace.label, line: {color: "#16736b", width: 1.5}}]} layout={{autosize: true, margin: {l: 60, r: 14, t: 15, b: 50}, xaxis: {title: {text: mode === "chi" ? "k (Å⁻¹)" : "Energy (eV)"}}, yaxis: {title: {text: modeLabels[mode]}, automargin: true}, font: {size: 10}, showlegend: false, uirevision: `${preview.upload_id}-${active.id}-${mode}`}} config={{responsive: true, displaylogo: false, displayModeBar: false}} useResizeHandler style={{width: "100%", height: "100%"}} /> : <p>{plotError || "No preview points available."}</p>}
+              {plotBusy ? <p role="status">Calculating preview…</p> : trace?.x.length && !plotError ? <Plot data={[{x: trace.x.slice(), y: trace.y.slice(), type: "scatter", mode: "lines", name: trace.label, line: {color: "#16736b", width: 1.5}}]} layout={{autosize: true, margin: {l: 60, r: 14, t: 15, b: 50}, xaxis: {title: {text: mode === "chi" ? "k (Å⁻¹)" : "Energy (eV)"}}, yaxis: {title: {text: active.data_type === "detector" ? "Detector signal" : modeLabels[mode]}, automargin: true}, font: {size: 10}, showlegend: false, uirevision: `${preview.upload_id}-${active.id}-${mode}`}} config={{responsive: true, displaylogo: false, displayModeBar: false}} useResizeHandler style={{width: "100%", height: "100%"}} /> : <p>{plotError || "No preview points available."}</p>}
             </div>
             {plotError && <button disabled={locked || plotBusy} onClick={() => setPlotRetry(value => value + 1)}>Retry plot preview</button>}
             {trace && active.points > trace.x.length && <p className="ath-hint">Displaying {trace.x.length} of {active.points.toLocaleString()} source points. The full data are imported.</p>}
-            {trace?.warnings.map((warning, index) => <p key={index} className="ath-warning">{warning}</p>)}
             <h4>Group notes</h4><pre className={styles.notes}>{active.notes || "No group notes."}</pre>
             {active.reference_id && <p className="ath-hint">Reference: {preview.groups.find(group => group.id === active.reference_id)?.label ?? active.reference_id}. Include both groups to keep the link.</p>}
             {active.background_standard_id && <p className="ath-hint">Background standard: {preview.groups.find(group => group.id === active.background_standard_id)?.label ?? active.background_standard_id}. Include the standard and its dependencies to retain this processing.</p>}
           </>}
         </div>
       </div>
-      {preview.warnings.map((warning, index) => <p className="ath-warning" key={index}>{warning}</p>)}
+      {!!compatibilityNotes.length && <details><summary>{compatibilityNotes.length} compatibility notes · original settings retained</summary>{compatibilityNotes.map((warning, index) => <p className="ath-warning" key={index}>{warning}</p>)}</details>}
       {selectionNote && <p role="status">{selectionNote}</p>}
-      <p className="ath-hint">{!selected.length ? "No groups selected: Import all will import the entire project." : `${selected.length} of ${preview.groups.length} groups selected.`} {all ? "Saved analysis state is included. Remaining project files will be imported in full." : "A subset imports data and recipes; saved analysis state is not restored. The next project will open for selection."}</p>
+      <p className="ath-hint">{!selected.length ? "No groups selected: Import all will import the entire project." : `${selected.length} of ${preview.groups.length} groups selected.`} {all ? "Journal and supported analysis state are included. Compatibility notes identify settings retained only as metadata. Remaining project files will be imported in full." : "A subset imports data and recipes; saved analysis state is not restored. The next project will open for selection."}</p>
     </>}
     {error && <div className="ath-error" role="alert">{error}</div>}
     {files.length > 0 && <div className="ath-modal-actions">

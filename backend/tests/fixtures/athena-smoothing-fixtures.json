@@ -1,0 +1,99 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 36,
+  "source_sha256": {
+    "lib/Demeter/Data/Process.pm": "953a1b3392a33b64c9d1a0ade21d6b75762261880de483329a829c49d99f2865",
+    "lib/Demeter/templates/process/ifeffit/smooth.tmpl": "33cab688da81294a52710aa330329849f59bf2e8c8f15f64ae0c100db3b44bef",
+    "lib/Demeter/templates/process/larch/smooth.tmpl": "9a9eaa9c4f3e21557207be1ad8febcfdf162c822cad7d662e4154f2bcf305068"
+  },
+  "fortran_sources": {
+    "decod.f": "5d85e656565feef388bd411493bfb91f3c84f97b8c0a496e823a06e2346f3661",
+    "encod.h": "0b2eed3e415707cf19b3d97a1616a56f6c9d80800bdca5170a5f6327f9b41218",
+    "maxpts.h": "13c1071fd08c58222b729098327c1cc420ed62893bb54a09a7f1f7e853d30790",
+    "specfun.f": "2a47adae8f7546e029b1ef1239cc1b94ab70e95bdedcee8882fff0fe17604b53"
+  },
+  "native_modules": {
+    "PDL.pm": "bbd3fbfd708de6c8da7212e1920a68617fab78db2b4276fe7ac13b47aca2c300",
+    "PDL/Basic.pm": "f3bbe7d012df26c41443bfa767ed6a7ff8cad5a53547046f008fbb1b175f5ea7",
+    "PDL/Core.pm": "470e3e1d57c4dd42e51ccd1b6e326187572d13bc31d7b850d5f6d97f6ff3c411",
+    "PDL/Filter/Linear.pm": "d25ef5acb6da59c168274e680ef71ab05db2ec43cc2aecbf53ff0ea6874202f0",
+    "PDL/Primitive.pm": "4ff8285e6b210099302038a8dc05043ed68323175ecaed64aa3321c5759c9156",
+    "Text/Template.pm": "2fd5ae88bc1210b0335f703139a2a4d24755a66b823d9d055d8dee4c79c48250"
+  },
+  "pdl_version": "2.100",
+  "reference_packages": [
+    {
+      "Package": "pdl",
+      "Version": "1:2.100-1build1",
+      "SHA256": "c1251acb3f428b84f6df02b5875a8700946eb7c8ca8971f24345847406e879c7",
+      "Filename": "pool/universe/p/pdl/pdl_2.100-1build1_amd64.deb"
+    },
+    {
+      "Package": "libpdl-filter-perl",
+      "Version": "2.097-2",
+      "SHA256": "d992570c14aa37f5214d5bc7469b755000c9f6a2666b6ebc15693361dea8837f",
+      "Filename": "pool/universe/libp/libpdl-filter-perl/libpdl-filter-perl_2.097-2_all.deb"
+    },
+    {
+      "Package": "libfile-map-perl",
+      "Version": "0.71-2",
+      "SHA256": "3d6ee5a2ea34343f874f579f829a4a498522a43e4ecc77ef3658bf7f3d780703",
+      "Filename": "pool/universe/libf/libfile-map-perl/libfile-map-perl_0.71-2_amd64.deb"
+    },
+    {
+      "Package": "libterm-readkey-perl",
+      "Version": "2.38-2build5",
+      "SHA256": "be019275ef439665535caea1fce13e5214996e2d90978e61fc9c9567ab1329f5",
+      "Filename": "pool/main/libt/libterm-readkey-perl/libterm-readkey-perl_2.38-2build5_amd64.deb"
+    },
+    {
+      "Package": "libpod-parser-perl",
+      "Version": "1.67-1",
+      "SHA256": "498944010019fe64899ade85735281c8ef45d98b210e66ba1ce12478834a8e09",
+      "Filename": "pool/main/libp/libpod-parser-perl/libpod-parser-perl_1.67-1_all.deb"
+    },
+    {
+      "Package": "libfile-which-perl",
+      "Version": "1.27-2",
+      "SHA256": "b6739ffa79ccb68591baea7175297d554b47e77358368a6a8aa980335099d163",
+      "Filename": "pool/main/libf/libfile-which-perl/libfile-which-perl_1.27-2_all.deb"
+    },
+    {
+      "Package": "gfortran-15-x86-64-linux-gnu",
+      "Version": "15.2.0-16ubuntu1",
+      "SHA256": "11ef9271f616d35f523c4d53173c2fa5f95a02703332e6a38899b960cca5ebe8",
+      "Filename": "pool/main/g/gcc-15/gfortran-15-x86-64-linux-gnu_15.2.0-16ubuntu1_amd64.deb"
+    },
+    {
+      "Package": "libgfortran5",
+      "Version": "16-20260322-1ubuntu1",
+      "SHA256": "3f028ea56be008c74d197006d65faa320e29824837dd111c8f76b84f6bb578d2",
+      "Filename": "pool/main/g/gcc-16/libgfortran5_16-20260322-1ubuntu1_amd64.deb"
+    },
+    {
+      "Package": "libgfortran-15-dev",
+      "Version": "15.2.0-16ubuntu1",
+      "SHA256": "7b711bfd286d4148c23bfdde476349ad3da2c60f5cfe545106c9c49f1e612c51",
+      "Filename": "pool/main/g/gcc-15/libgfortran-15-dev_15.2.0-16ubuntu1_amd64.deb"
+    },
+    {
+      "Package": "gfortran-15",
+      "Version": "15.2.0-16ubuntu1",
+      "SHA256": "3c9410a676ca16791567d5b2d9164b1f3034ada508d15b9226e55e2ee711bdd4",
+      "Filename": "pool/main/g/gcc-15/gfortran-15_15.2.0-16ubuntu1_amd64.deb"
+    }
+  ],
+  "ifeffit_archive": {
+    "source": "https://deb.debian.org/debian/pool/main/i/ifeffit/ifeffit_1.2.11d.orig.tar.gz",
+    "sha256": "76797e14a922cae4e76c92cfb6fddef545d2e3ffb6af4f53bf12ef6cf3b461a8",
+    "file": "ifeffit_1.2.11d.orig.tar.gz"
+  },
+  "sha256": {
+    "backend/tests/reference/smoothing_native_reference.py": "61ebcdae32bc28b84690ad80bf5446e119881bbda88d2971cd317b6879afc2e3",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467",
+    "backend/tests/fixtures/athena-smoothing-native.json.gz": "e014379479bf8782d3774e04c096512eb2026bfaf776bd810c5d00a31fb25518",
+    "backend/tests/fixtures/xdi-official-cu_metal_rt.xdi": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e",
+    "backend/tests/fixtures/xdi-official-fe2o3_rt.xdi": "4a1c4cec3e00d62734406a872d8a114ebd7d7c1b66050a61ec4017b03abd2a5a"
+  },
+  "basis": "Unmodified pinned Data/Process.pm filter routines with actual PDL/PDL::Filter::Linear, Text::Template and Larch, plus original compiled IFEFFIT f1mth opcode -1220 and specfun.f. Explicit group-access/update/put bridges; native normalization, XDI lifecycle and wx GUI are not replayed. No production dependency on Perl or Fortran."
+}

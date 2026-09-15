@@ -1,0 +1,125 @@
+{
+  "revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "file": {
+    "path": "t/filetypes/x15b.dat",
+    "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/t/filetypes/x15b.dat",
+    "sha256": "812f05c8cc364fd38b63f618c87d8453e9a6817d3e9e9fdaeb81bf927fbb8c9e",
+    "git_blob_sha1": "93ee0d7daf815b633edbbf22947805ac7acfd1d2",
+    "bytes": 20756,
+    "file": "demeter-x15b.dat"
+  },
+  "harness_sha256": "dcb2339f5ca7cc7b1bf2c47c54f0a5d1eea15ae15759e4211ee1b7d91fc6854b",
+  "references": [
+    {
+      "name": "defaults",
+      "values": {
+        "energy": 1,
+        "i0": 6,
+        "narrow": 7,
+        "wide": 9,
+        "trans": 8
+      },
+      "file": "x15b-defaults-native.json.gz",
+      "sha256": "86542b81fcbdab5b96679f1bb4b8c64b72751229268870537c0c1d42179da75a",
+      "shape": [
+        321,
+        5
+      ],
+      "native": {
+        "fluorescence": {
+          "ln": 0,
+          "numerator": "$3",
+          "energy": "$1",
+          "denominator": "$2"
+        },
+        "transmission": {
+          "denominator": "$5",
+          "energy": "$1",
+          "numerator": "$2",
+          "ln": 1
+        },
+        "recognized": 1,
+        "default": {
+          "denominator": "$2",
+          "energy": "$1",
+          "numerator": "$3",
+          "ln": 0
+        }
+      }
+    },
+    {
+      "name": "comment-columns",
+      "values": {
+        "energy": 1,
+        "i0": 7,
+        "narrow": 9,
+        "wide": 10,
+        "trans": 11
+      },
+      "file": "x15b-comment-columns-native.json.gz",
+      "sha256": "0dc7a19e27a386461380fcd81956ffe09a2388eb3b3cc4578d89f97ae6ca9ae1",
+      "shape": [
+        321,
+        5
+      ],
+      "native": {
+        "recognized": 1,
+        "transmission": {
+          "ln": 1,
+          "denominator": "$5",
+          "numerator": "$2",
+          "energy": "$1"
+        },
+        "fluorescence": {
+          "numerator": "$3",
+          "denominator": "$2",
+          "ln": 0,
+          "energy": "$1"
+        },
+        "default": {
+          "energy": "$1",
+          "denominator": "$2",
+          "ln": 0,
+          "numerator": "$3"
+        }
+      }
+    },
+    {
+      "name": "duplicate-columns",
+      "values": {
+        "energy": 1,
+        "i0": 6,
+        "narrow": 7,
+        "wide": 7,
+        "trans": 8
+      },
+      "file": "x15b-duplicate-columns-native.json.gz",
+      "sha256": "e4660897c8bcc797e98e94ed2813fef3dbbf4df87bd5dd63b33e6604f316b78c",
+      "shape": [
+        321,
+        5
+      ],
+      "native": {
+        "default": {
+          "denominator": "$2",
+          "numerator": "$3",
+          "ln": 0,
+          "energy": "$1"
+        },
+        "fluorescence": {
+          "numerator": "$3",
+          "denominator": "$2",
+          "ln": 0,
+          "energy": "$1"
+        },
+        "transmission": {
+          "denominator": "$5",
+          "numerator": "$2",
+          "ln": 1,
+          "energy": "$1"
+        },
+        "recognized": 1
+      }
+    }
+  ]
+}

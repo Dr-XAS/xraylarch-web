@@ -1,0 +1,27 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 30,
+  "source_sha256": {
+    "lib/Demeter/Config.pm": "f5399a087b6f04fb5cfd56953c7c709303b2c126bd646d7f49ed43d0db91a7f8",
+    "lib/Demeter/Data/Process.pm": "953a1b3392a33b64c9d1a0ade21d6b75762261880de483329a829c49d99f2865",
+    "lib/Demeter/configuration/process.demeter_conf": "aa81973fbf7623f23a87a7ebbf550790f68e58ecf98b71ae333eb1e5c8f5a148",
+    "lib/Demeter/templates/process/larch/chi_noise.tmpl": "27e48ee1ed0478d8a13abf709faa708425aacab87b9b0a4cfda85f72aecdf88e",
+    "lib/Demeter/templates/process/larch/merge.tmpl": "ac42b8bb0be279b3e53acb90f81ba82348cbb98772bf7f2010858f22ca46a3e9",
+    "lib/Demeter/templates/process/larch/merge_end.tmpl": "1e228046b9296f511b13370747f4380e861e32521d24c943ec07a5c636dbcf47",
+    "lib/Demeter/templates/process/larch/merge_interp.tmpl": "80929c33e864cdbb209bca203af845ab2d8077fd3a87b6b31b5630a3cf423119",
+    "lib/Demeter/templates/process/larch/merge_norm.tmpl": "456f8fa13f149ba944558e5dc4d39d9cc250078a209ff27d8523245342cafc54",
+    "lib/Demeter/templates/process/larch/merge_start.tmpl": "0d4df491d53d5cfa5783122387d6cb63ec3bbb6881268502d85e67814afa77fa",
+    "lib/Demeter/templates/process/larch/merge_stddev.tmpl": "e82a34e85d24952f7e6d0ac8b6cb08470406d606a7a047daca08696c7d99161a",
+    "lib/Demeter/templates/process/larch/merge_stddev_end.tmpl": "432e3fb4f3bdf37a82c1bb555be4a438841e921f3b27f3754661e90098d618ca",
+    "lib/Demeter/templates/process/larch/merge_subarray.tmpl": "695725570c5bed808af833fcbc4dc99b333bc693dce186dfe249834caa3883c4"
+  },
+  "sha256": {
+    "backend/tests/reference/merge_native_reference.py": "c4a591e2c20a99a8acd7e7d6450939fbe7a3bbff50c3faed6274eb87ce0f9cd0",
+    "backend/tests/fixtures/athena-merge-native.json.gz": "576530ddca681b442587e762398cff3a8661a5d3378af715440855522542eeac",
+    "backend/tests/fixtures/demeter-merge-fe.060": "92f698464e3f27390ed554ce65ebb3aa7734cce0844fc1cd7fd7c8d04aae85b4",
+    "backend/tests/fixtures/demeter-merge-fe.061": "79ec765bcb1b71969fc364cf1b0d6b2045b193c3d7268c06e3fe5bd6a69e4abb",
+    "backend/tests/fixtures/demeter-merge-fe.062": "f37c416977164943cdea96b8d57c0dc319915221e7ddd997920b90dcac503f28",
+    "larch/math/utils.py": "9f7f776459925b66974205328698ef271be3bda5be3a25d9d38d1f37dbc54467",
+    "larch/xafs/estimate_noise.py": "e00715eb983d386d0c153099957dc2aa862693a10bb4b80855052a72d9b59fdf"
+  }
+}

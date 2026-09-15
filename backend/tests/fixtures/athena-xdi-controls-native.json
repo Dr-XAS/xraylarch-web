@@ -1,0 +1,603 @@
+{
+  "native": {
+    "cases": [
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "symbol",
+        "value": "Cu"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "symbol",
+        "value": "Cu"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "symbol",
+        "value": "cu"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "symbol",
+        "value": "cu"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "symbol",
+        "value": "CU"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "symbol",
+        "value": "CU"
+      },
+      {
+        "code": 100,
+        "family": "Element",
+        "message": "element.symbol missing or not valid",
+        "mode": "all",
+        "tag": "symbol",
+        "value": "Wrong"
+      },
+      {
+        "code": 100,
+        "family": "Element",
+        "message": "element.symbol missing or not valid",
+        "mode": "field",
+        "tag": "symbol",
+        "value": "Wrong"
+      },
+      {
+        "code": 100,
+        "family": "Element",
+        "message": "element.symbol missing or not valid",
+        "mode": "all",
+        "tag": "symbol",
+        "value": "29"
+      },
+      {
+        "code": 100,
+        "family": "Element",
+        "message": "element.symbol missing or not valid",
+        "mode": "field",
+        "tag": "symbol",
+        "value": "29"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "edge",
+        "value": "K"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "edge",
+        "value": "K"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "edge",
+        "value": "k"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "edge",
+        "value": "k"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "edge",
+        "value": "L3"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "edge",
+        "value": "L3"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "edge",
+        "value": "M5"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "edge",
+        "value": "M5"
+      },
+      {
+        "code": 101,
+        "family": "Element",
+        "message": "element.edge missing or not valid",
+        "mode": "all",
+        "tag": "edge",
+        "value": "bad"
+      },
+      {
+        "code": 101,
+        "family": "Element",
+        "message": "element.edge missing or not valid",
+        "mode": "field",
+        "tag": "edge",
+        "value": "bad"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "reference",
+        "value": "Fe"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "reference",
+        "value": "Fe"
+      },
+      {
+        "code": 102,
+        "family": "Element",
+        "message": "element.reference not valid",
+        "mode": "all",
+        "tag": "reference",
+        "value": "wrong"
+      },
+      {
+        "code": 102,
+        "family": "Element",
+        "message": "element.reference not valid",
+        "mode": "field",
+        "tag": "reference",
+        "value": "wrong"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "all",
+        "tag": "ref_edge",
+        "value": "L2"
+      },
+      {
+        "code": 0,
+        "family": "Element",
+        "message": "",
+        "mode": "field",
+        "tag": "ref_edge",
+        "value": "L2"
+      },
+      {
+        "code": 103,
+        "family": "Element",
+        "message": "element.ref_edge not valid",
+        "mode": "all",
+        "tag": "ref_edge",
+        "value": "wrong"
+      },
+      {
+        "code": 103,
+        "family": "Element",
+        "message": "element.ref_edge not valid",
+        "mode": "field",
+        "tag": "ref_edge",
+        "value": "wrong"
+      },
+      {
+        "code": 0,
+        "family": "Mono",
+        "message": "",
+        "mode": "all",
+        "tag": "d_spacing",
+        "value": "3.1355"
+      },
+      {
+        "code": 0,
+        "family": "Mono",
+        "message": "",
+        "mode": "field",
+        "tag": "d_spacing",
+        "value": "3.1355"
+      },
+      {
+        "code": 108,
+        "family": "Mono",
+        "message": "negative value for d-spacing",
+        "mode": "all",
+        "tag": "d_spacing",
+        "value": "-1"
+      },
+      {
+        "code": 108,
+        "family": "Mono",
+        "message": "negative value for d-spacing",
+        "mode": "field",
+        "tag": "d_spacing",
+        "value": "-1"
+      },
+      {
+        "code": 0,
+        "family": "Mono",
+        "message": "",
+        "mode": "all",
+        "tag": "d_spacing",
+        "value": "0"
+      },
+      {
+        "code": 0,
+        "family": "Mono",
+        "message": "",
+        "mode": "field",
+        "tag": "d_spacing",
+        "value": "0"
+      },
+      {
+        "code": 108,
+        "family": "Mono",
+        "message": "non-numeric value for d-spacing",
+        "mode": "all",
+        "tag": "d_spacing",
+        "value": "bad"
+      },
+      {
+        "code": 108,
+        "family": "Mono",
+        "message": "non-numeric value for d-spacing",
+        "mode": "field",
+        "tag": "d_spacing",
+        "value": "bad"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "all",
+        "tag": "current",
+        "value": "100 mA"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "field",
+        "tag": "current",
+        "value": "100 mA"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "all",
+        "tag": "current",
+        "value": "0.1 A"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "field",
+        "tag": "current",
+        "value": "0.1 A"
+      },
+      {
+        "code": 110,
+        "family": "Facility",
+        "message": "Facility.current not interpretable as a beam current",
+        "mode": "all",
+        "tag": "current",
+        "value": "bad"
+      },
+      {
+        "code": 110,
+        "family": "Facility",
+        "message": "Facility.current not interpretable as a beam current",
+        "mode": "field",
+        "tag": "current",
+        "value": "bad"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "all",
+        "tag": "energy",
+        "value": "7 GeV"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "field",
+        "tag": "energy",
+        "value": "7 GeV"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "all",
+        "tag": "energy",
+        "value": "7000 MeV"
+      },
+      {
+        "code": 0,
+        "family": "Facility",
+        "message": "",
+        "mode": "field",
+        "tag": "energy",
+        "value": "7000 MeV"
+      },
+      {
+        "code": 110,
+        "family": "Facility",
+        "message": "Facility.energy not interpretable as a storage ring energy",
+        "mode": "all",
+        "tag": "energy",
+        "value": "bad"
+      },
+      {
+        "code": 110,
+        "family": "Facility",
+        "message": "Facility.energy not interpretable as a storage ring energy",
+        "mode": "field",
+        "tag": "energy",
+        "value": "bad"
+      },
+      {
+        "code": 0,
+        "family": "Scan",
+        "message": "",
+        "mode": "all",
+        "tag": "start_time",
+        "value": "2001-06-26T22:27:31"
+      },
+      {
+        "code": 0,
+        "family": "Scan",
+        "message": "",
+        "mode": "field",
+        "tag": "start_time",
+        "value": "2001-06-26T22:27:31"
+      },
+      {
+        "code": 0,
+        "family": "Scan",
+        "message": "",
+        "mode": "all",
+        "tag": "start_time",
+        "value": "2026-02-30T12:00:00"
+      },
+      {
+        "code": 0,
+        "family": "Scan",
+        "message": "",
+        "mode": "field",
+        "tag": "start_time",
+        "value": "2026-02-30T12:00:00"
+      },
+      {
+        "code": 106,
+        "family": "Scan",
+        "message": "invalid timestamp: format should be ISO 8601 (YYYY-MM-DD HH:MM:SS)",
+        "mode": "all",
+        "tag": "start_time",
+        "value": "bad"
+      },
+      {
+        "code": 106,
+        "family": "Scan",
+        "message": "invalid timestamp: format should be ISO 8601 (YYYY-MM-DD HH:MM:SS)",
+        "mode": "field",
+        "tag": "start_time",
+        "value": "bad"
+      },
+      {
+        "code": 0,
+        "family": "Column",
+        "message": "",
+        "mode": "all",
+        "tag": "1",
+        "value": "energy eV"
+      },
+      {
+        "code": 0,
+        "family": "Column",
+        "message": "",
+        "mode": "field",
+        "tag": "1",
+        "value": "energy eV"
+      },
+      {
+        "code": 0,
+        "family": "Column",
+        "message": "",
+        "mode": "all",
+        "tag": "1",
+        "value": "energy keV"
+      },
+      {
+        "code": 0,
+        "family": "Column",
+        "message": "",
+        "mode": "field",
+        "tag": "1",
+        "value": "energy keV"
+      },
+      {
+        "code": 105,
+        "family": "Column",
+        "message": "Column.1 is not \"energy\" or \"angle\"",
+        "mode": "all",
+        "tag": "1",
+        "value": "ENERGY EV"
+      },
+      {
+        "code": 0,
+        "family": "Column",
+        "message": "",
+        "mode": "field",
+        "tag": "1",
+        "value": "ENERGY EV"
+      },
+      {
+        "code": 105,
+        "family": "Column",
+        "message": "Column.1 is not \"energy\" or \"angle\"",
+        "mode": "all",
+        "tag": "1",
+        "value": "bad"
+      },
+      {
+        "code": 105,
+        "family": "Column",
+        "message": "Column.1 is not \"energy\" or \"angle\"",
+        "mode": "field",
+        "tag": "1",
+        "value": "bad"
+      },
+      {
+        "code": 0,
+        "family": "GSE",
+        "message": "",
+        "mode": "all",
+        "tag": "EXTRA",
+        "value": "value"
+      },
+      {
+        "code": 0,
+        "family": "GSE",
+        "message": "",
+        "mode": "field",
+        "tag": "EXTRA",
+        "value": "value"
+      },
+      {
+        "code": 104,
+        "family": "Other",
+        "message": "extension field used without versioning information",
+        "mode": "all",
+        "tag": "field",
+        "value": "value"
+      },
+      {
+        "code": 104,
+        "family": "Other",
+        "message": "extension field used without versioning information",
+        "mode": "field",
+        "tag": "field",
+        "value": "value"
+      },
+      {
+        "code": 0,
+        "family": "Sample",
+        "message": "",
+        "mode": "all",
+        "tag": "temperature",
+        "value": "300 K"
+      },
+      {
+        "code": 0,
+        "family": "Sample",
+        "message": "",
+        "mode": "field",
+        "tag": "temperature",
+        "value": "300 K"
+      },
+      {
+        "code": 109,
+        "family": "Sample",
+        "message": "Sample.temperature not interpretable as a temperature",
+        "mode": "all",
+        "tag": "temperature",
+        "value": "bad"
+      },
+      {
+        "code": 109,
+        "family": "Sample",
+        "message": "Sample.temperature not interpretable as a temperature",
+        "mode": "field",
+        "tag": "temperature",
+        "value": "bad"
+      }
+    ],
+    "comments": [
+      {
+        "status": "Saved changes to XDI comments.",
+        "text": ""
+      },
+      {
+        "status": "Saved changes to XDI comments.",
+        "text": " \u03bc \u94dc \"quote\" $variable @array\nsecond\tline "
+      },
+      {
+        "status": "Saved changes to XDI comments.",
+        "text": "first\r\nsecond\n"
+      },
+      {
+        "status": "Saved changes to XDI comments.",
+        "text": "literal\\ntext"
+      }
+    ],
+    "module_sha256": {
+      "languages/perl/lib/Xray/XDI.pm": "28a9676f10c1fd6944761ed17c276785c66c4db4f89bba79be45f8cc9c9af194",
+      "languages/perl/lib/Xray/XDI/WriterPP.pm": "731271d466b820599de7eba8906a0f7c1faf217d30394de82d20d988b8337cf4",
+      "languages/perl/lib/Xray/XDIFile.pm": "4bbb42213e66331cb206dd0ecc0d04d7170472ac66536625cd83c0f75416f37b"
+    },
+    "recommended": [
+      "Facility.name",
+      "Facility.xray_source",
+      "Beamline.name",
+      "Scan.start_time",
+      "Column.1"
+    ],
+    "required": [
+      "Element.symbol",
+      "Element.edge",
+      "Mono.d_spacing"
+    ]
+  },
+  "handler_sha256": "49f588367af0f2c8b14c4560e1e0ebfa8eb5b9f7caeb11b37921a5d1fb4576a2",
+  "input_sha256": "3dc0b56597bd8452519fbc1c52a0327390abe3b80e3bc7b4c163aac4917db11e"
+}

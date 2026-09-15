@@ -47,8 +47,13 @@ equal the requested SHA. It builds a new detached checkout under
 `drxas-deploy`, installs the complete pinned set in
 `deploy/python-release-constraints.txt`, records `pip freeze`, runs `pip check`,
 and runs `npm ci` plus the production frontend build through `drxas-node20`.
-Release inputs and artifacts are made read-only after integrity metadata is
-written. The repository checkout is never used as a shared host clone.
+The shared backend installer also installs the web dependencies declared in
+`backend/requirements.txt` under the release constraints, preserving the built
+Larch wheel instead of installing the repository as an editable package. It
+imports the complete backend application and runs `pip check` before recording
+the installed packages. Release inputs and artifacts are made read-only after
+integrity metadata is written. The repository checkout is never used as a shared
+host clone.
 
 The only mutable application state is below
 `/local/apps/xraylarch-web/data`, including private candidate cache, runtime,
@@ -56,6 +61,28 @@ and temporary-home directories. The deployer starts child processes with a
 clean environment and provides only `XRAYLARCH_DATA_ROOT`, `BACKEND_URL`,
 `NEXT_BACKEND_URL`, and non-secret runtime variables. It does not inherit
 provider, email, Slack, or Dr.XAS database secrets.
+
+The backend-only integration launcher additionally reads the optional private
+regular file `/local/apps/xraylarch-web/config/integration.json`, owned by the
+service user with no group/other permissions. Its explicit allowlist contains
+the three integration gates, issuer, audience, HMAC secret and draft TTL. Values
+are validated and passed only in the backend environment, never screen command
+arguments, frontend/build environments or release metadata. Missing configuration
+preserves integration-off behavior; invalid configuration blocks startup.
+Rollback releases predating this launcher use their original clean startup.
+
+The web backend release CI job builds a fresh Python 3.12 environment with the
+same installer, collects every backend test module, and executes API, processing,
+workspace, and XLS report tests plus deployment regressions. The shared dependency
+and runtime gate is followed in CI by the full backend scientific test suite.
+[Native numerical reference portability](../docs/athena-numerical-reference-portability.md)
+describes how those tests retain strict native comparisons across numerical libraries.
+The deployer runs the same gate against disposable candidate data before
+publishing a new immutable release, so direct pushes must pass it before cutover. New web dependencies belong in `backend/requirements.txt`; version
+constraints must remain compatible with `deploy/python-release-constraints.txt`.
+A failed installation or application import blocks the candidate build before
+activation. A retry of a completed release revalidates its identity and backend
+import before staging; incomplete or invalid releases are never overwritten.
 
 The active release stays on `3004` and `8006`. Before any cutover, the
 deployer runs the target release in the two candidate screens on private

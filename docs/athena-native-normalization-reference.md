@@ -1,5 +1,7 @@
 # Native Athena normalization settings
 
+Current follow-up: [2026-09-09 real-project import compatibility](athena-prj-compatibility.md) supersedes the earlier zero-width Kaiser/native-endpoint limitation and distinguishes Larch-written normalization degrees from Demeter term counts.
+
 Checkpoint: 2026-09-09. Native project exchange follows Demeter revision
 `06afc8da08a5a7d5a26ee14992170fcf5dc67406` with its Larch normalization
 template. This corrects two import/export conventions; it does not establish

@@ -1,0 +1,25 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "case_count": 46,
+  "source_sha256": {
+    "lib/Demeter/Data.pm": "265550be8d8d76ab5b114aa98b742e242e6d8561255d1109f2d709a1ee01c216",
+    "lib/Demeter/Data/Arrays.pm": "f99081de027ce6352bfee8748be14103c76e1e619528b8d01895fa687bca4490",
+    "lib/Demeter/Data/Mu.pm": "a3738bd61b41a4dbbca9d10e231b51044642222f148c8c9cba900be662f78f57",
+    "lib/Demeter/Data/Plot.pm": "f22bd9d5206b179180b4ee6cfd88693a667ca8b1ffba1bc60e9c069cfd9d46eb",
+    "lib/Demeter/templates/plot/gnuplot/newe.tmpl": "021578df1d707820468c9469d77130a89f447fd627f6af551774a74e3c224194",
+    "lib/Demeter/templates/plot/gnuplot/newk.tmpl": "415dc740c2e03af886fac938536d9a256bd6bb447f25931f1d535cd6e0aea238",
+    "lib/Demeter/templates/plot/gnuplot/stddeve.tmpl": "1d4cdc8b4cd119844821d8edc877283a7c0c38fc52a88f098f9111ea3c4cc991",
+    "lib/Demeter/templates/plot/gnuplot/stddevk.tmpl": "dd93fa9e4bba20688051b1a241dcce915affd03b2fd6360299e7046676e55f2f",
+    "lib/Demeter/templates/plot/gnuplot/stddevn.tmpl": "4ddaf447a26f8bbea40da06cbe6ed623f9e7aad9f030a30b9eca7d560ea2bcb8",
+    "lib/Demeter/templates/plot/gnuplot/variancee.tmpl": "2ab5a9455f5172b959c10d489278959652f4832b7f78ea0c4b33e76e763a0361",
+    "lib/Demeter/templates/plot/gnuplot/variancek.tmpl": "0ef9efeecf91eb729d97ef4f20b4482cfc41b72ee9fe0ee35118839b90e1a712"
+  },
+  "sha256": {
+    "backend/tests/reference/merge_plot_native_reference.py": "aa2a00cf3ff4245e2b60a89f864aff6848dd3bcfe904c8f067bc17e00f96331c",
+    "backend/tests/fixtures/athena-merge-plot-native.json.gz": "ef8597584750cb579380420ca5e39e40b3d32104c0ee33aa723446fddca6e57e",
+    "backend/tests/fixtures/athena-merge-native.json.gz": "576530ddca681b442587e762398cff3a8661a5d3378af715440855522542eeac",
+    "examples/xafsdata/AthenaProjectFiles/AsScorodite.prj": "18641c71bc9ba7b0904fd28fb55ba9855c8c082eee7358d149714d52e79ddd7f",
+    "examples/xafsdata/AthenaProjectFiles/Fe.prj": "0501c54d20a664b2929ae0263041af50de7556bc9284d22ed84b6c301ef48b76",
+    "examples/xafsdata/AthenaProjectFiles/bal3ybco.prj": "207258c6f62469bb4362ba2d343f9b6e9a9e498fc6157080dc892bd0fb72445d"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "description": "Constructed registry emitted by real YAML::Tiny 1.76 Load/Dump, not an exported desktop session.",
+  "file": "athena-plugin-registry-native.yaml",
+  "sha256": "ad7d7402395cf112869378549ee7397ad7b5fabb7ce7bd09bb07a29bb5c58a13",
+  "bytes": 90,
+  "expected": {
+    "Demeter::Plugins::X10C": true,
+    "Demeter::Plugins::Lytle": false,
+    "Demeter::Plugins::SSRLA": true
+  },
+  "library_source": "https://www.cpan.org/modules/by-module/YAML/YAML-Tiny-1.76.tar.gz",
+  "library_sha256": "a8d584394cf069bf8f17cba3dd5099003b097fce316c31fb094f1b1c171c08a3"
+}

@@ -137,12 +137,12 @@ class AthenaParameters(BaseModel):
         for window, width, name in ((self.window, self.dk, "dk"),
                                     (self.rwindow, self.dr, "dr"),
                                     (self.bkg_window, self.bkg_dk, "bkg_dk")):
-            if window in ("gaussian", "kaiser") and width <= 0:
+            if window == "gaussian" and width <= 0:
                 raise ValueError(f"{window} requires a positive taper width ({name}).")
         return self
 
 
-def _pair(x, y, *, name="Spectrum", minimum=2):
+def _pair(x, y, *, name="Spectrum", minimum=2, maximum=MAX_POINTS, allow_equal=False):
     try:
         if np.iscomplexobj(x) or np.iscomplexobj(y):
             raise ValueError("Complex spectra require an explicit real representation.")
@@ -151,11 +151,11 @@ def _pair(x, y, *, name="Spectrum", minimum=2):
         raise ScientificError(f"{name}: supply real numeric coordinate and signal arrays.") from exc
     if xa.ndim != 1 or ya.ndim != 1 or xa.size != ya.size:
         raise ScientificError(f"{name}: supply one-dimensional arrays of equal length.")
-    if not minimum <= xa.size <= MAX_POINTS:
-        raise ScientificError(f"{name}: supply {minimum} to {MAX_POINTS} points.")
+    if not minimum <= xa.size <= maximum:
+        raise ScientificError(f"{name}: supply {minimum} to {maximum} points.")
     if not np.isfinite(xa).all() or not np.isfinite(ya).all():
         raise ScientificError(f"{name}: remove NaN and infinite values before processing.")
-    if np.any(np.diff(xa) <= 0):
+    if np.any(np.diff(xa) < 0 if allow_equal else np.diff(xa) <= 0):
         raise ScientificError(f"{name}: coordinates must be strictly increasing; sort and merge duplicates.")
     return xa.copy(), ya.copy()
 
@@ -197,16 +197,22 @@ def _edge(x, y, e0=None):
 
 
 def _normalization_ranges(x, e0, p):
-    """Resolve Larch defaults while rejecting explicit clipping or degree reduction."""
+    """Intersect outer fit endpoints with measured support, as in native Larch.
+
+    Keep the requested recipe intact. The returned/effective endpoints describe
+    the fit; inner endpoints and polynomial support must still be usable.
+    """
     lo, hi = float(x[0] - e0), float(x[-1] - e0)
     rounding = 5 if index_nearest(x, e0) > 20 else 2
     pre1 = p.pre1 if p.pre1 is not None else max(lo, rounding * round((x[1] - e0) / rounding))
     if p.pre1 is None and pre1 >= 0:
         pre1 = lo
+    pre1 = max(pre1, lo)
     pre2 = p.pre2 if p.pre2 is not None else pre1 / 2
     norm2 = p.norm2 if p.norm2 is not None else min(hi, 5 * round(hi / 5))
     if p.norm2 is None and norm2 <= 2:
         norm2 = hi
+    norm2 = min(norm2, hi)
     norm1 = p.norm1 if p.norm1 is not None else min(25, 5 * round(norm2 / 15))
     if p.norm1 is None:
         norm1 = max(0, min(norm1, norm2 - 2))
@@ -224,6 +230,19 @@ def _normalization_ranges(x, e0, p):
     return dict(pre1=pre1, pre2=pre2, norm1=norm1, norm2=norm2, nnorm=nnorm)
 
 
+def normalization_adjustments(parameters, effective):
+    """Report outer endpoint resolutions without changing saved user choices."""
+    return [dict(parameter=key, requested=parameters[key], used=effective[key])
+            for key in ('pre1', 'norm2') if parameters.get(key) is not None
+            and effective.get(key) is not None and parameters[key] != effective[key]]
+
+
+def normalization_warnings(parameters, effective):
+    return [f"Normalization {a['parameter']}: requested {a['requested']:.10g} eV relative to E0; "
+            f"using {a['used']:.10g} eV at the measured boundary. The requested value is retained."
+            for a in normalization_adjustments(parameters, effective)]
+
+
 def _fft_capacity(kmax, p):
     # xftr returns only nfft/2 points. Avoid both forward truncation and q/chiq
     # length mismatches, and bound xftf_prep's temporary interpolation grid.
@@ -233,13 +252,29 @@ def _fft_capacity(kmax, p):
         raise ScientificError("The transform window creates an oversized grid; reduce dk or increase kstep.")
 
 
+def _larch_window(window, width, warnings):
+    # Ifeffit window.f permits beta=0: I0(0)/I0(0)=1 strictly inside
+    # the window. Larch calls that implementation 'bessel'; its newer
+    # 'kaiser' formula instead degenerates to an all-zero array at beta=0.
+    if window == "kaiser" and width == 0:
+        note = "Zero-width Kaiser uses Larch's legacy Bessel window (the rectangular limit)."
+        if note not in warnings:
+            warnings.append(note)
+        return "bessel"
+    return window
+
+
 def _transforms(group, p, effective, warnings):
     available = float(group.k[-1])
     kmin = p.kmin
     if p.kmax is not None:
         kmax = p.kmax
-        if kmax > available + 1e-10:
-            raise ScientificError(f"kmax exceeds available k={available:.4g}; lower kmax or extend the data.")
+        # AUTOBK's uniform output grid stops at the last full kstep, while
+        # its measured support can extend a fraction of a step beyond it.
+        # Larch xftf accepts a window ending within that physical support.
+        support = max(available, float(getattr(getattr(group, "autobk_details", None), "kmax", available)))
+        if kmax > support + 1e-10:
+            raise ScientificError(f"kmax exceeds available k={support:.4g}; lower kmax or extend the data.")
     else:
         if available <= kmin + max(4 * p.kstep, p.dk):
             if p.kmin != AthenaParameters.model_fields["kmin"].default:
@@ -250,9 +285,9 @@ def _transforms(group, p, effective, warnings):
         kmax = available - min(1.0, (available - kmin) / 4)
     if kmin < group.k[0] - 1e-10 or kmax - kmin < 2 * p.kstep:
         raise ScientificError("The FT range must contain at least three measured k points; adjust kmin/kmax.")
-    if p.dk > 2 * (kmax - kmin):
+    if p.window not in ("kaiser", "gaussian") and p.dk > 2 * (kmax - kmin):
         raise ScientificError("dk is too wide for the selected k range; reduce dk or widen kmin/kmax.")
-    if p.dr > 2 * (p.rmax - p.rmin):
+    if p.rwindow not in ("kaiser", "gaussian") and p.dr > 2 * (p.rmax - p.rmin):
         raise ScientificError("dr is too wide for the selected R range; reduce dr or widen rmin/rmax.")
     _fft_capacity(available, p)
     rstep = np.pi / (p.nfft * p.kstep)
@@ -268,10 +303,11 @@ def _transforms(group, p, effective, warnings):
     group.weighted_chi = group.chi * group.k ** p.kweight
     xftf(group.k, group.weighted_chi, group=group, kmin=kmin, kmax=kmax,
          kweight=0, dk=p.dk, dk2=p.dk2, with_phase=p.forward_with_phase,
-         window=p.window, nfft=p.nfft, kstep=p.kstep, rmax_out=rmax_out)
+         window=_larch_window(p.window, p.dk, warnings), nfft=p.nfft,
+         kstep=p.kstep, rmax_out=rmax_out)
     xftr(group.r, group.chir, group=group, rmin=p.rmin, rmax=p.rmax,
          dr=p.dr, dr2=p.dr2, with_phase=p.reverse_with_phase,
-         window=p.rwindow, nfft=p.reverse_nfft or p.nfft,
+         window=_larch_window(p.rwindow, p.dr, warnings), nfft=p.reverse_nfft or p.nfft,
          kstep=p.reverse_kstep or p.kstep,
          qmax_out=p.qmax_out if p.qmax_out is not None else available)
     # Preserve 2*pi phase equivalence to the actual complex transforms. The
@@ -352,11 +388,14 @@ def _standard_arguments(standard, kmax, kstep, edge_step):
 
 
 def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, data_type="mu", *,
-                     background_standard: Mapping | None = None) -> dict:
+                     background_standard: Mapping | None = None, is_normalized: bool = False) -> dict:
     """Return {effective, arrays, warnings}; every ARRAY_NAMES key is present.
 
     mu: normalize, subtract AUTOBK background, forward FT and reverse FT.
     xanes: normalize only, regardless of the amount of post-edge data.
+    is_normalized preserves the independent native is_nor flag for energy
+    records, including XANES reached by the main-page type toggle. It skips
+    pre_edge fitting while retaining the type's EXAFS eligibility.
     norm: preserve input as norm/flat (edge_step=1), then AUTOBK and FTs.
     chi: arguments are k and chi; resample to kstep and run FTs only. Energy
          arrays are empty and energy_shift must be zero.
@@ -399,8 +438,8 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
     standard scaling. effective.background_standard records whether applied;
     background_standard_kmin/kmax/points describe its supplied support.
 
-    fnorm rejects norm/xanes/chi input because no raw-mu EXAFS correction can
-    be performed there. Standards support mu/norm, and reject xanes/chi.
+    fnorm rejects norm/xanes/chi/xmudat input because no raw-mu EXAFS correction
+    can be performed there. Standards support mu/norm/xmudat, and reject xanes/chi.
     Explicit requests reject insufficient EXAFS support instead of ignoring
     the option. A standard is applied to both raw and corrected AUTOBK runs
     when fnorm is enabled. The caller owns standard selection/persistence;
@@ -411,16 +450,18 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
             if isinstance(parameters, AthenaParameters) else ({} if parameters is None else parameters))
     except ValidationError as exc:
         raise ScientificError(f"Invalid Athena parameters: {exc}") from exc
-    if data_type not in ("mu", "xanes", "norm", "chi"):
-        raise ScientificError("data_type must be mu, xanes, norm, or chi.")
+    if data_type not in ("mu", "xanes", "norm", "chi", "xmudat", "detector"):
+        raise ScientificError("data_type must be mu, xanes, norm, chi, xmudat, or detector.")
     standard = _background_standard(background_standard)
-    if p.fnorm and data_type != "mu":
+    if not isinstance(is_normalized, bool) or (is_normalized and data_type in ("chi", "detector")):
+        raise ScientificError("is_normalized is a boolean flag for energy spectra.")
+    if p.fnorm and (data_type != "mu" or is_normalized):
         raise ScientificError("fnorm requires raw mu input with EXAFS support; use data_type='mu' and supply the original fluorescence mu(E).")
-    if standard is not None and data_type not in ("mu", "norm"):
+    if standard is not None and data_type not in ("mu", "norm", "xmudat"):
         raise ScientificError("background_standard requires mu or norm input with AUTOBK processing; xanes and chi do not remove a background.")
-    x, y = _pair(energy, mu, minimum=10 if data_type != "chi" else 4)
+    x, y = _pair(energy, mu, minimum=3 if data_type == "detector" else 4 if data_type == "chi" else 10)
     effective = p.model_dump()
-    effective.update(data_type=data_type, edge_step=None, exafs=False,
+    effective.update(data_type=data_type, is_normalized=is_normalized or data_type in ("norm", "xmudat"), edge_step=None, exafs=False,
                      fnorm_edge_step=None, fnorm_scale=None, background_standard=standard is not None,
                      background_standard_kmin=None if standard is None else float(standard[0][0]),
                      background_standard_kmax=None if standard is None else float(standard[0][-1]),
@@ -429,7 +470,14 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
     warnings = []
     group = Group()
     try:
-        if data_type == "chi":
+        if data_type == "detector":
+            x += p.energy_shift
+            if x[0] <= 0 or x[-1] > 1e7:
+                raise ScientificError("Supply positive detector energies in eV no greater than 1e7 after energy_shift.")
+            group.energy, group.mu = x, y
+            effective.update({key: None for key in p.model_dump() if key != "energy_shift"})
+            warnings.append("Detector signal: counts are shown without edge finding, normalization, background removal, or Fourier transforms.")
+        elif data_type == "chi":
             if p.energy_shift != 0:
                 raise ScientificError("energy_shift cannot be applied to chi(k); supply an unshifted k axis.")
             if x[0] < 0 or x[-1] > 100:
@@ -454,7 +502,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                 raise ScientificError("Energy spacing is below Larch's 0.0005 eV limit; rebin close points before processing.")
             group.energy, group.mu = x, y
             e0 = _edge(x, y, p.e0)
-            if data_type == "norm":
+            if is_normalized or data_type in ("norm", "xmudat"):
                 group.e0, group.edge_step = e0, 1.0
                 group.norm, group.flat = y.copy(), y.copy()
                 group.pre_edge, group.post_edge = np.zeros_like(y), np.ones_like(y)
@@ -469,6 +517,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     make_flat=p.flatten, **ranges
                 )
                 effective.update({key: getattr(group.pre_edge_details, key) for key in ranges})
+                warnings.extend(normalization_warnings(p.model_dump(), effective))
                 ie0 = index_nearest(x, e0)
                 fitted_step = float(group.post_edge[ie0] - group.pre_edge[ie0])
                 if p.step is None and fitted_step <= max(1e-12, np.ptp(y) * 1e-10):
@@ -490,7 +539,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                         raise ScientificError("The requested EXAFS range is too short; widen it or select xanes.")
                     warnings.append("Insufficient post-edge data for EXAFS; returning normalization only.")
                 else:
-                    if p.bkg_dk > 2 * (bmax - p.bkg_kmin):
+                    if p.bkg_window not in ("kaiser", "gaussian") and p.bkg_dk > 2 * (bmax - p.bkg_kmin):
                         raise ScientificError("bkg_dk is too wide for the background k range; reduce it or widen bkg_kmin/bkg_kmax.")
                     nkout = int(1.01 + bmax / p.kstep)
                     if p.nclamp > nkout:
@@ -507,14 +556,17 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     knot_indices = [index_nearest(kraw, v) for v in np.linspace(p.bkg_kmin, bmax, nspl)]
                     if len(set(knot_indices)) < nspl:
                         raise ScientificError("Too few distinct points for AUTOBK spline knots; lower rbkg or use denser data.")
-                    bkg_options = dict(ek0=e0, rbkg=p.rbkg,
-                                       nknots=p.nknots or None,
+                    bkg_options = dict(ek0=e0, rbkg=p.rbkg, nknots=p.nknots or None,
                                        kmin=p.bkg_kmin, kmax=bmax,
-                                       kweight=p.bkg_kweight, dk=p.bkg_dk, win=p.bkg_window,
+                                       kweight=p.bkg_kweight, dk=p.bkg_dk,
+                                       win=_larch_window(p.bkg_window, p.bkg_dk, warnings),
                                        nclamp=p.nclamp, clamp_lo=p.clamp_lo, clamp_hi=p.clamp_hi,
-                                       nfft=p.nfft, kstep=p.kstep)
+                                       nfft=p.nfft, kstep=p.kstep, calc_uncertainties=False)
                     autobk(x, y, group=group, edge_step=group.edge_step, **bkg_options,
                            **_standard_arguments(standard, bmax, p.kstep, group.edge_step))
+                    effective["background_covariance_available"] = group.autobk_details.covar is not None
+                    if group.autobk_details.covar is None:
+                        warnings.append("Background fit covariance is unavailable; fitted curves are shown without an uncertainty estimate.")
                     if p.fnorm:
                         corrected_mu, scale = _functional_normalization(x, y, group.pre_edge, group.post_edge, e0)
                         corrected = Group()

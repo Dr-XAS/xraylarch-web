@@ -8,8 +8,10 @@ from pathlib import Path, PurePath
 import numpy as np
 from larch.io import read_ascii, read_csv, read_xdi
 
+from .config import DEFAULT_MAX_COLUMNS
 from .contracts import ColumnInfo, FieldIssue, ParsedUpload
 from .errors import WebInputError
+from .parsing_labview import labview_table
 
 _ROLE_NAMES = {
     "energy": "energy",
@@ -24,10 +26,11 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
 _NAME_CHARS = re.compile(r"[^A-Za-z0-9._ -]+")
 _COMMENT_PREFIXES = ("#", ";", "!")
 _DEFAULT_MAX_POINTS = 250_000
-_DEFAULT_MAX_COLUMNS = 64
 _XDAC_MARKER = re.compile(r"XDAC V\d+(?:\.\d+)* Datafile V\d+(?:\.\d+)*")
+_MRCAT_MARKER = re.compile(r"MRCAT_XAFS V\d+(?:\.\d+)* Datafile")
 _XDAC_SEPARATOR = re.compile(r"-{7,}")
 _XDAC_LABEL = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_X11A_MARKER = re.compile(r"NSLS/X11 EDC-\d+\.\d+(?:\s|$)")
 
 
 def _safe_display_name(filename: str) -> str:
@@ -110,7 +113,21 @@ def _read_group(path: Path, suffix: str):
                 value or f"col_{i + 1:02d}" for i, value in enumerate(rows[0])
             ]
         return group
-    return read_ascii(str(path))
+    group = read_ascii(str(path))
+    # EDC ends its header with numeric detector offsets, which Larch otherwise
+    # mistakes for column names. Read the original bytes with Larch and only
+    # replace labels/units using the explicitly delimited detector header.
+    text = path.read_text(encoding="utf-8-sig")
+    table = _x11a_table(text)
+    if table is not None:
+        group.array_labels = list(table[0])
+        group.array_units = ["eV", *([None] * (len(table[0]) - 1))]
+    # LabVIEW's numbered list identifies source columns even when its long,
+    # fixed-width heading line is not parsed correctly by Larch.
+    table = labview_table(text)
+    if table is not None:
+        group.array_labels = list(table[0])
+    return group
 
 
 def _can_be_float(value: str) -> bool:
@@ -133,13 +150,35 @@ def _tabular_rows(text: str, suffix: str) -> tuple[tuple[str, ...], ...]:
     )
 
 
-def _xdac_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
-    """Locate the XDAC table without guessing where numeric observations start.
+def _x11a_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    if not lines or not lines[0].startswith('NSLS/X11'):
+        return None
+    boundary = next((i for i, line in enumerate(lines) if line.startswith('OFFSETS')), None)
+    detectors = next((line[len('DETECTORS'):].split() for line in lines[:boundary]
+                      if line.startswith('DETECTORS')), [])
+    if (not _X11A_MARKER.match(lines[0]) or boundary is None or not detectors
+            or not all(_XDAC_LABEL.fullmatch(label) for label in detectors)
+            or len(lines[boundary].split()) != len(detectors) + 1
+            or not all(_can_be_float(v) for v in lines[boundary].split()[1:])
+            or any(_can_be_float(line.split()[0]) for line in lines[2:boundary])):
+        raise WebInputError('upload_malformed_rows',
+            'The X11A EDC header requires detector labels and a matching OFFSETS line before data.',
+            ('file',), 'Restore the acquisition header without moving observations into it.')
+    rows = tuple(tuple(line.split()) for line in lines[boundary + 1:])
+    if not rows:
+        raise WebInputError('upload_empty', 'The X11A upload contains no data rows.', ('file',),
+                            'Upload a non-empty X11A data table.')
+    return ('energy', *detectors), rows
 
-    Source: larch/io/xafs_beamlines.py, NSLSXDAC_BeamlineData: the XDAC
-    first header line identifies the format, and labels follow the first
-    '-------' separator. This checkout's V1.2 fe.060 and V1.4 beamline
-    fixture use a dash-only separator and whitespace-separated labels.
+
+def _beamline_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
+    """Locate XDAC/MRCAT tables without guessing where observations start.
+
+    Source: larch/io/xafs_beamlines.py, NSLSXDAC_BeamlineData and
+    APSMRCAT_BeamlineData. The first line identifies the format, and labels
+    follow the first '-------' separator. The measured XDAC V1.2/V1.4 and
+    MRCAT V0.3 fixtures use dash-only separators and whitespace labels.
     Blank lines are ignored, as in larch/io/columnfile.py read_ascii.
 
     Our boundary is deliberately stricter than Larch's reverse scan, which
@@ -150,19 +189,31 @@ def _xdac_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]
     Metadata is not rewritten: read_ascii still receives the original file,
     and ParsedUpload.source_bytes retains its complete original header.
     """
+    x11a = _x11a_table(text)
+    if x11a is not None:
+        return x11a
+    labview = labview_table(text)
+    if labview is not None:
+        return labview
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    if not lines or not lines[0].lower().startswith("xdac"):
+    if not lines:
+        return None
+    if lines[0].lower().startswith('xdac'):
+        name, marker = 'XDAC', _XDAC_MARKER
+    elif lines[0].lower().startswith('mrcat_xafs'):
+        name, marker = 'MRCAT', _MRCAT_MARKER
+    else:
         return None
 
     def malformed_header():
         return WebInputError(
             "upload_malformed_rows",
-            "The XDAC header must contain a valid XDAC version marker, a dashed separator, and column labels before data.",
+            f"The {name} header must contain a valid {name} version marker, a dashed separator, and column labels before data.",
             ("file",),
-            "Restore the XDAC header and label line; do not move observations into the header.",
+            f"Restore the {name} header and label line; do not move observations into the header.",
         )
 
-    if not _XDAC_MARKER.fullmatch(lines[0]):
+    if not marker.fullmatch(lines[0]):
         raise malformed_header()
     boundary = next((i for i, line in enumerate(lines[1:], 1) if "-------" in line), None)
     if boundary is None or not _XDAC_SEPARATOR.fullmatch(lines[boundary]) or boundary + 1 >= len(lines):
@@ -175,8 +226,8 @@ def _xdac_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]
     rows = tuple(tuple(line.split()) for line in lines[boundary + 2:])
     if not rows:
         raise WebInputError(
-            "upload_empty", "The XDAC upload contains no data rows.", ("file",),
-            "Upload a non-empty XDAC data table.",
+            "upload_empty", f"The {name} upload contains no data rows.", ("file",),
+            f"Upload a non-empty {name} data table.",
         )
     return labels, rows
 
@@ -198,15 +249,15 @@ def _validate_tabular_text(
             "Save the file as UTF-8 text and upload it again.",
         ) from exc
 
-    xdac = _xdac_table(text) if suffix == ".dat" else None
-    expected_fields = len(xdac[0]) if xdac is not None else None
+    beamline = _beamline_table(text) if suffix == ".dat" else None
+    expected_fields = len(beamline[0]) if beamline is not None else None
     if expected_fields is not None and expected_fields > max_columns:
         raise WebInputError(
             "upload_too_many_columns",
             f"Upload exceeds the {max_columns} column limit.", ("file",),
             "Choose a table with fewer columns.",
         )
-    rows = xdac[1] if xdac is not None else _tabular_rows(text, suffix)
+    rows = beamline[1] if beamline is not None else _tabular_rows(text, suffix)
     point_count = 0
     for fields in rows:
         values: list[float] = []
@@ -316,7 +367,7 @@ def parse_upload(
     filename: str,
     max_bytes: int = 50_000_000,
     max_points: int = _DEFAULT_MAX_POINTS,
-    max_columns: int = _DEFAULT_MAX_COLUMNS,
+    max_columns: int = DEFAULT_MAX_COLUMNS,
 ) -> ParsedUpload:
     """Parse a bounded XAS upload without executing or persisting user paths."""
     if len(data) > max_bytes:
@@ -336,7 +387,12 @@ def parse_upload(
 
     display_name = _safe_display_name(filename)
     suffix = Path(display_name).suffix.lower()
-    parser_suffix = suffix if suffix in {".xdi", ".csv"} else ".dat"
+    # Athena writes XDI headers to .xmu/.nor/.chik files as well as .xdi.
+    # Recognize the first-line signature so reopening an exported spectrum
+    # retains acquisition metadata instead of silently using the ASCII reader.
+    first_line = data.removeprefix(b'\xef\xbb\xbf').split(b'\n', 1)[0]
+    is_xdi = re.match(rb'^\s*#\s*XDI/\S+(?:\s|$)', first_line) is not None
+    parser_suffix = '.xdi' if is_xdi else suffix if suffix in {".xdi", ".csv"} else ".dat"
     _validate_tabular_text(
         data,
         parser_suffix,
@@ -442,12 +498,22 @@ def parse_upload(
                 )
             )
 
+    warnings = []
+    xdi_metadata = None
+    if parser_suffix == '.xdi':
+        from .athena_xdi import from_larch
+        xdi_metadata = from_larch(group, data)
+    if _X11A_MARKER.match(data.decode('utf-8-sig')):
+        declared = re.search(r'\bNPTS=\s*(\d+)', data.decode('utf-8-sig'))
+        if declared and int(declared[1]) != row_count:
+            warnings.append(f'The X11A header declares {declared[1]} points; all {row_count} observed rows were retained.')
     return ParsedUpload(
         display_name=display_name,
         row_count=row_count,
         columns=tuple(columns),
         arrays=arrays,
-        warnings=(),
+        warnings=tuple(warnings),
         issues=tuple(issues),
         source_bytes=data,
+        xdi_metadata=xdi_metadata,
     )

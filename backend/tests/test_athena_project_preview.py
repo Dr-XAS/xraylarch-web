@@ -121,7 +121,10 @@ def test_lazy_processing_failures_preserve_raw_preview_and_destination(store, na
     if failure == "invalid_recipe":
         args["fft_kwindow"] = "unsupported-window"
     elif failure == "unusable_range":
-        args["bkg_nor2"] = 1000
+        # Native outer bounds are clipped by Larch; a range wholly outside
+        # the measured spectrum is still unusable after that resolution.
+        args["bkg_nor1"] = 1000
+        args["bkg_nor2"] = 1200
     else:
         args["datatype"] = "xanes"
     target = store.create()

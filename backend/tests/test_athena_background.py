@@ -99,6 +99,73 @@ def test_attach_uses_live_processed_standard_and_persists(workspace):
     assert_saved(store, project)
 
 
+def test_point_removal_refreshes_background_chain_and_preserves_raw_consumers(workspace):
+    store, project, ids = workspace
+    project = attach_chain(store, project, ids)
+    before = deepcopy(project)
+    source = group(project, ids['standard'])
+    request = Command(version=project['version'], action='deglitch', group_ids=[ids['standard']],
+                      options=dict(mode='point', point=source['energy'][300]))
+    preview = store.preview_point_edit(project['id'], request)
+    assert store.load(project['id']) == before
+    after = store.command(project['id'], request)
+    standard = assert_processed(after, ids['standard'])
+    consumer = assert_processed(after, ids['consumer'], standard_arrays=standard['arrays'])
+    assert_processed(after, ids['leaf'], standard_arrays=consumer['arrays'])
+    assert group(after, ids['standard'])['energy'] == preview['results'][0]['energy']
+    for name in ('consumer', 'leaf'):
+        assert group(after, ids[name])['energy'] == group(before, ids[name])['energy']
+        assert group(after, ids[name])['mu'] == group(before, ids[name])['mu']
+    assert group(after, ids['other']) == group(before, ids['other'])
+    assert_saved(store, after)
+
+
+def test_point_removal_cannot_change_a_frozen_transitive_consumer(workspace):
+    store, project, ids = workspace
+    project = attach_chain(store, project, ids)
+    project = run(store, project, 'metadata', [ids['leaf']], frozen=True)
+    with pytest.raises((ValueError, WebInputError), match='Unfreeze'):
+        run(store, project, 'deglitch', [ids['standard']], mode='indices', indices=[300])
+    assert store.load(project['id']) == project
+
+
+@pytest.mark.parametrize('reverse_order', [False, True])
+def test_calibration_preview_stages_and_save_refreshes_background_chain(workspace,reverse_order):
+    store, project, ids = workspace
+    project = attach_chain(store, project, ids)
+    if reverse_order:
+        project = run(store, project, 'reorder', ids=list(reversed([g['id'] for g in project['groups']])))
+    before = deepcopy(project)
+    request = Command(version=project['version'],action='calibrate',group_ids=[ids['standard']],
+                      options=dict(coordinate='displayed',observed=8980.7,target=8983.21))
+    preview = store.preview_calibration(project['id'],request)
+    assert store.load(project['id']) == before
+    assert preview['processing_errors'] == {}
+    after = store.command(project['id'],request)
+    standard = assert_processed(after,ids['standard'])
+    consumer = assert_processed(after,ids['consumer'],standard_arrays=standard['arrays'])
+    assert_processed(after,ids['leaf'],standard_arrays=consumer['arrays'])
+    assert group(after,ids['standard'])['parameters']['energy_shift'] == preview['energy_shift']
+    assert [g['id'] for g in after['groups']] == [g['id'] for g in before['groups']]
+    for name in ('standard','consumer','leaf'):
+        assert_changed(chi(before,ids[name]),chi(after,ids[name]))
+        for key in ('energy','mu','source'):
+            assert group(after,ids[name])[key] == group(before,ids[name])[key]
+    assert group(after,ids['other']) == group(before,ids['other'])
+    assert_saved(store,after)
+
+
+def test_calibration_preview_and_save_protect_a_frozen_transitive_consumer(workspace):
+    store, project, ids = workspace
+    project = attach_chain(store,project,ids)
+    project = run(store,project,'metadata',[ids['leaf']],frozen=True)
+    request = Command(version=project['version'],action='calibrate',group_ids=[ids['standard']],
+                      options=dict(coordinate='displayed',observed=8980.7,target=8983.21))
+    for operation in (store.preview_calibration,store.command):
+        with pytest.raises(WebInputError,match='Unfreeze'):operation(project['id'],request)
+        assert store.load(project['id']) == project
+
+
 @pytest.mark.parametrize("reverse_order", [False, True])
 def test_source_edit_recomputes_two_hops_topologically(workspace, reverse_order):
     store, project, ids = workspace
@@ -280,8 +347,9 @@ def test_derived_groups_keep_only_applicable_live_standard_links(workspace, acti
     before = deepcopy(project)
     selected = [ids["consumer"]] if action in ("duplicate", "smooth") else [ids["consumer"], ids["other"]]
     project = run(store, project, action, selected, **options)
-    derived = project["groups"][-1]
-    assert project["groups"][:4] == before["groups"]
+    original_ids = {group["id"] for group in before["groups"]}
+    derived = next(group for group in project["groups"] if group["id"] not in original_ids)
+    assert [group for group in project["groups"] if group["id"] in original_ids] == before["groups"]
     assert derived["reference_id"] is None
     assert derived["background_standard_id"] == (ids["standard"] if linked else None)
     assert derived["processing_error"] is None

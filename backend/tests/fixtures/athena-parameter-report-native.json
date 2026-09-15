@@ -1,0 +1,1236 @@
+{
+  "chemistry": "1.081",
+  "clamps": [
+    [
+      0,
+      "none"
+    ],
+    [
+      1,
+      "none"
+    ],
+    [
+      1.5,
+      "none"
+    ],
+    [
+      3,
+      "slight"
+    ],
+    [
+      4.5,
+      "slight"
+    ],
+    [
+      6,
+      "weak"
+    ],
+    [
+      9,
+      "weak"
+    ],
+    [
+      12,
+      "medium"
+    ],
+    [
+      18,
+      "medium"
+    ],
+    [
+      24,
+      "strong"
+    ],
+    [
+      60,
+      "strong"
+    ],
+    [
+      96,
+      "rigid"
+    ],
+    [
+      200,
+      "rigid"
+    ]
+  ],
+  "elements": [
+    [
+      1,
+      "Hydrogen"
+    ],
+    [
+      2,
+      "Helium"
+    ],
+    [
+      3,
+      "Lithium"
+    ],
+    [
+      4,
+      "Beryllium"
+    ],
+    [
+      5,
+      "Boron"
+    ],
+    [
+      6,
+      "Carbon"
+    ],
+    [
+      7,
+      "Nitrogen"
+    ],
+    [
+      8,
+      "Oxygen"
+    ],
+    [
+      9,
+      "Fluorine"
+    ],
+    [
+      10,
+      "Neon"
+    ],
+    [
+      11,
+      "Sodium"
+    ],
+    [
+      12,
+      "Magnesium"
+    ],
+    [
+      13,
+      "Aluminium"
+    ],
+    [
+      14,
+      "Silicon"
+    ],
+    [
+      15,
+      "Phosphorus"
+    ],
+    [
+      16,
+      "Sulfur"
+    ],
+    [
+      17,
+      "Chlorine"
+    ],
+    [
+      18,
+      "Argon"
+    ],
+    [
+      19,
+      "Potassium"
+    ],
+    [
+      20,
+      "Calcium"
+    ],
+    [
+      21,
+      "Scandium"
+    ],
+    [
+      22,
+      "Titanium"
+    ],
+    [
+      23,
+      "Vanadium"
+    ],
+    [
+      24,
+      "Chromium"
+    ],
+    [
+      25,
+      "Manganese"
+    ],
+    [
+      26,
+      "Iron"
+    ],
+    [
+      27,
+      "Cobalt"
+    ],
+    [
+      28,
+      "Nickel"
+    ],
+    [
+      29,
+      "Copper"
+    ],
+    [
+      30,
+      "Zinc"
+    ],
+    [
+      31,
+      "Gallium"
+    ],
+    [
+      32,
+      "Germanium"
+    ],
+    [
+      33,
+      "Arsenic"
+    ],
+    [
+      34,
+      "Selenium"
+    ],
+    [
+      35,
+      "Bromine"
+    ],
+    [
+      36,
+      "Krypton"
+    ],
+    [
+      37,
+      "Rubidium"
+    ],
+    [
+      38,
+      "Strontium"
+    ],
+    [
+      39,
+      "Yttrium"
+    ],
+    [
+      40,
+      "Zirconium"
+    ],
+    [
+      41,
+      "Niobium"
+    ],
+    [
+      42,
+      "Molybdenum"
+    ],
+    [
+      43,
+      "Technetium"
+    ],
+    [
+      44,
+      "Ruthenium"
+    ],
+    [
+      45,
+      "Rhodium"
+    ],
+    [
+      46,
+      "Palladium"
+    ],
+    [
+      47,
+      "Silver"
+    ],
+    [
+      48,
+      "Cadmium"
+    ],
+    [
+      49,
+      "Indium"
+    ],
+    [
+      50,
+      "Tin"
+    ],
+    [
+      51,
+      "Antimony"
+    ],
+    [
+      52,
+      "Tellurium"
+    ],
+    [
+      53,
+      "Iodine"
+    ],
+    [
+      54,
+      "Xenon"
+    ],
+    [
+      55,
+      "Cesium"
+    ],
+    [
+      56,
+      "Barium"
+    ],
+    [
+      57,
+      "Lanthanum"
+    ],
+    [
+      58,
+      "Cerium"
+    ],
+    [
+      59,
+      "Praseodymium"
+    ],
+    [
+      60,
+      "Neodymium"
+    ],
+    [
+      61,
+      "Promethium"
+    ],
+    [
+      62,
+      "Samarium"
+    ],
+    [
+      63,
+      "Europium"
+    ],
+    [
+      64,
+      "Gadolinium"
+    ],
+    [
+      65,
+      "Terbium"
+    ],
+    [
+      66,
+      "Dysprosium"
+    ],
+    [
+      67,
+      "Holmium"
+    ],
+    [
+      68,
+      "Erbium"
+    ],
+    [
+      69,
+      "Thulium"
+    ],
+    [
+      70,
+      "Ytterbium"
+    ],
+    [
+      71,
+      "Lutetium"
+    ],
+    [
+      72,
+      "Hafnium"
+    ],
+    [
+      73,
+      "Tantalum"
+    ],
+    [
+      74,
+      "Tungsten"
+    ],
+    [
+      75,
+      "Rhenium"
+    ],
+    [
+      76,
+      "Osmium"
+    ],
+    [
+      77,
+      "Iridium"
+    ],
+    [
+      78,
+      "Platinum"
+    ],
+    [
+      79,
+      "Gold"
+    ],
+    [
+      80,
+      "Mercury"
+    ],
+    [
+      81,
+      "Thallium"
+    ],
+    [
+      82,
+      "Lead"
+    ],
+    [
+      83,
+      "Bismuth"
+    ],
+    [
+      84,
+      "Polonium"
+    ],
+    [
+      85,
+      "Astatine"
+    ],
+    [
+      86,
+      "Radon"
+    ],
+    [
+      87,
+      "Francium"
+    ],
+    [
+      88,
+      "Radium"
+    ],
+    [
+      89,
+      "Actinium"
+    ],
+    [
+      90,
+      "Thorium"
+    ],
+    [
+      91,
+      "Protactinium"
+    ],
+    [
+      92,
+      "Uranium"
+    ],
+    [
+      93,
+      "Neptunium"
+    ],
+    [
+      94,
+      "Plutonium"
+    ],
+    [
+      95,
+      "Americium"
+    ],
+    [
+      96,
+      "Curium"
+    ],
+    [
+      97,
+      "Berkelium"
+    ],
+    [
+      98,
+      "Californium"
+    ],
+    [
+      99,
+      "Einsteinium"
+    ],
+    [
+      100,
+      "Fermium"
+    ],
+    [
+      101,
+      "Mendelevium"
+    ],
+    [
+      102,
+      "Nobelium"
+    ],
+    [
+      103,
+      "Lawrencium"
+    ],
+    [
+      104,
+      "Rutherfordium"
+    ],
+    [
+      105,
+      "Dubnium"
+    ],
+    [
+      106,
+      "Seaborgium"
+    ],
+    [
+      107,
+      "Bohrium"
+    ],
+    [
+      108,
+      "Hassium"
+    ],
+    [
+      109,
+      "Meitnerium"
+    ],
+    [
+      110,
+      "Darmstadtium"
+    ],
+    [
+      111,
+      "Roentgenium"
+    ],
+    [
+      112,
+      "Copernicium"
+    ],
+    [
+      113,
+      "Nihonium"
+    ],
+    [
+      114,
+      "Flerovium"
+    ],
+    [
+      115,
+      "Moscovium"
+    ],
+    [
+      116,
+      "Livermorium"
+    ],
+    [
+      117,
+      "Tennessine"
+    ],
+    [
+      118,
+      "Oganesson"
+    ]
+  ],
+  "modules": {
+    "Chemistry/Elements.pm": "d62f537457ccb56db506c6c8dda8bfd62f6103315fa0c4bf544ff57f149dbdd9",
+    "Spreadsheet/WriteExcel.pm": "38aa225399383d6e429609bdd6813eb2671c42f0180eb15bbe6a07906c187715",
+    "Spreadsheet/WriteExcel/Format.pm": "083a619e76b41d9731c2ce1e29ed4c898f3a77a6438cbe8053ad78843d78a1ce",
+    "Spreadsheet/WriteExcel/Workbook.pm": "0845b99b38babeb09f4a005557a7cb3408c43c97dc5aa20b76e87d82c3345c04",
+    "Spreadsheet/WriteExcel/Worksheet.pm": "da0b43a722bcae7318d31740668d57538b0bc296287da7922cd510a699166042"
+  },
+  "writer": "2.40",
+  "all": {
+    "labels": [
+      "Group",
+      "Element",
+      "Edge",
+      "Importance",
+      "Edge shift",
+      "",
+      "E0",
+      "Algorithm",
+      "Rbkg",
+      "k-weight",
+      "Normalization order",
+      "Pre-edge range",
+      "Normalization range",
+      "Spline range (k)",
+      "Spline range (E)",
+      "Edge step",
+      "Standard",
+      "Lower clamp",
+      "Upper clamp",
+      "",
+      "k-range",
+      "dk",
+      "Window",
+      "Arb. kw",
+      "Phase correction",
+      "",
+      "R-range",
+      "dR",
+      "Window",
+      "",
+      "Plot multiplier",
+      "y offset"
+    ],
+    "rows": [
+      [
+        " Cu foil",
+        "Copper",
+        "K",
+        1.25,
+        2.5,
+        "",
+        8980.5,
+        "autobk",
+        1.2,
+        2.0,
+        3.0,
+        "[ -150.000 : -30.000 ]",
+        "[ 150.000 : 700.000 ]",
+        "[ 0.500 : 14.000 ]",
+        "[ 0.952 : 746.757 ]",
+        3.14159265358979,
+        "None",
+        "None",
+        "Strong",
+        "",
+        "[ 3.000 : 13.500 ]",
+        1.5,
+        "hanning",
+        1.25,
+        "no",
+        "",
+        "[ 1.100 : 3.200 ]",
+        0.2,
+        "kaiser",
+        "",
+        0.0314159265358979,
+        -0.2
+      ],
+      [
+        " Iron reference",
+        "Iron",
+        "L3",
+        0.0,
+        2.5,
+        "",
+        7112.25,
+        "autobk",
+        1.2,
+        2.0,
+        3.0,
+        "[ -150.000 : -30.000 ]",
+        "[ 150.000 : 700.000 ]",
+        "[ 0.500 : 14.000 ]",
+        "[ 0.952 : 746.757 ]",
+        3.14159265358979,
+        "Cu foil",
+        "Slight",
+        "Weak",
+        "",
+        "[ 3.000 : 13.500 ]",
+        1.5,
+        "hanning",
+        1.25,
+        "no",
+        "",
+        "[ 1.100 : 3.200 ]",
+        0.2,
+        "kaiser",
+        "",
+        0.0314159265358979,
+        -0.2
+      ],
+      [
+        " Cu foil",
+        "Copper",
+        "K",
+        2.75,
+        2.5,
+        "",
+        8980.5,
+        "autobk",
+        1.2,
+        2.0,
+        2.0,
+        "[ -150.000 : -30.000 ]",
+        "[ 150.000 : 700.000 ]",
+        "[ 0.500 : 14.000 ]",
+        "[ 0.952 : 746.757 ]",
+        3.14159265358979,
+        "None",
+        "Medium",
+        "Rigid",
+        "",
+        "[ 3.000 : 13.500 ]",
+        1.5,
+        "hanning",
+        1.25,
+        "no",
+        "",
+        "[ 1.100 : 3.200 ]",
+        0.2,
+        "kaiser",
+        "",
+        0.0314159265358979,
+        -0.2
+      ]
+    ],
+    "types": [
+      [
+        1,
+        1,
+        1,
+        2,
+        2,
+        0,
+        2,
+        1,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        0,
+        1,
+        2,
+        1,
+        0,
+        2,
+        2
+      ],
+      [
+        1,
+        1,
+        1,
+        2,
+        2,
+        0,
+        2,
+        1,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        0,
+        1,
+        2,
+        1,
+        0,
+        2,
+        2
+      ],
+      [
+        1,
+        1,
+        1,
+        2,
+        2,
+        0,
+        2,
+        1,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        0,
+        1,
+        2,
+        1,
+        0,
+        2,
+        2
+      ]
+    ],
+    "merged": [
+      [
+        1,
+        2,
+        0,
+        32
+      ],
+      [
+        2,
+        3,
+        0,
+        32
+      ],
+      [
+        3,
+        4,
+        0,
+        32
+      ],
+      [
+        5,
+        6,
+        6,
+        19
+      ],
+      [
+        5,
+        6,
+        20,
+        25
+      ],
+      [
+        5,
+        6,
+        26,
+        29
+      ],
+      [
+        5,
+        6,
+        30,
+        32
+      ]
+    ],
+    "formats": [
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.000",
+      "General",
+      "0.000",
+      "General",
+      "0.000",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.00E+00",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.000",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.000",
+      "General",
+      "General",
+      "0.00E+00",
+      "0.000"
+    ]
+  },
+  "marked": {
+    "labels": [
+      "Group",
+      "Element",
+      "Edge",
+      "Importance",
+      "Edge shift",
+      "",
+      "E0",
+      "Algorithm",
+      "Rbkg",
+      "k-weight",
+      "Normalization order",
+      "Pre-edge range",
+      "Normalization range",
+      "Spline range (k)",
+      "Spline range (E)",
+      "Edge step",
+      "Standard",
+      "Lower clamp",
+      "Upper clamp",
+      "",
+      "k-range",
+      "dk",
+      "Window",
+      "Arb. kw",
+      "Phase correction",
+      "",
+      "R-range",
+      "dR",
+      "Window",
+      "",
+      "Plot multiplier",
+      "y offset"
+    ],
+    "rows": [
+      [
+        " Cu foil",
+        "Copper",
+        "K",
+        1.25,
+        2.5,
+        "",
+        8980.5,
+        "autobk",
+        1.2,
+        2.0,
+        3.0,
+        "[ -150.000 : -30.000 ]",
+        "[ 150.000 : 700.000 ]",
+        "[ 0.500 : 14.000 ]",
+        "[ 0.952 : 746.757 ]",
+        3.14159265358979,
+        "None",
+        "None",
+        "Strong",
+        "",
+        "[ 3.000 : 13.500 ]",
+        1.5,
+        "hanning",
+        1.25,
+        "no",
+        "",
+        "[ 1.100 : 3.200 ]",
+        0.2,
+        "kaiser",
+        "",
+        0.0314159265358979,
+        -0.2
+      ],
+      [
+        " Cu foil",
+        "Copper",
+        "K",
+        2.75,
+        2.5,
+        "",
+        8980.5,
+        "autobk",
+        1.2,
+        2.0,
+        2.0,
+        "[ -150.000 : -30.000 ]",
+        "[ 150.000 : 700.000 ]",
+        "[ 0.500 : 14.000 ]",
+        "[ 0.952 : 746.757 ]",
+        3.14159265358979,
+        "None",
+        "Medium",
+        "Rigid",
+        "",
+        "[ 3.000 : 13.500 ]",
+        1.5,
+        "hanning",
+        1.25,
+        "no",
+        "",
+        "[ 1.100 : 3.200 ]",
+        0.2,
+        "kaiser",
+        "",
+        0.0314159265358979,
+        -0.2
+      ]
+    ],
+    "types": [
+      [
+        1,
+        1,
+        1,
+        2,
+        2,
+        0,
+        2,
+        1,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        0,
+        1,
+        2,
+        1,
+        0,
+        2,
+        2
+      ],
+      [
+        1,
+        1,
+        1,
+        2,
+        2,
+        0,
+        2,
+        1,
+        2,
+        2,
+        2,
+        1,
+        1,
+        1,
+        1,
+        2,
+        1,
+        1,
+        1,
+        0,
+        1,
+        2,
+        1,
+        2,
+        1,
+        0,
+        1,
+        2,
+        1,
+        0,
+        2,
+        2
+      ]
+    ],
+    "merged": [
+      [
+        1,
+        2,
+        0,
+        32
+      ],
+      [
+        2,
+        3,
+        0,
+        32
+      ],
+      [
+        3,
+        4,
+        0,
+        32
+      ],
+      [
+        5,
+        6,
+        6,
+        19
+      ],
+      [
+        5,
+        6,
+        20,
+        25
+      ],
+      [
+        5,
+        6,
+        26,
+        29
+      ],
+      [
+        5,
+        6,
+        30,
+        32
+      ]
+    ],
+    "formats": [
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.000",
+      "General",
+      "0.000",
+      "General",
+      "0.000",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.00E+00",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.000",
+      "General",
+      "General",
+      "General",
+      "General",
+      "General",
+      "0.000",
+      "General",
+      "General",
+      "0.00E+00",
+      "0.000"
+    ]
+  },
+  "inputs": [
+    {
+      "name": "Cu foil",
+      "bkg_z": 29,
+      "fft_edge": "k",
+      "importance": 1.25,
+      "bkg_eshift": 2.5,
+      "bkg_e0": 8980.5,
+      "bkg_algorithm": "autobk",
+      "bkg_rbkg": 1.2,
+      "bkg_kw": 2,
+      "bkg_nnorm": 3,
+      "bkg_pre1": -150.0,
+      "bkg_pre2": -30.0,
+      "bkg_nor1": 150.0,
+      "bkg_nor2": 700.0,
+      "bkg_spl1": 0.5,
+      "bkg_spl2": 14.0,
+      "bkg_spl1e": 0.9524960077301405,
+      "bkg_spl2e": 746.7568700604302,
+      "bkg_step": 3.14159265358979,
+      "bkg_stan": "None",
+      "bkg_clamp1": 0,
+      "bkg_clamp2": 24,
+      "fft_kmin": 3.0,
+      "fft_kmax": 13.5,
+      "fft_dk": 1.5,
+      "fft_kwindow": "hanning",
+      "fit_karb_value": 1.25,
+      "fft_pc": 0,
+      "bft_rmin": 1.1,
+      "bft_rmax": 3.2,
+      "bft_dr": 0.2,
+      "bft_rwindow": "kaiser",
+      "plot_multiplier": 0.0314159265358979,
+      "y_offset": -0.2,
+      "marked": true,
+      "frozen": true
+    },
+    {
+      "name": "Iron reference",
+      "bkg_z": 26,
+      "fft_edge": "l3",
+      "importance": 0,
+      "bkg_eshift": 2.5,
+      "bkg_e0": 7112.25,
+      "bkg_algorithm": "autobk",
+      "bkg_rbkg": 1.2,
+      "bkg_kw": 2,
+      "bkg_nnorm": 3,
+      "bkg_pre1": -150.0,
+      "bkg_pre2": -30.0,
+      "bkg_nor1": 150.0,
+      "bkg_nor2": 700.0,
+      "bkg_spl1": 0.5,
+      "bkg_spl2": 14.0,
+      "bkg_spl1e": 0.9524960077301405,
+      "bkg_spl2e": 746.7568700604302,
+      "bkg_step": 3.14159265358979,
+      "bkg_stan": "Cu foil",
+      "bkg_clamp1": 3,
+      "bkg_clamp2": 6,
+      "fft_kmin": 3.0,
+      "fft_kmax": 13.5,
+      "fft_dk": 1.5,
+      "fft_kwindow": "hanning",
+      "fit_karb_value": 1.25,
+      "fft_pc": 0,
+      "bft_rmin": 1.1,
+      "bft_rmax": 3.2,
+      "bft_dr": 0.2,
+      "bft_rwindow": "kaiser",
+      "plot_multiplier": 0.0314159265358979,
+      "y_offset": -0.2,
+      "marked": false,
+      "frozen": true
+    },
+    {
+      "name": "Cu foil",
+      "bkg_z": 29,
+      "fft_edge": "k",
+      "importance": 2.75,
+      "bkg_eshift": 2.5,
+      "bkg_e0": 8980.5,
+      "bkg_algorithm": "autobk",
+      "bkg_rbkg": 1.2,
+      "bkg_kw": 2,
+      "bkg_nnorm": 2,
+      "bkg_pre1": -150.0,
+      "bkg_pre2": -30.0,
+      "bkg_nor1": 150.0,
+      "bkg_nor2": 700.0,
+      "bkg_spl1": 0.5,
+      "bkg_spl2": 14.0,
+      "bkg_spl1e": 0.9524960077301405,
+      "bkg_spl2e": 746.7568700604302,
+      "bkg_step": 3.14159265358979,
+      "bkg_stan": "None",
+      "bkg_clamp1": 12,
+      "bkg_clamp2": 96,
+      "fft_kmin": 3.0,
+      "fft_kmax": 13.5,
+      "fft_dk": 1.5,
+      "fft_kwindow": "hanning",
+      "fit_karb_value": 1.25,
+      "fft_pc": 0,
+      "bft_rmin": 1.1,
+      "bft_rmax": 3.2,
+      "bft_dr": 0.2,
+      "bft_rwindow": "kaiser",
+      "plot_multiplier": 0.0314159265358979,
+      "y_offset": -0.2,
+      "marked": true,
+      "frozen": true
+    }
+  ],
+  "sources": {
+    "lib/Demeter/UI/Athena/Group.pm": "3cc70f81c3130d2c069a4c38f483db005cbb091edb90e424c7cce1d36c98f13d",
+    "lib/Demeter/Data/Units.pm": "4c03fd790edc3ca30667cb8c6a4f2ff39aae7cf749f930ebe48e9a92db3fad5d",
+    "lib/Demeter/configuration/clamp.demeter_conf": "9d5d84cd3c3febeead6588ec885b1028088af3b98899fa5643b6bb25d26d3063"
+  }
+}

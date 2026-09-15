@@ -1,0 +1,11 @@
+{
+  "demeter_revision": "06afc8da08a5a7d5a26ee14992170fcf5dc67406",
+  "files": [
+    {
+      "file": "demeter-uhup.101",
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/examples/data/uhup.101",
+      "sha256": "f0e95b0639eca313f7c410b3a5827920a0568f8a28035fdce9af3bc52a09c814",
+      "description": "Measured HUP quick scan used by Demeter examples/tests/rebin.pl; numerator column 2, denominator column 3, natural log."
+    }
+  ]
+}

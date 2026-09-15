@@ -82,6 +82,52 @@ def launch_session(client, *, source="1", nonce="n" * 32):
     return consumed.json()
 
 
+@pytest.mark.parametrize('with_capability', [False, True])
+def test_all_other_athena_project_routes_refuse_integrated_drafts_before_body_parsing(tmp_path, with_capability):
+    app = create_app(enabled_settings(tmp_path))
+    permitted = {
+        ('GET', '/api/athena/projects/{ident}'),
+        ('POST', '/api/athena/projects/{ident}/command'),
+        ('GET', '/api/athena/projects/{ident}/export'),
+        ('GET', '/api/athena/projects/{ident}/groups/{group_id}/export'),
+    }
+    with TestClient(app) as client:
+        session = launch_session(client)
+        checked = []
+        for route in app.routes:
+            if not route.path.startswith('/api/athena/projects/{ident}/'):
+                continue
+            for method in route.methods:
+                if (method, route.path) in permitted:
+                    continue
+                path = route.path
+                for name, converter in route.param_convertors.items():
+                    value = session['project_id'] if name == 'ident' else session['group_id'] if name == 'group_id' else 'test'
+                    path = path.replace('{' + name + '}', value).replace('{' + name + ':path}', value)
+                response = client.request(method, path, content=b'not-valid-json',
+                    headers={'content-type':'application/json', **(capability(session['owner_capability']) if with_capability else {})})
+                assert response.status_code == 404, (method, route.path, response.status_code)
+                checked.append((method, route.path))
+        assert len(checked) >= 20
+
+
+def test_new_project_route_cannot_escape_by_renaming_its_path_parameter(tmp_path):
+    app = create_app(enabled_settings(tmp_path))
+    route_type = type(next(route for route in app.routes if route.path == '/api/athena/projects/{ident}'))
+    called = []
+    async def future_operation(project_id: str):
+        called.append(project_id)
+        return {'unsafe': True}
+    app.router.add_api_route('/api/athena/projects/{project_id}/future', future_operation,
+        methods=['POST'], route_class_override=route_type)
+    with TestClient(app) as client:
+        session = launch_session(client)
+        response = client.post(f"/api/athena/projects/{session['project_id']}/future",
+            headers=capability(session['owner_capability']))
+        assert response.status_code == 404
+        assert called == []
+
+
 def test_default_off_integration_routes_are_not_found(tmp_path):
     with TestClient(create_app(Settings(data_root=tmp_path))) as client:
         assert client.post("/api/integration/v1/bootstrap", content=b"{}").status_code == 404
