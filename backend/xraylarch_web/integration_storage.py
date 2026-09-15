@@ -160,10 +160,11 @@ class IntegrationStorage:
         self.nonces_dir = self.root / "nonces"
         self.handles_dir = self.root / "handles"
         self.projects_dir = self.root / "projects"
+        self.sessions_dir = self.root / "sessions"
         self.rename_intents_dir = self.root / "rename-intents"
         for path in (
             self.root, self.drafts_dir, self.nonces_dir, self.handles_dir,
-            self.projects_dir, self.rename_intents_dir,
+            self.projects_dir, self.sessions_dir, self.rename_intents_dir,
         ):
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(path, 0o700)
@@ -684,6 +685,65 @@ class IntegrationStorage:
         self._atomic_json(path, value)
         self._enqueue_cleanup("handles", path.name)
         return handle
+
+    def create_project_session(
+        self,
+        *,
+        project_id: str,
+        owner_capability: str,
+        allowed_operations: tuple[str, ...],
+        expires_at: datetime,
+        now: datetime,
+    ) -> str:
+        with self.project_lock(project_id):
+            record = self._load_active_project(project_id, owner_capability, now)
+            capability = secrets.token_urlsafe(32)
+            value = {
+                "project_id": project_id,
+                "capability_hash": _hash(capability),
+                "owner_capability_hash": record.capability_hash,
+                "allowed_operations": list(allowed_operations),
+                "expires_at": _dt(expires_at).isoformat(),
+            }
+            self._atomic_json(self.sessions_dir / f"{_hash(capability)}.json", value)
+            return capability
+
+    def _load_project_session_locked(
+        self, project_id: str, capability: str, *, now: datetime,
+    ) -> tuple[ProjectRecord, tuple[str, ...]]:
+        self._validate_project_id(project_id)
+        if not isinstance(capability, str):
+            raise IntegrationNotFoundError("Integration project was not found.")
+        path = self.sessions_dir / f"{_hash(capability)}.json"
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if (
+                value.get("project_id") != project_id
+                or not hmac.compare_digest(value["capability_hash"], _hash(capability))
+                or _dt(now) >= _dt(value["expires_at"])
+                or not isinstance(value.get("allowed_operations"), list)
+                or not all(isinstance(item, str) for item in value["allowed_operations"])
+            ):
+                raise IntegrationNotFoundError("Integration project was not found.")
+            record = self._read_project_unchecked(project_id)
+            if (
+                record.status != "active"
+                or not hmac.compare_digest(
+                    value["owner_capability_hash"], record.capability_hash
+                )
+            ):
+                raise IntegrationNotFoundError("Integration project was not found.")
+            return record, tuple(value["allowed_operations"])
+        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise IntegrationNotFoundError("Integration project was not found.") from exc
+
+    def load_project_session(
+        self, project_id: str, capability: str, *, now: datetime,
+    ) -> tuple[ProjectRecord, tuple[str, ...]]:
+        with self.project_lock(project_id):
+            return self._load_project_session_locked(
+                project_id, capability, now=now
+            )
 
     def consume_project_launch_handle(self, handle: str, *, now: datetime) -> dict:
         self._validate_opaque(handle)

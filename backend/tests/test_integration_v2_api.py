@@ -104,7 +104,7 @@ def test_create_launch_rename_rotate_and_delete_project(tmp_path):
         consumed = client.post("/api/integration/v2/browser/consume", json={"handle": handle})
         assert consumed.status_code == 200
         assert consumed.json()["project_id"] == project_id
-        assert consumed.json()["capability"] == capability
+        assert consumed.json()["capability"] != capability
         assert client.post("/api/integration/v2/browser/consume", json={"handle": handle}).status_code == 404
 
         renamed = request(client, "PATCH", f"/api/integration/v2/projects/{project_id}", {"name": "Renamed"}, nonce="r" * 32, capability=capability)
@@ -663,22 +663,267 @@ def _route_request(client, route, project_id, headers):
     return client.request(method, path, **kwargs)
 
 
-def test_persistent_project_capability_authorizes_native_athena_command(tmp_path):
+def _browser_session(client, integrated, *, nonce="l" * 32):
+    project_id = integrated["project_id"]
+    launched = request(
+        client,
+        "POST",
+        f"/api/integration/v2/projects/{project_id}/launch",
+        {"capability": integrated["capability"]},
+        nonce=nonce,
+        capability=integrated["capability"],
+    )
+    assert launched.status_code == 200, launched.text
+    consumed = client.post(
+        "/api/integration/v2/browser/consume",
+        json={"handle": launched.json()["handle"]},
+    )
+    assert consumed.status_code == 200, consumed.text
+    return consumed.json()
+
+
+def test_browser_session_enforces_authoritative_operation_scope(tmp_path):
     with TestClient(create_app(settings(tmp_path))) as client:
         integrated = create(client)
-        response = client.post(
-            f"/api/athena/projects/{integrated['project_id']}/command",
-            headers=project_headers(integrated["capability"]),
+        session = _browser_session(client, integrated)
+        project_id = integrated["project_id"]
+
+        readable = client.get(
+            f"/api/athena/projects/{project_id}",
+            headers=project_headers(session["capability"]),
+        )
+        denied = client.post(
+            f"/api/athena/projects/{project_id}/command",
+            headers=project_headers(session["capability"]),
             json={
                 "version": 0,
                 "action": "project",
                 "group_ids": [],
-                "options": {"name": "Renamed in Athena"},
+                "options": {"name": "Must not change"},
             },
         )
+        owner_secret = client.get(
+            f"/api/athena/projects/{project_id}",
+            headers=project_headers(integrated["capability"]),
+        )
 
-    assert response.status_code == 200, response.text
-    assert response.json()["name"] == "Renamed in Athena"
+    assert session["allowed_operations"] == ["read_project"]
+    assert session["capability"] != integrated["capability"]
+    assert readable.status_code == 200
+    assert denied.status_code == 404
+    assert denied.json() == {"detail": "Project was not found."}
+    assert owner_secret.status_code == 404
+    assert owner_secret.json() == denied.json()
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {"X-XrayLarch-Draft-Capability": "draft-secret"},
+        {"X-XrayLarch-Project-Capability": "project-secret"},
+        {
+            "X-XrayLarch-Draft-Capability": "draft-secret",
+            "X-XrayLarch-Project-Capability": "project-secret",
+        },
+    ],
+)
+def test_legacy_project_collection_rejects_capability_headers(tmp_path, headers):
+    with TestClient(create_app(settings(tmp_path))) as client:
+        listing = client.get("/api/athena/projects", headers=headers)
+        creation = client.post("/api/athena/projects", headers=headers)
+
+    assert listing.status_code == 403
+    assert creation.status_code == 403
+
+
+def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path):
+    from xraylarch_web.integration_service import IntegrationService
+
+    app = create_app(settings(
+        tmp_path, integration_max_groups=2, integration_guest_max_groups=2
+    ))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        integrated = create(client)
+        session_capability = service.storage.create_project_session(
+            project_id=integrated["project_id"],
+            owner_capability=integrated["capability"],
+            allowed_operations=("command", "project", "example"),
+            expires_at=NOW + timedelta(minutes=5),
+            now=NOW,
+        )
+        renamed = client.post(
+            f"/api/athena/projects/{integrated['project_id']}/command",
+            headers=project_headers(session_capability),
+            json={"version": 0, "action": "project", "group_ids": [],
+                  "options": {"name": "Accounted"}},
+        )
+        rejected = client.post(
+            f"/api/athena/projects/{integrated['project_id']}/command",
+            headers=project_headers(session_capability),
+            json={"version": 1, "action": "example", "group_ids": [], "options": {}},
+        )
+
+    workspace = tmp_path / "athena" / integrated["project_id"]
+    record = service.storage.load_project(
+        integrated["project_id"], integrated["capability"], now=NOW
+    )
+    assert renamed.status_code == 200, renamed.text
+    assert record.stored_bytes == sum(
+        path.stat().st_size
+        for path in workspace.iterdir()
+        if path.is_file() and path.name != "workspace.lock"
+    )
+    assert rejected.status_code == 409
+    assert json.loads((workspace / "project.json").read_text())["groups"] == []
+
+
+@pytest.mark.parametrize("declared_length", (None, "1"))
+def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_length):
+    from xraylarch_web.integration_service import IntegrationService
+
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        integrated = create(client)
+        session_capability = service.storage.create_project_session(
+            project_id=integrated["project_id"],
+            owner_capability=integrated["capability"],
+            allowed_operations=("upload",),
+            expires_at=NOW + timedelta(minutes=5),
+            now=NOW,
+        )
+        record_path = tmp_path / "integration" / "projects" / f"{integrated['project_id']}.json"
+        metadata = json.loads(record_path.read_text())
+        metadata["quota"]["max_bytes"] = metadata["stored_bytes"] + 10
+        record_path.write_text(json.dumps(metadata, separators=(",", ":")))
+        raw = b"energy mu\n" + b"\n".join(f"{index} {index + 1}".encode() for index in range(12))
+        headers = project_headers(session_capability)
+        request_kwargs = {"headers": headers, "files": {"file": ("sample.dat", raw)}}
+        if declared_length is None:
+            request_kwargs["headers"] = {
+                **headers, "transfer-encoding": "chunked"
+            }
+        else:
+            request_kwargs["headers"] = {
+                **headers, "content-length": declared_length
+            }
+        rejected = client.post(
+            f"/api/athena/projects/{integrated['project_id']}/inspect",
+            **request_kwargs,
+        )
+
+    workspace = tmp_path / "athena" / integrated["project_id"]
+    assert rejected.status_code == 409
+    assert not list(workspace.glob("upload-*"))
+
+
+def test_command_action_requires_its_individual_scope(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        integrated = create(client)
+        session_capability = service.storage.create_project_session(
+            project_id=integrated["project_id"],
+            owner_capability=integrated["capability"],
+            allowed_operations=("command", "project"),
+            expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        allowed = client.post(
+            f"/api/athena/projects/{integrated['project_id']}/command",
+            headers=project_headers(session_capability),
+            json={"version": 0, "action": "project", "group_ids": [],
+                  "options": {"name": "Allowed"}},
+        )
+        denied = client.post(
+            f"/api/athena/projects/{integrated['project_id']}/command",
+            headers=project_headers(session_capability),
+            json={"version": 1, "action": "example", "group_ids": [], "options": {}},
+        )
+
+    assert allowed.status_code == 200, allowed.text
+    assert denied.status_code == 404
+    assert denied.json() == {"detail": "Project was not found."}
+
+
+def test_concurrent_integrated_uploads_cannot_take_same_last_file_slot(tmp_path):
+    app = create_app(settings(
+        tmp_path, integration_max_files=1, integration_guest_max_files=1
+    ))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        integrated = create(client)
+        session_capability = service.storage.create_project_session(
+            project_id=integrated["project_id"],
+            owner_capability=integrated["capability"],
+            allowed_operations=("upload",), expires_at=NOW + timedelta(minutes=5),
+            now=NOW,
+        )
+
+    raw = b"energy mu\n" + b"\n".join(
+        f"{index} {index + 1}".encode() for index in range(12)
+    )
+
+    def upload(index):
+        with TestClient(app) as client:
+            return client.post(
+                f"/api/athena/projects/{integrated['project_id']}/inspect",
+                headers=project_headers(session_capability),
+                files={"file": (f"sample-{index}.dat", raw)},
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = list(executor.map(upload, range(2)))
+
+    assert sorted(statuses) == [200, 409]
+    workspace = tmp_path / "athena" / integrated["project_id"]
+    assert len(list(workspace.glob("upload-*.source"))) == 1
+
+
+def test_integrated_project_preview_group_uses_staged_ownership(tmp_path):
+    from xraylarch_web.integration_service import IntegrationService
+
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        first = create(client, nonce="a" * 32)
+        second = create(client, nonce="b" * 32)
+        capabilities = {}
+        for item in (first, second):
+            capabilities[item["project_id"]] = service.storage.create_project_session(
+                project_id=item["project_id"], owner_capability=item["capability"],
+                allowed_operations=("upload", "read_upload"),
+                expires_at=NOW + timedelta(minutes=5), now=NOW,
+            )
+        source = {
+            "format": "athena-web", "schema_version": 1, "version": 0,
+            "name": "Preview", "journal": "", "groups": [{
+                "id": "staged-group", "label": "Staged", "energy": list(range(12)),
+                "mu": [float(index) for index in range(12)], "data_type": "mu",
+                "parameters": {}, "source": {}, "notes": "", "marked": False,
+                "frozen": False, "multiplier": 1, "offset": 0,
+                "reference_id": None, "background_standard_id": None,
+            }],
+        }
+        preview = client.post(
+            f"/api/athena/projects/{first['project_id']}/preview-project",
+            headers=project_headers(capabilities[first["project_id"]]),
+            files={"file": ("preview.json", json.dumps(source).encode())},
+        )
+        assert preview.status_code == 200, preview.text
+        upload_id = preview.json()["upload_id"]
+        allowed = client.get(
+            f"/api/athena/projects/{first['project_id']}/preview-project/{upload_id}/groups/staged-group",
+            headers=project_headers(capabilities[first["project_id"]]),
+        )
+        denied = client.get(
+            f"/api/athena/projects/{second['project_id']}/preview-project/{upload_id}/groups/staged-group",
+            headers=project_headers(capabilities[second["project_id"]]),
+        )
+
+    assert allowed.status_code == 200, allowed.text
+    assert denied.status_code == 404
+    assert denied.json() == {"detail": "Project was not found."}
 
 
 def test_every_integrated_athena_project_route_requires_matching_capability(tmp_path):

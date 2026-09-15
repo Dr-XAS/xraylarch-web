@@ -83,6 +83,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         integration_service = IntegrationService(
             active_settings, athena_store, integration_storage
         )
+        app.state.integration_service = integration_service
+        app.state.athena_store = athena_store
         app.include_router(
             build_integration_router(integration_service, active_settings)
         )

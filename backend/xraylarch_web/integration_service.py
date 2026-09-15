@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
-from typing import Iterator, Mapping, Sequence, get_args
+from typing import Any, Callable, Iterator, Mapping, Sequence, get_args
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -477,13 +477,89 @@ class IntegrationService:
                     project_id, capability, now=now,
                 )
                 project = self.athena_store.load(project_id)
+        session_capability = self.storage.create_project_session(
+            project_id=project_id,
+            owner_capability=capability,
+            allowed_operations=tuple(value["allowed_operations"]),
+            expires_at=now + timedelta(seconds=300),
+            now=now,
+        )
         return {
-            "project_id": project_id, "capability": capability,
+            "project_id": project_id, "capability": session_capability,
             "project": self._project_summary(project, record).model_dump(mode="json"),
             "seed_group": value["seed_group"],
             "allowed_operations": value["allowed_operations"],
             "return_reference": value["return_reference"],
         }
+
+    @staticmethod
+    def _workspace_bytes(workspace: Path) -> int:
+        return sum(
+            path.stat().st_size
+            for path in workspace.iterdir()
+            if path.is_file() and path.name != "workspace.lock"
+        )
+
+    @staticmethod
+    def _upload_count(workspace: Path) -> int:
+        return sum(
+            path.name.startswith("upload-") and path.suffix == ".source"
+            or path.name.startswith("project-upload-") and path.suffix == ".bin"
+            for path in workspace.iterdir()
+            if path.is_file()
+        )
+
+    def mutate_v2_project(
+        self,
+        project_id: str,
+        session_capability: str,
+        operation: str,
+        mutate: Callable[[], Any],
+        *,
+        now: datetime,
+        lock_workspace: bool = False,
+    ) -> Any:
+        """Run an Athena mutation as one quota-checked integration transaction."""
+        with self.storage.project_lock(project_id):
+            record, allowed = self.storage._load_project_session_locked(
+                project_id, session_capability, now=now
+            )
+            if operation not in allowed:
+                raise IntegrationAuthorizationError("Integration project was not found.")
+            workspace = self.athena_store.storage.workspace_dir(project_id)
+            backup = {
+                path.name: path.read_bytes()
+                for path in workspace.iterdir()
+                if path.is_file() and path.name != "workspace.lock"
+            }
+            try:
+                if lock_workspace:
+                    with self.athena_store.storage.lock(project_id):
+                        result = mutate()
+                else:
+                    result = mutate()
+                project = self.athena_store.load(project_id)
+                stored_bytes = self._workspace_bytes(workspace)
+                if record.quota is not None and (
+                    len(project["groups"]) > record.quota.max_groups
+                    or self._upload_count(workspace) > record.quota.max_files
+                    or stored_bytes > record.quota.max_bytes
+                ):
+                    raise IntegrationConflictError(
+                        "Integration project quota is exhausted."
+                    )
+                self.storage._set_project_stored_bytes_locked(
+                    record, stored_bytes, now=now
+                )
+                return result
+            except Exception:
+                with self.athena_store.storage.lock(project_id):
+                    for path in workspace.iterdir():
+                        if path.is_file() and path.name != "workspace.lock":
+                            path.unlink(missing_ok=True)
+                    for name, data in backup.items():
+                        self.athena_store.storage.write_bytes(project_id, name, data)
+                raise
 
     def rename_v2_project(self, project_id: str, capability: str, name: str, *, now: datetime) -> ProjectSummary:
         # Lock order is integration project, then Athena workspace. All coordinated

@@ -59,6 +59,36 @@ def test_uploaded_group_preserves_sanitized_parse_provenance(client):
     assert source["parse_metadata"] == {"row_count": 12, "column_count": 3}
 
 
+def test_selected_group_export_recursively_redacts_sensitive_keys(tmp_path):
+    from xraylarch_web.athena import AthenaStore
+
+    configured = Settings(data_root=tmp_path)
+    store = AthenaStore(configured)
+    with TestClient(create_app(configured)) as client:
+        project = example(client)
+    group = project["groups"][0]
+    group["source"]["native"] = {
+        "path": "/private/source",
+        "fields": [{"owner": "person", "safe": "kept"}],
+    }
+    project["analyses"] = [{
+        "id": "analysis-1",
+        "group_ids": [group["id"]],
+        "project_version": project["version"],
+        "options": {"cache_path": "/private/cache", "nested": [{"handle": "secret"}]},
+        "result": {"identity": "secret", "value": 7},
+    }]
+    store.storage.write_json(project["id"], "project.json", project)
+
+    exported = store.export_selected_groups(project["id"], [group["id"]])
+
+    encoded = json.dumps(exported)
+    assert "/private" not in encoded
+    assert "secret" not in encoded
+    assert exported["groups"][0]["source"]["native"]["fields"] == [{"safe": "kept"}]
+    assert exported["analyses"][0]["result"] == {"value": 7}
+
+
 def example(client):
     p = create(client)
     response = command(client, p, "example")

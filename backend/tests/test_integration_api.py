@@ -261,7 +261,8 @@ def test_workspace_lifecycle_and_athena_capability_gateway(tmp_path):
             headers=auth,
             json={"version": 0, "action": "duplicate", "group_ids": [group_id], "options": {}},
         )
-        assert blocked.status_code == 403
+        assert blocked.status_code == 404
+        assert blocked.json() == {"detail": "Project was not found."}
         allowed = client.post(
             f"/api/athena/projects/{project_id}/command",
             headers=auth,
@@ -306,7 +307,8 @@ def test_workspace_lifecycle_and_athena_capability_gateway(tmp_path):
                 "options": {"label": "Must not persist"},
             },
         )
-        assert rejected.status_code == 403
+        assert rejected.status_code == 404
+        assert rejected.json() == {"detail": "Project was not found."}
         assert client.get(
             f"/api/athena/projects/{project_id}", headers=auth
         ).json() == before.json()
