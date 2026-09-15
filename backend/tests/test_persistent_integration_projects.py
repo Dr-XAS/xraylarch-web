@@ -297,15 +297,23 @@ def test_v2_launch_handle_propagates_read_errors(store, capability, monkeypatch)
         store.consume_project_launch_handle(handle, now=NOW)
 
 
-def test_v2_launch_handle_propagates_programmer_validation_failures(store, capability, monkeypatch):
+@pytest.mark.parametrize("fault", (TypeError, ValueError))
+def test_v2_launch_handle_propagates_programmer_validation_failures(
+    store, capability, monkeypatch, fault
+):
     handle = store.create_project_launch_handle(
         project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=60),
         seed_group=None, allowed_operations=("read_project",),
         return_reference={"project_id": "p1", "persistent": True},
     )
-    monkeypatch.setattr(store, "_launch_record_tag", lambda *args: (_ for _ in ()).throw(TypeError("bug")))
+    monkeypatch.setattr(
+        store, "_launch_record_tag",
+        lambda *args: (_ for _ in ()).throw(fault("bug")),
+    )
 
-    with pytest.raises(TypeError, match="bug"):
+    with pytest.raises(fault, match="bug"):
+        store.consume_project_launch_handle(handle, now=NOW)
+    with pytest.raises(IntegrationReplayError):
         store.consume_project_launch_handle(handle, now=NOW)
 
 

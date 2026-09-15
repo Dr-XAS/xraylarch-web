@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 import base64
 import binascii
+import ctypes
 import fcntl
 import hashlib
 import hmac
@@ -14,6 +15,7 @@ from pathlib import Path
 import re
 import secrets
 import shutil
+import sys
 import time
 from typing import Iterator, Callable
 import unicodedata
@@ -271,15 +273,116 @@ class IntegrationStorage:
         finally:
             os.close(descriptor)
 
+    def _append_cleanup_locked(self, phase: str, filename: str) -> None:
+        line = json.dumps({"phase": phase, "filename": filename}, separators=(",", ":")) + "\n"
+        path = self.root / ".cleanup-queue.jsonl"
+        descriptor = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            size = os.lseek(descriptor, 0, os.SEEK_END)
+            if size:
+                os.lseek(descriptor, -1, os.SEEK_END)
+                if os.read(descriptor, 1) != b"\n":
+                    start = max(0, size - 65_536)
+                    os.lseek(descriptor, start, os.SEEK_SET)
+                    tail = os.read(descriptor, size - start)
+                    newline = tail.rfind(b"\n")
+                    os.ftruncate(descriptor, start + newline + 1 if newline >= 0 else 0)
+            os.lseek(descriptor, 0, os.SEEK_END)
+            os.write(descriptor, line.encode())
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
     def _enqueue_cleanup(self, phase: str, filename: str) -> None:
         """Append one durable work item to the cleanup journal."""
-        line = json.dumps({"phase": phase, "filename": filename}, separators=(",", ":")) + "\n"
         with self._lock("cleanup"):
-            with open(self.root / ".cleanup-queue.jsonl", "a", encoding="utf-8") as stream:
-                stream.write(line)
-                stream.flush()
-                os.fsync(stream.fileno())
+            self._append_cleanup_locked(phase, filename)
             self._fsync_directory(self.root)
+
+    def _discover_cleanup_locked(
+        self, *, max_items: int, deadline: float, now: datetime,
+    ) -> int:
+        """Persist a bounded snapshot of each record directory, then drain it.
+
+        Directory rename is the durable cursor: records created after a rename land
+        in the new active directory and are covered by the next rotation. The
+        snapshot is drained a bounded number of entries per invocation, so neither
+        discovery nor queue registration can monopolize request time.
+        """
+        phases = (
+            ("nonces", self.nonces_dir), ("handles", self.handles_dir),
+            ("projects", self.projects_dir), ("drafts", self.drafts_dir),
+        )
+        state_path = self.root / ".cleanup-discovery.json"
+        try:
+            phase_index = json.loads(state_path.read_text(encoding="utf-8"))["phase"]
+            if not isinstance(phase_index, int) or not 0 <= phase_index < len(phases):
+                raise ValueError
+        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+            phase_index = 0
+        phase, active = phases[phase_index]
+        cursor_path = self.root / f".cleanup-discovery-{phase}.json"
+        try:
+            cursor = json.loads(cursor_path.read_text(encoding="utf-8")).get("cursor", "")
+            if not isinstance(cursor, str):
+                raise ValueError
+        except (FileNotFoundError, TypeError, ValueError, json.JSONDecodeError):
+            cursor = ""
+        names: list[str] = []
+        libc = ctypes.CDLL(None, use_errno=True)
+        descriptor = os.open(active, os.O_RDONLY)
+        try:
+            buffer = ctypes.create_string_buffer(16_384)
+            if sys.platform == "darwin":
+                read_entries = getattr(libc, "__getdirentries64")
+                read_entries.argtypes = [
+                    ctypes.c_int, ctypes.c_void_p, ctypes.c_int,
+                    ctypes.POINTER(ctypes.c_longlong),
+                ]
+                read_entries.restype = ctypes.c_ssize_t
+                base = ctypes.c_longlong(int(cursor or "0"))
+                count = read_entries(descriptor, buffer, len(buffer), ctypes.byref(base))
+                name_offset = 21
+            elif sys.platform.startswith("linux"):
+                read_entries = libc.syscall
+                read_entries.restype = ctypes.c_long
+                os.lseek(descriptor, int(cursor or "0"), os.SEEK_SET)
+                # Linux getdents64; Python exposes no bounded resumable directory API.
+                syscall_number = 217 if os.uname().machine in {"x86_64", "amd64"} else 61
+                count = read_entries(syscall_number, descriptor, buffer, len(buffer))
+                name_offset = 19
+            else:
+                raise OSError("Bounded integration cleanup discovery is unsupported.")
+            if count < 0:
+                raise OSError(ctypes.get_errno(), os.strerror(ctypes.get_errno()))
+            position = 0
+            while position < count and len(names) < max_items and time.monotonic() < deadline:
+                inode = int.from_bytes(buffer[position:position + 8], sys.byteorder)
+                record_length = int.from_bytes(buffer[position + 16:position + 18], sys.byteorder)
+                if record_length <= 0:
+                    break
+                raw_name = bytes(buffer[position + name_offset:position + record_length])
+                name = raw_name.split(b"\0", 1)[0].decode("utf-8", "surrogateescape")
+                position += record_length
+                if inode and name not in {".", ".."}:
+                    names.append(name)
+            next_cursor = str(os.lseek(descriptor, 0, os.SEEK_CUR))
+            complete = count == 0
+        finally:
+            os.close(descriptor)
+        for filename in names:
+            self._append_cleanup_locked(phase, filename)
+        if complete:
+            cursor_path.unlink(missing_ok=True)
+            next_phase = (phase_index + 1) % len(phases)
+            self._atomic_json(
+                state_path, {"phase": next_phase, "cycle_completed_at": (
+                    now.isoformat() if next_phase == 0 else None
+                )},
+            )
+        else:
+            self._atomic_json(cursor_path, {"cursor": next_cursor})
+        return len(names)
 
     def _atomic_json(self, path: Path, value: dict) -> None:
         destination = hashlib.sha256(path.name.encode("utf-8")).hexdigest()[:16]
@@ -600,19 +703,21 @@ class IntegrationStorage:
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
             if not hmac.compare_digest(tag, self._launch_record_tag(handle, value)):
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
+            try:
+                expired = _dt(now) >= _dt(value["expires_at"])
+            except ValueError as exc:
+                raise IntegrationReplayError(
+                    "Browser launch handle is invalid or already used."
+                ) from exc
             if (value["kind"] != "v2-project"
                     or not hmac.compare_digest(value["handle_hash"], _hash(handle))
-                    or _dt(now) >= _dt(value["expires_at"])):
+                    or expired):
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
             value["capability"] = self._unseal_capability(handle, value.pop("sealed_capability"))
             return value
         except FileNotFoundError as exc:
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
         except (KeyError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
-        except ValueError as exc:
-            if isinstance(exc, IntegrationReplayError):
-                raise
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
         finally:
             if owned:
@@ -858,18 +963,27 @@ class IntegrationStorage:
             "nonces": self.nonces_dir, "handles": self.handles_dir,
             "projects": self.projects_dir, "drafts": self.drafts_dir,
         }
-        state_path = self.root / ".cleanup-queue.json"
-        queue_path = self.root / ".cleanup-queue.jsonl"
+        active_state_path = self.root / ".cleanup-queue.json"
+        active_queue_path = self.root / ".cleanup-queue.jsonl"
+        drain_state_path = self.root / ".cleanup-drain.json"
+        drain_queue_path = self.root / ".cleanup-queue.draining.jsonl"
         deadline = time.monotonic() + max_seconds
         expired: list[str] = []
         with self._lock("cleanup"):
+            draining = drain_queue_path.exists()
+            state_path = drain_state_path if draining else active_state_path
+            queue_path = drain_queue_path if draining else active_queue_path
             try:
                 state = json.loads(state_path.read_text(encoding="utf-8"))
-                offset, sequence = state["offset"], state["sequence"]
+                offset = state["offset"]
+                sequence = state.get("sequence", 0)
                 if not all(isinstance(value, int) and value >= 0 for value in (offset, sequence)):
                     raise ValueError
             except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError):
                 offset = sequence = 0
+            self._discover_cleanup_locked(
+                max_items=max_items, deadline=deadline, now=now,
+            )
             try:
                 queue_size = queue_path.stat().st_size
                 if offset > queue_size:
@@ -885,8 +999,12 @@ class IntegrationStorage:
                 with stream:
                     stream.seek(offset)
                     while visited < max_items and time.monotonic() < deadline:
-                        line = stream.readline()
+                        start = stream.tell()
+                        line = stream.readline(65_537)
                         if not line:
+                            break
+                        if len(line) > 65_536 or not line.endswith("\n"):
+                            offset = start
                             break
                         offset = stream.tell()
                         visited += 1
@@ -938,23 +1056,31 @@ class IntegrationStorage:
                         except (KeyError, TypeError, ValueError, UnicodeDecodeError, json.JSONDecodeError):
                             keep = True
                         if keep:
-                            with open(queue_path, "a", encoding="utf-8") as output:
+                            with open(active_queue_path, "a", encoding="utf-8") as output:
                                 output.write(line)
                                 output.flush()
                                 os.fsync(output.fileno())
                         sequence += 1
             self._atomic_json(state_path, {"offset": offset, "sequence": sequence})
-            if offset >= 1_048_576 and queue_path.exists():
-                with open(queue_path, "rb") as source:
-                    source.seek(offset)
-                    remaining = source.read()
-                temporary = queue_path.with_suffix(".compact")
-                with open(temporary, "wb") as output:
-                    output.write(remaining)
-                    output.flush()
-                    os.fsync(output.fileno())
-                os.replace(temporary, queue_path)
-                self._atomic_json(state_path, {"offset": 0, "sequence": sequence})
+            if draining:
+                try:
+                    complete = offset >= queue_path.stat().st_size
+                except FileNotFoundError:
+                    complete = True
+                if complete:
+                    queue_path.unlink(missing_ok=True)
+                    state_path.unlink(missing_ok=True)
+                    self._fsync_directory(self.root)
+            elif offset >= 1_048_576 and queue_path.exists():
+                os.replace(queue_path, drain_queue_path)
+                active_queue_path.touch(mode=0o600)
+                os.chmod(active_queue_path, 0o600)
+                self._atomic_json(
+                    drain_state_path, {"offset": offset, "sequence": sequence},
+                )
+                self._atomic_json(
+                    active_state_path, {"offset": 0, "sequence": sequence},
+                )
                 self._fsync_directory(self.root)
         return tuple(sorted(expired))
 

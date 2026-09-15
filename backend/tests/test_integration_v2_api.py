@@ -182,6 +182,66 @@ def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, 
     assert not list((tmp_path / "integration" / "rename-intents").glob("*.json"))
 
 
+@pytest.mark.parametrize("boundary", ("intent", "workspace", "metadata"))
+def test_restart_launch_recovers_rename_intent_at_every_durable_boundary(tmp_path, boundary):
+    from xraylarch_web.athena import AthenaStore
+    from xraylarch_web.integration_contracts import ProjectBootstrapRequest
+    from xraylarch_web.integration_service import IntegrationService
+    from xraylarch_web.integration_storage import IntegrationStorage
+
+    configured = settings(tmp_path)
+    service = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
+    project_id, capability, before = service.create_v2_project(
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+    )
+    intent = service.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
+    service.storage._atomic_json(intent, {"project_id": project_id, "name": "After"})
+    workspace = tmp_path / "athena" / project_id / "project.json"
+    if boundary != "intent":
+        project = json.loads(workspace.read_text(encoding="utf-8"))
+        project["name"] = "After"
+        service.athena_store.storage.write_json(project_id, "project.json", project)
+    if boundary == "metadata":
+        service.storage.set_project_stored_bytes(project_id, capability, workspace.stat().st_size, now=NOW)
+
+    restarted = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
+    handle = restarted.launch_v2_project(project_id, capability, now=NOW)
+
+    assert handle
+    assert restarted.storage.load_project(project_id, capability, now=NOW).stored_bytes == workspace.stat().st_size
+    assert not intent.exists()
+
+
+@pytest.mark.parametrize("boundary", ("intent", "workspace", "metadata"))
+def test_restart_delete_consumes_rename_intent_at_every_durable_boundary(tmp_path, boundary):
+    from xraylarch_web.athena import AthenaStore
+    from xraylarch_web.integration_contracts import ProjectBootstrapRequest
+    from xraylarch_web.integration_service import IntegrationService
+    from xraylarch_web.integration_storage import IntegrationStorage
+
+    configured = settings(tmp_path)
+    service = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
+    project_id, capability, _ = service.create_v2_project(
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+    )
+    intent = service.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
+    service.storage._atomic_json(intent, {"project_id": project_id, "name": "After"})
+    workspace = tmp_path / "athena" / project_id / "project.json"
+    if boundary != "intent":
+        project = json.loads(workspace.read_text(encoding="utf-8"))
+        project["name"] = "After"
+        service.athena_store.storage.write_json(project_id, "project.json", project)
+    if boundary == "metadata":
+        service.storage.set_project_stored_bytes(project_id, capability, workspace.stat().st_size, now=NOW)
+
+    restarted = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
+    result = restarted.delete_v2_project(project_id, capability, now=NOW)
+
+    assert result["cleanup_pending"] is False
+    assert not intent.exists()
+    assert not workspace.parent.exists()
+
+
 def test_rename_holds_integration_then_workspace_lock(tmp_path, monkeypatch):
     from contextlib import contextmanager
     from xraylarch_web.athena import AthenaStore
@@ -384,6 +444,56 @@ def test_seeded_creation_accepts_high_nfft_when_bounded_outputs_fit_quota(tmp_pa
     assert response.status_code == 200, response.text
     project_id = response.json()["project_id"]
     assert (tmp_path / "athena" / project_id / "project.json").stat().st_size < 50_000_000
+
+
+def test_seeded_creation_rejects_asymmetric_reverse_q_grid_before_processing(tmp_path, monkeypatch):
+    from test_integration_contracts import launch_payload
+    from xraylarch_web.athena import AthenaStore
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, CoreProcessingRecipe, canonical_sha256
+
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    recipe_payload = launch_payload()["recipe"]
+    recipe_payload["forward_ft"].update(nfft=2048, kstep=0.05)
+    recipe_payload["reverse_ft"].update(nfft=65_536, kstep=0.05, qmax_out=30.0)
+    recipe = CoreProcessingRecipe.model_validate(recipe_payload)
+    spectrum = AuthoritativeSpectrum(
+        energy=tuple(8800.0 + index * 2 for index in range(551)),
+        mu=tuple(0.7 + math.atan((8800.0 + index * 2 - 8980.0) / 4.0) / math.pi for index in range(551)),
+    )
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"),
+            "recipe": recipe.model_dump(mode="json"), "spectrum_sha256": canonical_sha256(spectrum),
+            "recipe_sha256": canonical_sha256(recipe)}
+    request_payload = {"contract_version": 2, "name": "Asymmetric", "persistent": True,
+                       "source": source, "seed": seed}
+    project = {"groups": [{"energy": list(spectrum.energy), "parameters": {
+        **__import__("xraylarch_web.athena", fromlist=["AthenaParameters"]).AthenaParameters().model_dump(),
+        **{"nfft": 2048, "kstep": 0.05, "reverse_nfft": 65_536,
+           "reverse_kstep": 0.05, "qmax_out": 30.0},
+    }}]}
+    parameters = project["groups"][0]["parameters"]
+    source_points = len(project["groups"][0]["energy"])
+    available_kmax = math.sqrt(3.80998212 * (project["groups"][0]["energy"][-1] - project["groups"][0]["energy"][1]))
+    kmax = min(parameters["bkg_kmax"] or available_kmax, available_kmax)
+    k_points = min(parameters["nfft"] // 2, int(1.01 + kmax / parameters["kstep"]))
+    rstep = math.pi / (parameters["kstep"] * parameters["nfft"])
+    rmax = parameters["rmax_out"] or max(10.0, parameters["rmax"] + parameters["dr"] / 2 + rstep)
+    r_points = min(parameters["nfft"] // 2, int(rmax / rstep) + 2)
+    old_q_points = min(parameters["reverse_nfft"] // 2,
+                       int(parameters["qmax_out"] / parameters["reverse_kstep"]) + 2)
+    old_bound = 9 * source_points + 4 * k_points + 6 * r_points + 5 * old_q_points
+    old_bound = len(json.dumps(project, allow_nan=False, separators=(",", ":")).encode()) + old_bound * 32 + 131_072
+    calls = []
+    monkeypatch.setattr(AthenaStore, "process", lambda *args: calls.append(args))
+
+    with TestClient(create_app(settings(
+        tmp_path, integration_max_bytes=old_bound + 1, integration_guest_max_bytes=old_bound + 1,
+    ))) as client:
+        response = request(client, "POST", "/api/integration/v2/projects", request_payload,
+                           nonce="u" * 32)
+
+    assert response.status_code == 409
+    assert calls == []
 
 
 def test_seeded_creation_rejects_processed_size_bound_before_processing(tmp_path, monkeypatch):

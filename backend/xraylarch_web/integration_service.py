@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
@@ -371,11 +372,18 @@ class IntegrationService:
         )
         r_points = min(parameters["nfft"] // 2, int(rmax / rstep) + 2)
         reverse_nfft = parameters["reverse_nfft"] or parameters["nfft"]
-        reverse_kstep = parameters["reverse_kstep"] or parameters["kstep"]
         qmax = parameters["qmax_out"] or kmax
-        q_points = min(reverse_nfft // 2, int(qmax / reverse_kstep) + 2)
-        # 9 E-space, 4 k-space, 5 R-space, 5 q-space, and rwin on R.
-        array_values = 9 * source_points + 4 * k_points + 6 * r_points + 5 * q_points
+        # Larch xftr ignores its kstep argument. It derives q spacing from the
+        # actual input R grid and reverse nfft; q itself is not FFT-half capped,
+        # while the transformed chiq arrays are slices of the nfft output.
+        reverse_kstep = math.pi / (rstep * reverse_nfft)
+        q_points = int(1.05 + qmax / reverse_kstep)
+        chiq_points = min(q_points, reverse_nfft)
+        # 9 E-space, 4 k-space, 5 R-space plus rwin, q, and four/five chiq arrays.
+        array_values = (
+            9 * source_points + 4 * k_points + 6 * r_points
+            + q_points + (5 if parameters["reverse_with_phase"] else 4) * chiq_points
+        )
         return cls._project_bytes(project) + array_values * 32 + 131_072
 
     def create_v2_project(self, request: ProjectBootstrapRequest, *, now: datetime) -> tuple[str, str, ProjectSummary]:
@@ -422,27 +430,56 @@ class IntegrationService:
             shutil.rmtree(self.athena_store.storage.root / project_id, ignore_errors=True)
             raise
 
+    def _rename_intent_path(self, project_id: str) -> Path:
+        return self.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
+
+    def _recover_rename_locked(
+        self, project_id: str, capability: str, *, now: datetime,
+    ):
+        record = self.storage._load_active_project(project_id, capability, now)
+        intent_path = self._rename_intent_path(project_id)
+        if not intent_path.exists():
+            return record
+        project = self.athena_store.storage.read_json(project_id, "project.json")
+        committed_bytes = self.athena_store.storage.path(project_id, "project.json").stat().st_size
+        if record.stored_bytes != committed_bytes:
+            record = self.storage._set_project_stored_bytes_locked(
+                record, committed_bytes, now=now,
+            )
+        intent_path.unlink(missing_ok=True)
+        self.storage._fsync_directory(self.storage.rename_intents_dir)
+        return record
+
     def launch_v2_project(self, project_id: str, capability: str, *, now: datetime) -> str:
-        record = self.storage.load_project(project_id, capability, now=now)
-        project = self.athena_store.load(project_id)
-        seed_group = None
-        if project["groups"]:
-            group = project["groups"][0]
-            seed_group = {"group_id": group["id"], "label": group["label"],
-                          "source": group.get("source")}
-        return self.storage.create_project_launch_handle(
-            project_id=project_id, capability=capability, expires_at=now + timedelta(seconds=300),
-            seed_group=seed_group, allowed_operations=("read_project",),
-            return_reference={"project_id": project_id, "persistent": record.persistent},
-        )
+        with self.storage.project_lock(project_id):
+            with self.athena_store.storage.lock(project_id):
+                record = self._recover_rename_locked(
+                    project_id, capability, now=now,
+                )
+                project = self.athena_store.load(project_id)
+                seed_group = None
+                if project["groups"]:
+                    group = project["groups"][0]
+                    seed_group = {"group_id": group["id"], "label": group["label"],
+                                  "source": group.get("source")}
+                return self.storage.create_project_launch_handle(
+                    project_id=project_id, capability=capability, expires_at=now + timedelta(seconds=300),
+                    seed_group=seed_group, allowed_operations=("read_project",),
+                    return_reference={"project_id": project_id, "persistent": record.persistent},
+                )
 
     def consume_v2_handle(self, handle: str, *, now: datetime) -> dict:
         value = self.storage.consume_project_launch_handle(handle, now=now)
         project_id, capability = value["project_id"], value["capability"]
-        record = self.storage.load_project(project_id, capability, now=now)
+        with self.storage.project_lock(project_id):
+            with self.athena_store.storage.lock(project_id):
+                record = self._recover_rename_locked(
+                    project_id, capability, now=now,
+                )
+                project = self.athena_store.load(project_id)
         return {
             "project_id": project_id, "capability": capability,
-            "project": self._project_summary(self.athena_store.load(project_id), record).model_dump(mode="json"),
+            "project": self._project_summary(project, record).model_dump(mode="json"),
             "seed_group": value["seed_group"],
             "allowed_operations": value["allowed_operations"],
             "return_reference": value["return_reference"],
@@ -453,16 +490,10 @@ class IntegrationService:
         # lifecycle mutations must use this order to avoid cross-store deadlocks.
         with self.storage.project_lock(project_id):
             with self.athena_store.storage.lock(project_id):
-                record = self.storage._load_active_project(project_id, capability, now)
-                intent_path = self.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
-                if intent_path.exists():
-                    # A previous process committed workspace data but stopped before
-                    # accounting. Recover from the committed file, never estimates.
-                    self.athena_store.storage.read_json(project_id, "project.json")
-                    committed_bytes = self.athena_store.storage.path(project_id, "project.json").stat().st_size
-                    record = self.storage._set_project_stored_bytes_locked(record, committed_bytes, now=now)
-                    intent_path.unlink()
-                    self.storage._fsync_directory(self.storage.rename_intents_dir)
+                record = self._recover_rename_locked(
+                    project_id, capability, now=now,
+                )
+                intent_path = self._rename_intent_path(project_id)
                 project = self.athena_store.load(project_id)
                 project["name"] = name
                 candidate_bytes = self._project_bytes(project)
@@ -477,13 +508,26 @@ class IntegrationService:
                 return self._project_summary(project, record)
 
     def delete_v2_project(self, project_id: str, capability: str, *, now: datetime) -> dict:
-        # Retire durable access first.  Cleanup may be retried with the same
-        # capability only by an authorized caller before retirement; it can never
-        # make the record active again.
-        try:
-            self.storage.delete_project_record(project_id, capability, now=now)
-        except IntegrationNotFoundError:
-            raise
+        # Retire durable access first. Cleanup may be retried with the same
+        # capability, but can never make the record active again. Consume rename
+        # intent under the same integration->workspace lock order as rename/access.
+        with self.storage.project_lock(project_id):
+            record = self.storage._read_project_unchecked(project_id)
+            if (record.status not in {"active", "deleted"}
+                    or not isinstance(capability, str)
+                    or not hmac.compare_digest(record.capability_hash, hashlib.sha256(capability.encode()).hexdigest())):
+                raise IntegrationNotFoundError("Integration project was not found.")
+            if record.status == "active":
+                with self.athena_store.storage.lock(project_id):
+                    record = self._recover_rename_locked(project_id, capability, now=now)
+                    deleted = replace(record, status="deleted", updated_at=now.astimezone(UTC))
+                    self.storage._atomic_json(
+                        self.storage._project_path(project_id),
+                        self.storage._serialize_project(deleted),
+                    )
+            intent_path = self._rename_intent_path(project_id)
+            intent_path.unlink(missing_ok=True)
+            self.storage._fsync_directory(self.storage.rename_intents_dir)
         workspace = self.athena_store.storage.root / project_id
         try:
             shutil.rmtree(workspace, ignore_errors=False)

@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 from pathlib import Path
+import builtins
 import stat
 
 import pytest
@@ -157,6 +158,77 @@ def test_expire_due_tolerates_malformed_drafts_per_item(tmp_path):
     (store.drafts_dir / "truncated.json").write_text('{"id":', encoding="utf-8")
 
     assert store.expire_due(NOW, max_items=20) == ()
+
+
+def test_expire_due_discovers_pre_upgrade_and_interrupted_records_in_bounded_batches(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(7):
+        nonce = f"orphan-nonce-{index:04d}"
+        path = store.nonces_dir / f"{hashlib.sha256(nonce.encode()).hexdigest()}.json"
+        path.write_text(json.dumps({
+            "nonce_hash": hashlib.sha256(nonce.encode()).hexdigest(),
+            "expires_at": (NOW - timedelta(seconds=1)).isoformat(),
+        }), encoding="utf-8")
+
+    store.expire_due(NOW, max_items=2)
+    assert len(list(store.nonces_dir.glob("*.json"))) >= 5
+
+    for _ in range(20):
+        store.expire_due(NOW, max_items=2)
+
+    assert list(store.nonces_dir.glob("*.json")) == []
+
+
+def test_expire_due_recovers_a_partial_journal_tail(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    queue = store.root / ".cleanup-queue.jsonl"
+    queue.write_text('{"phase":', encoding="utf-8")
+
+    store.claim_nonce(
+        nonce="partial-tail-nonce", expires_at=NOW - timedelta(seconds=1)
+    )
+    store.expire_due(NOW, max_items=1)
+
+    assert list(store.nonces_dir.glob("*.json")) == []
+    assert queue.read_text(encoding="utf-8").endswith("\n")
+
+
+def test_expire_due_large_tail_never_reads_or_rewrites_unbounded_bytes(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    queue = store.root / ".cleanup-queue.jsonl"
+    queue.write_bytes(
+        b'{"phase":"nonces","filename":"missing.json"}\n' * 100_000
+    )
+    (store.root / ".cleanup-queue.json").write_text(
+        json.dumps({"offset": 1_048_600, "sequence": 0}), encoding="utf-8"
+    )
+    reads = []
+    original_open = builtins.open
+
+    class MeasuredReader:
+        def __init__(self, stream):
+            self.stream = stream
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+        def read(self, size=-1):
+            reads.append(size)
+            assert 0 <= size <= 65_536
+            return self.stream.read(size)
+
+    def measured_open(path, mode="r", *args, **kwargs):
+        stream = original_open(path, mode, *args, **kwargs)
+        if Path(path) == queue and "b" in mode and "r" in mode:
+            return MeasuredReader(stream)
+        return stream
+
+    monkeypatch.setattr(builtins, "open", measured_open)
+    store.expire_due(NOW, max_items=2)
+
+    assert -1 not in reads
 
 
 def test_draft_persists_only_hashes_and_private_permissions(tmp_path):
