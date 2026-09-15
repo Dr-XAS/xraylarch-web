@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+import os
 
 import pytest
 
@@ -83,6 +84,25 @@ def test_project_persists_only_capability_hash_and_atomic_record(store, capabili
     assert not list(store.projects_dir.glob("*.tmp"))
 
 
+@pytest.mark.parametrize("failure", ("fsync", "replace"))
+def test_failed_atomic_project_update_preserves_previous_complete_record(store, capability, monkeypatch, failure):
+    persisted = store.projects_dir / "p1.json"
+    original = persisted.read_text(encoding="utf-8")
+    target = os.fsync if failure == "fsync" else os.replace
+
+    def fail_project_write(*args, **kwargs):
+        raise OSError("injected write failure")
+
+    monkeypatch.setattr(os, failure, fail_project_write)
+    with pytest.raises(OSError, match="injected write failure"):
+        store.rotate_project_capability("p1", capability, now=NOW)
+    monkeypatch.setattr(os, failure, target)
+
+    assert persisted.read_text(encoding="utf-8") == original
+    assert store.load_project("p1", capability).project_id == "p1"
+    assert not list(store.projects_dir.glob("*.tmp"))
+
+
 def test_wrong_project_capability_is_not_found(store, clock):
     _, first = store.create_project_record(project_id="p1", persistent=True, now=clock())
     _, second = store.create_project_record(project_id="p2", persistent=True, now=clock())
@@ -90,6 +110,27 @@ def test_wrong_project_capability_is_not_found(store, clock):
     with pytest.raises(IntegrationNotFoundError):
         store.load_project("p1", second)
     assert store.load_project("p1", first).project_id == "p1"
+
+
+@pytest.mark.parametrize("project_id", ("folder\\project", "bad\x00id", "C:project", "NUL", "com1.txt"))
+def test_project_id_is_platform_independent_and_path_safe(store, project_id):
+    with pytest.raises(IntegrationNotFoundError):
+        store.create_project_record(project_id=project_id, persistent=True, now=NOW)
+
+
+def test_expired_guest_is_expired_during_authorized_read_and_mutation(store):
+    _, capability = store.create_project_record(
+        project_id="guest", persistent=False, quota=QUOTA, now=NOW
+    )
+
+    with pytest.raises(IntegrationNotFoundError):
+        store.reserve_export(
+            "guest", capability, selections("g1"), "import-1", now=NOW + timedelta(seconds=61)
+        )
+    expired_record = json.loads((store.projects_dir / "guest.json").read_text(encoding="utf-8"))
+    assert expired_record["status"] == "expired"
+    with pytest.raises(IntegrationNotFoundError):
+        store.load_project("guest", capability, now=NOW + timedelta(seconds=61))
 
 
 def test_export_reservation_is_idempotent(store, capability):
@@ -160,3 +201,17 @@ def test_concurrent_rotation_leaves_exactly_one_winning_capability(store, capabi
     winners = [result for result in results if result is not None]
     assert len(winners) == 1
     assert store.load_project("p1", winners[0]).project_id == "p1"
+
+
+def test_concurrent_reservations_do_not_lose_updates(store, capability):
+    def reserve(reservation_id: str):
+        return store.reserve_export(
+            "p1", capability, selections(f"group-{reservation_id}"), reservation_id, now=NOW
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(reserve, ("import-1", "import-2")))
+
+    assert {result.reservation_id for result in results} == {"import-1", "import-2"}
+    record = store.load_project("p1", capability)
+    assert {reservation.reservation_id for reservation in record.reservations} == {"import-1", "import-2"}

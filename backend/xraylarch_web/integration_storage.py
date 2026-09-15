@@ -14,6 +14,7 @@ import re
 import secrets
 import shutil
 from typing import Iterator, Callable
+import unicodedata
 
 from pydantic import TypeAdapter
 
@@ -31,6 +32,7 @@ from .integration_contracts import (
 
 
 _OPAQUE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
+_WINDOWS_DEVICE_NAMES = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)", re.IGNORECASE)
 
 
 class IntegrationStorageError(ValueError):
@@ -290,8 +292,12 @@ class IntegrationStorage:
         if (
             not isinstance(project_id, str)
             or not 1 <= len(project_id) <= 255
-            or Path(project_id).name != project_id
             or project_id in {".", ".."}
+            or "/" in project_id
+            or "\\" in project_id
+            or re.match(r"^[A-Za-z]:", project_id)
+            or _WINDOWS_DEVICE_NAMES.match(project_id)
+            or any(unicodedata.category(character) == "Cc" for character in project_id)
         ):
             raise IntegrationNotFoundError("Integration project was not found.")
         return project_id
@@ -316,8 +322,12 @@ class IntegrationStorage:
         except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise IntegrationNotFoundError("Integration project was not found.") from exc
 
-    def _load_active_project(self, project_id: str, capability: str) -> ProjectRecord:
+    def _load_active_project(self, project_id: str, capability: str, now: datetime) -> ProjectRecord:
         record = self._read_project_unchecked(project_id)
+        if record.status == "active" and record.expires_at is not None and _dt(now) >= record.expires_at:
+            expired = replace(record, status="expired", updated_at=record.expires_at)
+            self._atomic_json(self._project_path(project_id), self._serialize_project(expired))
+            record = expired
         if (
             record.status != "active"
             or not isinstance(capability, str)
@@ -358,12 +368,15 @@ class IntegrationStorage:
             self._atomic_json(path, self._serialize_project(record))
         return record, capability
 
-    def load_project(self, project_id: str, capability: str) -> ProjectRecord:
-        return self._load_active_project(project_id, capability)
+    def load_project(
+        self, project_id: str, capability: str, *, now: datetime | None = None,
+    ) -> ProjectRecord:
+        with self.project_lock(project_id):
+            return self._load_active_project(project_id, capability, now or datetime.now(UTC))
 
     def rotate_project_capability(self, project_id: str, capability: str, *, now: datetime) -> str:
         with self.project_lock(project_id):
-            record = self._load_active_project(project_id, capability)
+            record = self._load_active_project(project_id, capability, now)
             rotated = secrets.token_urlsafe(32)
             updated = replace(record, capability_hash=_hash(rotated), updated_at=_dt(now))
             self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
@@ -371,7 +384,7 @@ class IntegrationStorage:
 
     def delete_project_record(self, project_id: str, capability: str, *, now: datetime) -> ProjectRecord:
         with self.project_lock(project_id):
-            record = self._load_active_project(project_id, capability)
+            record = self._load_active_project(project_id, capability, now)
             updated = replace(record, status="deleted", updated_at=_dt(now))
             self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
             return updated
@@ -389,7 +402,7 @@ class IntegrationStorage:
     ) -> ExportReservation:
         selections = self._validate_selections(selections)
         with self.project_lock(project_id):
-            record = self._load_active_project(project_id, capability)
+            record = self._load_active_project(project_id, capability, now)
             for reservation in record.reservations:
                 if reservation.reservation_id == reservation_id:
                     if reservation.selections == selections:
@@ -412,7 +425,7 @@ class IntegrationStorage:
         self, project_id: str, capability: str, reservation_id: str, *, now: datetime, status: str,
     ) -> ExportReservation:
         with self.project_lock(project_id):
-            record = self._load_active_project(project_id, capability)
+            record = self._load_active_project(project_id, capability, now)
             for index, reservation in enumerate(record.reservations):
                 if reservation.reservation_id != reservation_id:
                     continue
