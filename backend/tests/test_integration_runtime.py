@@ -78,6 +78,28 @@ def test_private_config_reaches_exec_environment_without_secret_in_argv(tmp_path
     assert values["integration_hmac_secret"] not in repr(argv)
 
 
+def test_private_config_allows_non_secret_v2_quota_settings(tmp_path):
+    from xraylarch_web.integration_runtime import backend_environment
+
+    values = {
+        **enabled_config(),
+        "integration_max_projects": 4,
+        "integration_max_files": 8,
+        "integration_max_bytes": 1_000_000,
+        "integration_max_groups": 12,
+        "integration_max_exports": 6,
+        "integration_guest_max_projects": 2,
+        "integration_guest_max_files": 4,
+        "integration_guest_max_bytes": 500_000,
+        "integration_guest_max_groups": 6,
+        "integration_guest_max_exports": 3,
+        "integration_guest_ttl_seconds": 3600,
+    }
+    environment = backend_environment(config_file(tmp_path, values), {})
+    assert environment["XRAYLARCH_INTEGRATION_MAX_PROJECTS"] == "4"
+    assert environment["XRAYLARCH_INTEGRATION_GUEST_TTL_SECONDS"] == "3600"
+
+
 @pytest.mark.parametrize("change", [
     {"PATH": "/injected"}, {"max_upload_bytes": 100}, {"import_enabled": "true"},
     {"integration_hmac_secret": "short"}, {"integration_api_enabled": False},

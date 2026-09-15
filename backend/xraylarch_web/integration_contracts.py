@@ -16,6 +16,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StringConstraints,
     field_validator,
     model_validator,
@@ -462,6 +463,131 @@ def _bounded_lifetime(
             f"{end_name} must be no more than {int(maximum.total_seconds())} seconds "
             "after the preceding timestamp."
         )
+
+
+# Version 2 persistent-project wire contract.  These models intentionally do not
+# inherit v1's schema-version aliases, preserving the v1 wire surface unchanged.
+V2_CONTRACT_VERSION = 2
+MAX_PROJECT_NAME_LENGTH = 120
+MAX_GROUP_SELECTIONS = 128
+
+ProjectId = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=255)]
+ProjectName = Annotated[
+    str, StringConstraints(strict=True, min_length=1, max_length=MAX_PROJECT_NAME_LENGTH)
+]
+GroupId = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=255)]
+ReservationId = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=255)]
+V2SchemaVersion = Literal[2]
+V2PositiveInt = Annotated[int, Field(strict=True, gt=0)]
+
+
+class PersistentIntegrationModel(BaseModel):
+    """Strict, immutable v2 integration models independent of the v1 contract."""
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid", allow_inf_nan=False)
+
+
+class ExistingDrXasSource(PersistentIntegrationModel):
+    kind: Literal["drxas"] = "drxas"
+    turn_id: Identifier
+    artifact_id: Identifier
+    artifact_version: int = Field(strict=True, ge=1)
+    source_sha256: Sha256
+
+
+class AthenaUploadedSource(PersistentIntegrationModel):
+    kind: Literal["athena_upload"] = "athena_upload"
+    original_filename: Identifier
+    raw_sha256: Sha256
+    parse_metadata: dict[str, JsonValue]
+
+
+ProjectSource = Annotated[
+    ExistingDrXasSource | AthenaUploadedSource, Field(discriminator="kind")
+]
+
+
+class ProjectBootstrapRequest(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    name: ProjectName
+    persistent: bool
+    source: ProjectSource | None = None
+
+
+class ProjectLaunch(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    capability: LaunchHandle
+    project: "ProjectSummary"
+
+
+class ProjectSummary(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    name: ProjectName
+    persistent: bool
+    project_version: int = Field(strict=True, ge=0)
+    group_count: int = Field(strict=True, ge=0)
+    file_count: int = Field(strict=True, ge=0)
+    stored_bytes: int = Field(strict=True, ge=0)
+    expires_at: AwareDatetime | None
+
+    @model_validator(mode="after")
+    def persistence_matches_expiry(self):
+        if self.persistent != (self.expires_at is None):
+            raise ValueError("expires_at must be absent for persistent projects and present for guests.")
+        return self
+
+
+class SelectedGroupRef(PersistentIntegrationModel):
+    group_id: GroupId
+    group_version: int = Field(strict=True, ge=0)
+
+
+class SelectedGroupExportRequest(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    project_version: int = Field(strict=True, ge=0)
+    selections: tuple[SelectedGroupRef, ...] = Field(min_length=1, max_length=MAX_GROUP_SELECTIONS)
+
+    @model_validator(mode="after")
+    def selections_are_unique(self):
+        keys = {(selection.group_id, selection.group_version) for selection in self.selections}
+        if len(keys) != len(self.selections):
+            raise ValueError("selected group references must be unique.")
+        return self
+
+
+class SelectedGroupExportBatch(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    project_version: int = Field(strict=True, ge=0)
+    sources: tuple[ProjectSource, ...] = Field(min_length=1, max_length=MAX_GROUP_SELECTIONS)
+
+
+class ExportReservation(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    reservation_id: ReservationId
+    project_id: ProjectId
+    project_version: int = Field(strict=True, ge=0)
+    selections: tuple[SelectedGroupRef, ...] = Field(min_length=1, max_length=MAX_GROUP_SELECTIONS)
+    status: Literal["prepared", "committed", "aborted"]
+
+    @model_validator(mode="after")
+    def selections_are_unique(self):
+        keys = {(selection.group_id, selection.group_version) for selection in self.selections}
+        if len(keys) != len(self.selections):
+            raise ValueError("selected group references must be unique.")
+        return self
+
+
+class ProjectQuota(PersistentIntegrationModel):
+    max_projects: V2PositiveInt
+    max_files: V2PositiveInt
+    max_bytes: V2PositiveInt
+    max_groups: V2PositiveInt
+    max_exports: V2PositiveInt
+    ttl_seconds: V2PositiveInt | None
 
 
 def _validate_digests_and_science(

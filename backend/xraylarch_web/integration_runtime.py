@@ -14,6 +14,11 @@ _FIELDS = (
     "integration_api_enabled", "browser_consume_enabled", "import_enabled",
     "integration_issuer", "integration_audience", "integration_hmac_secret",
     "draft_ttl_seconds",
+    "integration_max_projects", "integration_max_files", "integration_max_bytes",
+    "integration_max_groups", "integration_max_exports",
+    "integration_guest_max_projects", "integration_guest_max_files",
+    "integration_guest_max_bytes", "integration_guest_max_groups",
+    "integration_guest_max_exports", "integration_guest_ttl_seconds",
 )
 _ERROR = "Invalid integration runtime configuration"
 
