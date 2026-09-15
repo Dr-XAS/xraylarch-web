@@ -37,6 +37,13 @@ from .integration_storage import (
     IntegrationStorage,
     capability_for_handle,
 )
+from .integration_contracts import (
+    ExportReservation,
+    ProjectBootstrapRequest,
+    ProjectQuota,
+    ProjectSummary,
+    SelectedGroupRef,
+)
 
 
 _LOWER_SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -73,6 +80,11 @@ class IntegrationAuthorizationError(ValueError):
     pass
 
 
+def v2_signing_payload(*, method: str, path: str, issuer: str, audience: str,
+                       timestamp: str, nonce: str, body_sha256: str) -> bytes:
+    return "\n".join(("v2", method.upper(), path, issuer, audience, timestamp, nonce, body_sha256)).encode()
+
+
 class IntegrationService:
     def __init__(
         self,
@@ -83,6 +95,7 @@ class IntegrationService:
         self.settings = settings
         self.athena_store = athena_store
         self.storage = storage
+        self._v2_handles: dict[str, tuple[str, str, datetime]] = {}
 
     @staticmethod
     def _headers(headers: Mapping[str, str]) -> dict[str, str]:
@@ -136,6 +149,51 @@ class IntegrationService:
         if not hmac.compare_digest(expected, signature):
             raise IntegrationAuthenticationError("Integration authentication failed.")
         return nonce, timestamp
+
+    def _verify_v2(self, *, method: str, path: str, raw_body: bytes,
+                   headers: Mapping[str, str], now: datetime) -> tuple[str, datetime]:
+        values = self._headers(headers)
+        issuer = values["x-drxas-issuer"]
+        audience = values["x-drxas-audience"]
+        timestamp_text = values["x-drxas-timestamp"]
+        nonce = values["x-drxas-nonce"]
+        digest = values["x-drxas-body-sha256"]
+        signature = values["x-drxas-signature"]
+        if (
+            not hmac.compare_digest(issuer, self.settings.integration_issuer or "")
+            or not hmac.compare_digest(audience, self.settings.integration_audience or "")
+            or not timestamp_text.isascii() or not timestamp_text.isdigit()
+            or len(timestamp_text) > 16
+            or not re.fullmatch(r"[A-Za-z0-9_-]{16,128}", nonce)
+            or not _LOWER_SHA256.fullmatch(digest)
+            or not _LOWER_SHA256.fullmatch(signature)
+        ):
+            raise IntegrationAuthenticationError("Integration authentication failed.")
+        try:
+            timestamp = datetime.fromtimestamp(int(timestamp_text), tz=UTC)
+        except (OverflowError, OSError, ValueError):
+            raise IntegrationAuthenticationError("Integration authentication failed.") from None
+        if abs((now.astimezone(UTC) - timestamp).total_seconds()) > 300:
+            raise IntegrationAuthenticationError("Integration authentication failed.")
+        if not hmac.compare_digest(hashlib.sha256(raw_body).hexdigest(), digest):
+            raise IntegrationAuthenticationError("Integration authentication failed.")
+        expected = hmac.new(
+            (self.settings.integration_hmac_secret or "").encode(),
+            v2_signing_payload(method=method, path=path, issuer=issuer, audience=audience,
+                               timestamp=timestamp_text, nonce=nonce, body_sha256=digest),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            raise IntegrationAuthenticationError("Integration authentication failed.")
+        return nonce, timestamp
+
+    def verify_v2_request(self, *, method: str, path: str, raw_body: bytes,
+                          headers: Mapping[str, str], now: datetime) -> None:
+        nonce, timestamp = self._verify_v2(method=method, path=path, raw_body=raw_body,
+                                           headers=headers, now=now)
+        self.storage.claim_nonce(
+            nonce=nonce, expires_at=timestamp + timedelta(seconds=300, microseconds=1)
+        )
 
     @staticmethod
     def _parameters(envelope: LaunchEnvelope) -> dict:
@@ -248,6 +306,85 @@ class IntegrationService:
                 },
             }
         )
+
+    def _quota(self, persistent: bool) -> ProjectQuota:
+        if persistent:
+            return ProjectQuota(
+                max_projects=self.settings.integration_max_projects,
+                max_files=self.settings.integration_max_files,
+                max_bytes=self.settings.integration_max_bytes,
+                max_groups=self.settings.integration_max_groups,
+                max_exports=self.settings.integration_max_exports,
+                ttl_seconds=None,
+            )
+        return ProjectQuota(
+            max_projects=self.settings.integration_guest_max_projects,
+            max_files=self.settings.integration_guest_max_files,
+            max_bytes=self.settings.integration_guest_max_bytes,
+            max_groups=self.settings.integration_guest_max_groups,
+            max_exports=self.settings.integration_guest_max_exports,
+            ttl_seconds=self.settings.integration_guest_ttl_seconds,
+        )
+
+    def _project_summary(self, project, record) -> ProjectSummary:
+        return ProjectSummary(
+            project_id=record.project_id, name=project["name"], persistent=record.persistent,
+            project_version=project["version"], group_count=len(project["groups"]), file_count=0,
+            stored_bytes=0, expires_at=record.expires_at,
+        )
+
+    def create_v2_project(self, request: ProjectBootstrapRequest, *, now: datetime) -> tuple[str, str, ProjectSummary]:
+        quota = self._quota(request.persistent)
+        # The storage record is written before workspace mutation; its quota and
+        # lock are therefore the authority for this lifecycle.
+        existing = [path for path in self.storage.projects_dir.glob("*.json")]
+        if len(existing) >= quota.max_projects:
+            raise IntegrationConflictError("Integration project quota is exhausted.")
+        project = self.athena_store.create()
+        try:
+            project["name"] = request.name
+            project["integration"] = True
+            self.athena_store.storage.write_json(project["id"], "project.json", project)
+            record, capability = self.storage.create_project_record(
+                project_id=project["id"], persistent=request.persistent, quota=quota,
+                source=request.source, now=now,
+            )
+            return project["id"], capability, self._project_summary(project, record)
+        except Exception:
+            shutil.rmtree(self.athena_store.storage.workspace_dir(project["id"]), ignore_errors=True)
+            raise
+
+    def launch_v2_project(self, project_id: str, capability: str, *, now: datetime) -> str:
+        self.storage.load_project(project_id, capability, now=now)
+        handle = secrets.token_urlsafe(32)
+        self._v2_handles[handle] = (project_id, capability, now + timedelta(seconds=300))
+        return handle
+
+    def consume_v2_handle(self, handle: str, *, now: datetime) -> tuple[str, str, ProjectSummary]:
+        value = self._v2_handles.pop(handle, None)
+        if value is None or now > value[2]:
+            raise IntegrationNotFoundError("Integration project was not found.")
+        project_id, capability, _ = value
+        record = self.storage.load_project(project_id, capability, now=now)
+        return project_id, capability, self._project_summary(self.athena_store.load(project_id), record)
+
+    def rename_v2_project(self, project_id: str, capability: str, name: str, *, now: datetime) -> ProjectSummary:
+        record = self.storage.load_project(project_id, capability, now=now)
+        project = self.athena_store.load(project_id)
+        project["name"] = name
+        self.athena_store.storage.write_json(project_id, "project.json", project)
+        return self._project_summary(project, record)
+
+    def delete_v2_project(self, project_id: str, capability: str, *, now: datetime) -> dict:
+        self.storage.delete_project_record(project_id, capability, now=now)
+        return {"project_id": project_id, "status": "deleted"}
+
+    def reserve_v2_export(self, project_id: str, capability: str, selections: tuple[SelectedGroupRef, ...], reservation_id: str, *, now: datetime) -> ExportReservation:
+        return self.storage.reserve_export(project_id, capability, selections, reservation_id, now=now)
+
+    def complete_v2_export(self, project_id: str, capability: str, reservation_id: str, *, commit: bool, now: datetime) -> ExportReservation:
+        complete = self.storage.commit_export_reservation if commit else self.storage.abort_export_reservation
+        return complete(project_id, capability, reservation_id, now=now)
 
     def verified_export(
         self, *, raw_body: bytes, headers: Mapping[str, str], draft_id: str, now: datetime

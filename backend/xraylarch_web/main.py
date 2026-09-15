@@ -62,8 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+    def health() -> dict[str, str | int]:
+        return {"status": "ok", "version": __version__, "integration_contract_version": 2}
 
     app.include_router(build_api_router(store, active_settings))
     from .athena import AthenaStore, build_athena_router

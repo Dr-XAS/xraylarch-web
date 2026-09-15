@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+import json
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -22,6 +23,11 @@ from .integration_storage import (
 class ConsumeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     handle: str = Field(min_length=22, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+
+
+class RenameProjectRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=120)
 
 
 def _now() -> datetime:
@@ -190,6 +196,128 @@ def build_integration_router(
             ] if draft.status is DraftStatus.ACTIVE else []) + (["export"] if settings.import_enabled else []),
         }
 
+    v2 = APIRouter(prefix="/api/integration/v2")
+
+    async def signed(request: Request) -> bytes:
+        raw = await request.body()
+        try:
+            service.verify_v2_request(method=request.method, path=request.url.path,
+                                      raw_body=raw, headers=request.headers, now=_now())
+        except Exception as exc:
+            raise _http_error(exc)
+        return raw
+
+    @v2.post("/projects")
+    async def create_project(request: Request):
+        from .integration_contracts import ProjectBootstrapRequest
+        raw = await signed(request)
+        try:
+            payload = ProjectBootstrapRequest.model_validate_json(raw)
+            project_id, capability, summary = service.create_v2_project(payload, now=_now())
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="Project request is invalid.")
+        except Exception as exc:
+            raise _http_error(exc)
+        return {"contract_version": 2, "project_id": project_id, "capability": capability,
+                "project": summary.model_dump(mode="json")}
+
+    @v2.post("/projects/{project_id}/launch")
+    async def launch_project(project_id: str, request: Request):
+        raw = await signed(request)
+        try:
+            capability = json.loads(raw or b"{}") ["capability"]
+            return {"handle": service.launch_v2_project(project_id, capability, now=_now())}
+        except (KeyError, json.JSONDecodeError, TypeError):
+            raise HTTPException(status_code=422, detail="Project request is invalid.")
+        except Exception as exc:
+            raise _http_error(exc)
+
+    @v2.post("/browser/consume")
+    def consume_v2(payload: ConsumeRequest, response: Response):
+        try:
+            project_id, capability, summary = service.consume_v2_handle(payload.handle, now=_now())
+        except Exception as exc:
+            raise _http_error(exc)
+        response.headers["Cache-Control"] = "no-store"
+        return {"project_id": project_id, "capability": capability,
+                "project": summary.model_dump(mode="json"), "seed_group": None,
+                "allowed_operations": [], "return_reference": {"project_id": project_id}}
+
+    @v2.patch("/projects/{project_id}")
+    async def rename_project(project_id: str, request: Request):
+        raw = await signed(request)
+        try:
+            payload = RenameProjectRequest.model_validate_json(raw)
+            capability = request.headers.get("X-XrayLarch-Project-Capability")
+            if not capability:
+                raise IntegrationAuthorizationError()
+            return service.rename_v2_project(project_id, capability, payload.name, now=_now()).model_dump(mode="json")
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="Project request is invalid.")
+        except Exception as exc:
+            raise _http_error(exc)
+
+    @v2.delete("/projects/{project_id}")
+    async def delete_project(project_id: str, request: Request):
+        await signed(request)
+        capability = request.headers.get("X-XrayLarch-Project-Capability")
+        if not capability:
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
+        try:
+            return service.delete_v2_project(project_id, capability, now=_now())
+        except Exception as exc:
+            raise _http_error(exc)
+
+    @v2.post("/projects/{project_id}/capability/rotate")
+    async def rotate_capability(project_id: str, request: Request):
+        await signed(request)
+        capability = request.headers.get("X-XrayLarch-Project-Capability")
+        if not capability:
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
+        try:
+            return {"capability": service.storage.rotate_project_capability(project_id, capability, now=_now())}
+        except Exception as exc:
+            raise _http_error(exc)
+
+    @v2.post("/projects/{project_id}/exports/reservations/{reservation_id}")
+    async def reserve_export(project_id: str, reservation_id: str, request: Request):
+        from .integration_contracts import SelectedGroupExportRequest
+        raw = await signed(request)
+        capability = request.headers.get("X-XrayLarch-Project-Capability")
+        if not capability:
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
+        try:
+            payload = SelectedGroupExportRequest.model_validate_json(raw)
+            if payload.project_id != project_id:
+                raise IntegrationAuthorizationError()
+            return service.reserve_v2_export(project_id, capability, payload.selections, reservation_id, now=_now()).model_dump(mode="json")
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="Export request is invalid.")
+        except Exception as exc:
+            raise _http_error(exc)
+
+    @v2.post("/projects/{project_id}/exports/reservations/{reservation_id}/{action}")
+    async def complete_export(project_id: str, reservation_id: str, action: str, request: Request):
+        await signed(request)
+        if action not in {"commit", "abort"}:
+            raise HTTPException(status_code=404, detail="Integration export reservation was not found.")
+        capability = request.headers.get("X-XrayLarch-Project-Capability")
+        if not capability:
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
+        try:
+            return service.complete_v2_export(project_id, capability, reservation_id,
+                                              commit=action == "commit", now=_now()).model_dump(mode="json")
+        except Exception as exc:
+            raise _http_error(exc)
+
+    @v2.api_route("/{unmatched:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
+    async def v2_fallback(unmatched: str, request: Request):
+        # Authenticate any v2-shaped request before reporting that its route is
+        # absent, so a method/path substitution never becomes an oracle.
+        await signed(request)
+        raise HTTPException(status_code=404, detail="Integration project was not found.")
+
+    router.include_router(v2)
     return router
 
 
