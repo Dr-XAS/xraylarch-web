@@ -118,6 +118,21 @@ def test_project_id_is_platform_independent_and_path_safe(store, project_id):
         store.create_project_record(project_id=project_id, persistent=True, now=NOW)
 
 
+def test_project_id_at_portable_filename_byte_limit_is_accepted(store):
+    project_id = "a" * 250
+
+    record, capability = store.create_project_record(project_id=project_id, persistent=True, now=NOW)
+
+    assert record.project_id == project_id
+    assert store.load_project(project_id, capability).project_id == project_id
+
+
+@pytest.mark.parametrize("project_id", ("a" * 251, "é" * 126))
+def test_project_id_exceeding_portable_filename_byte_limit_is_not_found(store, project_id):
+    with pytest.raises(IntegrationNotFoundError):
+        store.create_project_record(project_id=project_id, persistent=True, now=NOW)
+
+
 def test_expired_guest_is_expired_during_authorized_read_and_mutation(store):
     _, capability = store.create_project_record(
         project_id="guest", persistent=False, quota=QUOTA, now=NOW

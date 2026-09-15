@@ -33,6 +33,7 @@ from .integration_contracts import (
 
 _OPAQUE = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 _WINDOWS_DEVICE_NAMES = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\.|$)", re.IGNORECASE)
+_MAX_FILENAME_BYTES = 255
 
 
 class IntegrationStorageError(ValueError):
@@ -262,7 +263,7 @@ class IntegrationStorage:
             os.close(descriptor)
 
     def _atomic_json(self, path: Path, value: dict) -> None:
-        temporary = path.with_name(f".{path.name}.{secrets.token_urlsafe(8)}.tmp")
+        temporary = path.with_name(f".tmp-{secrets.token_urlsafe(8)}")
         try:
             descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
@@ -298,6 +299,7 @@ class IntegrationStorage:
             or re.match(r"^[A-Za-z]:", project_id)
             or _WINDOWS_DEVICE_NAMES.match(project_id)
             or any(unicodedata.category(character) == "Cc" for character in project_id)
+            or len(f"{project_id}.json".encode("utf-8")) > _MAX_FILENAME_BYTES
         ):
             raise IntegrationNotFoundError("Integration project was not found.")
         return project_id
