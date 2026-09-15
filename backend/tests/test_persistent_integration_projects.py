@@ -5,6 +5,8 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import os
+from pathlib import Path
+from threading import Event, Lock
 
 import pytest
 
@@ -131,6 +133,42 @@ def test_project_id_at_portable_filename_byte_limit_is_accepted(store):
 def test_project_id_exceeding_portable_filename_byte_limit_is_not_found(store, project_id):
     with pytest.raises(IntegrationNotFoundError):
         store.create_project_record(project_id=project_id, persistent=True, now=NOW)
+
+
+def test_atomic_project_writes_with_same_token_use_distinct_temp_targets(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret="integration-secret-that-is-long-enough")
+    original_open = os.open
+    entered = Event()
+    release = Event()
+    call_lock = Lock()
+    calls = 0
+
+    monkeypatch.setattr("xraylarch_web.integration_storage.secrets.token_urlsafe", lambda _: "same-token")
+
+    def pausing_open(path, flags, mode=0o777):
+        nonlocal calls
+        descriptor = original_open(path, flags, mode)
+        if Path(path).parent == store.projects_dir and flags & os.O_EXCL:
+            with call_lock:
+                calls += 1
+                first = calls == 1
+            if first:
+                entered.set()
+                assert release.wait(timeout=1)
+        return descriptor
+
+    monkeypatch.setattr(os, "open", pausing_open)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(store.create_project_record, project_id="p1", persistent=True, now=NOW)
+        assert entered.wait(timeout=1)
+        second = executor.submit(store.create_project_record, project_id="p2", persistent=True, now=NOW)
+        release.set()
+        first.result()
+        second.result()
+
+    assert (store.projects_dir / "p1.json").is_file()
+    assert (store.projects_dir / "p2.json").is_file()
 
 
 def test_expired_guest_is_expired_during_authorized_read_and_mutation(store):

@@ -263,9 +263,22 @@ class IntegrationStorage:
             os.close(descriptor)
 
     def _atomic_json(self, path: Path, value: dict) -> None:
-        temporary = path.with_name(f".tmp-{secrets.token_urlsafe(8)}")
+        destination = hashlib.sha256(path.name.encode("utf-8")).hexdigest()[:16]
+        temporary: Path | None = None
+        created = False
+        for _ in range(8):
+            token = hashlib.sha256(secrets.token_urlsafe(8).encode("utf-8")).hexdigest()[:16]
+            candidate = path.with_name(f".tmp-{destination}-{token}")
+            try:
+                descriptor = os.open(candidate, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            except FileExistsError:
+                continue
+            temporary = candidate
+            created = True
+            break
+        if temporary is None:
+            raise FileExistsError("Could not allocate an integration storage temporary file.")
         try:
-            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
             with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 json.dump(value, stream, separators=(",", ":"), allow_nan=False)
                 stream.flush()
@@ -274,7 +287,8 @@ class IntegrationStorage:
             os.chmod(path, 0o600)
             self._fsync_directory(path.parent)
         finally:
-            temporary.unlink(missing_ok=True)
+            if created:
+                temporary.unlink(missing_ok=True)
 
     @contextmanager
     def _lock(self, name: str) -> Iterator[None]:
