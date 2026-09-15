@@ -15,11 +15,17 @@ import secrets
 import shutil
 from typing import Iterator, Callable
 
+from pydantic import TypeAdapter
+
 from .integration_contracts import (
     ArtifactSourceIdentity,
     DraftStatus,
+    ExportReservation,
     ImportBinding,
     LaunchEnvelope,
+    ProjectQuota,
+    ProjectSource,
+    SelectedGroupRef,
     canonical_sha256,
 )
 
@@ -85,6 +91,20 @@ class BrowserSession:
     owner_capability: str
 
 
+@dataclass(frozen=True)
+class ProjectRecord:
+    project_id: str
+    persistent: bool
+    quota: ProjectQuota | None
+    source: ProjectSource | None
+    capability_hash: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime | None
+    reservations: tuple[ExportReservation, ...] = ()
+
+
 def capability_for_handle(handle: str, integration_secret: str) -> str:
     digest = hmac.new(
         integration_secret.encode(),
@@ -110,6 +130,13 @@ def _dt(value: datetime | str) -> datetime:
     return parsed.astimezone(UTC)
 
 
+_PROJECT_SOURCE = TypeAdapter(ProjectSource)
+
+
+def _project_source(value: dict | None) -> ProjectSource | None:
+    return _PROJECT_SOURCE.validate_python(value) if value is not None else None
+
+
 class IntegrationStorage:
     def __init__(
         self,
@@ -124,7 +151,8 @@ class IntegrationStorage:
         self.drafts_dir = self.root / "drafts"
         self.nonces_dir = self.root / "nonces"
         self.handles_dir = self.root / "handles"
-        for path in (self.root, self.drafts_dir, self.nonces_dir, self.handles_dir):
+        self.projects_dir = self.root / "projects"
+        for path in (self.root, self.drafts_dir, self.nonces_dir, self.handles_dir, self.projects_dir):
             path.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(path, 0o700)
 
@@ -171,6 +199,39 @@ class IntegrationStorage:
             origin=IntegrationStorage._deserialize_origin(value.get("origin")),
             import_binding=(ImportBinding.model_validate(value["import_binding"])
                             if value.get("import_binding") is not None else None),
+        )
+
+    @staticmethod
+    def _serialize_project(record: ProjectRecord) -> dict:
+        return {
+            "project_id": record.project_id,
+            "persistent": record.persistent,
+            "quota": record.quota.model_dump(mode="json") if record.quota is not None else None,
+            "source": record.source.model_dump(mode="json") if record.source is not None else None,
+            "capability_hash": record.capability_hash,
+            "status": record.status,
+            "created_at": record.created_at.isoformat(),
+            "updated_at": record.updated_at.isoformat(),
+            "expires_at": record.expires_at.isoformat() if record.expires_at is not None else None,
+            "reservations": [reservation.model_dump(mode="json") for reservation in record.reservations],
+        }
+
+    @staticmethod
+    def _deserialize_project(value: dict) -> ProjectRecord:
+        return ProjectRecord(
+            project_id=value["project_id"],
+            persistent=value["persistent"],
+            quota=ProjectQuota.model_validate(value["quota"]) if value.get("quota") is not None else None,
+            source=_project_source(value.get("source")),
+            capability_hash=value["capability_hash"],
+            status=value["status"],
+            created_at=_dt(value["created_at"]),
+            updated_at=_dt(value["updated_at"]),
+            expires_at=_dt(value["expires_at"]) if value.get("expires_at") is not None else None,
+            reservations=tuple(
+                ExportReservation.model_validate({**item, "selections": tuple(item["selections"])})
+                for item in value.get("reservations", ())
+            ),
         )
 
     @staticmethod
@@ -224,10 +285,154 @@ class IntegrationStorage:
             fcntl.flock(descriptor, fcntl.LOCK_UN)
             os.close(descriptor)
 
+    @staticmethod
+    def _validate_project_id(project_id: str) -> str:
+        if (
+            not isinstance(project_id, str)
+            or not 1 <= len(project_id) <= 255
+            or Path(project_id).name != project_id
+            or project_id in {".", ".."}
+        ):
+            raise IntegrationNotFoundError("Integration project was not found.")
+        return project_id
+
     @contextmanager
     def draft_lock(self, draft_id: str) -> Iterator[None]:
         with self._lock(f"draft-{self._validate_opaque(draft_id)}"):
             yield
+
+    @contextmanager
+    def project_lock(self, project_id: str) -> Iterator[None]:
+        with self._lock(f"project-{_hash(self._validate_project_id(project_id))}"):
+            yield
+
+    def _project_path(self, project_id: str) -> Path:
+        return self.projects_dir / f"{self._validate_project_id(project_id)}.json"
+
+    def _read_project_unchecked(self, project_id: str) -> ProjectRecord:
+        try:
+            with open(self._project_path(project_id), encoding="utf-8") as stream:
+                return self._deserialize_project(json.load(stream))
+        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise IntegrationNotFoundError("Integration project was not found.") from exc
+
+    def _load_active_project(self, project_id: str, capability: str) -> ProjectRecord:
+        record = self._read_project_unchecked(project_id)
+        if (
+            record.status != "active"
+            or not isinstance(capability, str)
+            or not hmac.compare_digest(record.capability_hash, _hash(capability))
+        ):
+            raise IntegrationNotFoundError("Integration project was not found.")
+        return record
+
+    def create_project_record(
+        self,
+        *,
+        project_id: str,
+        persistent: bool,
+        now: datetime,
+        quota: ProjectQuota | None = None,
+        source: ProjectSource | None = None,
+    ) -> tuple[ProjectRecord, str]:
+        project_id = self._validate_project_id(project_id)
+        now = _dt(now)
+        if not persistent and (quota is None or quota.ttl_seconds is None):
+            raise ValueError("Guest projects require a quota with ttl_seconds.")
+        capability = secrets.token_urlsafe(32)
+        record = ProjectRecord(
+            project_id=project_id,
+            persistent=persistent,
+            quota=quota,
+            source=source,
+            capability_hash=_hash(capability),
+            status="active",
+            created_at=now,
+            updated_at=now,
+            expires_at=None if persistent else now + timedelta(seconds=quota.ttl_seconds),
+        )
+        with self.project_lock(project_id):
+            path = self._project_path(project_id)
+            if path.exists():
+                raise IntegrationConflictError("Integration project already exists.")
+            self._atomic_json(path, self._serialize_project(record))
+        return record, capability
+
+    def load_project(self, project_id: str, capability: str) -> ProjectRecord:
+        return self._load_active_project(project_id, capability)
+
+    def rotate_project_capability(self, project_id: str, capability: str, *, now: datetime) -> str:
+        with self.project_lock(project_id):
+            record = self._load_active_project(project_id, capability)
+            rotated = secrets.token_urlsafe(32)
+            updated = replace(record, capability_hash=_hash(rotated), updated_at=_dt(now))
+            self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
+            return rotated
+
+    def delete_project_record(self, project_id: str, capability: str, *, now: datetime) -> ProjectRecord:
+        with self.project_lock(project_id):
+            record = self._load_active_project(project_id, capability)
+            updated = replace(record, status="deleted", updated_at=_dt(now))
+            self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
+            return updated
+
+    @staticmethod
+    def _validate_selections(selections: tuple[SelectedGroupRef, ...]) -> tuple[SelectedGroupRef, ...]:
+        values = tuple(selections)
+        if not values or len({(item.group_id, item.group_version) for item in values}) != len(values):
+            raise IntegrationConflictError("Selected group references must be unique.")
+        return values
+
+    def reserve_export(
+        self, project_id: str, capability: str, selections: tuple[SelectedGroupRef, ...],
+        reservation_id: str, *, now: datetime,
+    ) -> ExportReservation:
+        selections = self._validate_selections(selections)
+        with self.project_lock(project_id):
+            record = self._load_active_project(project_id, capability)
+            for reservation in record.reservations:
+                if reservation.reservation_id == reservation_id:
+                    if reservation.selections == selections:
+                        return reservation
+                    raise IntegrationConflictError("Export reservation ID was reused with different selections.")
+            if record.quota is not None and len(record.reservations) >= record.quota.max_exports:
+                raise IntegrationConflictError("Integration project export quota is exhausted.")
+            reservation = ExportReservation(
+                reservation_id=reservation_id,
+                project_id=record.project_id,
+                project_version=0,
+                selections=selections,
+                status="prepared",
+            )
+            updated = replace(record, reservations=(*record.reservations, reservation), updated_at=_dt(now))
+            self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
+            return reservation
+
+    def _complete_export_reservation(
+        self, project_id: str, capability: str, reservation_id: str, *, now: datetime, status: str,
+    ) -> ExportReservation:
+        with self.project_lock(project_id):
+            record = self._load_active_project(project_id, capability)
+            for index, reservation in enumerate(record.reservations):
+                if reservation.reservation_id != reservation_id:
+                    continue
+                if reservation.status == status:
+                    return reservation
+                if reservation.status != "prepared":
+                    raise IntegrationConflictError("Export reservation is already terminal.")
+                updated_reservation = reservation.model_copy(update={"status": status})
+                reservations = list(record.reservations)
+                reservations[index] = updated_reservation
+                updated = replace(record, reservations=tuple(reservations), updated_at=_dt(now))
+                self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
+                return updated_reservation
+            raise IntegrationNotFoundError("Integration export reservation was not found.")
+
+    def commit_export_reservation(self, project_id: str, capability: str, reservation_id: str, *, now: datetime) -> ExportReservation:
+        return self._complete_export_reservation(project_id, capability, reservation_id, now=now, status="committed")
+
+    def abort_export_reservation(self, project_id: str, capability: str, reservation_id: str, *, now: datetime) -> ExportReservation:
+        return self._complete_export_reservation(project_id, capability, reservation_id, now=now, status="aborted")
 
     def claim_nonce(self, *, nonce: str, expires_at: datetime) -> None:
         self._validate_opaque(nonce)
@@ -461,6 +666,19 @@ class IntegrationStorage:
         self._fsync_directory(self.nonces_dir)
 
         expired: list[str] = []
+        for path in tuple(self.projects_dir.glob("*.json")):
+            try:
+                record = self._deserialize_project(json.loads(path.read_text(encoding="utf-8")))
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+            if record.status == "active" and record.expires_at is not None and now >= record.expires_at:
+                with self.project_lock(record.project_id):
+                    current = self._read_project_unchecked(record.project_id)
+                    if current.status == "active" and current.expires_at is not None and now >= current.expires_at:
+                        updated = replace(current, status="expired", updated_at=current.expires_at)
+                        self._atomic_json(path, self._serialize_project(updated))
+                        expired.append(current.project_id)
+
         for path in tuple(self.drafts_dir.glob("*.json")):
             record = self._deserialize(json.loads(path.read_text(encoding="utf-8")))
             if record.status in {DraftStatus.ACTIVE, DraftStatus.IMPORTING, DraftStatus.SEALED} and now >= record.expires_at:
