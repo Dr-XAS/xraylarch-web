@@ -5,7 +5,7 @@ umask 077
 
 APP_SLUG="xraylarch-web"
 REPOSITORY="https://github.com/Dr-XAS/xraylarch-web.git"
-APPROVED_BRANCH="codex/xraylarch-web-v1"
+APPROVED_BRANCH="master"
 APP_ROOT="/local/apps/${APP_SLUG}"
 RELEASES_ROOT="${APP_ROOT}/releases"
 CURRENT_LINK="${APP_ROOT}/current"

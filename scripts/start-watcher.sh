@@ -5,7 +5,7 @@ umask 077
 
 REPO_DIR="${XRAYLARCH_WEB_REPO_DIR:-/local/apps/xraylarch-web/control}"
 DEPLOY_SCRIPT="${XRAYLARCH_WEB_DEPLOY_SCRIPT:-/local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh}"
-BRANCH="${XRAYLARCH_WEB_BRANCH:-codex/xraylarch-web-v1}"
+BRANCH="${XRAYLARCH_WEB_BRANCH:-master}"
 SIBLING_PROFILE="${XRAYLARCH_WEB_SIBLING_PROFILE:-drxas}"
 STATE_ROOT="${XRAYLARCH_WEB_WATCH_STATE_ROOT:-/local/apps/xraylarch-web/state/watcher}"
 LAST_SUCCESSFUL_STATE="${XRAYLARCH_WEB_LAST_SUCCESSFUL_STATE:-/local/apps/xraylarch-web/state/last-successful}"
@@ -50,7 +50,7 @@ write_watcher_success() {
 
 poll_once() {
   local remote_sha successful_sha previous
-  if ! git -C "$REPO_DIR" fetch origin "$BRANCH" -q 2>>"$LOG"; then
+  if ! git -C "$REPO_DIR" fetch origin "refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}" -q 2>>"$LOG"; then
     log "fetch failed; retaining the active release and retrying after the next poll"
     return 1
   fi

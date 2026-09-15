@@ -62,6 +62,7 @@ class AthenaParameters(BaseModel):
     norm1: float | None = Field(default=None, ge=0)
     norm2: float | None = Field(default=None, gt=0)
     nnorm: int | None = Field(default=None, ge=0, le=3)
+    nvict: int = Field(default=0, ge=0, le=10)
     flatten: bool = True
     fnorm: bool = Field(default=False, strict=True)
     rbkg: float = Field(default=1, gt=0, le=20)
@@ -70,6 +71,7 @@ class AthenaParameters(BaseModel):
     bkg_kweight: Weight = 2.0
     bkg_dk: float = Field(default=1, ge=0, le=20)
     bkg_window: Window = "hanning"
+    nknots: int = Field(default=0, ge=0, le=10_000)
     nclamp: int = Field(default=5, ge=0, le=100)
     clamp_lo: float = Field(default=0, ge=0, le=1000)
     clamp_hi: float = Field(default=1, ge=0, le=1000)
@@ -77,11 +79,19 @@ class AthenaParameters(BaseModel):
     kmax: float | None = Field(default=None, gt=0, le=100)
     kweight: Weight = 2.0
     dk: float = Field(default=1, ge=0, le=20)
+    dk2: float | None = Field(default=None, ge=0, le=20)
     window: Window = "hanning"
+    rmax_out: float | None = Field(default=None, gt=0, le=1000)
+    forward_with_phase: bool = Field(default=False, strict=True)
     rmin: float = Field(default=1, ge=0, le=100)
     rmax: float = Field(default=3, gt=0, le=100)
     dr: float = Field(default=0, ge=0, le=20)
+    dr2: float | None = Field(default=None, ge=0, le=20)
     rwindow: Window = "hanning"
+    qmax_out: float | None = Field(default=None, gt=0, le=100)
+    reverse_nfft: int | None = Field(default=None, ge=128, le=MAX_NFFT)
+    reverse_kstep: float | None = Field(default=None, ge=0.001, le=1)
+    reverse_with_phase: bool = Field(default=False, strict=True)
     energy_shift: float = Field(default=0, ge=-100_000, le=100_000)
     nfft: int = Field(default=2048, ge=128, le=MAX_NFFT)
     kstep: float = Field(default=0.05, ge=0.001, le=1)
@@ -95,7 +105,7 @@ class AthenaParameters(BaseModel):
                 value = "kaiser"
         return value
 
-    @field_validator("nfft", "nnorm", "nclamp", mode="before")
+    @field_validator("nfft", "reverse_nfft", "nnorm", "nvict", "nknots", "nclamp", mode="before")
     @classmethod
     def integer_not_boolean(cls, value):
         if isinstance(value, (bool, np.bool_)):
@@ -119,6 +129,8 @@ class AthenaParameters(BaseModel):
                 raise ValueError(f"{high} must be greater than {low}.")
         if self.nfft & (self.nfft - 1):
             raise ValueError("nfft must be a power of two from 128 through 65536.")
+        if self.reverse_nfft is not None and self.reverse_nfft & (self.reverse_nfft - 1):
+            raise ValueError("reverse_nfft must be a power of two from 128 through 65536.")
         rlast = np.pi / (self.kstep * self.nfft) * (self.nfft // 2 - 1)
         if self.rmax + self.dr / 2 > rlast:
             raise ValueError("rmax + dr/2 exceeds the FFT R range; lower it or decrease kstep.")
@@ -247,17 +259,21 @@ def _transforms(group, p, effective, warnings):
     if p.rmax - p.rmin < rstep:
         raise ScientificError("The R window is narrower than one FFT bin; widen it or increase nfft.")
     rlast = rstep * (p.nfft // 2 - 1)
-    rmax_out = min(rlast, max(10.0, p.rmax + p.dr / 2 + rstep))
+    rmax_out = p.rmax_out
+    if rmax_out is None:
+        rmax_out = min(rlast, max(10.0, p.rmax + p.dr / 2 + rstep))
     # This checkout's xftf_prep casts kweight to int. On our already uniform,
     # zero-origin k grid, explicit weighting before its identity interpolation
     # implements real exponents without modifying Larch or truncating them.
     group.weighted_chi = group.chi * group.k ** p.kweight
     xftf(group.k, group.weighted_chi, group=group, kmin=kmin, kmax=kmax,
-         kweight=0, dk=p.dk, window=p.window, nfft=p.nfft,
-         kstep=p.kstep, rmax_out=rmax_out)
+         kweight=0, dk=p.dk, dk2=p.dk2, with_phase=p.forward_with_phase,
+         window=p.window, nfft=p.nfft, kstep=p.kstep, rmax_out=rmax_out)
     xftr(group.r, group.chir, group=group, rmin=p.rmin, rmax=p.rmax,
-         dr=p.dr, window=p.rwindow, nfft=p.nfft, kstep=p.kstep,
-         qmax_out=available)
+         dr=p.dr, dr2=p.dr2, with_phase=p.reverse_with_phase,
+         window=p.rwindow, nfft=p.reverse_nfft or p.nfft,
+         kstep=p.reverse_kstep or p.kstep,
+         qmax_out=p.qmax_out if p.qmax_out is not None else available)
     # Preserve 2*pi phase equivalence to the actual complex transforms. The
     # local Larch complex_phase helper can also remove odd multiples of pi.
     group.chir_pha = np.unwrap(np.angle(group.chir))
@@ -448,7 +464,10 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                 warnings.append("Input is already normalized: normalization and flattening were not refitted.")
             else:
                 ranges = _normalization_ranges(x, e0, p)
-                pre_edge(x, y, group=group, e0=e0, step=p.step, make_flat=p.flatten, **ranges)
+                pre_edge(
+                    x, y, group=group, e0=e0, step=p.step, nvict=p.nvict,
+                    make_flat=p.flatten, **ranges
+                )
                 effective.update({key: getattr(group.pre_edge_details, key) for key in ranges})
                 ie0 = index_nearest(x, e0)
                 fitted_step = float(group.post_edge[ie0] - group.pre_edge[ie0])
@@ -488,7 +507,9 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     knot_indices = [index_nearest(kraw, v) for v in np.linspace(p.bkg_kmin, bmax, nspl)]
                     if len(set(knot_indices)) < nspl:
                         raise ScientificError("Too few distinct points for AUTOBK spline knots; lower rbkg or use denser data.")
-                    bkg_options = dict(ek0=e0, rbkg=p.rbkg, kmin=p.bkg_kmin, kmax=bmax,
+                    bkg_options = dict(ek0=e0, rbkg=p.rbkg,
+                                       nknots=p.nknots or None,
+                                       kmin=p.bkg_kmin, kmax=bmax,
                                        kweight=p.bkg_kweight, dk=p.bkg_dk, win=p.bkg_window,
                                        nclamp=p.nclamp, clamp_lo=p.clamp_lo, clamp_hi=p.clamp_hi,
                                        nfft=p.nfft, kstep=p.kstep)
@@ -497,8 +518,10 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
                     if p.fnorm:
                         corrected_mu, scale = _functional_normalization(x, y, group.pre_edge, group.post_edge, e0)
                         corrected = Group()
-                        pre_edge(x, corrected_mu, group=corrected, e0=e0, step=p.step,
-                                 make_flat=False, **ranges)
+                        pre_edge(
+                            x, corrected_mu, group=corrected, e0=e0, step=p.step,
+                            nvict=p.nvict, make_flat=False, **ranges
+                        )
                         ie0 = index_nearest(x, e0)
                         fitted_step = float(corrected.post_edge[ie0] - corrected.pre_edge[ie0])
                         if p.step is None and fitted_step <= max(1e-12, np.ptp(corrected_mu) * 1e-10):

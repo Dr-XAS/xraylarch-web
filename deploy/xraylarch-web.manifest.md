@@ -7,7 +7,7 @@
 | Application | `xraylarch-web` |
 | Owner and rollback authority | Jeffrey Huang |
 | Repository | `https://github.com/Dr-XAS/xraylarch-web.git` |
-| Authorized branch | `codex/xraylarch-web-v1` |
+| Authorized branch | `master` |
 | Public address | `http://drxas.xray.aps.anl.gov:3004` |
 | Frontend listener | `0.0.0.0:3004` |
 | Backend listener | `127.0.0.1:8006` |
@@ -41,7 +41,7 @@ full 40-character SHA:
 /local/apps/xraylarch-web/ops/deploy-xraylarch-web.sh recover <full-sha>
 ```
 
-`deploy` first requires `refs/heads/codex/xraylarch-web-v1` at the remote to
+`deploy` first requires `refs/heads/master` at the remote to
 equal the requested SHA. It builds a new detached checkout under
 `releases/<sha>`, creates a release-local backend virtual environment from
 `drxas-deploy`, installs the complete pinned set in
@@ -170,7 +170,7 @@ profile and conda-containing PATH:
 
 The existing five-minute watcher-liveness job invokes the same helper after its
 other scoped watcher checks. The watcher polls
-`origin/codex/xraylarch-web-v1` every 60 seconds, resolves the branch to an
+`origin/master` every 60 seconds, resolves the branch to an
 exact full SHA, health-checks the canonical active SHA, invokes `recover` when
 health fails, and only then invokes `deploy` for a new SHA. The deployer remains
 the sole authority for candidate staging, process identity, cutover, rollback,

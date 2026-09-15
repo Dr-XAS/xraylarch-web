@@ -66,8 +66,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     app.include_router(build_api_router(store, active_settings))
-    from .athena import build_athena_router
-    app.include_router(build_athena_router(active_settings))
+    from .athena import AthenaStore, build_athena_router
+
+    athena_store = AthenaStore(active_settings)
+    integration_service = None
+    if active_settings.integration_api_enabled:
+        from .integration_routes import build_integration_router
+        from .integration_service import IntegrationService
+        from .integration_storage import IntegrationStorage
+
+        integration_storage = IntegrationStorage(
+            active_settings.data_root,
+            integration_secret=active_settings.integration_hmac_secret or "",
+            draft_ttl_seconds=active_settings.draft_ttl_seconds,
+        )
+        integration_service = IntegrationService(
+            active_settings, athena_store, integration_storage
+        )
+        app.include_router(
+            build_integration_router(integration_service, active_settings)
+        )
+    app.include_router(
+        build_athena_router(
+            active_settings,
+            store=athena_store,
+            integration_service=integration_service,
+        )
+    )
     return app
 
 
