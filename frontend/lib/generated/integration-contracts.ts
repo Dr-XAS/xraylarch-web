@@ -4,10 +4,84 @@
 export interface JsonObject { readonly [key: string]: JsonValue; }
 export type JsonValue = null | boolean | number | string | ReadonlyArray<JsonValue> | JsonObject;
 
+export interface AuthoritativeSpectrum {
+  readonly energy: ReadonlyArray<number>;
+  readonly mu: ReadonlyArray<number>;
+}
+
+export interface NormalizationParameters {
+  readonly e0: number;
+  readonly edge_step: number;
+  readonly energy_shift?: number;
+  readonly flatten?: boolean;
+  readonly nnorm?: number | null;
+  readonly norm1?: number | null;
+  readonly norm2?: number | null;
+  readonly nvict?: number;
+  readonly pre1?: number | null;
+  readonly pre2?: number | null;
+}
+
+export interface AutobkParameters {
+  readonly clamp_hi?: number;
+  readonly clamp_lo?: number;
+  readonly dk?: number;
+  readonly kmax: number;
+  readonly kmin?: number;
+  readonly kweight?: number;
+  readonly nclamp?: number;
+  readonly nknots?: number;
+  readonly rbkg?: number;
+  readonly window?: 'hanning' | 'parzen' | 'welch' | 'gaussian' | 'sine' | 'kaiser';
+}
+
+export interface ForwardFtParameters {
+  readonly dk?: number;
+  readonly dk2?: number;
+  readonly kmax: number;
+  readonly kmin?: number;
+  readonly kstep?: number;
+  readonly kweight?: number;
+  readonly nfft?: number;
+  readonly rmax_out?: number;
+  readonly window?: 'hanning' | 'parzen' | 'welch' | 'gaussian' | 'sine' | 'kaiser';
+  readonly with_phase?: boolean;
+}
+
+export interface ReverseFtParameters {
+  readonly dr?: number;
+  readonly dr2?: number;
+  readonly kstep?: number;
+  readonly nfft?: number;
+  readonly qmax_out?: number;
+  readonly rmax?: number;
+  readonly rmin?: number;
+  readonly window?: 'hanning' | 'parzen' | 'welch' | 'gaussian' | 'sine' | 'kaiser';
+  readonly with_phase?: boolean;
+}
+
+export interface CoreProcessingRecipe {
+  readonly autobk: AutobkParameters;
+  readonly forward_ft: ForwardFtParameters;
+  readonly larch_version: string;
+  readonly normalization: NormalizationParameters;
+  readonly recipe_version: 1;
+  readonly reverse_ft: ReverseFtParameters;
+}
+
+export interface ProjectSeed {
+  readonly recipe: CoreProcessingRecipe;
+  readonly recipe_sha256: string;
+  readonly source: ExistingDrXasSource;
+  readonly spectrum: AuthoritativeSpectrum;
+  readonly spectrum_sha256: string;
+}
+
 export interface ProjectBootstrapRequest {
   readonly contract_version?: 2;
   readonly name: string;
   readonly persistent: boolean;
+  readonly seed?: ProjectSeed | null;
   readonly source?: ExistingDrXasSource | AthenaUploadedSource | null;
 }
 

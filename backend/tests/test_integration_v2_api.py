@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
@@ -173,6 +174,24 @@ def test_delete_retires_access_before_retryable_workspace_cleanup(tmp_path, monk
         assert not (tmp_path / "athena" / project_id).exists()
 
 
+def test_delete_is_idempotent_for_concurrent_cleanup_retries(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = create(client)
+    def delete(index):
+        with TestClient(app) as client:
+            return request(
+                client, "DELETE", f"/api/integration/v2/projects/{created['project_id']}", {},
+                nonce=("j" if index == 0 else "k") * 32, capability=created["capability"],
+            ).json()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(delete, range(2)))
+    assert all(result == {"project_id": created["project_id"], "status": "deleted", "cleanup_pending": False}
+               for result in results)
+    assert not (tmp_path / "athena" / created["project_id"]).exists()
+
+
 def test_v2_routes_are_registered_at_the_versioned_root(tmp_path):
     app = create_app(settings(tmp_path))
     paths = {route.path for route in app.routes}
@@ -182,11 +201,19 @@ def test_v2_routes_are_registered_at_the_versioned_root(tmp_path):
 
 
 def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_path):
+    from test_integration_contracts import launch_payload
     source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
               "artifact_version": 1, "source_sha256": "a" * 64}
+    seed = launch_payload()
+    energy = [8800.0 + index * 2 for index in range(551)]
+    mu = [0.7 + __import__("math").atan((value - 8980.0) / 4.0) / __import__("math").pi for value in energy]
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
+    spectrum = AuthoritativeSpectrum(energy=tuple(energy), mu=tuple(mu))
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"), "recipe": seed["recipe"],
+            "spectrum_sha256": canonical_sha256(spectrum), "recipe_sha256": seed["recipe_sha256"]}
     with TestClient(create_app(settings(tmp_path))) as client:
         created = request(client, "POST", "/api/integration/v2/projects", {
-            "contract_version": 2, "name": "Seeded", "persistent": True, "source": source,
+            "contract_version": 2, "name": "Seeded", "persistent": True, "source": source, "seed": seed,
         }, nonce="z" * 32)
         assert created.status_code == 200
         payload = created.json()
@@ -195,8 +222,23 @@ def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_
                            capability=payload["capability"])
         consumed = client.post("/api/integration/v2/browser/consume", json={"handle": launched.json()["handle"]})
         assert consumed.status_code == 200
-        assert consumed.json()["seed_group"]["source"] == source
+        assert consumed.json()["seed_group"]["source"].items() >= source.items()
         assert consumed.json()["allowed_operations"] == ["read_project"]
+
+
+def test_source_only_project_is_honestly_empty(tmp_path):
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = request(client, "POST", "/api/integration/v2/projects", {
+            "contract_version": 2, "name": "Unseeded", "persistent": True, "source": source,
+        }, nonce="t" * 32)
+        payload = created.json()
+        launched = request(client, "POST", f"/api/integration/v2/projects/{payload['project_id']}/launch",
+                           {"capability": payload["capability"]}, nonce="s" * 32, capability=payload["capability"])
+        consumed = client.post("/api/integration/v2/browser/consume", json={"handle": launched.json()["handle"]})
+        assert consumed.json()["seed_group"] is None
+        assert consumed.json()["project"]["group_count"] == 0
 
 
 def test_v2_browser_consume_obeys_feature_gate(tmp_path):

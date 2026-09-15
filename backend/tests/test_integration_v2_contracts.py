@@ -16,6 +16,9 @@ from xraylarch_web.integration_contracts import (
     ExportReservation,
     ProjectBootstrapRequest,
     ProjectQuota,
+    ProjectSeed,
+    AuthoritativeSpectrum,
+    canonical_sha256,
     ProjectSummary,
     SelectedGroupExportRequest,
     SelectedGroupRef,
@@ -72,6 +75,50 @@ def test_uploaded_source_requires_finite_metadata_arrays():
         AthenaUploadedSource.model_validate({
             **valid_uploaded_source(),
             "parse_metadata": {"values": [1.0, math.inf]},
+        })
+
+
+@pytest.mark.parametrize("metadata", (
+    {"value": "x" * 1025},
+    {"value": list(range(129))},
+    {str(index): index for index in range(129)},
+    {"nested": {"nested": {"nested": {"nested": {"nested": {"nested": {"nested": 1}}}}}}},
+    {"value": "x" * 16_384},
+))
+def test_uploaded_source_bounds_recursive_metadata(metadata):
+    with pytest.raises(ValidationError):
+        AthenaUploadedSource.model_validate({**valid_uploaded_source(), "parse_metadata": metadata})
+
+
+def test_project_seed_requires_usable_arrays_matching_digests_and_source():
+    from test_integration_contracts import launch_payload
+
+    payload = launch_payload()
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    short = AuthoritativeSpectrum(energy=(1.0, 2.0, 3.0), mu=(1.0, 2.0, 3.0))
+    with pytest.raises(ValidationError, match="at least ten"):
+        ProjectSeed.model_validate({
+            "source": source, "spectrum": short.model_dump(), "recipe": payload["recipe"],
+            "spectrum_sha256": canonical_sha256(short), "recipe_sha256": payload["recipe_sha256"],
+        })
+    spectrum = AuthoritativeSpectrum(
+        energy=tuple(8800.0 + index * 2 for index in range(12)),
+        mu=tuple(0.2 + index * 0.1 for index in range(12)),
+    )
+    with pytest.raises(ValidationError, match="spectrum_sha256"):
+        ProjectSeed.model_validate({
+            "source": source, "spectrum": spectrum.model_dump(), "recipe": payload["recipe"],
+            "spectrum_sha256": "0" * 64, "recipe_sha256": payload["recipe_sha256"],
+        })
+    seed = ProjectSeed.model_validate({
+        "source": source, "spectrum": spectrum.model_dump(), "recipe": payload["recipe"],
+        "spectrum_sha256": canonical_sha256(spectrum), "recipe_sha256": payload["recipe_sha256"],
+    })
+    with pytest.raises(ValidationError, match="seed source"):
+        ProjectBootstrapRequest.model_validate({
+            "contract_version": 2, "name": "Seeded", "persistent": True,
+            "source": {**source, "turn_id": "other-turn"}, "seed": seed,
         })
 
 

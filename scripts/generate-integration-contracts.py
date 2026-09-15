@@ -6,19 +6,33 @@ import argparse
 from pathlib import Path
 
 from xraylarch_web.integration_contracts import (
+    AuthoritativeSpectrum,
     AthenaUploadedSource,
+    AutobkParameters,
+    CoreProcessingRecipe,
     ExistingDrXasSource,
     ExportReservation,
+    ForwardFtParameters,
+    NormalizationParameters,
     ProjectBootstrapRequest,
     ProjectLaunch,
     ProjectQuota,
+    ProjectSeed,
     ProjectSummary,
+    ReverseFtParameters,
     SelectedGroupExportBatch,
     SelectedGroupExportRequest,
     SelectedGroupRef,
 )
 
 MODELS = (
+    AuthoritativeSpectrum,
+    NormalizationParameters,
+    AutobkParameters,
+    ForwardFtParameters,
+    ReverseFtParameters,
+    CoreProcessingRecipe,
+    ProjectSeed,
     ProjectBootstrapRequest,
     ProjectLaunch,
     ProjectSummary,

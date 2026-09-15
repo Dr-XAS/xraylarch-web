@@ -352,17 +352,18 @@ class IntegrationService:
                 "history": [], "undo": [], "redo": [], "analyses": [],
                 "created": athena_now(), "updated": athena_now(), "integration": True,
             }
-            if request.source is not None:
+            if request.seed is not None:
                 group_id = uid()
-                project["groups"].append({
-                    "id": group_id, "label": "Dr.XAS source", "energy": [], "mu": [],
-                    "data_type": "mu", "parameters": AthenaParameters().model_dump(),
-                    "marked": True, "frozen": True, "multiplier": 1.0, "offset": 0.0,
-                    "notes": "Pending Dr.XAS seed", "reference_id": None,
-                    "background_standard_id": None, "source": request.source.model_dump(mode="json"),
-                    "result": None, "processing_error": "Awaiting bounded source seed.",
-                    "is_difference": False,
-                })
+                group = {
+                    "id": group_id, "label": "Dr.XAS source", "energy": list(request.seed.spectrum.energy),
+                    "mu": list(request.seed.spectrum.mu), "data_type": "mu",
+                    "parameters": self._parameters(request.seed), "marked": True, "frozen": False,
+                    "multiplier": 1.0, "offset": 0.0, "notes": "", "reference_id": None,
+                    "background_standard_id": None, "source": request.seed.source.model_dump(mode="json"),
+                    "result": None, "processing_error": None, "is_difference": False,
+                }
+                self.athena_store.process(group)
+                project["groups"].append(group)
             self.athena_store.storage.write_json(project_id, "project.json", project)
             return project_id, capability, self._project_summary(project, record)
         except Exception:
@@ -411,8 +412,9 @@ class IntegrationService:
             self.storage.delete_project_record(project_id, capability, now=now)
         except IntegrationNotFoundError:
             raise
+        workspace = self.athena_store.storage.root / project_id
         try:
-            shutil.rmtree(self.athena_store.storage.workspace_dir(project_id), ignore_errors=False)
+            shutil.rmtree(workspace, ignore_errors=False)
         except FileNotFoundError:
             pass
         except OSError:

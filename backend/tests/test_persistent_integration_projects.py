@@ -18,6 +18,7 @@ from xraylarch_web.integration_contracts import (
 from xraylarch_web.integration_storage import (
     IntegrationConflictError,
     IntegrationNotFoundError,
+    IntegrationReplayError,
     IntegrationStorage,
 )
 
@@ -217,6 +218,64 @@ def test_export_reservation_commit_and_abort_are_idempotent(store, capability):
     assert aborted.status == "aborted"
     assert store.abort_export_reservation("p1", capability, "import-2", now=NOW) == aborted
     assert prepared.status == "prepared"
+
+
+def test_v2_launch_handle_is_secret_backed_bounded_and_one_use(store, capability):
+    handle = store.create_project_launch_handle(
+        project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=60),
+        seed_group=None, allowed_operations=("read_project",),
+        return_reference={"project_id": "p1", "persistent": True},
+    )
+    path = store.handles_dir / f"{hashlib.sha256(handle.encode()).hexdigest()}.json"
+    persisted = json.loads(path.read_text(encoding="utf-8"))
+    assert capability not in path.read_text(encoding="utf-8")
+    assert "capability" not in persisted
+    assert {"sealed_capability", "capability_tag"} <= persisted.keys()
+
+    def consume():
+        try:
+            return store.consume_project_launch_handle(handle, now=NOW)["capability"]
+        except IntegrationReplayError:
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _: consume(), range(2)))
+    assert results.count(capability) == 1
+    assert results.count(None) == 1
+
+
+def test_v2_launch_handle_rejects_tampering_expires_and_is_purged(store, capability):
+    handle = store.create_project_launch_handle(
+        project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=1),
+        seed_group=None, allowed_operations=("read_project",),
+        return_reference={"project_id": "p1", "persistent": True},
+    )
+    path = store.handles_dir / f"{hashlib.sha256(handle.encode()).hexdigest()}.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["sealed_capability"] = "A" + value["sealed_capability"][1:]
+    path.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(IntegrationReplayError):
+        store.consume_project_launch_handle(handle, now=NOW)
+
+    expired = store.create_project_launch_handle(
+        project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=1),
+        seed_group=None, allowed_operations=("read_project",),
+        return_reference={"project_id": "p1", "persistent": True},
+    )
+    expired_path = store.handles_dir / f"{hashlib.sha256(expired.encode()).hexdigest()}.json"
+    store.expire_due(NOW + timedelta(seconds=1))
+    assert not expired_path.exists()
+    with pytest.raises(IntegrationReplayError):
+        store.consume_project_launch_handle(expired, now=NOW + timedelta(seconds=1))
+
+
+def test_v2_launch_handle_rejects_oversized_final_record(store, capability):
+    with pytest.raises(IntegrationConflictError, match="too large"):
+        store.create_project_launch_handle(
+            project_id="p1", capability=capability, expires_at=NOW + timedelta(seconds=60),
+            seed_group={"data": "x" * 33_000}, allowed_operations=("read_project",),
+            return_reference={"project_id": "p1", "persistent": True},
+        )
 
 
 def test_deleted_project_rejects_load_and_mutation(store, capability):

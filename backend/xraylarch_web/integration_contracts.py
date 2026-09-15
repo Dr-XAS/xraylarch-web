@@ -501,10 +501,56 @@ class AthenaUploadedSource(PersistentIntegrationModel):
     raw_sha256: Sha256
     parse_metadata: dict[str, JsonValue]
 
+    @field_validator("parse_metadata")
+    @classmethod
+    def bounded_metadata(cls, value: dict[str, JsonValue]):
+        encoded = json.dumps(value, allow_nan=False, separators=(",", ":")).encode()
+        if len(encoded) > 16_384:
+            raise ValueError("parse_metadata exceeds 16384 bytes.")
+        def visit(item, depth=0):
+            if depth > 6:
+                raise ValueError("parse_metadata nesting exceeds six levels.")
+            if isinstance(item, str) and len(item) > 1024:
+                raise ValueError("parse_metadata strings exceed 1024 characters.")
+            if isinstance(item, dict):
+                if len(item) > 128:
+                    raise ValueError("parse_metadata objects exceed 128 entries.")
+                for key, child in item.items():
+                    if len(key) > 128:
+                        raise ValueError("parse_metadata keys exceed 128 characters.")
+                    visit(child, depth + 1)
+            elif isinstance(item, list):
+                if len(item) > 128:
+                    raise ValueError("parse_metadata arrays exceed 128 entries.")
+                for child in item:
+                    visit(child, depth + 1)
+        visit(value)
+        return value
+
 
 ProjectSource = Annotated[
     ExistingDrXasSource | AthenaUploadedSource, Field(discriminator="kind")
 ]
+
+
+class ProjectSeed(PersistentIntegrationModel):
+    source: ExistingDrXasSource
+    spectrum: AuthoritativeSpectrum
+    recipe: CoreProcessingRecipe
+    spectrum_sha256: Sha256
+    recipe_sha256: Sha256
+
+    @model_validator(mode="after")
+    def matching_digests(self):
+        # Athena's μ(E) processing cannot form a usable group from fewer than
+        # ten aligned points; keep that domain minimum at the v2 boundary.
+        if len(self.spectrum.energy) < 10:
+            raise ValueError("seed spectrum must contain at least ten points.")
+        if self.spectrum_sha256 != canonical_sha256(self.spectrum):
+            raise ValueError("spectrum_sha256 does not match the canonical spectrum.")
+        if self.recipe_sha256 != canonical_sha256(self.recipe):
+            raise ValueError("recipe_sha256 does not match the canonical recipe.")
+        return self
 
 
 class ProjectBootstrapRequest(PersistentIntegrationModel):
@@ -512,6 +558,13 @@ class ProjectBootstrapRequest(PersistentIntegrationModel):
     name: ProjectName
     persistent: bool
     source: ProjectSource | None = None
+    seed: ProjectSeed | None = None
+
+    @model_validator(mode="after")
+    def seed_matches_source(self):
+        if self.seed is not None and self.source != self.seed.source:
+            raise ValueError("seed source must match source.")
+        return self
 
 
 class ProjectLaunch(PersistentIntegrationModel):

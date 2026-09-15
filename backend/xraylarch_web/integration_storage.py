@@ -494,6 +494,41 @@ class IntegrationStorage:
     def abort_export_reservation(self, project_id: str, capability: str, reservation_id: str, *, now: datetime) -> ExportReservation:
         return self._complete_export_reservation(project_id, capability, reservation_id, now=now, status="aborted")
 
+    def _capability_key(self, handle: str) -> bytes:
+        return hmac.new(
+            self.integration_secret.encode(), b"v2-launch\0" + handle.encode(), hashlib.sha256
+        ).digest()
+
+    def _seal_capability(self, handle: str, capability: str) -> tuple[str, str]:
+        key = self._capability_key(handle)
+        raw = capability.encode()
+        sealed = base64.urlsafe_b64encode(
+            bytes(value ^ key[index % len(key)] for index, value in enumerate(raw))
+        ).decode()
+        tag = hmac.new(
+            self.integration_secret.encode(),
+            b"v2-launch-record\0" + handle.encode() + b"\0" + sealed.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        return sealed, tag
+
+    def _unseal_capability(self, handle: str, sealed: str, tag: str) -> str:
+        expected = hmac.new(
+            self.integration_secret.encode(),
+            b"v2-launch-record\0" + handle.encode() + b"\0" + sealed.encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        if not hmac.compare_digest(expected, tag):
+            raise IntegrationReplayError("Browser launch handle is invalid or already used.")
+        try:
+            raw = base64.urlsafe_b64decode(sealed.encode())
+            key = self._capability_key(handle)
+            return bytes(
+                value ^ key[index % len(key)] for index, value in enumerate(raw)
+            ).decode()
+        except (UnicodeDecodeError, ValueError) as exc:
+            raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
+
     def create_project_launch_handle(self, *, project_id: str, capability: str,
                                      expires_at: datetime, seed_group: dict | None,
                                      allowed_operations: tuple[str, ...],
@@ -501,30 +536,36 @@ class IntegrationStorage:
         self._validate_project_id(project_id)
         handle = secrets.token_urlsafe(32)
         handle_hash = _hash(handle)
-        self._atomic_json(self.handles_dir / f"{handle_hash}.json", {
-            "kind": "v2-project", "handle_hash": handle_hash, "project_id": project_id,
-            "capability": capability, "expires_at": _dt(expires_at).isoformat(),
-            "seed_group": seed_group, "allowed_operations": list(allowed_operations),
-            "return_reference": return_reference,
-        })
+        sealed_capability, capability_tag = self._seal_capability(handle, capability)
+        value = {"kind": "v2-project", "handle_hash": handle_hash, "project_id": project_id,
+                 "sealed_capability": sealed_capability, "capability_tag": capability_tag,
+                 "expires_at": _dt(expires_at).isoformat(), "seed_group": seed_group,
+                 "allowed_operations": list(allowed_operations), "return_reference": return_reference}
+        if len(json.dumps(value, separators=(",", ":")).encode()) > 32_768:
+            raise IntegrationConflictError("Integration launch record is too large.")
+        self._atomic_json(self.handles_dir / f"{handle_hash}.json", value)
         return handle
 
     def consume_project_launch_handle(self, handle: str, *, now: datetime) -> dict:
         self._validate_opaque(handle)
         path = self.handles_dir / f"{_hash(handle)}.json"
-        claimed = path.with_suffix(".consumed")
+        claimed = path.with_name(f".{path.name}.{secrets.token_urlsafe(8)}.consumed")
+        owned = False
         try:
             os.replace(path, claimed)
+            owned = True
             value = json.loads(claimed.read_text(encoding="utf-8"))
-            if (value.get("kind") != "v2-project"
-                    or not hmac.compare_digest(value.get("handle_hash", ""), _hash(handle))
-                    or _dt(now) > _dt(value["expires_at"])):
+            if (value.get("kind") != "v2-project" or not hmac.compare_digest(value.get("handle_hash", ""), _hash(handle)) or _dt(now) > _dt(value["expires_at"])):
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
+            value["capability"] = self._unseal_capability(
+                handle, value.pop("sealed_capability"), value.pop("capability_tag")
+            )
             return value
         except FileNotFoundError as exc:
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
         finally:
-            claimed.unlink(missing_ok=True)
+            if owned:
+                claimed.unlink(missing_ok=True)
             self._fsync_directory(self.handles_dir)
 
     def claim_nonce(self, *, nonce: str, expires_at: datetime) -> None:
@@ -757,6 +798,14 @@ class IntegrationStorage:
             if now >= expires_at:
                 path.unlink(missing_ok=True)
         self._fsync_directory(self.nonces_dir)
+        for path in tuple(self.handles_dir.glob("*.json")):
+            try:
+                value = json.loads(path.read_text(encoding="utf-8"))
+                if value.get("kind") == "v2-project" and now >= _dt(value["expires_at"]):
+                    path.unlink(missing_ok=True)
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+                continue
+        self._fsync_directory(self.handles_dir)
 
         expired: list[str] = []
         for path in tuple(self.projects_dir.glob("*.json")):
