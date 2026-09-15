@@ -24,6 +24,9 @@ MARKED = ('i0', 'e00', 'normscaled')
 
 def probe(raw, row):
     a = copy.deepcopy(raw['arrays'])
+    if row.get('variant') == 'rounded-zero':
+        if row['kind'] == 'normderiv': a['nder'] = (np.asarray(a['nder'])*1e6).tolist()
+        else: a.update(k=[0.,10000.,20000.,30000.], chi=[0.,1.,-1.,1.])
     p = AthenaParameters(energy_shift=raw['bkg_eshift'], flatten=row['flatten'], e0=raw['bkg_e0'],
         pre1=-150, pre2=-30, norm1=150, norm2=800, nnorm=2, kweight=2, kmin=3, kmax=12, bkg_kmax=14).model_dump()
     a.update(raw['transforms']['2'])
@@ -65,7 +68,7 @@ def g(): return probe(NATIVE['groups'][0], dict(flatten=True, scale=-1.2, offset
 
 
 @pytest.mark.parametrize('kind', ['normderiv','k123'])
-def test_native_comparison_factor_rounded_to_zero_still_means_unit_scale(g, kind):
+def test_native_comparison_factor_rounded_to_zero_preserves_the_string_zero_semantics(g, kind):
     a = g['result']['arrays']
     if kind == 'normderiv':
         a['dmude'] = (np.asarray(a['dmude'])*1e6).tolist()
@@ -77,8 +80,8 @@ def test_native_comparison_factor_rounded_to_zero_still_means_unit_scale(g, kind
         expected = np.asarray(a['chi'])*np.asarray(a['k'])**3
         offset = -1.2*9e8
     assert curve['scale'] == 0
-    assert curve['effective_scale'] == 1
-    np.testing.assert_allclose(curve['y'], np.asarray(expected)+offset)
+    assert curve['effective_scale'] == 0
+    np.testing.assert_allclose(curve['y'], np.zeros_like(expected)+offset)
 
 
 def test_k123_uses_signed_maxima_and_replaces_group_modifiers(g):
@@ -228,6 +231,6 @@ def test_concurrent_project_edit_discards_obsolete_calculation(store, monkeypatc
 
 def test_fixture_manifest():
     manifest=json.loads((FIX/'athena-shortcut-plot-fixtures.json').read_text())
-    assert manifest['case_count']==len(NATIVE['rows'])==66
+    assert manifest['case_count']==len(NATIVE['rows'])==68
     for name, sha in manifest['sha256'].items():
         assert hashlib.sha256((ROOT/name).read_bytes()).hexdigest()==sha

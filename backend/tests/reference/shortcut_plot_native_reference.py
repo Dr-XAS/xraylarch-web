@@ -117,32 +117,44 @@ print JSON::PP->new->canonical->encode({curves=>\@curves,templates=>\@used,updat
     env = dict(os.environ, **json.loads(args.environment.read_text()))
     env['PERL5LIB'] = str(args.perl_lib) + ':' + env['PERL5LIB']
     prepared = [prepare(0, 2.375), prepare(1, -1.125)]
-    rows = []
+    cases = []
     for flatten in (False, True):
         for scale, offset in [(1., 0.), (-1.2, .375), (0., -.2)]:
             for kind, component, norm in [('normderiv', 'm', 1), ('i0sig', 'm', 0), ('i0', 'm', 0),
                                           ('normscaled', 'm', 1), ('e00', 'm', 0), ('e00', 'm', 1),
                                           ('k123', 'm', 0)] + [('r123', c, 0) for c in 'mrip']:
-                groups = copy.deepcopy(prepared[:2 if kind in ('i0','e00','normscaled') else 1])
-                for g in groups:
-                    g.update(plot_multiplier=scale, y_offset=offset, bkg_flatten=int(flatten))
-                    process = '\n'.join(line for line in templates['k123'].splitlines() if line.startswith('__123_'))
-                    process = process.replace('{$D->group}', g['group'])
-                    scope = {g['group']: Group(k=np.asarray(g['arrays']['k']), chi=np.asarray(g['arrays']['chi'])), 'max': np.max}
-                    exec(process, scope)
-                    g['scalars'] = {k: float(v) for k,v in scope.items() if k.startswith('__123_')}
-                row = dict(id=len(rows), kind=kind, component=component, energy_norm=norm,
-                           flatten=flatten, scale=scale, offset=offset)
-                folder = args.output / f'case-{row["id"]}'; folder.mkdir(exist_ok=True)
-                for old in folder.glob('points-*.dat'): old.unlink()
-                proc = subprocess.run(['perl', str(driver.resolve())], input=json.dumps(dict(row, groups=groups, templates=templates)),
-                                      cwd=folder, env=env, text=True, capture_output=True, timeout=30)
-                if proc.returncode: raise RuntimeError(proc.stderr)
-                row['native'] = json.loads(proc.stdout)
-                if kind == 'k123':
-                    original = '\n'.join(line for line in row['native']['process'][0].splitlines() if line.startswith('__123_'))
-                    assert original == process
-                rows.append(row)
+                cases.append(dict(kind=kind, component=component, energy_norm=norm,
+                                  flatten=flatten, scale=scale, offset=offset, variant='measured'))
+    # Controlled point-writer probes make sprintf return the string "0.000".
+    # Perl considers that string true, unlike literal numeric zero.
+    for kind in ('normderiv', 'k123'):
+        cases.append(dict(kind=kind, component='m', energy_norm=1, flatten=True,
+                          scale=-1.2, offset=.375, variant='rounded-zero'))
+    rows = []
+    for row in cases:
+        row['id'] = len(rows)
+        kind = row['kind']
+        groups = copy.deepcopy(prepared[:2 if kind in ('i0','e00','normscaled') else 1])
+        for g in groups:
+            g.update(plot_multiplier=row['scale'], y_offset=row['offset'], bkg_flatten=int(row['flatten']))
+            if row['variant'] == 'rounded-zero':
+                if kind == 'normderiv': g['arrays']['nder'] = (np.asarray(g['arrays']['nder'])*1e6).tolist()
+                else: g['arrays'].update(k=[0.,10000.,20000.,30000.], chi=[0.,1.,-1.,1.])
+            process = '\n'.join(line for line in templates['k123'].splitlines() if line.startswith('__123_'))
+            process = process.replace('{$D->group}', g['group'])
+            scope = {g['group']: Group(k=np.asarray(g['arrays']['k']), chi=np.asarray(g['arrays']['chi'])), 'max': np.max}
+            exec(process, scope)
+            g['scalars'] = {k: float(v) for k,v in scope.items() if k.startswith('__123_')}
+        folder = args.output / f'case-{row["id"]}'; folder.mkdir(exist_ok=True)
+        for old in folder.glob('points-*.dat'): old.unlink()
+        proc = subprocess.run(['perl', str(driver.resolve())], input=json.dumps(dict(row, groups=groups, templates=templates)),
+                              cwd=folder, env=env, text=True, capture_output=True, timeout=30)
+        if proc.returncode: raise RuntimeError(proc.stderr)
+        row['native'] = json.loads(proc.stdout)
+        if kind == 'k123':
+            original = '\n'.join(line for line in row['native']['process'][0].splitlines() if line.startswith('__123_'))
+            assert original == process
+        rows.append(row)
     return dict(sources=hashes, groups=prepared, rows=rows)
 
 
