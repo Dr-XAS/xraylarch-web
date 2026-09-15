@@ -103,13 +103,24 @@ def test_project_seed_requires_usable_arrays_matching_digests_and_source():
             "spectrum_sha256": canonical_sha256(short), "recipe_sha256": payload["recipe_sha256"],
         })
     spectrum = AuthoritativeSpectrum(
-        energy=tuple(8800.0 + index * 2 for index in range(12)),
-        mu=tuple(0.2 + index * 0.1 for index in range(12)),
+        energy=tuple(8800.0 + index * 2 for index in range(551)),
+        mu=tuple(0.7 + math.atan((8800.0 + index * 2 - 8980.0) / 4.0) / math.pi for index in range(551)),
     )
     with pytest.raises(ValidationError, match="spectrum_sha256"):
         ProjectSeed.model_validate({
             "source": source, "spectrum": spectrum.model_dump(), "recipe": payload["recipe"],
             "spectrum_sha256": "0" * 64, "recipe_sha256": payload["recipe_sha256"],
+        })
+    incompatible_recipe = {**payload["recipe"], "normalization": {
+        **payload["recipe"]["normalization"], "e0": 99_999.0,
+    }}
+    from xraylarch_web.integration_contracts import CoreProcessingRecipe
+    incompatible = CoreProcessingRecipe.model_validate(incompatible_recipe)
+    with pytest.raises(ValidationError, match="normalization.e0"):
+        ProjectSeed.model_validate({
+            "source": source, "spectrum": spectrum.model_dump(),
+            "recipe": incompatible, "spectrum_sha256": canonical_sha256(spectrum),
+            "recipe_sha256": canonical_sha256(incompatible),
         })
     seed = ProjectSeed.model_validate({
         "source": source, "spectrum": spectrum.model_dump(), "recipe": payload["recipe"],

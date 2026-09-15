@@ -207,6 +207,7 @@ def build_integration_router(
             )
         except Exception as exc:
             raise _http_error(exc)
+        service.storage.expire_due(_now())
         return raw, nonce, timestamp
 
     def claim(nonce: str, timestamp: datetime) -> None:
@@ -246,6 +247,7 @@ def build_integration_router(
     if settings.browser_consume_enabled:
         @v2.post("/browser/consume")
         def consume_v2(payload: ConsumeRequest, response: Response):
+            service.storage.expire_due(_now())
             try:
                 session = service.consume_v2_handle(payload.handle, now=_now())
             except IntegrationReplayError:

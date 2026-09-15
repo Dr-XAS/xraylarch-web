@@ -550,6 +550,7 @@ class ProjectSeed(PersistentIntegrationModel):
             raise ValueError("spectrum_sha256 does not match the canonical spectrum.")
         if self.recipe_sha256 != canonical_sha256(self.recipe):
             raise ValueError("recipe_sha256 does not match the canonical recipe.")
+        _validate_digests_and_science(self)
         return self
 
 

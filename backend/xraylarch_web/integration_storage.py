@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime, timedelta
 import base64
+import binascii
 import fcntl
 import hashlib
 import hmac
@@ -105,6 +106,7 @@ class ProjectRecord:
     created_at: datetime
     updated_at: datetime
     expires_at: datetime | None
+    stored_bytes: int = 0
     reservations: tuple[ExportReservation, ...] = ()
 
 
@@ -216,6 +218,7 @@ class IntegrationStorage:
             "created_at": record.created_at.isoformat(),
             "updated_at": record.updated_at.isoformat(),
             "expires_at": record.expires_at.isoformat() if record.expires_at is not None else None,
+            "stored_bytes": record.stored_bytes,
             "reservations": [reservation.model_dump(mode="json") for reservation in record.reservations],
         }
 
@@ -231,6 +234,7 @@ class IntegrationStorage:
             created_at=_dt(value["created_at"]),
             updated_at=_dt(value["updated_at"]),
             expires_at=_dt(value["expires_at"]) if value.get("expires_at") is not None else None,
+            stored_bytes=value.get("stored_bytes", 0),
             reservations=tuple(
                 ExportReservation.model_validate({**item, "selections": tuple(item["selections"])})
                 for item in value.get("reservations", ())
@@ -406,6 +410,17 @@ class IntegrationStorage:
         with self.project_lock(project_id):
             return self._load_active_project(project_id, capability, now or datetime.now(UTC))
 
+    def set_project_stored_bytes(self, project_id: str, capability: str, stored_bytes: int, *, now: datetime) -> ProjectRecord:
+        if not isinstance(stored_bytes, int) or stored_bytes < 0:
+            raise ValueError("Integration project byte count is invalid.")
+        with self.project_lock(project_id):
+            record = self._load_active_project(project_id, capability, now)
+            if record.quota is not None and stored_bytes > record.quota.max_bytes:
+                raise IntegrationConflictError("Integration project byte quota is exhausted.")
+            updated = replace(record, stored_bytes=stored_bytes, updated_at=_dt(now))
+            self._atomic_json(self._project_path(project_id), self._serialize_project(updated))
+            return updated
+
     def rotate_project_capability(self, project_id: str, capability: str, *, now: datetime) -> str:
         with self.project_lock(project_id):
             record = self._load_active_project(project_id, capability, now)
@@ -499,34 +514,26 @@ class IntegrationStorage:
             self.integration_secret.encode(), b"v2-launch\0" + handle.encode(), hashlib.sha256
         ).digest()
 
-    def _seal_capability(self, handle: str, capability: str) -> tuple[str, str]:
+    def _seal_capability(self, handle: str, capability: str) -> str:
         key = self._capability_key(handle)
         raw = capability.encode()
-        sealed = base64.urlsafe_b64encode(
+        return base64.urlsafe_b64encode(
             bytes(value ^ key[index % len(key)] for index, value in enumerate(raw))
         ).decode()
-        tag = hmac.new(
-            self.integration_secret.encode(),
-            b"v2-launch-record\0" + handle.encode() + b"\0" + sealed.encode(),
-            hashlib.sha256,
-        ).hexdigest()
-        return sealed, tag
 
-    def _unseal_capability(self, handle: str, sealed: str, tag: str) -> str:
-        expected = hmac.new(
-            self.integration_secret.encode(),
-            b"v2-launch-record\0" + handle.encode() + b"\0" + sealed.encode(),
+    def _launch_record_tag(self, handle: str, record: dict) -> str:
+        canonical = json.dumps(record, allow_nan=False, separators=(",", ":"), sort_keys=True).encode()
+        return hmac.new(
+            self.integration_secret.encode(), b"v2-launch-record\0" + handle.encode() + b"\0" + canonical,
             hashlib.sha256,
         ).hexdigest()
-        if not hmac.compare_digest(expected, tag):
-            raise IntegrationReplayError("Browser launch handle is invalid or already used.")
+
+    def _unseal_capability(self, handle: str, sealed: str) -> str:
         try:
-            raw = base64.urlsafe_b64decode(sealed.encode())
+            raw = base64.b64decode(sealed.encode(), altchars=b"-_", validate=True)
             key = self._capability_key(handle)
-            return bytes(
-                value ^ key[index % len(key)] for index, value in enumerate(raw)
-            ).decode()
-        except (UnicodeDecodeError, ValueError) as exc:
+            return bytes(value ^ key[index % len(key)] for index, value in enumerate(raw)).decode()
+        except (UnicodeDecodeError, ValueError, binascii.Error) as exc:
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
 
     def create_project_launch_handle(self, *, project_id: str, capability: str,
@@ -536,11 +543,11 @@ class IntegrationStorage:
         self._validate_project_id(project_id)
         handle = secrets.token_urlsafe(32)
         handle_hash = _hash(handle)
-        sealed_capability, capability_tag = self._seal_capability(handle, capability)
         value = {"kind": "v2-project", "handle_hash": handle_hash, "project_id": project_id,
-                 "sealed_capability": sealed_capability, "capability_tag": capability_tag,
+                 "sealed_capability": self._seal_capability(handle, capability),
                  "expires_at": _dt(expires_at).isoformat(), "seed_group": seed_group,
                  "allowed_operations": list(allowed_operations), "return_reference": return_reference}
+        value["record_tag"] = self._launch_record_tag(handle, value)
         if len(json.dumps(value, separators=(",", ":")).encode()) > 32_768:
             raise IntegrationConflictError("Integration launch record is too large.")
         self._atomic_json(self.handles_dir / f"{handle_hash}.json", value)
@@ -555,13 +562,16 @@ class IntegrationStorage:
             os.replace(path, claimed)
             owned = True
             value = json.loads(claimed.read_text(encoding="utf-8"))
-            if (value.get("kind") != "v2-project" or not hmac.compare_digest(value.get("handle_hash", ""), _hash(handle)) or _dt(now) > _dt(value["expires_at"])):
+            tag = value.pop("record_tag")
+            if not hmac.compare_digest(tag, self._launch_record_tag(handle, value)):
                 raise IntegrationReplayError("Browser launch handle is invalid or already used.")
-            value["capability"] = self._unseal_capability(
-                handle, value.pop("sealed_capability"), value.pop("capability_tag")
-            )
+            if (value.get("kind") != "v2-project"
+                    or not hmac.compare_digest(value.get("handle_hash", ""), _hash(handle))
+                    or _dt(now) >= _dt(value["expires_at"])):
+                raise IntegrationReplayError("Browser launch handle is invalid or already used.")
+            value["capability"] = self._unseal_capability(handle, value.pop("sealed_capability"))
             return value
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise IntegrationReplayError("Browser launch handle is invalid or already used.") from exc
         finally:
             if owned:

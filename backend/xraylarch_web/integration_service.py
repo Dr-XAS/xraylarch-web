@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 import hashlib
+import json
 import hmac
 from pathlib import Path
 import re
@@ -333,42 +334,54 @@ class IntegrationService:
         return ProjectSummary(
             project_id=record.project_id, name=project["name"], persistent=record.persistent,
             project_version=project["version"], group_count=len(project["groups"]), file_count=0,
-            stored_bytes=0, expires_at=record.expires_at,
+            stored_bytes=record.stored_bytes, expires_at=record.expires_at,
         )
+
+    @staticmethod
+    def _project_bytes(project: dict) -> int:
+        return len(json.dumps(project, allow_nan=False, separators=(",", ":")).encode())
 
     def create_v2_project(self, request: ProjectBootstrapRequest, *, now: datetime) -> tuple[str, str, ProjectSummary]:
         quota = self._quota(request.persistent)
-        # Reserve durable capacity before creating an Athena workspace.
         project_id = uid()
+        project = {
+            "id": project_id, "format": "athena-web", "schema_version": 1,
+            "name": request.name, "version": 0, "groups": [], "journal": "",
+            "history": [], "undo": [], "redo": [], "analyses": [],
+            "created": athena_now(), "updated": athena_now(), "integration": True,
+        }
+        if request.seed is not None:
+            group = {
+                "id": uid(), "label": "Dr.XAS source", "energy": list(request.seed.spectrum.energy),
+                "mu": list(request.seed.spectrum.mu), "data_type": "mu",
+                "parameters": self._parameters(request.seed), "marked": True, "frozen": False,
+                "multiplier": 1.0, "offset": 0.0, "notes": "", "reference_id": None,
+                "background_standard_id": None, "source": request.seed.source.model_dump(mode="json"),
+                "result": None, "processing_error": None, "is_difference": False,
+            }
+            project["groups"].append(group)
+        # Reject the full proposed source payload before any Athena processing.
+        if self._project_bytes(project) > quota.max_bytes:
+            raise IntegrationConflictError("Integration project byte quota is exhausted.")
+        if request.seed is not None:
+            self.athena_store.process(project["groups"][0])
+        stored_bytes = self._project_bytes(project)
+        if stored_bytes > quota.max_bytes:
+            raise IntegrationConflictError("Integration project byte quota is exhausted.")
+        # Reserve durable capacity only after the full in-memory project passes quota.
         record, capability = self.storage.create_project_record(
             project_id=project_id, persistent=request.persistent, quota=quota,
             source=request.source, now=now,
         )
         try:
             self.athena_store.storage.workspace_dir(project_id, create=True)
-            project = {
-                "id": project_id, "format": "athena-web", "schema_version": 1,
-                "name": request.name, "version": 0, "groups": [], "journal": "",
-                "history": [], "undo": [], "redo": [], "analyses": [],
-                "created": athena_now(), "updated": athena_now(), "integration": True,
-            }
-            if request.seed is not None:
-                group_id = uid()
-                group = {
-                    "id": group_id, "label": "Dr.XAS source", "energy": list(request.seed.spectrum.energy),
-                    "mu": list(request.seed.spectrum.mu), "data_type": "mu",
-                    "parameters": self._parameters(request.seed), "marked": True, "frozen": False,
-                    "multiplier": 1.0, "offset": 0.0, "notes": "", "reference_id": None,
-                    "background_standard_id": None, "source": request.seed.source.model_dump(mode="json"),
-                    "result": None, "processing_error": None, "is_difference": False,
-                }
-                self.athena_store.process(group)
-                project["groups"].append(group)
             self.athena_store.storage.write_json(project_id, "project.json", project)
+            stored_bytes = self.athena_store.storage.path(project_id, "project.json").stat().st_size
+            record = self.storage.set_project_stored_bytes(project_id, capability, stored_bytes, now=now)
             return project_id, capability, self._project_summary(project, record)
         except Exception:
             self.storage.delete_project_record(project_id, capability, now=now)
-            shutil.rmtree(self.athena_store.storage.workspace_dir(project_id), ignore_errors=True)
+            shutil.rmtree(self.athena_store.storage.root / project_id, ignore_errors=True)
             raise
 
     def launch_v2_project(self, project_id: str, capability: str, *, now: datetime) -> str:

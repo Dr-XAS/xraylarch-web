@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 import hashlib
 import hmac
 import json
+import math
 
 import pytest
 from fastapi.testclient import TestClient
@@ -217,6 +218,7 @@ def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_
         }, nonce="z" * 32)
         assert created.status_code == 200
         payload = created.json()
+        assert payload["project"]["stored_bytes"] == (tmp_path / "athena" / payload["project_id"] / "project.json").stat().st_size
         launched = request(client, "POST", f"/api/integration/v2/projects/{payload['project_id']}/launch",
                            {"capability": payload["capability"]}, nonce="y" * 32,
                            capability=payload["capability"])
@@ -224,6 +226,51 @@ def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_
         assert consumed.status_code == 200
         assert consumed.json()["seed_group"]["source"].items() >= source.items()
         assert consumed.json()["allowed_operations"] == ["read_project"]
+
+
+def test_v2_create_purges_expired_project_handles(tmp_path, monkeypatch):
+    import xraylarch_web.integration_routes as integration_routes
+    clock = [NOW]
+    monkeypatch.setattr(integration_routes, "_now", lambda: clock[0])
+    with TestClient(create_app(settings(tmp_path))) as client:
+        created = create(client)
+        launched = request(client, "POST", f"/api/integration/v2/projects/{created['project_id']}/launch",
+                           {"capability": created["capability"]}, nonce="h" * 32,
+                           capability=created["capability"])
+        handle = launched.json()["handle"]
+        handle_path = tmp_path / "integration" / "handles" / f"{hashlib.sha256(handle.encode()).hexdigest()}.json"
+        assert handle_path.exists()
+        clock[0] += timedelta(seconds=301)
+        raw = json.dumps({"contract_version": 2, "name": "Purges expired handle", "persistent": True}, separators=(",", ":")).encode()
+        response = client.post("/api/integration/v2/projects", content=raw,
+                               headers=signed_headers("POST", "/api/integration/v2/projects", raw,
+                                                      nonce="i" * 32, timestamp=clock[0]))
+        assert response.status_code == 200
+        assert not handle_path.exists()
+
+
+def test_seeded_creation_rejects_byte_quota_before_workspace_mutation(tmp_path, monkeypatch):
+    from test_integration_contracts import launch_payload
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    recipe = launch_payload()["recipe"]
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
+    spectrum = AuthoritativeSpectrum(
+        energy=tuple(8800.0 + index * 2 for index in range(551)),
+        mu=tuple(0.7 + math.atan((8800.0 + index * 2 - 8980.0) / 4.0) / math.pi for index in range(551)),
+    )
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"), "recipe": recipe,
+            "spectrum_sha256": canonical_sha256(spectrum), "recipe_sha256": recipe and launch_payload()["recipe_sha256"]}
+    from xraylarch_web.athena import AthenaStore
+    app = create_app(settings(tmp_path, integration_max_bytes=128, integration_guest_max_bytes=128))
+    monkeypatch.setattr(AthenaStore, "process", lambda *_: pytest.fail("quota must precede Athena processing"))
+    with TestClient(app) as client:
+        response = request(client, "POST", "/api/integration/v2/projects", {
+            "contract_version": 2, "name": "Too large", "persistent": True,
+            "source": source, "seed": seed,
+        }, nonce="b" * 32)
+    assert response.status_code == 409
+    assert not (tmp_path / "athena").exists() or not list((tmp_path / "athena").iterdir())
 
 
 def test_source_only_project_is_honestly_empty(tmp_path):
