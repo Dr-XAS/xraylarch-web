@@ -119,7 +119,10 @@ def test_create_launch_rename_rotate_and_delete_project(tmp_path):
         assert deleted.json()["status"] == "deleted"
 
 
-def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path):
+def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monkeypatch):
+    import xraylarch_web.integration_routes as integration_routes
+    clock = [NOW]
+    monkeypatch.setattr(integration_routes, "_now", lambda: clock[0])
     app = create_app(settings(tmp_path, integration_guest_max_projects=1, integration_guest_ttl_seconds=1))
     with TestClient(app) as client:
         guest = create(client, persistent=False, nonce="g" * 32)
@@ -130,6 +133,7 @@ def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path):
         assert rejected.status_code == 409
         assert len(list((tmp_path / "athena").iterdir())) == 1
         later = NOW + timedelta(seconds=2)
+        clock[0] = later
         raw = json.dumps({"capability": guest["capability"]}).encode()
         response = client.post(
             f"/api/integration/v2/projects/{guest['project_id']}/launch", content=raw,
@@ -153,6 +157,14 @@ def test_export_reservation_transitions_are_idempotent(tmp_path):
         assert request(client, "POST", commit_path, {}, nonce="m" * 32, capability=capability).json()["status"] == "committed"
         assert request(client, "POST", commit_path, {}, nonce="i" * 32, capability=capability).json()["status"] == "committed"
         assert request(client, "POST", f"{reserve_path}/abort", {}, nonce="a" * 32, capability=capability).status_code == 409
+
+
+def test_v2_routes_are_registered_at_the_versioned_root(tmp_path):
+    app = create_app(settings(tmp_path))
+    paths = {route.path for route in app.routes}
+
+    assert "/api/integration/v2/projects" in paths
+    assert "/api/integration/v1/api/integration/v2/projects" not in paths
 
 
 def test_browser_consume_rejects_service_credentials_and_health_advertises_v2(tmp_path):

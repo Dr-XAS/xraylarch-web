@@ -317,8 +317,10 @@ def build_integration_router(
         await signed(request)
         raise HTTPException(status_code=404, detail="Integration project was not found.")
 
-    router.include_router(v2)
-    return router
+    root = APIRouter()
+    root.include_router(router)
+    root.include_router(v2)
+    return root
 
 
 def _draft_json(draft) -> dict:
