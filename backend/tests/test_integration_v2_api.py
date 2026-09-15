@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import math
+import re
 
 import pytest
 from fastapi.testclient import TestClient
@@ -638,3 +639,61 @@ def test_browser_consume_rejects_service_credentials_and_health_advertises_v2(tm
         health = client.get("/health")
         assert health.status_code == 200
         assert health.json()["integration_contract_version"] == 2
+
+
+def _route_request(client, route, project_id, headers):
+    path = route.path.replace("{ident}", project_id)
+    path = re.sub(r"\{upload_id[^}]*\}", "missing-upload", path)
+    path = re.sub(r"\{group_id[^}]*\}", "missing-group", path)
+    path = path.replace("{member_index}", "0").replace("{action}", "preview")
+    kwargs = {"headers": headers}
+    if "POST" in route.methods:
+        if any(token in path for token in ("/inspect", "/restore", "/preview-project")):
+            kwargs["files"] = {"file": ("sample.dat", b"1 2\n2 3\n")}
+        else:
+            kwargs["json"] = {}
+        method = "POST"
+    elif "PATCH" in route.methods:
+        kwargs["json"] = {}
+        method = "PATCH"
+    elif "DELETE" in route.methods:
+        method = "DELETE"
+    else:
+        method = "GET"
+    return client.request(method, path, **kwargs)
+
+
+def test_persistent_project_capability_authorizes_native_athena_command(tmp_path):
+    with TestClient(create_app(settings(tmp_path))) as client:
+        integrated = create(client)
+        response = client.post(
+            f"/api/athena/projects/{integrated['project_id']}/command",
+            headers=project_headers(integrated["capability"]),
+            json={
+                "version": 0,
+                "action": "project",
+                "group_ids": [],
+                "options": {"name": "Renamed in Athena"},
+            },
+        )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["name"] == "Renamed in Athena"
+
+
+def test_every_integrated_athena_project_route_requires_matching_capability(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        integrated = create(client)
+        routes = [
+            route for route in app.routes
+            if getattr(route, "path", "").startswith("/api/athena/projects/{ident}")
+        ]
+        assert len(routes) >= 35
+        for route in routes:
+            missing = _route_request(client, route, integrated["project_id"], {})
+            wrong = _route_request(
+                client, route, integrated["project_id"], project_headers("wrong")
+            )
+            assert missing.status_code == 404, (route.methods, route.path, missing.text)
+            assert wrong.status_code == 404, (route.methods, route.path, wrong.text)

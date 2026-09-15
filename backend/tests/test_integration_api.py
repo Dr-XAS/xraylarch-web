@@ -319,7 +319,10 @@ def test_command_persistence_is_serialized_before_seal(tmp_path, monkeypatch):
         for route in app.routes
         if getattr(route, "path", None) == "/api/athena/projects/{ident}/command"
     )
-    store = route.endpoint.__closure__[2].cell_contents
+    store = next(
+        cell.cell_contents for cell in route.endpoint.__closure__
+        if isinstance(cell.cell_contents, AthenaStore)
+    )
     original_command = store.command
     command_entered = Event()
     allow_command = Event()

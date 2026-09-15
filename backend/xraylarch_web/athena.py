@@ -753,6 +753,43 @@ class AthenaStore:
         except FileNotFoundError:
             fail("Project was not found.", "workspace_not_found")
 
+    def project_summary(self, ident: str) -> dict:
+        project = self.load(ident)
+        workspace = self.storage.workspace_dir(ident)
+        files = [path for path in workspace.iterdir() if path.is_file()]
+        return {
+            "project_id": ident,
+            "name": project["name"],
+            "project_version": project["version"],
+            "group_count": len(project["groups"]),
+            "file_count": sum(path.name.startswith(("upload-", "project-upload-")) for path in files),
+            "stored_bytes": sum(path.stat().st_size for path in files),
+        }
+
+    def rename_project(self, ident: str, name: str) -> dict:
+        with self.storage.lock(ident):
+            project = self.load(ident)
+            project["name"] = str(name)[:200] or "Untitled project"
+            self.storage.write_json(ident, "project.json", project)
+            return self.project_summary(ident)
+
+    def delete_project(self, ident: str) -> None:
+        import shutil
+        with self.storage.lock(ident):
+            shutil.rmtree(self.storage.workspace_dir(ident))
+
+    def export_selected_groups(self, ident: str, group_ids) -> dict:
+        project = self.project_for_export(self.load(ident), group_ids)
+        selected = copy.deepcopy(project)
+        for key in ("integration", "path", "owner", "identity", "handle", "capability"):
+            selected.pop(key, None)
+        for group in selected["groups"]:
+            source = group.get("source", {})
+            for key in tuple(source):
+                if key in {"path", "owner", "identity", "handle", "capability"} or key.endswith("_path"):
+                    source.pop(key, None)
+        return selected
+
     def list(self) -> list[dict]:
         output = []
         for path in self.storage.root.iterdir():
@@ -1212,7 +1249,18 @@ class AthenaStore:
         upload = upload or uid()
         self.storage.write_arrays(ident, f"upload-{upload}.npz", parsed.arrays)
         inspection = parsed.inspection().model_dump()
-        inspection['display_name'] = display_name
+        inspection.update(
+            display_name=display_name,
+            original_filename=display_name,
+            raw_sha256=hashlib.sha256(data).hexdigest(),
+            parser_identity=(
+                "athena-file-plugin" if prepared else "xraylarch.parse_upload"
+            ),
+            parse_metadata={
+                "row_count": inspection["row_count"],
+                "column_count": len(inspection["columns"]),
+            },
+        )
         if parsed.xdi_metadata is not None:
             inspection['xdi_metadata'] = copy.deepcopy(parsed.xdi_metadata)
         from .athena_beamline_metadata import identify
@@ -1513,6 +1561,10 @@ class AthenaStore:
                     fail("Choose columns from the inspected file.")
                 return np.asarray(arrays[key], dtype=float)
             source_base = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version", "edge_policy"}),
+                      "original_filename": metadata.get("original_filename", metadata["display_name"]),
+                      "source_sha256": metadata.get("raw_sha256"),
+                      "parser_identity": metadata.get("parser_identity", "xraylarch.parse_upload"),
+                      "parse_metadata": copy.deepcopy(metadata.get("parse_metadata", {})),
                       "warnings": list(metadata.get("warnings", [])) + mapped["warnings"], "columns": metadata["columns"],
                       "column_arrays": {key: np.asarray(values)[order].tolist() if request.sort else np.asarray(values).tolist()
                                         for key, values in arrays.items()},
@@ -3421,7 +3473,52 @@ def build_athena_router(
     store = store or AthenaStore(settings)
     preferences = AthenaPreferences(settings)
 
-    integrated_routes = {
+    route_operations = {
+        ("GET", "/api/athena/projects/{ident}"): "read_project",
+        ("POST", "/api/athena/projects/{ident}/inspect"): "upload",
+        ("POST", "/api/athena/projects/{ident}/dispersive/inspect"): "upload",
+        ("POST", "/api/athena/projects/{ident}/dispersive/make"): "import",
+        ("POST", "/api/athena/projects/{ident}/dispersive/{action}"): "preview",
+        ("POST", "/api/athena/projects/{ident}/import"): "import",
+        ("GET", "/api/athena/projects/{ident}/uploads/{upload_id}/inspection"): "read_upload",
+        ("GET", "/api/athena/projects/{ident}/uploads/{upload_id}/file"): "read_upload",
+        ("POST", "/api/athena/projects/{ident}/preview-columns"): "preview",
+        ("GET", "/api/athena/projects/{ident}/archives/{upload_id}/members/{member_index}"): "read_upload",
+        ("POST", "/api/athena/projects/{ident}/command"): "command",
+        ("POST", "/api/athena/projects/{ident}/context-report"): "report",
+        ("POST", "/api/athena/projects/{ident}/context-plot"): "plot",
+        ("GET", "/api/athena/projects/{ident}/groups/{group_id}/source-text"): "read_group",
+        ("GET", "/api/athena/projects/{ident}/groups/{group_id}/xdi"): "read_group",
+        ("POST", "/api/athena/projects/{ident}/groups/{group_id}/xdi/validate"): "read_group",
+        ("POST", "/api/athena/projects/{ident}/analyze"): "analyze",
+        ("POST", "/api/athena/projects/{ident}/difference/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/rebin/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/mee/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/point-edit/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/merge/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/groups/{group_id}/merge/plot"): "plot",
+        ("POST", "/api/athena/projects/{ident}/groups/{group_id}/wavelet"): "plot",
+        ("POST", "/api/athena/projects/{ident}/groups/{group_id}/plot-transform"): "plot",
+        ("POST", "/api/athena/projects/{ident}/plots/special"): "plot",
+        ("POST", "/api/athena/projects/{ident}/plots/shortcut"): "plot",
+        ("POST", "/api/athena/projects/{ident}/alignment/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/calibration/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/calibration/zero"): "preview",
+        ("POST", "/api/athena/projects/{ident}/convolve/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/smooth/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/restore"): "restore",
+        ("POST", "/api/athena/projects/{ident}/preview-project"): "upload",
+        ("GET", "/api/athena/projects/{ident}/preview-project/{upload_id}/groups/{group_id:path}"): "read_upload",
+        ("GET", "/api/athena/projects/{ident}/preview-project/{upload_id}/file"): "read_upload",
+        ("POST", "/api/athena/projects/{ident}/restore-upload"): "restore",
+        ("GET", "/api/athena/projects/{ident}/export"): "export",
+        ("POST", "/api/athena/projects/{ident}/parameter-report/preview"): "report",
+        ("POST", "/api/athena/projects/{ident}/parameter-report"): "report",
+        ("POST", "/api/athena/projects/{ident}/export-data/preview"): "export",
+        ("POST", "/api/athena/projects/{ident}/export-data"): "export",
+        ("GET", "/api/athena/projects/{ident}/groups/{group_id}/export"): "export",
+    }
+    legacy_integrated_routes = {
         ("GET", "/api/athena/projects/{ident}"),
         ("POST", "/api/athena/projects/{ident}/command"),
         ("GET", "/api/athena/projects/{ident}/export"),
@@ -3435,11 +3532,57 @@ def build_athena_router(
             async def protected(request: Request):
                 prefix = "/api/athena/projects/"
                 parameter = self.path[len(prefix):].split("/", 1)[0] if self.path.startswith(prefix) else ""
-                ident = request.path_params.get(parameter[1:-1].split(":", 1)[0]) if parameter.startswith("{") and parameter.endswith("}") else None
-                if ident is not None and (request.method, self.path) not in integrated_routes:
+                parameter_name = parameter[1:-1].split(":", 1)[0] if parameter.startswith("{") and parameter.endswith("}") else None
+                ident = request.path_params.get(parameter_name) if parameter_name else None
+                project_capability = None
+                if ident is not None:
+                    project_capability = request.headers.get(
+                        "X-XrayLarch-Project-Capability"
+                    )
+                    draft_capability = request.headers.get(
+                        "X-XrayLarch-Draft-Capability"
+                    )
+                    capability = project_capability or draft_capability
+                    operation = route_operations.get((request.method, self.path))
                     project = await run_in_threadpool(store.load, ident)
                     if project.get("integration") is True:
-                        raise HTTPException(status_code=404, detail="Project was not found.")
+                        if operation is None or (
+                            draft_capability
+                            and not project_capability
+                            and (request.method, self.path) not in legacy_integrated_routes
+                        ):
+                            raise HTTPException(status_code=404, detail="Project was not found.")
+                        path_group = request.path_params.get("group_id")
+                        authority = await run_in_threadpool(
+                            authorize_integrated_project,
+                            ident,
+                            capability,
+                            "route_access",
+                            group_ids=(path_group,) if path_group else (),
+                        )
+                        if operation == "upload" and hasattr(authority, "quota"):
+                            quota = authority.quota
+                            if quota is not None:
+                                workspace = store.storage.workspace_dir(ident)
+                                upload_count = sum(
+                                    path.name.startswith(("upload-", "project-upload-"))
+                                    and path.suffix in {".source", ".bin"}
+                                    for path in workspace.iterdir()
+                                    if path.is_file()
+                                )
+                                try:
+                                    incoming = int(request.headers.get("content-length", "0"))
+                                except ValueError:
+                                    incoming = quota.max_bytes + 1
+                                stored = sum(
+                                    path.stat().st_size for path in workspace.iterdir()
+                                    if path.is_file()
+                                )
+                                if upload_count >= quota.max_files or stored + incoming > quota.max_bytes:
+                                    raise HTTPException(
+                                        status_code=409,
+                                        detail="Integration project quota is exhausted.",
+                                    )
                 return await handler(request)
 
             return protected
@@ -3512,24 +3655,48 @@ def build_athena_router(
     async def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
         data = await _read_bounded_upload(file, MAX_REGISTRY_BYTES)
         return guarded(lambda: registry_view(preferences.save_plugins(PluginRegistry(version=version, enabled=decode_registry(data)))))
-    def integration_draft(ident, capability, action, group_ids=(), *, allow_terminal=False):
+    def authorize_integrated_project(
+        ident, capability, operation, *, group_ids=(), allow_terminal=False
+    ):
         project = store.load(ident)
         if project.get("integration") is not True:
             return None
         if integration_service is None or not capability:
             raise HTTPException(status_code=404, detail="Project was not found.")
-        from .integration_service import IntegrationAuthorizationError
         try:
-            draft = integration_service.authorize_project(
-                ident, capability, datetime.now(timezone.utc), allow_terminal=allow_terminal
-            )
-        except IntegrationAuthorizationError as exc:
+            timestamp = datetime.now(timezone.utc)
+            try:
+                authority = integration_service.storage.load_project(
+                    ident, capability, now=timestamp
+                )
+                draft = None
+            except Exception:
+                draft = integration_service.storage.find_draft_by_project(ident)
+                if draft is None:
+                    raise
+                try:
+                    draft = integration_service.storage.load_draft(draft.id, capability)
+                except Exception:
+                    raise
+                if (
+                    not allow_terminal
+                    and operation != "route_access"
+                    and draft.status.value != "active"
+                ):
+                    raise ValueError("Integration project was not found")
+                authority = draft
+            known_groups = {group["id"] for group in project["groups"]}
+            if any(group_id not in known_groups for group_id in group_ids):
+                raise ValueError("Group does not belong to project")
+            if operation != "route_access" and draft is not None:
+                integration_service.allowed_operation(
+                    operation, group_ids=group_ids, draft=draft
+                )
+            return authority
+        except Exception as exc:
             raise HTTPException(status_code=404, detail="Project was not found.") from exc
-        try:
-            integration_service.allowed_operation(action, group_ids=group_ids, draft=draft)
-        except IntegrationAuthorizationError as exc:
-            raise HTTPException(status_code=403, detail="Operation is unavailable.") from exc
-        return draft
+
+    integration_draft = authorize_integrated_project
 
     @router.get("/projects")
     def list_projects():
@@ -3620,12 +3787,24 @@ def build_athena_router(
                         headers={'Content-Disposition': f'attachment; filename="{name}"'})
 
     @router.post("/projects/{ident}/command")
-    def command(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def command(
+        ident: str,
+        request: Command,
+        capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability"),
+        project_capability: str | None = Header(default=None, alias="X-XrayLarch-Project-Capability"),
+    ):
         project = store.load(ident)
         if project.get("integration") is not True:
             return guarded(lambda: store.command(ident, request))
+        capability = project_capability or capability
         if integration_service is None or not capability:
             raise HTTPException(status_code=404, detail="Project was not found.")
+        draft = integration_service.storage.find_draft_by_project(ident)
+        if draft is None:
+            authorize_integrated_project(
+                ident, capability, request.action, group_ids=request.group_ids
+            )
+            return guarded(lambda: store.command(ident, request))
         from .integration_service import IntegrationAuthorizationError
         try:
             with integration_service.authorized_operation(
@@ -3666,12 +3845,12 @@ def build_athena_router(
 
     @router.post("/projects/{ident}/analyze")
     def analyze(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
-        integration_draft(ident, capability, "analyze", request.group_ids)
+        integration_draft(ident, capability, "analyze", group_ids=request.group_ids)
         return guarded(lambda: store.analyze(ident, request))
 
     @router.post("/projects/{ident}/difference/preview")
     def preview_difference(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
-        integration_draft(ident, capability, "difference", request.group_ids)
+        integration_draft(ident, capability, "difference", group_ids=request.group_ids)
         return guarded(lambda: store.preview_difference(ident, request))
 
     @router.post('/projects/{ident}/rebin/preview')
@@ -3754,7 +3933,7 @@ def build_athena_router(
     def preview_project_group(ident: str, upload_id: str, group_id: str,
                               mode: Literal["mu", "norm", "flat", "dmude", "chi"] = "mu",
                               capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
-        integration_draft(ident, capability, "preview-project", [group_id])
+        integration_draft(ident, capability, "preview-project", group_ids=[group_id])
         return guarded(lambda: store.preview_project_group(ident, upload_id, group_id, mode))
 
     @router.get('/projects/{ident}/preview-project/{upload_id}/file')
@@ -3773,7 +3952,7 @@ def build_athena_router(
     def export(ident: str, format: Literal["json", "prj"] = "json",
                group_ids: list[str] | None = Query(default=None), marked_only: bool = False,
                capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
-        integration_draft(ident, capability, "export", group_ids or (), allow_terminal=True)
+        integration_draft(ident, capability, "export", group_ids=group_ids or (), allow_terminal=True)
         content = guarded(lambda: store.export_project(ident, format, group_ids, marked_only))
         return Response(content, media_type="application/octet-stream" if format == "prj" else "application/json",
                         headers={"Content-Disposition": f'attachment; filename="athena-project.{format}"'})
@@ -3803,7 +3982,7 @@ def build_athena_router(
     @router.get("/projects/{ident}/groups/{group_id}/export")
     def export_group(ident: str, group_id: str, space: Literal["E", "k", "R", "q"] = "E",
                      capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
-        integration_draft(ident, capability, "export", [group_id], allow_terminal=True)
+        integration_draft(ident, capability, "export", group_ids=[group_id], allow_terminal=True)
         g = store.group(store.load(ident), group_id)
         if g["result"]:
             a = dict(g["result"]["arrays"])
