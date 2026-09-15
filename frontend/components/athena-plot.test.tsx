@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { AthenaGroup, Parameters } from "@/lib/athena"
 import { AthenaPlot, type Space } from "./athena-plot"
 
-type Trace = { name: string; x: number[]; y: number[]; yaxis?: string; line?: { dash: string } }
+type Trace = {
+  name: string; x: number[]; y: number[]; yaxis?: string; line?: { dash: string }
+  mode?: string; text?: string[]; customdata?: number[]; showlegend?: boolean
+  marker?: { symbol: string[] }
+}
 type Handoff = {
   data: Trace[]
   onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
@@ -313,6 +317,79 @@ describe("AthenaPlot individual pre-edge and post-edge lines", () => {
     expect(data[2].y).not.toBe(sample.result!.arrays.pre_edge)
     expect(data[3].y).not.toBe(sample.result!.arrays.post_edge)
     expect(sample).toEqual(before)
+  })
+
+  it("marks effective automatic bounds and clipped endpoints on already shifted energies", () => {
+    const sample = group()
+    // Outer requested bounds exceed measured support; the fit returned clipped bounds.
+    sample.parameters = { ...sample.parameters, e0: null, pre2: null, norm1: null }
+    sample.result!.effective = { e0: 8980, pre1: -20, pre2: -10, norm1: 10, norm2: 20 }
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    const markers = handoff().data.filter(trace => trace.mode === "markers")
+    expect(markers).toHaveLength(2)
+    expect(markers[0]).toMatchObject({
+      name: "Pre-edge bounds · Sample", x: [8960, 8970], y: [1, 1.5], customdata: [-20, -10],
+      text: ["Pre-edge start", "Pre-edge end"], marker: { symbol: ["circle", "diamond"] }, showlegend: false,
+    })
+    expect(markers[1]).toMatchObject({
+      name: "Post-edge bounds · Sample", x: [8990, 9000], y: [2.5, 3], customdata: [10, 20],
+      text: ["Post-edge start", "Post-edge end"], marker: { symbol: ["circle", "diamond"] }, showlegend: false,
+    })
+    // The saved +4 eV shift is already in both the fitted E0 and plotted energy array.
+    expect(handoff().data[0].x).toEqual([8960, 8980, 9000])
+  })
+
+  it("interpolates bounds on current raw mu and applies multiplier, group offset, and stack offset once", () => {
+    const sample = group("Scaled")
+    sample.multiplier = 2
+    sample.offset = 3
+    sample.result!.arrays.mu = [2, 6, 14]
+    sample.result!.effective = { e0: 8980, pre1: -15, pre2: -5, norm1: 5, norm2: 15 }
+    const staleActive = group("Scaled")
+    staleActive.offset = 100
+    staleActive.result!.effective = { e0: 8970, pre1: -10, pre2: 0, norm1: 10, norm2: 20 }
+    const before = structuredClone(sample)
+    freeze(sample)
+    show({ groups: [group("First"), sample], active: staleActive, plotScope: "current", preEdge: true, postEdge: true, offset: 10 })
+    const markers = handoff().data.filter(trace => trace.mode === "markers")
+    expect(markers.map(trace => ({ x: trace.x, y: trace.y }))).toEqual([
+      { x: [8965, 8975], y: [19, 23] },
+      { x: [8985, 8995], y: [29, 37] },
+    ])
+    expect(sample).toEqual(before)
+  })
+
+  it("omits unsupported bounds, missing metadata, and nonfinite signal values without extrapolating", () => {
+    const sample = group()
+    sample.result!.effective = { e0: 8980, pre1: -21, pre2: -10, norm1: Infinity, norm2: 21 }
+    const rendered = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.filter(trace => trace.mode === "markers")).toMatchObject([
+      { name: "Pre-edge bounds · Sample", x: [8970], y: [1.5], text: ["Pre-edge end"], customdata: [-10] },
+    ])
+    rendered.unmount()
+
+    sample.parameters = { ...sample.parameters, e0: 8980, pre1: -20, pre2: -10, norm1: 10, norm2: 20 }
+    const unfittedMetadata: Array<Record<string, number | null>> = [
+      { e0: null },
+      { e0: 8980, pre1: null, pre2: null, norm1: null, norm2: null },
+    ]
+    for (const effective of unfittedMetadata) {
+      sample.result!.effective = effective
+      const unfitted = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+      expect(handoff().data.filter(trace => trace.mode === "markers")).toHaveLength(0)
+      unfitted.unmount()
+    }
+
+    sample.result!.effective = {}
+    sample.parameters = { ...sample.parameters, e0: null, pre1: null, pre2: null, norm1: null, norm2: null }
+    const missing = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.map(trace => trace.name)).toEqual(["Sample", "Pre-edge line · Sample", "Post-edge line · Sample"])
+    missing.unmount()
+
+    sample.result!.effective = { e0: 8980, pre1: -20, pre2: -10, norm1: 10, norm2: 20 }
+    sample.result!.arrays.mu = [NaN, 2, Infinity]
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.filter(trace => trace.mode === "markers")).toHaveLength(0)
   })
 
   it.each<Partial<ComponentProps<typeof AthenaPlot>>>([

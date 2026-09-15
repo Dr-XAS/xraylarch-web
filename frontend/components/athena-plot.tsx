@@ -32,6 +32,22 @@ function windowOnGrid(k: number[], window: number[], q: number[]) {
   return { x, y }
 }
 
+// Place bounds at their exact energies on the displayed signal, interpolating
+// between measured samples without extrapolating beyond the spectrum.
+function signalAtEnergy(energy: number[], mu: number[], target: number) {
+  if (!Number.isFinite(target) || !energy.length || energy.length !== mu.length) return null
+  const first = energy[0], last = energy[energy.length - 1]
+  const tolerance = 8 * Number.EPSILON * Math.max(1, Math.abs(target), Math.abs(first), Math.abs(last))
+  if (target < first - tolerance || target > last + tolerance) return null
+  const x = Math.max(first, Math.min(last, target))
+  const right = energy.findIndex(value => value >= x)
+  if (right < 0) return null
+  if (energy[right] === x) return Number.isFinite(mu[right]) ? { x, y: mu[right] } : null
+  if (right === 0 || !Number.isFinite(mu[right - 1]) || !Number.isFinite(mu[right])) return null
+  const fraction = (x - energy[right - 1]) / (energy[right] - energy[right - 1])
+  return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
+}
+
 export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, kWeight = null, colormap = DEFAULT_COLORMAP, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
@@ -77,11 +93,37 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   }
   if (current && a && current.g.result && plotScope === "current" && space === "E" && energyMode === "mu"
     && current.g.data_type !== "detector" && current.g.data_type !== "chi" && !isDifferenceGroup(current.g)) {
-    for (const [enabled, key, name, color] of [
-      [preEdge, "pre_edge", "Pre-edge line", "#b29874"],
-      [postEdge, "post_edge", "Post-edge line", "#8f87aa"],
+    // Effective values describe the fitted arrays, including automatic values
+    // and bounds clipped to measured support. Energy is already shifted.
+    const effective = current.g.result.effective
+    const value = (key: "e0" | "pre1" | "pre2" | "norm1" | "norm2") => {
+      const resolved = key in effective ? effective[key] : current.g.parameters[key]
+      return typeof resolved === "number" && Number.isFinite(resolved) ? resolved : null
+    }
+    const e0 = value("e0")
+    for (const [enabled, key, label, color, start, end] of [
+      [preEdge, "pre_edge", "Pre-edge", "#b29874", "pre1", "pre2"],
+      [postEdge, "post_edge", "Post-edge", "#8f87aa", "norm1", "norm2"],
     ] as const) {
-      if (enabled && a[key]?.length === a.energy.length) add(a.energy, current.transform(a[key]), `${name} · ${current.g.label}`, color, "dash")
+      if (!enabled || a[key]?.length !== a.energy.length) continue
+      const legendgroup = `${current.g.id}:${key}`
+      const line = add(a.energy, current.transform(a[key]), `${label} line · ${current.g.label}`, color, "dash")
+      if (line) line.legendgroup = legendgroup
+      if (e0 === null) continue
+      const points = ([start, end] as const).flatMap((bound, index) => {
+        const relative = value(bound)
+        if (relative === null) return []
+        const point = signalAtEnergy(current.x, current.y, e0 + relative)
+        return point ? [{ ...point, relative, label: `${label} ${index === 0 ? "start" : "end"}`, symbol: index === 0 ? "circle" : "diamond" }] : []
+      })
+      if (points.length) data.push({
+        type: "scatter", mode: "markers", name: `${label} bounds · ${current.g.label}`, legendgroup, showlegend: false,
+        x: points.map(point => point.x), y: current.transform(points.map(point => point.y)),
+        text: points.map(point => point.label), customdata: points.map(point => point.relative),
+        marker: { color, size: 11, symbol: points.map(point => point.symbol), line: { color: "#ffffff", width: 1.5 } },
+        cliponaxis: false,
+        hovertemplate: "%{text}<br>Energy = %{x:.3f} eV<br>E − E₀ = %{customdata:.3f} eV<br>μ(E) = %{y:.5f}<extra></extra>",
+      })
     }
   }
   if (current && a && showWindow && space !== "E") {

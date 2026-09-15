@@ -41,6 +41,8 @@ In the spectrum viewer, **All selected** plots the checked data groups;
 checkbox. For an individual **μ(E)** plot, use **Pre-edge line** and
 **Post-edge line** to show either fitted normalization line. **Background**
 separately shows the fitted μ₀(E) background when available.
+Each normalization-line toggle also marks its interval's start and end on
+μ(E). Hover a marker to see its energy and offset from E₀.
 
 Drag the handle below the spectrum to resize its height; double-click it to
 restore the default. **Show legend** toggles the single-column legend on the
