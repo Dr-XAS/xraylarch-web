@@ -145,7 +145,11 @@ The frontend is built with `NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app` and
 runs from the release `frontend/` directory using the release-local
 `next start -H 127.0.0.1 -p 3004`, with both backend URL variables set to
 `http://127.0.0.1:8006`. The backend receives the immutable release SHA as
-`XRAYLARCH_GIT_REVISION`.
+`XRAYLARCH_GIT_REVISION`. New builds also contain the immutable regular file
+`.xraylarch-integration-contract` with the single value `2`. Its presence selects
+the mounted frontend and proxy health paths. A marker-absent release is treated as
+a supported pre-integration rollback and is probed at `/`; a symlinked, malformed,
+or unsupported marker fails health qualification closed.
 
 ## Health and release evidence
 

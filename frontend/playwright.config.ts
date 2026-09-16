@@ -8,6 +8,7 @@ import { defineConfig, devices } from "@playwright/test"
 const frontendRoot = fileURLToPath(new URL(".", import.meta.url))
 const repositoryRoot = path.resolve(frontendRoot, "..")
 const dataRoot = mkdtempSync(path.join(os.tmpdir(), "xraylarch-web-playwright-"))
+process.env.XRAYLARCH_E2E_DATA_ROOT_INTERNAL = dataRoot
 const appBasePath = "/advanced-xas/app"
 const backendPort = process.env.XRAYLARCH_E2E_BACKEND_PORT ?? "18006"
 const frontendPort = process.env.XRAYLARCH_E2E_FRONTEND_PORT ?? "13004"
@@ -15,6 +16,7 @@ const testSecret = "playwright-only-integration-secret-32-bytes"
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  globalTeardown: "./tests/e2e/global-teardown.ts",
   outputDir: "test-results",
   fullyParallel: false,
   workers: 1,

@@ -599,6 +599,19 @@ http_200() {
   [[ "$code" == "200" ]] || { fail "expected HTTP 200 from $1, received $code"; return 1; }
 }
 
+frontend_health_path() {
+  local release="$1" marker value
+  marker="${release}/.xraylarch-integration-contract"
+  if [[ ! -e "$marker" && ! -L "$marker" ]]; then
+    printf '/\n'
+    return
+  fi
+  [[ -f "$marker" && ! -L "$marker" ]] || { fail "integration contract marker is not a regular file"; return 1; }
+  IFS= read -r value <"$marker" || return 1
+  [[ "$value" == "$INTEGRATION_CONTRACT_VERSION" ]] || { fail "unsupported integration contract marker"; return 1; }
+  printf '%s/\n' "$APP_BASE_PATH"
+}
+
 backend_health_ok() {
   local url="$1" expected_revision="$2" release="$3" body
   body=$(curl --fail --silent --show-error --max-time 10 "$url/health") || return 1
@@ -648,15 +661,17 @@ assert_sibling_services_healthy() {
 }
 
 verify_component_pair() {
-  local frontend_prefix="$1" backend_prefix="$2" frontend_host="$3" frontend_port="$4" backend_url="$5" require_siblings="$6"
+  local frontend_prefix="$1" backend_prefix="$2" frontend_host="$3" frontend_port="$4" backend_url="$5" require_siblings="$6" release health_path
   component_record_matches "$frontend_prefix" || return 1
   component_record_matches "$backend_prefix" || return 1
   assert_listener_address "${frontend_host}:${frontend_port}" || return 1
   assert_listener_address "${backend_url#http://}" || return 1
-  http_200 "http://127.0.0.1:${frontend_port}${APP_BASE_PATH}/" || return 1
+  release=$(component_field "$frontend_prefix" RELEASE)
+  health_path=$(frontend_health_path "$release") || return 1
+  http_200 "http://127.0.0.1:${frontend_port}${health_path}" || return 1
   http_200 "${backend_url}/health" || return 1
   backend_health_ok "$backend_url" "$(component_field "$backend_prefix" RELEASE_SHA)" "$(component_field "$backend_prefix" RELEASE)" || return 1
-  http_200 "http://127.0.0.1:${frontend_port}${APP_BASE_PATH}/api/backend/health" || return 1
+  http_200 "http://127.0.0.1:${frontend_port}${health_path}api/backend/health" || return 1
   [[ "$require_siblings" == 0 ]] || assert_sibling_services_healthy
 }
 
@@ -979,6 +994,7 @@ build_release() {
   assert_frontend_runtime_supported || return 1
   ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && NEXT_PUBLIC_APP_BASE_PATH="$APP_BASE_PATH" run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"
+  printf '%s\n' "$INTEGRATION_CONTRACT_VERSION" >"${temporary}/.xraylarch-integration-contract"
   printf 'repository=%s\nbranch=%s\nsha=%s\nbuilt_at_utc=%s\n' "$REPOSITORY" "$APPROVED_BRANCH" "$REQUESTED_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${temporary}/.xraylarch-release.manifest"
   sha256sum "${temporary}/backend/requirements.txt" "${temporary}/backend/pip-freeze.txt" "${temporary}/frontend/package-lock.json" >"${temporary}/.xraylarch-integrity.sha256"
   chmod -R a-w "$temporary"

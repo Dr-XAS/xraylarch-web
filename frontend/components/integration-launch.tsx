@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { backendUrl } from "@/lib/app-url"
 import { clearIntegrationReturnSelection, clearIntegrationSession, integrationOperations, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession } from "@/lib/integration-session"
 import type { AthenaSession } from "@/lib/athena-transport"
@@ -8,6 +8,7 @@ import { AthenaWorkbench } from "./athena-workbench"
 
 type IntegratedSession = Extract<AthenaSession, { mode: "integration" }>
 type ObjectValue = Record<string, unknown>
+let launchGeneration = 0
 
 function record(value: unknown): ObjectValue | null {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as ObjectValue : null
@@ -61,8 +62,22 @@ function sessionFrom(value: unknown, returnTo?: string): IntegratedSession {
 export function IntegrationLaunch() {
   const [session, setSession] = useState<IntegratedSession | null>(null)
   const [failed, setFailed] = useState(false)
+  const ownership = useRef<{ generation: number; mounted: boolean } | null>(null)
 
   useEffect(() => {
+    let owner = ownership.current
+    if (owner) owner.mounted = true
+    const releaseOwnership = () => {
+      if (!owner || ownership.current !== owner) return
+      const releasedOwner = owner
+      releasedOwner.mounted = false
+      queueMicrotask(() => {
+        if (ownership.current === releasedOwner && !releasedOwner.mounted) {
+          ownership.current = null
+          if (launchGeneration === releasedOwner.generation) launchGeneration += 1
+        }
+      })
+    }
     const query = new URLSearchParams(location.search)
     clearIntegrationReturnSelection()
     const launch = query.get("launch")
@@ -70,16 +85,19 @@ export function IntegrationLaunch() {
     const returnTo = rawReturn === null ? undefined : parseSafeInternalReturn(rawReturn)
     const validQuery = [...query.keys()].every(key => key === "launch" || key === "return") && query.getAll("launch").length <= 1 && query.getAll("return").length <= 1 && (rawReturn === null || returnTo !== undefined)
     history.replaceState(history.state, "", location.pathname + location.hash)
-    if (!validQuery) { clearIntegrationSession(); setFailed(true); return }
+    if (!validQuery) { clearIntegrationSession(); setFailed(true); return releaseOwnership }
     if (!launch) {
       const saved = loadIntegrationSession()
       if (saved) setSession(saved)
       else setFailed(true)
-      return
+      return releaseOwnership
     }
-    if (launch.length > 1024) { clearIntegrationSession(); setFailed(true); return }
+    if (launch.length > 1024) { clearIntegrationSession(); setFailed(true); return releaseOwnership }
     clearIntegrationSession()
     const handle = launch
+    const generation = ++launchGeneration
+    owner = { generation, mounted: true }
+    ownership.current = owner
     void fetch(backendUrl("/api/integration/v2/browser/consume"), {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ handle }),
     }).then(async response => {
@@ -87,11 +105,14 @@ export function IntegrationLaunch() {
       const text = await response.text()
       if (text.length > 65_536) throw new Error("Invalid integration session")
       const next = sessionFrom(JSON.parse(text), returnTo)
+      if (ownership.current?.generation !== generation || launchGeneration !== generation) return
       saveIntegrationSession(next)
       setSession(next)
     }).catch(() => {
+      if (ownership.current?.generation !== generation || launchGeneration !== generation) return
       clearIntegrationSession(); setFailed(true)
     })
+    return releaseOwnership
   }, [])
 
   useEffect(() => {

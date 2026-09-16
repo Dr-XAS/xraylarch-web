@@ -105,6 +105,40 @@ describe("IntegrationLaunch", () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
+  it("ignores an older launch that resolves after a newer launch", async () => {
+    const resolutions: ((value: Response) => void)[] = []
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { resolutions.push(resolve) })))
+    const first = render(<IntegrationLaunch />)
+    first.unmount()
+    history.replaceState({}, "", "/integration?launch=second-handle")
+    render(<IntegrationLaunch />)
+    resolutions[1](new Response(JSON.stringify({ ...response, project_id: "p2", project: { ...response.project, project_id: "p2" }, return_reference: { project_id: "p2", persistent: false } })))
+    await screen.findByText(/spectrum/i)
+    await act(async () => { resolutions[0](new Response(JSON.stringify(response))); await Promise.resolve() })
+    expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.session.v2")!).projectId).toBe("p2")
+  })
+
+  it("does not store authority when consume resolves after unmount", async () => {
+    let resolveConsume!: (value: Response) => void
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { resolveConsume = resolve })))
+    const view = render(<IntegrationLaunch />)
+    view.unmount()
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { resolveConsume(new Response(JSON.stringify(response))); await Promise.resolve() })
+    expect(sessionStorage.getItem("xraylarch.integration.session.v2")).toBeNull()
+  })
+
+  it("invalidates a Strict Mode launch after its genuine unmount", async () => {
+    let resolveConsume!: (value: Response) => void
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { resolveConsume = resolve })))
+    const view = render(<StrictMode><IntegrationLaunch /></StrictMode>)
+    await act(async () => { await Promise.resolve() })
+    view.unmount()
+    await act(async () => { await Promise.resolve() })
+    await act(async () => { resolveConsume(new Response(JSON.stringify(response))); await Promise.resolve() })
+    expect(sessionStorage.getItem("xraylarch.integration.session.v2")).toBeNull()
+  })
+
   it("clears stale tab authority before consuming a new launch", async () => {
     sessionStorage.setItem("xraylarch.integration.session.v2", JSON.stringify({ mode: "integration", projectId: "old", capability: "revoked", allowedOperations: ["read_project"], expiresAt: "2099-01-01T00:00:00Z" }))
     let resolveConsume!: (value: Response) => void

@@ -19,6 +19,17 @@ validate_sha 0123456789abcdef0123456789abcdef01234567
 [[ "${APP_BASE_PATH:-}" == "/advanced-xas/app" ]] || test_fail "deployment must define the mounted frontend base path"
 [[ "${INTEGRATION_CONTRACT_VERSION:-}" == 2 ]] || test_fail "deployment must require integration contract version 2"
 
+health_root=$(mktemp -d)
+mkdir -p "$health_root/integration" "$health_root/legacy"
+printf '2\n' >"$health_root/integration/.xraylarch-integration-contract"
+[[ "$(frontend_health_path "$health_root/integration")" == "/advanced-xas/app/" ]] || test_fail "integration release health must use mounted path"
+[[ "$(frontend_health_path "$health_root/legacy")" == "/" ]] || test_fail "supported legacy release health must use root path"
+printf '1\n' >"$health_root/legacy/.xraylarch-integration-contract"
+if frontend_health_path "$health_root/legacy" >/dev/null 2>&1; then
+  test_fail "unknown integration release marker must fail closed"
+fi
+rm -f "$health_root/legacy/.xraylarch-integration-contract"
+
 sibling_http_events=()
 http_200() {
   sibling_http_events+=("$1")
@@ -27,6 +38,25 @@ curl() {
   sibling_http_events+=("${@: -1}")
   printf '404'
 }
+
+for release_kind in integration legacy; do
+(
+  component_record_matches() { return 0; }
+  assert_listener_address() { return 0; }
+  backend_health_ok() { return 0; }
+  http_events=()
+  http_200() { http_events+=("$1"); }
+  TEST_FRONTEND_RELEASE="$health_root/$release_kind"
+  TEST_BACKEND_RELEASE="$health_root/$release_kind"
+  TEST_BACKEND_RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+  verify_component_pair TEST_FRONTEND TEST_BACKEND 127.0.0.1 13004 http://127.0.0.1:18006 0 || test_fail "$release_kind release health qualification must pass"
+  expected_frontend=http://127.0.0.1:13004/
+  [[ "$release_kind" != integration ]] || expected_frontend="http://127.0.0.1:13004${APP_BASE_PATH}/"
+  [[ "${http_events[0]}" == "$expected_frontend" ]] || test_fail "$release_kind release selected the wrong frontend health path"
+  [[ "${http_events[2]}" == "${expected_frontend}api/backend/health" ]] || test_fail "$release_kind release selected the wrong proxy health path"
+)
+done
+rm -rf -- "$health_root"
 
 unset XRAYLARCH_WEB_SIBLING_PROFILE
 assert_sibling_services_healthy || test_fail "default Dr.XAS sibling profile must pass with healthy responses"
