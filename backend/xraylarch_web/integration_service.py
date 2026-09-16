@@ -60,6 +60,16 @@ _REQUIRED_HEADERS = (
 )
 _CORE_READ_ACTIONS = {"read_project", "export"}
 _CORE_MUTATION_ACTIONS = {"metadata", "parameters", "set_e0", "undo", "redo"}
+_NATIVE_ATHENA_OPERATIONS = (
+    "read_project", "upload", "import", "preview", "read_upload", "command",
+    "report", "plot", "read_group", "analyze", "restore", "export", "project",
+    "example", "reorder", "metadata", "parameters", "set_e0", "undo", "redo",
+    "duplicate", "merge", "sum", "difference", "rebin", "multi_electron",
+    "convolve", "deglitch", "truncate", "delete", "change_datatype",
+    "xdi_comments", "selection", "background_standard", "copy_series",
+    "copy_parameters", "reset_parameters", "context_parameters", "align", "smooth",
+    "deconvolve", "self_absorption", "tie_reference", "untie_reference",
+)
 
 
 class SealedExportRequest(BaseModel):
@@ -464,7 +474,7 @@ class IntegrationService:
                                   "source": group.get("source")}
                 return self.storage.create_project_launch_handle(
                     project_id=project_id, capability=capability, expires_at=now + timedelta(seconds=300),
-                    seed_group=seed_group, allowed_operations=("read_project",),
+                    seed_group=seed_group, allowed_operations=_NATIVE_ATHENA_OPERATIONS,
                     return_reference={"project_id": project_id, "persistent": record.persistent},
                 )
 

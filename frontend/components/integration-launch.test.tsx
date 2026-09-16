@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest"
+import { StrictMode } from "react"
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -30,6 +31,17 @@ describe("IntegrationLaunch", () => {
     expect(Date.parse(saved.expiresAt)).toBeGreaterThan(Date.now())
     expect(Date.parse(saved.expiresAt)).toBeLessThanOrEqual(Date.now() + 300_000)
     expect(saved.returnTo).toBe("/analysis/1")
+  })
+
+  it("finishes consuming a one-use handle under React Strict Mode", async () => {
+    const fetcher = vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((resolve, reject) => {
+      const timer = setTimeout(() => resolve(new Response(JSON.stringify(response), { headers: { "content-type": "application/json" } })), 10)
+      init?.signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("aborted", "AbortError")) })
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    render(<StrictMode><IntegrationLaunch /></StrictMode>)
+    await screen.findByText(/spectrum/i)
+    expect(fetcher).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -91,6 +103,16 @@ describe("IntegrationLaunch", () => {
     render(<IntegrationLaunch />)
     expect(await screen.findByText(/Launch again from Dr\.XAS/i)).toBeInTheDocument()
     expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it("clears stale tab authority before consuming a new launch", async () => {
+    sessionStorage.setItem("xraylarch.integration.session.v2", JSON.stringify({ mode: "integration", projectId: "old", capability: "revoked", allowedOperations: ["read_project"], expiresAt: "2099-01-01T00:00:00Z" }))
+    let resolveConsume!: (value: Response) => void
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(resolve => { resolveConsume = resolve })))
+    render(<StrictMode><IntegrationLaunch /></StrictMode>)
+    expect(sessionStorage.getItem("xraylarch.integration.session.v2")).toBeNull()
+    resolveConsume(new Response(JSON.stringify(response)))
+    await screen.findByText(/spectrum/i)
   })
 
   it("clears a stale return selection before a new launch and when launch fails", async () => {

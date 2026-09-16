@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import re
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -63,7 +66,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str | int]:
-        return {"status": "ok", "version": __version__, "integration_contract_version": 2}
+        revision = os.environ.get("XRAYLARCH_GIT_REVISION", "unknown")
+        if revision != "unknown" and not re.fullmatch(r"[0-9a-f]{40}", revision):
+            revision = "invalid"
+        return {
+            "status": "ok",
+            "version": __version__,
+            "git_revision": revision,
+            "integration_contract_version": 2,
+        }
 
     app.include_router(build_api_router(store, active_settings))
     from .athena import AthenaStore, build_athena_router

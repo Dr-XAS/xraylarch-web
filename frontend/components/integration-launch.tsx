@@ -78,10 +78,10 @@ export function IntegrationLaunch() {
       return
     }
     if (launch.length > 1024) { clearIntegrationSession(); setFailed(true); return }
+    clearIntegrationSession()
     const handle = launch
-    const controller = new AbortController()
     void fetch(backendUrl("/api/integration/v2/browser/consume"), {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ handle }), signal: controller.signal,
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ handle }),
     }).then(async response => {
       if (!response.ok) throw new Error("Launch rejected")
       const text = await response.text()
@@ -89,11 +89,9 @@ export function IntegrationLaunch() {
       const next = sessionFrom(JSON.parse(text), returnTo)
       saveIntegrationSession(next)
       setSession(next)
-    }).catch(error => {
-      if (error instanceof DOMException && error.name === "AbortError") return
+    }).catch(() => {
       clearIntegrationSession(); setFailed(true)
     })
-    return () => controller.abort()
   }, [])
 
   useEffect(() => {

@@ -32,9 +32,12 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 ## Athena Web branch
 
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
-Open [http://localhost:3004](http://localhost:3004) using the local commands
-below, then import spectra or load the measured copper foil example. The
-earlier single-spectrum interface is at `/classic`.
+For standalone development, open [http://localhost:3004](http://localhost:3004)
+using the local commands below, then import spectra or load the measured copper
+foil example. The earlier single-spectrum interface is at `/classic`. The
+Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
+both the frontend and backend to loopback and relies on Dr.XAS ingress rather
+than exposing either service port directly.
 
 In the spectrum viewer, **All selected** plots the checked data groups;
 **Current spectrum** plots only the highlighted group, independently of its
@@ -311,17 +314,19 @@ LabVIEW scans with a numbered column list retain those labels in source order.
 
 ### Check before sharing a local build
 
-Run these commands from the repository root. The browser test starts its own
+Run these commands from the repository root. The browser tests start their own
 backend on `127.0.0.1:18006`, frontend on `127.0.0.1:13004`, and a fresh
-temporary `XRAYLARCH_DATA_ROOT`; it does not use the normal development data
-directory.
+temporary `XRAYLARCH_DATA_ROOT`; they do not use the normal development data
+directory. The mounted lifecycle acceptance uses only a committed test-only
+signing value and exercises the `/advanced-xas/app` build.
 
 ```bash
-backend/.venv/bin/python -m pytest backend/tests -q
-cd frontend && npm test
-cd frontend && npx tsc --noEmit
-cd frontend && npm run build
-cd frontend && npm run test:e2e
+PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests -q
+cd frontend
+npx tsc --noEmit
+npx vitest run
+NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app npm run build
+npm run test:e2e -- integration-mounted.spec.ts
 ```
 
 ### Operating boundary and deferred work
@@ -333,8 +338,8 @@ multi-user service.
 
 XRF and XRD tools, fitting and FEFF work, multi-file alignment or batch flows,
 chat, public deployment, authentication, and sharing remain outside V1. The
-planned Dr.XAS address is [http://drxas.xray.aps.anl.gov:3004](http://drxas.xray.aps.anl.gov:3004);
-this README does not imply that it has been deployed.
+integrated route is `/advanced-xas/app` behind Dr.XAS ingress; this README does
+not imply that it has been deployed.
 
 ### Guarded Dr.XAS release package
 
@@ -347,7 +352,10 @@ the planned `3004`/`8006` listeners. The host scripts are
 [`scripts/deploy-xraylarch-web.sh`](scripts/deploy-xraylarch-web.sh) and
 [`scripts/check-xraylarch-web.sh`](scripts/check-xraylarch-web.sh).
 
-The scripts are a release package, not permission to write to Dr.XAS. A first
+The production frontend and backend listeners are loopback-only at
+`127.0.0.1:3004` and `127.0.0.1:8006`; the frontend is built and served beneath
+`/advanced-xas/app`. The scripts are a release package, not permission to write
+to Dr.XAS. A first
 host install, any GitHub push, and every host deployment require an explicit
 gate after a fresh host preflight. When that gate exists, the future operator
 uses only a full SHA from `master`:

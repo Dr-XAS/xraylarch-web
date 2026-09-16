@@ -14,6 +14,11 @@ if validate_sha not-a-sha >/dev/null 2>&1; then
 fi
 validate_sha 0123456789abcdef0123456789abcdef01234567
 
+[[ "$FINAL_FRONTEND_HOST" == "127.0.0.1" ]] || test_fail "final frontend must bind loopback only"
+[[ "$FINAL_BACKEND_HOST" == "127.0.0.1" ]] || test_fail "final backend must bind loopback only"
+[[ "${APP_BASE_PATH:-}" == "/advanced-xas/app" ]] || test_fail "deployment must define the mounted frontend base path"
+[[ "${INTEGRATION_CONTRACT_VERSION:-}" == 2 ]] || test_fail "deployment must require integration contract version 2"
+
 sibling_http_events=()
 http_200() {
   sibling_http_events+=("$1")
@@ -169,7 +174,7 @@ stop_recorded_component xraylarch-web-candidate-frontend 405 "" 13004 /release f
 [[ "${raw_stop_events[*]-}" == *"405.xraylarch-web-candidate-frontend"* ]] || test_fail "staged startup failure must leave no candidate screen"
 
 mock_sessions="401.xraylarch-web-frontend"
-stop_recorded_component xraylarch-web-frontend 401 "" 3004 /release frontend 0.0.0.0 || test_fail "final startup cleanup must stop its recorded screen"
+stop_recorded_component xraylarch-web-frontend 401 "" 3004 /release frontend 127.0.0.1 || test_fail "final startup cleanup must stop its recorded screen"
 [[ "${raw_stop_events[*]-}" == *"401.xraylarch-web-frontend"* ]] || test_fail "final startup failure must release the final screen name"
 
 recovery_events=()

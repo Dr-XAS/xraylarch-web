@@ -8,8 +8,8 @@
 | Owner and rollback authority | Jeffrey Huang |
 | Repository | `https://github.com/Dr-XAS/xraylarch-web.git` |
 | Authorized branch | `master` |
-| Public address | `http://drxas.xray.aps.anl.gov:3004` |
-| Frontend listener | `0.0.0.0:3004` |
+| Public route | Dr.XAS ingress at `/advanced-xas/app` |
+| Frontend listener | `127.0.0.1:3004` |
 | Backend listener | `127.0.0.1:8006` |
 | Candidate frontend listener | `127.0.0.1:13004` |
 | Candidate backend listener | `127.0.0.1:18006` |
@@ -84,7 +84,9 @@ A failed installation or application import blocks the candidate build before
 activation. A retry of a completed release revalidates its identity and backend
 import before staging; incomplete or invalid releases are never overwritten.
 
-The active release stays on `3004` and `8006`. Before any cutover, the
+The active release stays on loopback-only `127.0.0.1:3004` and
+`127.0.0.1:8006`; neither listener is directly exposed. Dr.XAS ingress owns the
+public `/advanced-xas/app` route. Before any cutover, the
 deployer runs the target release in the two candidate screens on private
 loopback `13004` and `18006`. It records each exact screen session PID and
 listener child PID together with the observed command line, executable,
@@ -139,9 +141,11 @@ The backend runs from the release `backend/` directory:
 backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --host 127.0.0.1 --port 8006
 ```
 
-The frontend runs from the release `frontend/` directory using the
-release-local `next start -H 0.0.0.0 -p 3004`, with both backend URL variables
-set to `http://127.0.0.1:8006`.
+The frontend is built with `NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app` and
+runs from the release `frontend/` directory using the release-local
+`next start -H 127.0.0.1 -p 3004`, with both backend URL variables set to
+`http://127.0.0.1:8006`. The backend receives the immutable release SHA as
+`XRAYLARCH_GIT_REVISION`.
 
 ## Health and release evidence
 
@@ -154,15 +158,19 @@ The read-only checker is installed as
 
 An active release is healthy only when all of the following hold:
 
-- frontend `/` returns HTTP 200;
-- backend `/health` returns HTTP 200 and JSON `status` is `ok`;
-- same-origin `/api/backend/health` returns HTTP 200;
+- frontend `/advanced-xas/app/` returns HTTP 200;
+- for integration-capable releases, backend `/health` returns HTTP 200 with
+  JSON `status` equal to `ok`, `git_revision` equal to the requested
+  40-character SHA, and `integration_contract_version` equal to `2`; explicit
+  rollback targets predating the integration runtime retain their original
+  `status: ok` health check;
+- mounted same-origin `/advanced-xas/app/api/backend/health` returns HTTP 200;
 - `current`, detached release `HEAD`, and release metadata equal the requested
   SHA;
 - `state/last-successful` is a regular, non-symlink file whose SHA and
   canonical release path match the requested active release;
 - exactly one final screen session exists for each name; listeners are exactly
-  `0.0.0.0:3004` and `127.0.0.1:8006`; each listener PID is a recorded
+  `127.0.0.1:3004` and `127.0.0.1:8006`; each listener PID is a recorded
   descendant of its screen PID and still matches the launch-time executable,
   command line, owners, release marker, and active release `frontend/` or
   `backend/` working directory; and

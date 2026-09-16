@@ -394,7 +394,9 @@ def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_
         consumed = client.post("/api/integration/v2/browser/consume", json={"handle": launched.json()["handle"]})
         assert consumed.status_code == 200
         assert consumed.json()["seed_group"]["source"].items() >= source.items()
-        assert consumed.json()["allowed_operations"] == ["read_project"]
+        assert {"read_project", "upload", "import", "command", "read_upload", "export"}.issubset(
+            consumed.json()["allowed_operations"]
+        )
 
 
 def test_v2_create_purges_expired_project_handles(tmp_path, monkeypatch):
@@ -633,12 +635,15 @@ def test_v2_invalid_payload_does_not_consume_nonce_and_rejects_duplicate_auth_he
         assert client.post(path, content=valid, headers=duplicate_headers).status_code == 401
 
 
-def test_browser_consume_rejects_service_credentials_and_health_advertises_v2(tmp_path):
+def test_browser_consume_rejects_service_credentials_and_health_advertises_v2(tmp_path, monkeypatch):
+    revision = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setenv("XRAYLARCH_GIT_REVISION", revision)
     with TestClient(create_app(settings(tmp_path))) as client:
         assert client.post("/api/integration/v2/browser/consume", json={"handle": "x" * 22}, headers={"X-DrXAS-Signature": "secret"}).status_code == 404
         health = client.get("/health")
         assert health.status_code == 200
         assert health.json()["integration_contract_version"] == 2
+        assert health.json()["git_revision"] == revision
 
 
 def _route_request(client, route, project_id, headers):
@@ -768,14 +773,14 @@ def test_browser_session_enforces_authoritative_operation_scope(tmp_path):
             f"/api/athena/projects/{project_id}",
             headers=project_headers(session["capability"]),
         )
-        denied = client.post(
+        renamed = client.post(
             f"/api/athena/projects/{project_id}/command",
             headers=project_headers(session["capability"]),
             json={
                 "version": 0,
                 "action": "project",
                 "group_ids": [],
-                "options": {"name": "Must not change"},
+                "options": {"name": "Browser-authorized"},
             },
         )
         owner_secret = client.get(
@@ -783,13 +788,14 @@ def test_browser_session_enforces_authoritative_operation_scope(tmp_path):
             headers=project_headers(integrated["capability"]),
         )
 
-    assert session["allowed_operations"] == ["read_project"]
+    assert "read_project" in session["allowed_operations"]
+    assert "project" in session["allowed_operations"]
     assert session["capability"] != integrated["capability"]
     assert readable.status_code == 200
-    assert denied.status_code == 404
-    assert denied.json() == {"detail": "Project was not found."}
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Browser-authorized"
     assert owner_secret.status_code == 404
-    assert owner_secret.json() == denied.json()
+    assert owner_secret.json() == {"detail": "Project was not found."}
 
 
 @pytest.mark.parametrize(

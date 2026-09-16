@@ -15,8 +15,10 @@ PROCESS_RECORD_ROOT="${STATE_ROOT}/processes"
 LOCK_FILE="${STATE_ROOT}/deploy.lock"
 FINAL_BACKEND_HOST="127.0.0.1"
 FINAL_BACKEND_PORT="8006"
-FINAL_FRONTEND_HOST="0.0.0.0"
+FINAL_FRONTEND_HOST="127.0.0.1"
 FINAL_FRONTEND_PORT="3004"
+APP_BASE_PATH="/advanced-xas/app"
+INTEGRATION_CONTRACT_VERSION=2
 STAGE_BACKEND_HOST="127.0.0.1"
 STAGE_BACKEND_PORT="18006"
 STAGE_FRONTEND_HOST="127.0.0.1"
@@ -117,6 +119,7 @@ run_clean() {
   env -i PATH="$SAFE_PATH" HOME="$CLEAN_HOME" LANG="${LANG:-C.UTF-8}" \
     LC_ALL="${LC_ALL:-C.UTF-8}" XRAYLARCH_DATA_ROOT="$DATA_ROOT" \
     BACKEND_URL="$FINAL_BACKEND_URL" NEXT_BACKEND_URL="$FINAL_BACKEND_URL" \
+    NEXT_PUBLIC_APP_BASE_PATH="$APP_BASE_PATH" XRAYLARCH_GIT_REVISION="$REQUESTED_SHA" \
     NPM_CONFIG_CACHE="${CANDIDATE_DATA}/cache/npm" PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PYTHONPYCACHEPREFIX="${CANDIDATE_DATA}/runtime/pycache" PYTHONUNBUFFERED=1 "$@"
 }
@@ -577,13 +580,13 @@ launch_component() {
   case "$kind" in
     backend)
       if [[ -f "${release}/backend/xraylarch_web/integration_runtime.py" ]]; then
-        launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/python" -m xraylarch_web.integration_runtime "${APP_ROOT}/config/integration.json" --host "$host" --port "$port" || return 1
+        launch_screen "$name" "${release}/backend" "$backend_url" env "XRAYLARCH_GIT_REVISION=$sha" "${release}/backend/.venv/bin/python" -m xraylarch_web.integration_runtime "${APP_ROOT}/config/integration.json" --host "$host" --port "$port" || return 1
       else
         # Older rollback targets predate integration and retain their clean launch.
         launch_screen "$name" "${release}/backend" "$backend_url" "${release}/backend/.venv/bin/python" -m uvicorn xraylarch_web.main:app --host "$host" --port "$port" || return 1
       fi
       ;;
-    frontend) launch_screen "$name" "${release}/frontend" "$backend_url" "$CONDA_BIN" run --no-capture-output -n drxas-node20 "${release}/frontend/node_modules/.bin/next" start -H "$host" -p "$port" || return 1 ;;
+    frontend) launch_screen "$name" "${release}/frontend" "$backend_url" env "NEXT_PUBLIC_APP_BASE_PATH=$APP_BASE_PATH" "$CONDA_BIN" run --no-capture-output -n drxas-node20 "${release}/frontend/node_modules/.bin/next" start -H "$host" -p "$port" || return 1 ;;
     *) fail "unknown component kind: $kind" ;;
   esac
   capture_screen_record "$prefix" "$name" "$release" "$kind" "$host" "$port" || return 1
@@ -597,9 +600,23 @@ http_200() {
 }
 
 backend_health_ok() {
-  local url="$1" body
+  local url="$1" expected_revision="$2" release="$3" body
   body=$(curl --fail --silent --show-error --max-time 10 "$url/health") || return 1
-  printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' || { fail "backend health body does not report status ok"; return 1; }
+  if [[ ! -f "${release}/backend/xraylarch_web/integration_runtime.py" ]]; then
+    printf '%s' "$body" | grep -Eq '"status"[[:space:]]*:[[:space:]]*"ok"' || { fail "legacy backend health body does not report status ok"; return 1; }
+    return
+  fi
+  run_clean "${release}/backend/.venv/bin/python" -c '
+import json, sys
+try:
+    value = json.loads(sys.argv[1])
+except json.JSONDecodeError:
+    raise SystemExit(1)
+if (value.get("status") != "ok"
+        or value.get("git_revision") != sys.argv[2]
+        or value.get("integration_contract_version") != int(sys.argv[3])):
+    raise SystemExit(1)
+' "$body" "$expected_revision" "$INTEGRATION_CONTRACT_VERSION" || { fail "backend health metadata does not match the release revision and integration contract"; return 1; }
 }
 
 sibling_profile() {
@@ -636,10 +653,10 @@ verify_component_pair() {
   component_record_matches "$backend_prefix" || return 1
   assert_listener_address "${frontend_host}:${frontend_port}" || return 1
   assert_listener_address "${backend_url#http://}" || return 1
-  http_200 "http://127.0.0.1:${frontend_port}/" || return 1
+  http_200 "http://127.0.0.1:${frontend_port}${APP_BASE_PATH}/" || return 1
   http_200 "${backend_url}/health" || return 1
-  backend_health_ok "$backend_url" || return 1
-  http_200 "http://127.0.0.1:${frontend_port}/api/backend/health" || return 1
+  backend_health_ok "$backend_url" "$(component_field "$backend_prefix" RELEASE_SHA)" "$(component_field "$backend_prefix" RELEASE)" || return 1
+  http_200 "http://127.0.0.1:${frontend_port}${APP_BASE_PATH}/api/backend/health" || return 1
   [[ "$require_siblings" == 0 ]] || assert_sibling_services_healthy
 }
 
@@ -960,7 +977,7 @@ build_release() {
   install_release_backend "$temporary" || return 1
   verify_release_backend "$temporary" || return 1
   assert_frontend_runtime_supported || return 1
-  ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
+  ( cd "${temporary}/frontend" && run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm ci && NEXT_PUBLIC_APP_BASE_PATH="$APP_BASE_PATH" run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 npm run build ) || return 1
   printf '%s\n' "$REQUESTED_SHA" >"${temporary}/.xraylarch-release.sha"
   printf 'repository=%s\nbranch=%s\nsha=%s\nbuilt_at_utc=%s\n' "$REPOSITORY" "$APPROVED_BRANCH" "$REQUESTED_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"${temporary}/.xraylarch-release.manifest"
   sha256sum "${temporary}/backend/requirements.txt" "${temporary}/backend/pip-freeze.txt" "${temporary}/frontend/package-lock.json" >"${temporary}/.xraylarch-integrity.sha256"
