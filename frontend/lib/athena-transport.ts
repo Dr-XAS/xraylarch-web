@@ -76,13 +76,8 @@ export function createAthenaTransport(session: AthenaSession, fetcher: Fetcher =
   const href = (path: string) => backendUrl(safePath(session, path))
   const fetchBound = async (path: string, init: RequestInit = {}) => {
     const response = await fetcher(href(path), request(session, init))
-    if (session.mode === "integration" && !response.ok) {
-      let capabilityFailure = response.status === 401 || response.status === 404
-      if (response.status === 403) {
-        const body = await response.clone().json().catch(() => null) as { error?: { code?: unknown } } | null
-        capabilityFailure = typeof body?.error?.code === "string" && /capability.*(?:expired|invalid|revoked)|(?:expired|invalid|revoked).*capability/i.test(body.error.code)
-      }
-      if (capabilityFailure) options.onAuthorizationFailure?.()
+    if (session.mode === "integration" && response.status === 401) {
+      options.onAuthorizationFailure?.()
     }
     return response
   }

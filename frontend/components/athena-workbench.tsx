@@ -127,14 +127,18 @@ function hasCommonChi(groups: AthenaGroup[]) {
 type ModalName = "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
-const modalOperation: Partial<Record<Exclude<ModalName, null>, string>> = {
-  import: "upload", journal: "project", calibrate: "set_e0", align: "align", merge: "merge", merge_plot: "plot",
-  diagnostic_plot: "plot", sum: "sum", difference: "difference", smooth: "smooth", deglitch: "deglitch", truncate: "truncate",
-  rebin: "rebin", convolve: "convolve", deconvolve: "convolve", self_absorption: "parameters", dispersive: "upload",
-  lcf: "analyze", pca: "analyze", peaks: "analyze", metadata: "metadata", multi_electron: "multi_electron", log_ratio: "analyze",
-  copy_series: "copy_series", parameters: "copy_parameters", groups: "metadata", e0: "set_e0", edge_policy: "upload",
-  edge_identity: "metadata", datatype: "change_datatype", xdi: "xdi_comments", data_export: "export", parameter_report: "report",
-  context_report: "report", special_plot: "plot", rename: "metadata",
+const modalOperations: Partial<Record<Exclude<ModalName, null>, readonly string[]>> = {
+  import: ["upload", "preview", "read_upload", "import"], journal: ["project"], calibrate: ["preview", "set_e0"],
+  align: ["preview", "align"], merge: ["preview", "merge"], merge_plot: ["plot"], diagnostic_plot: ["plot"],
+  sum: ["sum"], difference: ["preview", "difference"], smooth: ["preview", "smooth"],
+  deglitch: ["preview", "deglitch"], truncate: ["preview", "truncate"], rebin: ["preview", "rebin"],
+  convolve: ["preview", "convolve"], deconvolve: ["deconvolve"], self_absorption: ["self_absorption"],
+  dispersive: ["upload", "preview", "import"], lcf: ["analyze"], pca: ["analyze"], peaks: ["analyze"],
+  metadata: ["metadata"], multi_electron: ["preview", "multi_electron"], log_ratio: ["analyze"],
+  copy_series: ["copy_series"], groups: ["metadata"],
+  e0: ["set_e0"], edge_policy: ["upload"], edge_identity: ["metadata"], datatype: ["change_datatype"],
+  xdi: ["read_group", "xdi_comments"], data_export: ["export"], parameter_report: ["report"], context_report: ["report"],
+  special_plot: ["plot"], rename: ["metadata"],
 }
 
 function Modal({ title, children, close, wide = false }: { title: string; children: ReactNode; close: () => void; wide?: boolean }) {
@@ -278,7 +282,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const integrated = session.mode === "integration"
   const can = (operation: string) => !integrated || session.allowedOperations.includes(operation)
   const canCommand = (action: string) => can(action)
-  const canOpen = (name: ModalName) => name === null || !modalOperation[name] || can(modalOperation[name]!)
+  const canOpen = (name: ModalName) => name === null || !modalOperations[name] || modalOperations[name]!.every(can)
   const [smoothingDraft, setSmoothingDraft] = useState<SmoothingDraft>()
   const [convolutionDraft, setConvolutionDraft] = useState<ConvolutionDraft>()
   const [pointEditDraft, setPointEditDraft] = useState<PointEditDraft>()
@@ -286,7 +290,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [alignmentDraft, setAlignmentDraft] = useState<AlignmentDraft>()
   const [mergeDraft, setMergeDraft] = useState<MergeDraft>()
   const [mergeInitialArray, setMergeInitialArray] = useState<'mu'|'norm'|'chi'>()
-  const rebinDefaults = useRebinDefaults()
+  const rebinDefaults = useRebinDefaults(!integrated)
   const rebinGrid = { ...defaultRebin, ...rebinDefaults.grid, enabled: true }
   const { policy: edgePolicy, update: updateEdgePolicy, storageError: edgePolicyStorageError } = useEdgePolicy()
   const [batchEdgePolicy, setBatchEdgePolicy] = useState<EdgePolicy | null>(null)
@@ -370,7 +374,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const parameterUpdatePending = Object.keys(autoApplyPlans).length > 0
   const parameterUpdateRunning = Object.values(autoApplyPlans).some(plan => plan.status === "queued")
   const selectedGroups = plotScope === "selected" ? marked : active ? [active] : []
-  const weightedPlot = useAthenaPlotWeight({ projectId: project?.id, version: project?.version, groups: selectedGroups,
+  const weightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, groups: selectedGroups,
     kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
   const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
     : weightedPlot.groups.filter(group => spectrumTraceCoordinates(group, space, plotEnergyMode, component, viewerKWeight))
@@ -943,7 +947,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     return completed
   }
   function openParameterControls() {
-    if (!canOpen("parameters") || parameterActionBlocked()) return
+    if ((!can("copy_parameters") && !can("reset_parameters")) || parameterActionBlocked()) return
     setParameterScope("all"); setParameterKey("rbkg"); setParameterTarget("marked")
     setError(""); setModal("parameters")
   }
@@ -1196,7 +1200,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
               </select>
             </label>
             <label className="ath-kweight-control" title="Shared k-weight for k, R, back-transform, and wavelet views. Auto uses each spectrum’s saved weight.">k-weight
-              <select aria-label="Viewer k-weight" value={viewerKWeight ?? ""} disabled={!active} onChange={event => setViewerKWeight(event.target.value === "" ? null : Number(event.target.value))}>
+              <select aria-label="Viewer k-weight" value={viewerKWeight ?? ""} disabled={!active || !can("plot")} onChange={event => setViewerKWeight(event.target.value === "" ? null : Number(event.target.value))}>
                 <option value="">Auto ({automaticWeightLabel})</option>
                 {[0, 1, 2, 3, 4].map(weight => <option key={weight} value={weight}>{weight}</option>)}
               </select>
@@ -1231,7 +1235,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div><label>Range <PlotRangeInput label="Plot minimum" value={analysisVisible ? null : range[0]} automatic={automaticRange[0]} disabled={analysisVisible || automaticRange[0] === null} onChange={value => setRange([value, range[1]])} /></label><span>to</span><PlotRangeInput label="Plot maximum" value={analysisVisible ? null : range[1]} automatic={automaticRange[1]} disabled={analysisVisible || automaticRange[1] === null} onChange={value => setRange([range[0], value])} />{active && project && can("export") && <button title="Export current group data" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/groups/${active.id}/export?space=${space}`, `${active.label}.csv`) }}><Download size={14} />CSV</button>}</div></div>
         </ResizablePlotCard>
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
-        <AthenaWavelet colormap={viewerColormap} projectId={project?.id} version={project?.version} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />
+        <AthenaWavelet colormap={viewerColormap} projectId={can("plot") ? project?.id : undefined} version={project?.version} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />
         {analysis && <section className="ath-analysis-result"><header><h3>{toolTitles[analysis.kind]}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><p className="ath-hint">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</p><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
         <div className="ath-center-note"><BookOpen size={15} /><span>Familiar Athena workflows. Scientific calculations by Larch.</span><button onClick={() => openTool("learn")}>Tutorials & reference <ExternalLink size={12} /></button></div>
       </section>}
@@ -1248,7 +1252,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "detector"}><details open><summary><ContextLabel label="Forward Fourier transform" open={event => showContext(event, { kind: "section", section: "forward" })}>Forward Fourier transform <small>k → R</small></ContextLabel></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
         <details><summary><ContextLabel label="Backward Fourier transform" open={event => showContext(event, { kind: "section", section: "reverse" })}>Backward Fourier transform <small>R → q</small></ContextLabel></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
         <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details></fieldset>
-      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label><p className="ath-hint" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</p>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</aside>}
+      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label><p className="ath-hint" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</p>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending || (!can("copy_parameters") && !can("reset_parameters"))} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</aside>}
     />
     <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
 
@@ -1342,7 +1346,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       <p className="ath-hint">Frozen groups and groups with frozen tied references are skipped. {parameterScope === "single" && parameterKey === "energy_shift" ? "Energy shift is explicitly selected and will change." : "Energy shifts are preserved."}</p>
       <p>{parameterTargets.length} destination group{parameterTargets.length === 1 ? "" : "s"} selected.</p>
       {error && <div className="ath-error" role="alert">{error}</div>}
-      <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => setModal(null)}>Cancel</button>{(["reset_parameters", "copy_parameters"] as const).map(action => <button key={action} className={action === "copy_parameters" ? "ath-primary" : undefined} disabled={!!busy || !parameterTargets.some(g => !g.frozen)} onClick={() => { void updateSharedParameters(action, parameterTargets, parameterScope === "single" ? { parameter: parameterKey } : { section: parameterScope }, true) }}>{action === "copy_parameters" ? "Copy parameters" : "Reset to defaults"}</button>)}</div>
+      <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => setModal(null)}>Cancel</button>{(["reset_parameters", "copy_parameters"] as const).map(action => <button key={action} className={action === "copy_parameters" ? "ath-primary" : undefined} disabled={!!busy || !can(action) || !parameterTargets.some(g => !g.frozen)} onClick={() => { void updateSharedParameters(action, parameterTargets, parameterScope === "single" ? { parameter: parameterKey } : { section: parameterScope }, true) }}>{action === "copy_parameters" ? "Copy parameters" : "Reset to defaults"}</button>)}</div>
     </div></Modal>}
 
     {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}

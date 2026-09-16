@@ -109,6 +109,49 @@ describe("integration mode", () => {
     })
   })
 
+  it.each([
+    ["deconvolve", /deconvolve data/i],
+    ["self_absorption", /fluorescence self-absorption/i],
+  ])("uses the submitted %s command action as its capability", async (operation, label) => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", operation] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
+    expect(screen.getByRole("button", { name: label })).toBeEnabled()
+  })
+
+  it("requires preview and mutation operations for preview-backed workflows", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    const { rerender } = render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "smooth"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
+    expect(screen.getByRole("button", { name: /smooth data/i })).toBeDisabled()
+
+    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "preview", "smooth"] }} />)
+    expect(screen.getByRole("button", { name: /smooth data/i })).toBeEnabled()
+  })
+
+  it("offers only the granted action in the shared parameter dialog", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "copy_parameters"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: /copy \/ reset parameters/i }))
+    const dialog = screen.getByRole("dialog", { name: /copy \/ reset parameters/i })
+    expect(within(dialog).getByRole("button", { name: /copy parameters/i })).toBeEnabled()
+    expect(within(dialog).getByRole("button", { name: /reset to defaults/i })).toBeDisabled()
+  })
+
+  it("requires read and mutation operations for XDI metadata", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    const { rerender } = render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "xdi_comments"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: "Group" }))
+    expect(screen.getByRole("button", { name: /file metadata/i })).toBeDisabled()
+
+    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "read_group", "xdi_comments"] }} />)
+    expect(screen.getByRole("button", { name: /file metadata/i })).toBeEnabled()
+  })
+
   it("gates mutation controls and selected import when operations are not granted", async () => {
     api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
     render(<AthenaWorkbench session={{ ...integrationSession, returnTo: "/projects/native" }} />)

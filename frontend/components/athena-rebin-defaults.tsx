@@ -18,7 +18,7 @@ function checked(value: unknown): SavedGrid {
   return { version: v.version, grid: gridValues(v.grid) }
 }
 
-export function useRebinDefaults() {
+export function useRebinDefaults(enabled = true) {
   const [grid, setGrid] = useState<RebinGrid>(() => gridValues(defaultRebin))
   const current = useRef(grid), edits = useRef(0), generation = useRef(0)
   const accepted = useRef<SavedGrid | null>(null), running = useRef(false)
@@ -47,12 +47,13 @@ export function useRebinDefaults() {
     }
   }
   useEffect(() => {
+    if (!enabled) { setPending(false); return }
     const controller = new AbortController()
     void load(controller.signal)
     return () => { generation.current++; controller.abort() }
     // Initial loading must not overwrite edits made while it is in flight.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [enabled])
   const problem = rebinProblem({ ...grid, enabled: true, e0: null })
   async function save() {
     if (running.current || !accepted.current || problem) return

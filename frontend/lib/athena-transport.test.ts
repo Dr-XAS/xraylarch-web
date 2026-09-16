@@ -62,22 +62,14 @@ describe("Athena transport", () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it.each([401, 404])("retires integrated authority when the project capability is no longer usable (%s)", async status => {
+  it("retires integrated authority on an unambiguous authentication failure", async () => {
     const retire = vi.fn()
-    const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status }))
-    await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1")).rejects.toMatchObject({ status })
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status: 401 }))
+    await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1")).rejects.toMatchObject({ status: 401 })
     expect(retire).toHaveBeenCalledOnce()
   })
 
-  it("retires integrated authority for an explicit capability-expiry response", async () => {
-    const retire = vi.fn()
-    const body = { error: { code: "project_capability_expired", message: "Expired", fields: [], recovery: "Launch again." } }
-    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 403 }))
-    await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1")).rejects.toMatchObject({ status: 403 })
-    expect(retire).toHaveBeenCalledOnce()
-  })
-
-  it.each([403, 500])("does not retire integrated authority for an unrelated failure (%s)", async status => {
+  it.each([403, 404, 500])("does not retire integrated authority for an ambiguous project failure (%s)", async status => {
     const retire = vi.fn()
     const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status }))
     await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1")).rejects.toMatchObject({ status })
