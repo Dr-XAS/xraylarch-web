@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useId, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react"
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react"
 import { Activity, ArrowDown, ArrowUp, BookOpen, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
-import { apiBase, athenaApi, resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
+import { apiBase, athenaApi, resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { ATHENA_COLORMAPS, DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
 import { AthenaPlot, type Space } from "./athena-plot"
@@ -124,8 +124,26 @@ function hasCommonChi(groups: AthenaGroup[]) {
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
 type ModalName = "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
+const mainMenuNames = ["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"] as const
+type MainMenuName = typeof mainMenuNames[number]
+type MenuCommand = {
+  id: string
+  menu: MainMenuName | "Help"
+  label: string
+  keywords?: string
+  disabled: boolean
+  visible?: boolean
+  section?: number
+  icon?: ReactNode
+  action?: () => void
+  href?: string
+}
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
 Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
+
+function normalizeMenuQuery(value: string) {
+  return value.normalize("NFKD").replaceAll("₀", "0").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()
+}
 
 function Modal({ title, children, close, wide = false }: { title: string; children: ReactNode; close: () => void; wide?: boolean }) {
   const ref = useRef<HTMLDialogElement>(null)
@@ -284,6 +302,10 @@ export function AthenaWorkbench() {
   const [modal, setModal] = useState<ModalName>(null)
   const [reportScope, setReportScope] = useState<'all' | 'marked'>('all')
   const [menu, setMenu] = useState("")
+  const [helpQuery, setHelpQuery] = useState("")
+  const helpInputRef = useRef<HTMLInputElement>(null)
+  const helpTriggerRef = useRef<HTMLButtonElement>(null)
+  const helpResultRefs = useRef<(HTMLButtonElement | HTMLAnchorElement | null)[]>([])
   const [specialPlot, setSpecialPlot] = useState<AthenaSpecialPlotKind>('normderiv')
   const [contextMenu, setContextMenu] = useState<ContextState | null>(null)
   const [contextReport, setContextReport] = useState<{ kind: ContextReportKind; title: string; project: AthenaProject; groups: AthenaGroup[] } | null>(null)
@@ -345,6 +367,9 @@ export function AthenaWorkbench() {
   const [ignoreCase, setIgnoreCase] = useState(false)
   const [freezeTarget, setFreezeTarget] = useState<"current" | "marked" | "all" | "matching">("marked")
   const [standardDrafts, setStandardDrafts] = useState<Record<string, string>>({})
+  useEffect(() => {
+    if (menu === "Help") helpInputRef.current?.focus()
+  }, [menu])
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
   const marked = project?.groups.filter(g => g.marked) ?? []
   const plotEnergyMode = active?.data_type === "detector" ? "mu" : energyMode
@@ -1137,26 +1162,116 @@ export function AthenaWorkbench() {
     ;[ids[index], ids[index + delta]] = [ids[index + delta], ids[index]]
     act("reorder", [], { ids })
   }
-  const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"] as ModalName[]
-  const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as ModalName[]
+  const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"] as const satisfies readonly Exclude<ModalName, null>[]
+  const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as const satisfies readonly Exclude<ModalName, null>[]
+  const menuCommands: MenuCommand[] = [
+    { id: "file-export-columns", menu: "File", label: "Export column data…", keywords: "download save csv text", disabled: !project || !active || !!busy || parameterUpdatePending, icon: <Download size={15} />, action: () => openTool("data_export") },
+    { id: "file-save-marked", menu: "File", label: "Save marked project (.prj)", keywords: "download export selected groups", disabled: !marked.length || parameterUpdatePending, visible: !!project, icon: <Download size={15} />, href: project && marked.length ? `${apiBase}/projects/${project.id}/export?format=prj&marked_only=true` : undefined },
+    { id: "file-new", menu: "File", label: "New project", keywords: "create reset workspace", disabled: !!busy || parameterUpdatePending, icon: <Plus size={15} />, action: () => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) } },
+    { id: "file-import", menu: "File", label: "Import data…", keywords: "upload add spectra files", disabled: !project || !!busy || parameterUpdatePending, icon: <Upload size={15} />, action: () => { setMenu(""); setModal("import") } },
+    { id: "file-open", menu: "File", label: "Open project…", keywords: "load recent workspace", disabled: !!busy || parameterUpdatePending, icon: <FolderOpen size={15} />, action: () => openTool("open") },
+    { id: "file-save-athena", menu: "File", label: "Save Athena project (.prj)", keywords: "download export", disabled: parameterUpdatePending, visible: !!project, section: 1, icon: <Download size={15} />, href: project ? `${apiBase}/projects/${project.id}/export?format=prj` : undefined },
+    { id: "file-save-web", menu: "File", label: "Save complete web project", keywords: "download export json", disabled: parameterUpdatePending, visible: !!project, section: 1, icon: <Download size={15} />, href: project ? `${apiBase}/projects/${project.id}/export?format=json` : undefined },
+    { id: "file-journal", menu: "File", label: "Project journal", keywords: "notes rename description", disabled: !project || parameterUpdatePending, section: 1, icon: <FileText size={15} />, action: () => openTool("journal") },
+    { id: "file-plugins", menu: "File", label: "Plugin registry…", keywords: "extensions add-ons", disabled: !!busy || parameterUpdatePending, section: 2, action: openPluginRegistry },
+    { id: "file-beamline", menu: "File", label: "Beamline identification…", keywords: "facility metadata", disabled: !!busy || parameterUpdatePending, section: 2, action: () => { setMenu(""); setModal("beamline") } },
+
+    ...(["all", "marked"] as const).map(scope => ({ id: `edit-report-${scope}`, menu: "Edit" as const, label: `Excel report on ${scope} groups…`, keywords: "spreadsheet parameters export xlsx", disabled: !project?.groups.length || !!busy || parameterUpdatePending, icon: <Download size={15} />, action: () => { setReportScope(scope); openTool("parameter_report") } })),
+
+    { id: "group-mark-freeze", menu: "Group", label: "Mark / freeze groups…", keywords: "select lock unfreeze batch", disabled: !project?.groups.length || !!busy || parameterUpdatePending, action: () => openTool("groups") },
+    { id: "group-datatype", menu: "Group", label: "Change data type…", keywords: "mu xanes norm chi", disabled: !project?.groups.length || !!busy || parameterUpdatePending, action: () => openTool("datatype") },
+    { id: "group-edge-identity", menu: "Group", label: "Edit absorber and edge…", keywords: "element e0 identity", disabled: !active || !!active?.frozen || !!busy || parameterUpdatePending, action: openEdgeIdentity },
+    { id: "group-file-metadata", menu: "Group", label: "File metadata…", keywords: "xdi headers", disabled: !active || !!busy || parameterUpdatePending, action: () => openTool("xdi") },
+    { id: "group-information", menu: "Group", label: "Group information…", keywords: "metadata label notes multiplier offset reference", disabled: !active || !!busy || parameterUpdatePending, action: () => openTool("metadata") },
+    { id: "group-duplicate", menu: "Group", label: "Duplicate current group", keywords: "copy clone", disabled: !active || !!busy || parameterUpdatePending, icon: <Copy size={15} />, action: () => act("duplicate") },
+    { id: "group-freeze", menu: "Group", label: `${active?.frozen ? "Unfreeze" : "Freeze"} group`, keywords: "freeze unfreeze lock unlock current", disabled: !active || !!busy || parameterUpdatePending, icon: <LockKeyhole size={15} />, action: () => act("metadata", [active!.id], { frozen: !active?.frozen }) },
+    { id: "group-remove", menu: "Group", label: "Remove current group", keywords: "delete", disabled: !active || !!busy || parameterUpdatePending, icon: <Trash2 size={15} />, action: () => act("delete") },
+    { id: "group-tie-reference", menu: "Group", label: "Tie marked sample and reference", keywords: "link pair", disabled: !!busy || parameterUpdatePending || marked.length !== 2, section: 1, action: () => act("tie_reference", marked.map(group => group.id)) },
+    { id: "group-untie-reference", menu: "Group", label: "Untie current reference", keywords: "unlink pair", disabled: !active || !!busy || parameterUpdatePending, section: 1, action: () => act("untie_reference") },
+
+    { id: "energy-e0", menu: "Energy", label: "Select E₀…", keywords: "e0 edge energy", disabled: !project || !!busy, action: () => { cancelPick(); setMenu(""); setError(""); setModal("e0") } },
+    { id: "energy-enforce-edge", menu: "Energy", label: "Enforce element and edge…", keywords: "import policy absorber", disabled: !!busy, action: () => { cancelPick(); setMenu(""); setModal("edge_policy") } },
+    { id: "energy-stop-edge", menu: "Energy", label: "Stop enforcing element and edge", keywords: "disable import policy absorber", disabled: !edgePolicy, action: stopEdgePolicy },
+
+    { id: "plot-diagnostic", menu: "Plot", label: "Diagnostic plots…", keywords: "chart inspect", disabled: !active || !!busy || parameterUpdatePending, action: () => openTool("diagnostic_plot") },
+    { id: "plot-merge-spread", menu: "Plot", label: "Saved merge spread…", keywords: "chart standard deviation", disabled: !active || !hasSavedMerge(active) || !!busy || parameterUpdatePending, action: () => openTool("merge_plot") },
+
+    ...toolsMenu.map(tool => ({ id: `process-${tool}`, menu: "Process" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: (tool === "dispersive" ? !project : !active) || !!busy || parameterUpdatePending, action: () => openTool(tool) })),
+    ...analysisMenu.map(tool => ({ id: `analysis-${tool}`, menu: "Analysis" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: !active || !!busy || parameterUpdatePending, action: () => openTool(tool) })),
+
+    { id: "help-learn", menu: "Help", label: "Learn Athena", keywords: "documentation guide tutorial", disabled: false, icon: <BookOpen size={15} />, action: () => openTool("learn") },
+  ]
+  const visibleMenuCommands = menuCommands.filter(command => command.visible !== false)
+  const helpTerms = normalizeMenuQuery(helpQuery).split(" ").filter(Boolean)
+  const helpMatches = helpTerms.length ? visibleMenuCommands.filter(command => {
+    const haystack = normalizeMenuQuery(`${command.menu} ${command.label} ${command.keywords ?? ""}`)
+    return helpTerms.every(term => haystack.includes(term))
+  }) : []
   const fileInput = useRef<HTMLInputElement>(null)
+
+  function toggleTopMenu(label: MainMenuName | "Help") {
+    if (menu === label) { setMenu(""); return }
+    if (label === "Help") setHelpQuery("")
+    setMenu(label)
+  }
+  function closeHelpSearch() {
+    setMenu("")
+    helpTriggerRef.current?.focus()
+  }
+  function focusHelpResult(currentIndex: number, direction: 1 | -1 | "first" | "last") {
+    const enabled = helpMatches.map((command, index) => command.disabled ? -1 : index).filter(index => index >= 0)
+    if (!enabled.length) return
+    let target = direction === "first" ? enabled[0] : direction === "last" ? enabled.at(-1)! : enabled[0]
+    if (typeof direction === "number" && currentIndex >= 0) {
+      const position = enabled.indexOf(currentIndex)
+      target = enabled[(Math.max(position, 0) + direction + enabled.length) % enabled.length]
+    }
+    helpResultRefs.current[target]?.focus()
+  }
+  function handleHelpResultKey(event: ReactKeyboardEvent<HTMLElement>, index: number) {
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault()
+      focusHelpResult(index, event.key === "ArrowDown" ? 1 : -1)
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault()
+      focusHelpResult(index, event.key === "Home" ? "first" : "last")
+    }
+  }
+  function renderMenuCommand(command: MenuCommand, searchIndex?: number) {
+    const searchResult = searchIndex !== undefined
+    const content = searchResult ? <span className="ath-help-result-path"><span>{command.menu}</span><i aria-hidden="true">›</i><strong>{command.label}</strong></span> : <>{command.icon}{command.label}</>
+    const common = searchResult ? { className: "ath-help-result", "aria-label": `${command.menu} › ${command.label}` } : {}
+    if (command.href && !command.disabled) return <a {...common} key={command.id} href={command.href}
+      ref={searchResult ? node => { helpResultRefs.current[searchIndex] = node } : undefined}
+      onKeyDown={searchResult ? event => handleHelpResultKey(event, searchIndex) : undefined}
+      onClick={event => { if (parameterActionBlocked()) event.preventDefault(); else setMenu("") }}>{content}</a>
+    return <button {...common} key={command.id} type="button" disabled={command.disabled}
+      ref={searchResult ? node => { helpResultRefs.current[searchIndex] = node } : undefined}
+      onKeyDown={searchResult ? event => handleHelpResultKey(event, searchIndex) : undefined}
+      onClick={() => { if (!command.disabled) command.action?.() }}>{content}</button>
+  }
+  function renderMainMenuCommands(label: MainMenuName) {
+    const commands = visibleMenuCommands.filter(command => command.menu === label)
+    return <>{commands.map((command, index) => <Fragment key={command.id}>
+      {index > 0 && (command.section ?? 0) !== (commands[index - 1].section ?? 0) && <hr />}
+      {renderMenuCommand(command)}
+    </Fragment>)}{label === "Group" && <><p className="ath-hint">Mark exactly two groups: the first in list order is the sample, the second its reference. Tying adopts the sample’s energy shift and keeps both shifts linked when either is edited.</p>{marked.length === 2 && <p className="ath-hint">Sample: {marked[0].label}<br />Reference: {marked[1].label}</p>}</>}</>
+  }
 
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>Larch-Web</h1><p>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</p></div></div>
-      <nav aria-label="Main menu">{["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"].map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => setMenu(menu === label ? "" : label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={e => { if (e.key === "Escape") setMenu("") }}>
-        {label === "Edit" && <>{(['all', 'marked'] as const).map(scope => <button key={scope} disabled={!project?.groups.length || !!busy} onClick={() => { setReportScope(scope); openTool('parameter_report') }}><Download size={15} />Excel report on {scope} groups…</button>)}</>}
-        {label === "Plot" && <><button disabled={!active||!!busy||parameterUpdatePending} onClick={()=>openTool('diagnostic_plot')}>Diagnostic plots…</button><button disabled={!active||!hasSavedMerge(active)||!!busy} onClick={()=>openTool('merge_plot')}>Saved merge spread…</button></>}
-        {label === "Energy" && <><button disabled={!project || !!busy} onClick={() => { cancelPick(); setMenu(""); setError(""); setModal("e0") }}>Select E₀…</button><button disabled={!!busy} onClick={() => { cancelPick(); setMenu(""); setModal("edge_policy") }}>Enforce element and edge…</button><button disabled={!edgePolicy} onClick={stopEdgePolicy}>Stop enforcing element and edge</button></>}
-        {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("groups")}>Mark / freeze groups…</button>}
-        {label === "Group" && <button disabled={!project?.groups.length || !!busy} onClick={() => openTool("datatype")}>Change data type…</button>}
-        {label === "Group" && <button disabled={!active || active.frozen || !!busy} onClick={openEdgeIdentity}>Edit absorber and edge…</button>}
-        {label === "Group" && <button disabled={!active || !!busy} onClick={() => openTool('xdi')}>File metadata…</button>}
-        {label === "File" && <button disabled={!project || !active || !!busy} onClick={() => openTool("data_export")}><Download size={15} />Export column data…</button>}
-        {label === "File" && project && (marked.length ? <a href={`${apiBase}/projects/${project.id}/export?format=prj&marked_only=true`} onClick={event => { if (parameterActionBlocked()) event.preventDefault() }}><Download size={15} />Save marked project (.prj)</a> : <button disabled>Save marked project (.prj)</button>)}
-        {label === "File" && <><button disabled={!!busy || parameterUpdatePending} onClick={() => { setMenu(""); void task("Creating project", async () => { accept(await athenaApi("/projects", {})); setDrafts({}) }) }}><Plus size={15} />New project</button><button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setMenu(""); setModal("import") }}><Upload size={15} />Import data…</button><button disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project…</button><hr />{project && <><a href={`${apiBase}/projects/${project.id}/export?format=prj`} onClick={event => { if (parameterActionBlocked()) event.preventDefault() }}><Download size={15} />Save Athena project (.prj)</a><a href={`${apiBase}/projects/${project.id}/export?format=json`} onClick={event => { if (parameterActionBlocked()) event.preventDefault() }}><Download size={15} />Save complete web project</a></>}<button onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending}><FileText size={15} />Project journal</button><hr /><button disabled={!!busy || parameterUpdatePending} onClick={openPluginRegistry}>Plugin registry…</button><button disabled={!!busy || parameterUpdatePending} onClick={() => { setMenu(""); setModal("beamline") }}>Beamline identification…</button></>}
-        {label === "Group" && <><button disabled={!active || !!busy} onClick={() => openTool("metadata")}>Group information…</button><button disabled={!active || !!busy} onClick={() => act("duplicate")}><Copy size={15} />Duplicate current group</button><button disabled={!active || !!busy} onClick={() => act("metadata", [active!.id], { frozen: !active?.frozen })}><LockKeyhole size={15} />{active?.frozen ? "Unfreeze" : "Freeze"} group</button><button disabled={!active || !!busy} onClick={() => act("delete")}><Trash2 size={15} />Remove current group</button><hr /><button disabled={!!busy || marked.length !== 2} onClick={() => act("tie_reference", marked.map(g => g.id))}>Tie marked sample and reference</button><button disabled={!active || !!busy} onClick={() => act("untie_reference")}>Untie current reference</button><p className="ath-hint">Mark exactly two groups: the first in list order is the sample, the second its reference. Tying adopts the sample’s energy shift and keeps both shifts linked when either is edited.</p>{marked.length === 2 && <p className="ath-hint">Sample: {marked[0].label}<br />Reference: {marked[1].label}</p>}</>}
-        {(label === "Process" ? toolsMenu : label === "Analysis" ? analysisMenu : []).map(tool => <button disabled={(tool === "dispersive" ? !project : !active) || !!busy} key={tool} onClick={() => openTool(tool)}>{toolTitles[tool!]}</button>)}
-      </div>}</div>)}</nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><span className="ath-local"><i /> Local workspace</span></header>
+      <nav aria-label="Main menu">
+        {mainMenuNames.map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => toggleTopMenu(label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={event => { if (event.key === "Escape") setMenu("") }}>{renderMainMenuCommands(label)}</div>}</div>)}
+        <div className="ath-menu-wrap ath-help-menu-wrap"><button ref={helpTriggerRef} aria-haspopup="dialog" aria-controls="ath-menu-command-search" aria-expanded={menu === "Help"} onClick={() => toggleTopMenu("Help")}>Help<ChevronDown size={12} /></button>
+          {menu === "Help" && <div id="ath-menu-command-search" className="ath-menu ath-help-menu" role="dialog" aria-label="Search menu commands" onKeyDown={event => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeHelpSearch() } }}>
+            <label className="ath-help-search"><Search size={18} aria-hidden="true" /><input ref={helpInputRef} type="search" aria-label="Search menu commands" placeholder="Search menus" autoComplete="off" value={helpQuery} onChange={event => setHelpQuery(event.target.value)} onKeyDown={event => {
+              if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); focusHelpResult(-1, event.key === "ArrowDown" ? "first" : "last") }
+              else if (event.key === "Enter") { const index = helpMatches.findIndex(command => !command.disabled); if (index >= 0) { event.preventDefault(); helpResultRefs.current[index]?.click() } }
+            }} /></label>
+            <div className="ath-help-results">{!helpTerms.length ? <p className="ath-help-message">Type a keyword to find a menu command.</p> : !helpMatches.length ? <p className="ath-help-message" role="status">No menu commands found.</p> : <><span className="ath-sr-only" role="status">{helpMatches.length} menu command{helpMatches.length === 1 ? "" : "s"} found.</span>{helpMatches.map((command, index) => renderMenuCommand(command, index))}</>}</div>
+          </div>}
+        </div>
+      </nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><span className="ath-local"><i /> Local workspace</span></header>
     <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy || parameterUpdatePending} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy || parameterUpdatePending} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" /><button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>{project && <a className="ath-button ath-primary" href={`${apiBase}/projects/${project.id}/export?format=prj`} onClick={event => { if (parameterActionBlocked()) event.preventDefault() }}><Download size={15} />Save project</a>}</div></section>
     <section className="ath-edge-policy-bar" aria-label="Import edge policy"><span>Import edge enforcement: <strong>{edgePolicyDescription(edgePolicy)}</strong>. Applies to new raw-file samples. References use their own E₀ and can share the sample’s element.</span>{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}
@@ -1166,7 +1281,10 @@ export function AthenaWorkbench() {
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions"><button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button><button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending} aria-label="Project journal"><FileText size={15} /></button></div>
         <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => setSearch(e.target.value)} /></label>
         <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><div><button onClick={() => moveGroup(-1)} disabled={!active || !!busy} aria-label="Move group up"><ArrowUp size={13} /></button><button onClick={() => moveGroup(1)} disabled={!active || !!busy} aria-label="Move group down"><ArrowDown size={13} /></button></div></div>
-        <div className="ath-group-list" onContextMenu={event => showContext(event, { kind: "group" })} onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) showContext(event, { kind: "group" }) }}>{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map(g => <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy || parameterUpdatePending} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className="ath-swatch" style={{ background: spectrumColors.get(g.id) ?? "var(--ath-line)" }} /><span><strong>{g.label}</strong><small>{isDifferenceGroup(g) ? (g.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(g)} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title={autoApplyPlans[g.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[g.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button></div>)}</div>
+        <div className="ath-group-list" onContextMenu={event => showContext(event, { kind: "group" })} onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) showContext(event, { kind: "group" }) }}>{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map(g => {
+          const measurementMode = measurementModeLabel(g)
+          return <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy || parameterUpdatePending} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className="ath-swatch" style={{ background: spectrumColors.get(g.id) ?? "var(--ath-line)" }} /><span><strong>{g.label}</strong><small>{isDifferenceGroup(g) ? (g.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(g)} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title={autoApplyPlans[g.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[g.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button></div>
+        })}</div>
         {!project?.groups.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
         <div className="ath-sidebar-bottom"><button disabled={!!busy || !project} onClick={() => { void task("Loading copper example", async () => { const next = await command("example"); setActiveId(next.groups.at(-3)!.id) }) }}><Activity size={16} />Load copper foil example</button><small>Real spectra · 10 K, 50 K & 300 K</small></div>
       </aside>}

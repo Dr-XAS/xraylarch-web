@@ -149,6 +149,7 @@ test("column preview, reference, invalid mapping recovery and imported values", 
   expect(project.groups[1].marked).toBe(false)
   await page.reload()
   await expect(page.getByRole("heading", { name: "Data groups 2", exact: true })).toBeVisible()
+  await expect(page.getByText("trans", { exact: true })).toHaveCount(2)
   expect(errors).toEqual([])
 })
 
@@ -186,6 +187,7 @@ test("MED range selection, pause/replot, separate channel import and mobile prev
   expect(project.groups[1].label).toContain("detb")
   expect(project.groups[0].mu).toEqual(selected[0].y)
   expect(project.groups[1].mu).toEqual(selected[1].y)
+  await expect(page.getByText("fluo", { exact: true })).toHaveCount(2)
 })
 
 test("native denominator sums and sign/scale controls affect preview and imported data", async ({ page }) => {

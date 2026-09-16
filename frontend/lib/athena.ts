@@ -28,6 +28,12 @@ export function dataTypeLabel(group: AthenaGroup) {
   if (group.data_type === 'xanes' && group.is_normalized) return 'Normalized XANES'
   return { mu: 'μ(E)', xanes: 'XANES', norm: 'Normalized μ(E)', chi: 'χ(k)', xmudat: 'FEFF μ(E)', detector: 'Detector signal' }[group.data_type]
 }
+export function measurementModeLabel(group: AthenaGroup): "trans" | "fluo" | null {
+  const mapping = group.source.mapping
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return null
+  const mode = (mapping as Record<string, unknown>).mode
+  return mode === "transmission" ? "trans" : mode === "fluorescence" ? "fluo" : null
+}
 export function isDifferenceGroup(group: AthenaGroup) {
   return group.is_difference ?? (group.source.operation === "difference")
 }

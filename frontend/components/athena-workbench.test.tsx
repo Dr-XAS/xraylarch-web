@@ -411,6 +411,118 @@ describe("AthenaWorkbench branding", () => {
   })
 })
 
+describe("AthenaWorkbench menu command search", () => {
+  async function openMenuSearch(project = projectFixture()) {
+    await openSaved(project)
+    const navigation = screen.getByRole("navigation", { name: /main menu/i })
+    const trigger = within(navigation).getByRole("button", { name: "Help" })
+    fireEvent.click(trigger)
+    const dialog = screen.getByRole("dialog", { name: "Search menu commands" })
+    const searchbox = within(dialog).getByRole("searchbox", { name: "Search menu commands" })
+    await waitFor(() => expect(searchbox).toHaveFocus())
+    return { trigger, dialog, searchbox }
+  }
+
+  it("opens from Help, focuses search, and shows menu paths for keyword matches", async () => {
+    const { dialog, searchbox } = await openMenuSearch()
+    expect(within(dialog).getByText("Type a keyword to find a menu command.")).toBeVisible()
+
+    fireEvent.change(searchbox, { target: { value: "smooth" } })
+
+    expect(within(dialog).getByRole("button", { name: "Process › Smooth data" })).toBeEnabled()
+    expect(within(dialog).queryByText("Type a keyword to find a menu command.")).not.toBeInTheDocument()
+  })
+
+  it("moves from search to a result and opens the command with the keyboard", async () => {
+    const { dialog, searchbox } = await openMenuSearch()
+    fireEvent.change(searchbox, { target: { value: "journal" } })
+    const result = within(dialog).getByRole("button", { name: "File › Project journal" })
+
+    fireEvent.keyDown(searchbox, { key: "ArrowDown" })
+    expect(result).toHaveFocus()
+    fireEvent.keyDown(result, { key: "Enter" })
+    // jsdom does not synthesize the native button click that browsers dispatch for Enter.
+    fireEvent.click(result)
+
+    expect(await screen.findByRole("dialog", { name: "Project journal" })).toBeVisible()
+  })
+
+  it("runs the same Import data action from a search result", async () => {
+    const { dialog, searchbox } = await openMenuSearch()
+    fireEvent.change(searchbox, { target: { value: "import" } })
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "File › Import data…" }))
+
+    expect(screen.queryByRole("dialog", { name: "Search menu commands" })).not.toBeInTheDocument()
+    expect(await screen.findByRole("dialog", { name: "Import spectra" })).toBeVisible()
+  })
+
+  it("keeps unavailable commands visible and prevents their execution", async () => {
+    const { dialog, searchbox } = await openMenuSearch(projectFixture({ groups: [] }))
+    fireEvent.change(searchbox, { target: { value: "smooth" } })
+    const result = within(dialog).getByRole("button", { name: "Process › Smooth data" })
+
+    expect(result).toBeDisabled()
+    fireEvent.click(result)
+
+    expect(screen.getByRole("dialog", { name: "Search menu commands" })).toBeVisible()
+    expect(screen.queryByRole("dialog", { name: "Smooth data" })).not.toBeInTheDocument()
+    expect(api).toHaveBeenCalledOnce()
+  })
+
+  it("disables guarded commands while an automatic parameter update is pending", async () => {
+    const project = await openSaved()
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.2)
+    const navigation = screen.getByRole("navigation", { name: /main menu/i })
+    fireEvent.click(within(navigation).getByRole("button", { name: "Help" }))
+    const dialog = screen.getByRole("dialog", { name: "Search menu commands" })
+    fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search menu commands" }), { target: { value: "smooth" } })
+    const result = within(dialog).getByRole("button", { name: "Process › Smooth data" })
+
+    expect(result).toBeDisabled()
+    fireEvent.click(result)
+    expect(screen.queryByRole("dialog", { name: "Smooth data" })).not.toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "Search menu commands" })).toBeVisible()
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
+  })
+
+  it("closes on Escape and restores focus to Help", async () => {
+    const { trigger, searchbox } = await openMenuSearch()
+
+    fireEvent.keyDown(searchbox, { key: "Escape" })
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Search menu commands" })).not.toBeInTheDocument())
+    expect(trigger).toHaveFocus()
+  })
+
+  it("announces an empty result set", async () => {
+    const { dialog, searchbox } = await openMenuSearch()
+
+    fireEvent.change(searchbox, { target: { value: "not-a-real-command" } })
+
+    expect(within(dialog).getByText("No menu commands found.")).toBeVisible()
+  })
+})
+
+describe("AthenaWorkbench measurement mode tags", () => {
+  it("labels imported transmission and fluorescence groups without guessing direct signals", async () => {
+    const transmission = group("transmission", "Transmission scan")
+    transmission.source = { mapping: { mode: "transmission" } }
+    const fluorescence = group("fluorescence", "Fluorescence scan")
+    fluorescence.source = { mapping: { mode: "fluorescence" } }
+    const direct = group("direct", "Direct signal")
+    direct.source = { mapping: { mode: "mu" } }
+    await openSaved(projectFixture({ groups: [transmission, fluorescence, direct] }))
+
+    const transRow = screen.getByRole("button", { name: /^Transmission scan/ })
+    expect(within(transRow).getByText("trans")).toHaveAttribute("title", "Transmission")
+    const fluoRow = screen.getByRole("button", { name: /^Fluorescence scan/ })
+    expect(within(fluoRow).getByText("fluo")).toHaveAttribute("title", "Fluorescence")
+    expect(within(screen.getByRole("button", { name: /^Direct signal/ })).queryByText(/^(trans|fluo)$/)).toBeNull()
+  })
+})
+
 describe("AthenaWorkbench native context actions", () => {
   function groupContext() {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for current group' }))
