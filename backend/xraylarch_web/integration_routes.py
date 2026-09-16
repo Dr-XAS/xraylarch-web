@@ -242,6 +242,8 @@ def build_integration_router(
             project = service.athena_store.load(project_id)
             claim(nonce, timestamp)
             return service._project_summary(project, record).model_dump(mode="json")
+        except (IntegrationNotFoundError, IntegrationAuthorizationError):
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
         except Exception as exc:
             raise _http_error(exc)
 
