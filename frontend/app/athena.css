@@ -154,6 +154,51 @@
 .ath-apply { border-top: 1px solid var(--ath-line); padding: 14px 16px 18px; margin-top: auto; background: var(--ath-surface-muted); }
 .ath-apply > .ath-primary { width: 100%; margin-top: 11px; padding: 10px; }.ath-apply > .ath-reset { display: block; font-size: 10px; color: #9a956f; margin: 7px auto 0; padding: 2px; }
 .ath-param-empty { padding: 45px 25px; text-align: center; color: var(--ath-muted); }.ath-param-empty p { color: var(--ath-muted); margin-top: 15px; }.ath-param-empty small { line-height: 1.7; display: block; font-size: 11px; }
+
+/* Keep text in the data-group and processing panes 2px above the app's base scale. */
+#athena-data-groups,
+#athena-processing-parameters { --ath-pane-font-bump: 2px; font-size: calc(13px + var(--ath-pane-font-bump)); }
+
+#athena-data-groups .ath-panel-heading h2,
+#athena-processing-parameters > .ath-panel-heading h2,
+#athena-data-groups .ath-group small,
+#athena-data-groups .ath-sidebar-bottom > small,
+#athena-processing-parameters .ath-parameter-tabs button,
+#athena-processing-parameters .ath-param-current button,
+#athena-processing-parameters .ath-param-fields summary small,
+#athena-processing-parameters .ath-param-fields input:not([type=checkbox]):not([type=radio]),
+#athena-processing-parameters .ath-param-fields select,
+#athena-processing-parameters .ath-param-fields textarea,
+#athena-processing-parameters .ath-param-fields button:not(.ath-context-trigger):not(.ath-pick-button),
+#athena-processing-parameters .ath-param-fields .ath-field em,
+#athena-processing-parameters .ath-apply > .ath-primary {
+  font-size: calc(12px + var(--ath-pane-font-bump));
+}
+
+#athena-data-groups .ath-sidebar-actions button,
+#athena-data-groups .ath-search input,
+#athena-data-groups .ath-group strong,
+#athena-processing-parameters .ath-param-fields summary,
+#athena-processing-parameters .ath-param-empty small {
+  font-size: calc(11px + var(--ath-pane-font-bump));
+}
+
+#athena-data-groups .ath-panel-heading h2 span,
+#athena-data-groups .ath-mark-toolbar,
+#athena-data-groups .ath-sidebar-bottom > button,
+#athena-data-groups .ath-empty-groups span,
+#athena-processing-parameters .ath-param-current strong,
+#athena-processing-parameters .ath-param-fields .ath-field,
+#athena-processing-parameters .ath-param-fields .ath-field > span small,
+#athena-processing-parameters .ath-param-fields .ath-check,
+#athena-processing-parameters .ath-param-fields .ath-hint,
+#athena-processing-parameters .ath-apply .ath-check,
+#athena-processing-parameters .ath-apply .ath-hint,
+#athena-processing-parameters .ath-apply > .ath-reset {
+  font-size: calc(10px + var(--ath-pane-font-bump));
+}
+
+#athena-data-groups .ath-empty-groups p { font-size: calc(12px + var(--ath-pane-font-bump)); }
 .ath-status { display: flex; justify-content: space-between; align-items: center; min-height: 33px; padding: 0 17px; border-top: 1px solid var(--ath-line); background: var(--ath-surface-muted); color: var(--ath-muted); font-size: 12px; }
 .ath-status span { display: flex; align-items: center; gap: 8px; }.ath-status i { width: 5px; height: 5px; border-radius: 50%; background: #75a16d; }.ath-status i.error { background: #c87557; }.ath-status b { font-size: 12px; font-weight: 500; color: var(--ath-muted); margin-left: 20px; }
 .ath-error { display: flex; gap: 12px; align-items: center; padding: 12px 18px; margin: 8px 0; border: 1px solid #e9c8b4; border-radius: 4px; color: #994f30; background: #fff8f2; font-size: 12px; line-height: 1.5; }.ath-app .ath-error button { margin-left: auto; }
