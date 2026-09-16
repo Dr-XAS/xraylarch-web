@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
@@ -48,6 +49,7 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
   project:AthenaProject;activeId:string;selectGroup:(id:string)=>void;initialMode:'point'|'truncate';initialDraft?:PointEditDraft;rememberDraft:(d:PointEditDraft)=>void;
   setBusy:(v:string)=>void;disabled:boolean;saved:(p:AthenaProject)=>void;close:()=>void;
 }){
+  const athenaApi=useAthenaApi()
   const group=project.groups.find(g=>g.id===activeId),effective=group?.result?.effective??{},e0=typeof effective.e0==='number'?effective.e0:null
   const [draft,setDraft]=useState<PointEditDraft>(()=>({...initialDraft,mode:initialMode,point:'',
     emin:initialDraft?.emin??String(effective.norm1??30),emax:initialDraft?.emax??String(effective.norm2??(e0&&group?group.energy.at(-1)!+group.parameters.energy_shift-e0:200)),

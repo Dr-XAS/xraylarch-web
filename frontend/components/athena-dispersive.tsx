@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState } from 'react'
-import { apiBase, athenaApi, isDifferenceGroup, type AthenaProject } from '@/lib/athena'
+import { apiBase, isDifferenceGroup, type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import type { InspectionResponse } from '@/lib/contracts'
 import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-dispersive.module.css'
@@ -28,6 +29,7 @@ function Figure({label,traces,xlabel,ylabel,range}: {label:string;traces:Trace[]
 export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
   project:AthenaProject;activeId:string;onSaved:(project:AthenaProject)=>void;setBusy:(label:string)=>void
 }) {
+  const athenaApi=useAthenaApi()
   const candidates=project.groups.filter(g=>!['chi','detector'].includes(g.data_type)&&!isDifferenceGroup(g))
   const [standard,setStandard]=useState(candidates.find(g=>g.id===activeId)?.id??candidates[0]?.id??'')
   const [inspection,setInspection]=useState<InspectionResponse|null>(null)

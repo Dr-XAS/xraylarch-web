@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { athenaApi, rebinUnavailable, type AthenaProject, type RebinPreview } from '@/lib/athena'
+import { rebinUnavailable, type AthenaProject, type RebinPreview } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import { rebinProblem, type ImportRebinOptions } from '@/lib/athena-import'
 import styles from './athena-rebin.module.css'
 
@@ -15,6 +16,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
   saved: (project: AthenaProject) => void; setBusy: (message: string) => void
   defaultsControls?: ReactNode
 }) {
+  const athenaApi = useAthenaApi()
   const [space, setSpace] = useState<'E' | 'k'>('E')
   const [previewMarked, setPreviewMarked] = useState(false)
   const [showOriginal, setShowOriginal] = useState(true)

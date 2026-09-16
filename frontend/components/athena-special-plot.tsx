@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { athenaApi, type AthenaGroup } from "@/lib/athena"
+import { type AthenaGroup } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 import { AthenaDiagnosticPlot } from "./athena-diagnostic-plot"
 import styles from "./athena-special-plot.module.css"
 
@@ -29,6 +30,7 @@ export type ShortcutPlot = { project_id: string; version: number; options: Optio
 } }
 
 export function AthenaSpecialPlot({ kind, groups, active, projectId, version, energyMode = "norm", component = "mag", offset = 0, selectGroup }: Props) {
+  const athenaApi = useAthenaApi()
   const marked = ["i0", "e00", "normscaled", "biquad"].includes(kind)
   const selected = marked ? groups.filter(g => g.marked) : active ? [active] : []
   const ids = selected.map(g => g.id), quad = kind === 'quad' || kind === 'biquad'

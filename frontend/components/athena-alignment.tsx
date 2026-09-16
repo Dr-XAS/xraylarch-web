@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
@@ -64,6 +65,7 @@ function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Option
 }
 
 export function AthenaAlignment({project,activeId,selectGroup,initialDraft,rememberDraft,disabled=false,setBusy,saved,close}:{project:AthenaProject;activeId:string;selectGroup:(id:string)=>void;initialDraft?:AlignmentDraft;rememberDraft:(d:AlignmentDraft)=>void;disabled?:boolean;setBusy:(s:string)=>void;saved:(p:AthenaProject)=>void;close:()=>void}){
+  const athenaApi=useAthenaApi()
   const group=project.groups.find(g=>g.id===activeId)
   const [draft,setDraft]=useState<AlignmentDraft>(()=>({...{standard_id:project.groups.find(g=>g.id!==activeId&&g.data_type!=='chi'&&g.data_type!=='detector')?.id??'',display:'smoothed',fit:'smoothed',use_reference:false},...initialDraft}))
   const [operation,setOperation]=useState<Options['operation']>('inspect'),[scope,setScope]=useState<'current'|'marked'>('current')

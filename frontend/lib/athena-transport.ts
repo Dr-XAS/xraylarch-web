@@ -10,7 +10,7 @@ export type AthenaSession =
       returnTo?: string
       sourceGroupId?: string
       allowedOperations: string[]
-      expiresAt?: string
+      expiresAt: string
     }
 
 export interface AthenaTransport {
@@ -21,6 +21,7 @@ export interface AthenaTransport {
 }
 
 type Fetcher = typeof fetch
+type AthenaTransportOptions = { onAuthorizationFailure?: () => void }
 
 function decodedPath(path: string): string | null {
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) return null
@@ -71,9 +72,20 @@ function attachmentFilename(value: string | null, fallback: string) {
   return candidate || fallback
 }
 
-export function createAthenaTransport(session: AthenaSession, fetcher: Fetcher = fetch): AthenaTransport {
+export function createAthenaTransport(session: AthenaSession, fetcher: Fetcher = fetch, options: AthenaTransportOptions = {}): AthenaTransport {
   const href = (path: string) => backendUrl(safePath(session, path))
-  const fetchBound = (path: string, init: RequestInit = {}) => fetcher(href(path), request(session, init))
+  const fetchBound = async (path: string, init: RequestInit = {}) => {
+    const response = await fetcher(href(path), request(session, init))
+    if (session.mode === "integration" && !response.ok) {
+      let capabilityFailure = response.status === 401 || response.status === 404
+      if (response.status === 403) {
+        const body = await response.clone().json().catch(() => null) as { error?: { code?: unknown } } | null
+        capabilityFailure = typeof body?.error?.code === "string" && /capability.*(?:expired|invalid|revoked)|(?:expired|invalid|revoked).*capability/i.test(body.error.code)
+      }
+      if (capabilityFailure) options.onAuthorizationFailure?.()
+    }
+    return response
+  }
   return {
     href,
     fetch: fetchBound,

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest"
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { IntegrationLaunch } from "./integration-launch"
@@ -15,7 +15,7 @@ beforeEach(() => {
   sessionStorage.clear()
   history.replaceState({}, "", "/integration?launch=one-use-handle&return=%2Fanalysis%2F1")
 })
-afterEach(() => { cleanup(); vi.restoreAllMocks(); sessionStorage.clear() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); sessionStorage.clear() })
 
 describe("IntegrationLaunch", () => {
   it("scrubs the launch handle before consuming it", async () => {
@@ -65,7 +65,7 @@ describe("IntegrationLaunch", () => {
   })
 
   it("restores a valid tab session on refresh without consuming again", async () => {
-    sessionStorage.setItem("xraylarch.integration.session.v2", JSON.stringify({ mode: "integration", projectId: "p1", capability: "browser-capability", allowedOperations: ["read_project"] }))
+    sessionStorage.setItem("xraylarch.integration.session.v2", JSON.stringify({ mode: "integration", projectId: "p1", capability: "browser-capability", allowedOperations: ["read_project"], expiresAt: "2099-01-01T00:00:00Z" }))
     history.replaceState({}, "", "/integration")
     const fetcher = vi.fn()
     vi.stubGlobal("fetch", fetcher)
@@ -81,6 +81,27 @@ describe("IntegrationLaunch", () => {
     render(<IntegrationLaunch />)
     expect(await screen.findByText(/Launch again from Dr\.XAS/i)).toBeInTheDocument()
     expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it("clears a stale return selection before a new launch and when launch fails", async () => {
+    sessionStorage.setItem("xraylarch.integration.return-selection.v1", JSON.stringify({ projectId: "old" }))
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("rejected", { status: 403 })))
+    render(<IntegrationLaunch />)
+    expect(sessionStorage.getItem("xraylarch.integration.return-selection.v1")).toBeNull()
+    expect(await screen.findByText(/Launch again from Dr\.XAS/i)).toBeInTheDocument()
+  })
+
+  it("expires mounted authority at the local deadline", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date("2026-09-16T12:00:00Z"))
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(response))))
+    render(<IntegrationLaunch />)
+    await screen.findByText(/spectrum/i)
+    expect(sessionStorage.getItem("xraylarch.integration.session.v2")).not.toBeNull()
+    await act(async () => { vi.advanceTimersByTime(300_001) })
+    expect(screen.getByText(/Launch again from Dr\.XAS/i)).toBeInTheDocument()
+    expect(sessionStorage.getItem("xraylarch.integration.session.v2")).toBeNull()
+    vi.useRealTimers()
   })
 
   it("shows a relaunch message for missing or rejected state", async () => {

@@ -117,15 +117,11 @@ export function athenaClient(session: AthenaSession = { mode: "legacy" }) {
     } : {}),
   })
 }
-let activeClient = athenaClient()
-let activeTransport = createAthenaTransport({ mode: "legacy" })
-export function bindAthenaClient(session: AthenaSession) { activeClient = athenaClient(session); activeTransport = createAthenaTransport(session) }
-export function athenaTransport() { return activeTransport }
-export function athenaDownload(path: string, filename?: string) { return activeTransport.download(`/api/athena${path}`, filename) }
 export function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
-  return activeClient<T>(path, body, method, signal)
+  return athenaClient()<T>(path, body, method, signal)
 }
-
+export function athenaTransport() { return createAthenaTransport({ mode: "legacy" }) }
+export function athenaDownload(path: string, filename?: string) { return athenaTransport().download(`/api/athena${path}`, filename) }
 export const resources = [
   { title: "Athena users’ guide", author: "Bruce Ravel", kind: "Manual", url: "https://bruceravel.github.io/demeter/documents/Athena/index.html", description: "The reference for Athena’s processing, plotting, and analysis tools." },
   { title: "Basic data processing", author: "Bruce Ravel", kind: "Tutorial", url: "https://bruceravel.github.io/demeter/documents/Athena/examples/data.html", description: "Follow an iron-foil example through calibration, alignment, merging, and EXAFS." },

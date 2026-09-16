@@ -22,8 +22,17 @@ vi.setConfig({ testTimeout: 15000 })
 vi.mock("@/lib/athena", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/athena")>(),
   athenaApi: vi.fn(),
-  bindAthenaClient: vi.fn(),
 }))
+vi.mock("@/lib/athena-context", async importOriginal => {
+  const original = await importOriginal<typeof import("@/lib/athena-context")>()
+  const athena = await import("@/lib/athena")
+  return {
+    ...original,
+    AthenaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useAthenaApi: () => athena.athenaApi,
+    useAthenaTransport: () => athena.athenaTransport(),
+  }
+})
 vi.mock("next/dynamic", () => ({ default: () => () => null }))
 // Preferences use their own service boundary and have real-store/browser coverage.
 // Keep the scientific API request assertions below independent of that service.
@@ -50,7 +59,7 @@ const api = vi.mocked(athenaApi)
 const plot = vi.mocked(AthenaPlot)
 const projectImport = vi.mocked(AthenaProjectImport)
 const storageKey = "athena.project"
-const integrationSession = { mode: "integration" as const, projectId: "integrated-project", capability: "browser-capability", allowedOperations: ["read_project"] }
+const integrationSession = { mode: "integration" as const, projectId: "integrated-project", capability: "browser-capability", allowedOperations: ["read_project"], expiresAt: "2099-01-01T00:00:00Z" }
 const dialogDescriptors = {
   showModal: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal"),
   close: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close"),
@@ -95,7 +104,7 @@ describe("integration mode", () => {
     importLink.addEventListener("click", event => event.preventDefault(), { once: true })
     fireEvent.click(importLink)
     expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.return-selection.v1")!)).toEqual({
-      projectId: "integrated-project", projectVersion: 7,
+      projectId: "integrated-project", projectVersion: 7, sessionExpiresAt: integrationSession.expiresAt,
       groups: [{ id: "sample", version: 7 }, { id: "oxide", version: 7 }],
     })
   })
@@ -106,9 +115,24 @@ describe("integration mode", () => {
     await screen.findByText("SPECTRUM WORKSPACE")
     expect(screen.queryByRole("button", { name: /^Import data$/i })).not.toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /edit absorber and edge/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /edit group information/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+    expect(screen.getByRole("button", { name: /excel report on all groups/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Plot" }))
+    expect(screen.getByRole("button", { name: /diagnostic plots/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Energy" }))
+    expect(screen.getByRole("button", { name: /select e₀/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Group" }))
+    expect(screen.getByRole("button", { name: /mark \/ freeze groups/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /change data type/i })).toBeDisabled()
+    expect(screen.getAllByRole("button", { name: /edit absorber and edge/i }).every(button => button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getByRole("button", { name: /file metadata/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /duplicate current group/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /remove current group/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    expect(screen.getByRole("button", { name: /export column data/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Process" }))
     expect(screen.getByRole("button", { name: /smooth data/i })).toBeDisabled()
     expect(screen.getByRole("link", { name: /import 0 selected groups into dr\.xas/i })).toHaveAttribute("aria-disabled", "true")

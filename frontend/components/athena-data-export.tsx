@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { athenaApi, athenaTransport, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi, useAthenaTransport } from '@/lib/athena-context'
 import { decodeApiError } from '@/lib/backend-client'
 import styles from './athena-data-export.module.css'
 
@@ -26,6 +27,7 @@ function validPreview(value: Preview, project: AthenaProject) {
 export function AthenaDataExport({ project, groupId, close, onBusyChange }: {
   project: AthenaProject; groupId: string; close: () => void; onBusyChange: (value: boolean) => void
 }) {
+  const athenaApi = useAthenaApi(), transport = useAthenaTransport()
   const [scope, setScope] = useState('current'), [form, setForm] = useState('xmu')
   const [weight, setWeight] = useState('all'), [arbitrary, setArbitrary] = useState('2'), [multipliers, setMultipliers] = useState(false)
   const [sharedWeight, setSharedWeight] = useState(false)
@@ -69,7 +71,7 @@ export function AthenaDataExport({ project, groupId, close, onBusyChange }: {
     const token = generation.current, abort = new AbortController()
     running.current = true; downloadAbort.current = abort; setDownloading(true); busy.current(true); setError(''); setNotice('')
     try {
-      const response = await athenaTransport().fetch(`/api/athena${base}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: signature, signal: abort.signal })
+      const response = await transport.fetch(`/api/athena${base}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: signature, signal: abort.signal })
       if (!response.ok) throw decodeApiError(response.status, await response.json().catch(() => null))
       if (response.headers.get('X-Athena-Project-Version') !== String(project.version)) throw new Error('The downloaded revision could not be confirmed. Reload the project before retrying.')
       const filename = /filename="([^"/\\]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1]

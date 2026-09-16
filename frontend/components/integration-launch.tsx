@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { backendUrl } from "@/lib/app-url"
-import { clearIntegrationSession, integrationOperations, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession } from "@/lib/integration-session"
+import { clearIntegrationReturnSelection, clearIntegrationSession, integrationOperations, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession } from "@/lib/integration-session"
 import type { AthenaSession } from "@/lib/athena-transport"
 import { AthenaWorkbench } from "./athena-workbench"
 
@@ -64,6 +64,7 @@ export function IntegrationLaunch() {
 
   useEffect(() => {
     const query = new URLSearchParams(location.search)
+    clearIntegrationReturnSelection()
     const launch = query.get("launch")
     const rawReturn = query.get("return")
     const returnTo = rawReturn === null ? undefined : parseSafeInternalReturn(rawReturn)
@@ -95,7 +96,20 @@ export function IntegrationLaunch() {
     return () => controller.abort()
   }, [])
 
-  if (session) return <AthenaWorkbench session={session} />
+  useEffect(() => {
+    if (!session) return
+    const deadline = Date.parse(session.expiresAt)
+    let timer: number
+    const expireOrReschedule = () => {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) { clearIntegrationSession(); clearIntegrationReturnSelection(); setSession(null); setFailed(true); return }
+      timer = window.setTimeout(expireOrReschedule, Math.min(remaining, 2_147_483_647))
+    }
+    expireOrReschedule()
+    return () => window.clearTimeout(timer)
+  }, [session])
+
+  if (session) return <AthenaWorkbench session={session} onAuthorizationFailure={() => { clearIntegrationSession(); clearIntegrationReturnSelection(); setSession(null); setFailed(true) }} />
   if (failed) return <main><h1>Launch again from Dr.XAS</h1><p>This Athena session is missing, expired, or already used.</p></main>
   return <main><p>Opening Athena…</p></main>
 }

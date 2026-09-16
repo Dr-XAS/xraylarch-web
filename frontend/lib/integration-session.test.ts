@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest"
 
-import { clearIntegrationSession, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession, integrationSessionStorageKey } from "./integration-session"
+import { clearIntegrationReturnSelection, clearIntegrationSession, integrationReturnSelectionStorageKey, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession, saveReturnSelection, integrationSessionStorageKey } from "./integration-session"
 
-const session = { mode: "integration" as const, projectId: "p1", capability: "browser-capability", allowedOperations: ["read_project"], returnTo: "/analysis/1", sourceGroupId: "g1" }
+const session = { mode: "integration" as const, projectId: "p1", capability: "browser-capability", allowedOperations: ["read_project"], returnTo: "/analysis/1", sourceGroupId: "g1", expiresAt: "2099-01-01T00:00:00Z" }
 
 afterEach(() => sessionStorage.clear())
 
@@ -12,7 +12,11 @@ describe("integration session storage", () => {
     expect(loadIntegrationSession()).toEqual(session)
   })
 
-  it("clears malformed and expired session values", () => {
+  it("requires a future expiry and clears missing or expired authority", () => {
+    const { expiresAt: _, ...missingExpiry } = session
+    sessionStorage.setItem(integrationSessionStorageKey, JSON.stringify(missingExpiry))
+    expect(loadIntegrationSession()).toBeNull()
+    expect(sessionStorage.getItem(integrationSessionStorageKey)).toBeNull()
     sessionStorage.setItem(integrationSessionStorageKey, JSON.stringify({ ...session, expiresAt: "2000-01-01T00:00:00Z" }))
     expect(loadIntegrationSession()).toBeNull()
     expect(sessionStorage.getItem(integrationSessionStorageKey)).toBeNull()
@@ -42,6 +46,16 @@ describe("integration session storage", () => {
     expect(loadIntegrationSession()).toBeNull()
     sessionStorage.setItem(integrationSessionStorageKey, JSON.stringify({ ...session, allowedOperations: ["owner"] }))
     expect(loadIntegrationSession()).toBeNull()
+  })
+
+  it("binds return selection to the current expiring session without capability material", () => {
+    saveReturnSelection(session, 7, [{ id: "g1", version: 7 }])
+    expect(JSON.parse(sessionStorage.getItem(integrationReturnSelectionStorageKey)!)).toEqual({
+      projectId: "p1", projectVersion: 7, sessionExpiresAt: session.expiresAt, groups: [{ id: "g1", version: 7 }],
+    })
+    expect(sessionStorage.getItem(integrationReturnSelectionStorageKey)).not.toContain(session.capability)
+    clearIntegrationReturnSelection()
+    expect(sessionStorage.getItem(integrationReturnSelectionStorageKey)).toBeNull()
   })
 
   it("clears the tab session", () => {

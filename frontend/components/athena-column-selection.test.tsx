@@ -8,7 +8,8 @@ import { numeratorRange } from "@/lib/athena-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
 
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div /> }))
-vi.mock("@/lib/athena", () => ({
+vi.mock("@/lib/athena", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/athena")>(),
   athenaDownload: vi.fn(),
 }))
 afterEach(() => { cleanup(); vi.unstubAllEnvs() })

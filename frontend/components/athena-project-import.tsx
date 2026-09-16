@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { FolderOpen } from "lucide-react"
-import { athenaApi, type AthenaProject } from "@/lib/athena"
+import { type AthenaProject } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 import { isAthenaProjectFile } from "@/lib/athena-file-types"
 import { AthenaPluginConfiguration } from "./athena-plugin-configuration"
 import { AthenaDownloadButton } from "./athena-download-button"
@@ -41,6 +42,7 @@ const modeLabels: Record<PreviewMode, string> = {
 }
 
 export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, initialFiles, initialPreview, onRemainingFiles }: Props) {
+  const athenaApi = useAthenaApi()
   const [files, setFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<ProjectPreview | null>(null)
   const [selected, setSelected] = useState<string[]>([])

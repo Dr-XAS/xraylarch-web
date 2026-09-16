@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-diagnostic-plot.module.css'
 
 const Plot = dynamic(() => import('react-plotly.js').then(m => m.default), { ssr: false })
@@ -41,6 +42,7 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
   project: Pick<AthenaProject, 'id' | 'version' | 'groups'>; groupId: string; selectGroup: (id: string) => void;
   close?: () => void; initialView?: Options['view']
 }) {
+  const athenaApi = useAthenaApi()
   const [view, setView] = useState<Options['view']>(initialView), [weight, setWeight] = useState(''), [component, setComponent] = useState<Options['q_component']>('re')
   const [data, setData] = useState<{ key: string; value: DiagnosticPlot } | null>(null), [error, setError] = useState(''), [loading, setLoading] = useState(false), [retry, setRetry] = useState(0)
   const generation = useRef(0), currentKey = useRef('')

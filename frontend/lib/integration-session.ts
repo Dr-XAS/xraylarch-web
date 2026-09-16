@@ -45,7 +45,7 @@ function parse(value: unknown): IntegratedSession | null {
   if (item.mode !== "integration" || !validString(item.projectId, 200) || !validString(item.capability, 1024) || !validOperations(item.allowedOperations)) return null
   if (item.returnTo !== undefined && parseSafeInternalReturn(item.returnTo) === undefined) return null
   if (item.sourceGroupId !== undefined && !validString(item.sourceGroupId, 200)) return null
-  if (item.expiresAt !== undefined && (!validString(item.expiresAt, 64) || !Number.isFinite(Date.parse(item.expiresAt)) || Date.parse(item.expiresAt) <= Date.now())) return null
+  if (!validString(item.expiresAt, 64) || !Number.isFinite(Date.parse(item.expiresAt)) || Date.parse(item.expiresAt) <= Date.now()) return null
   return item as IntegratedSession
 }
 
@@ -66,12 +66,17 @@ export function loadIntegrationSession(): IntegratedSession | null {
   return null
 }
 
-export function saveReturnSelection(projectId: string, projectVersion: number, groups: { id: string; version: number }[]) {
-  if (!validString(projectId, 200) || !Number.isInteger(projectVersion) || projectVersion < 0 || groups.length < 1 || groups.length > 100 ||
+export function saveReturnSelection(session: IntegratedSession, projectVersion: number, groups: { id: string; version: number }[]) {
+  if (!validString(session.projectId, 200) || !validString(session.expiresAt, 64) || Date.parse(session.expiresAt) <= Date.now() ||
+      !Number.isInteger(projectVersion) || projectVersion < 0 || groups.length < 1 || groups.length > 100 ||
       groups.some(group => !validString(group.id, 200) || !Number.isInteger(group.version) || group.version < 0) || new Set(groups.map(group => `${group.id}\0${group.version}`)).size !== groups.length) {
     throw new Error("Invalid integration return selection")
   }
-  sessionStorage.setItem(integrationReturnSelectionStorageKey, JSON.stringify({ projectId, projectVersion, groups }))
+  sessionStorage.setItem(integrationReturnSelectionStorageKey, JSON.stringify({ projectId: session.projectId, projectVersion, sessionExpiresAt: session.expiresAt, groups }))
+}
+
+export function clearIntegrationReturnSelection() {
+  sessionStorage.removeItem(integrationReturnSelectionStorageKey)
 }
 
 export function clearIntegrationSession() {

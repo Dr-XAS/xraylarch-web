@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { athenaApi, athenaTransport, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi, useAthenaTransport } from '@/lib/athena-context'
 import { decodeApiError } from '@/lib/backend-client'
 import styles from './athena-data-export.module.css'
 
@@ -27,6 +28,7 @@ function confirmed(data: Report, project: AthenaProject, scope: Scope) {
 export function AthenaParameterReport({ project, initialScope, close, onBusyChange }: {
   project: AthenaProject; initialScope: Scope; close: () => void; onBusyChange: (value: boolean) => void
 }) {
+  const athenaApi = useAthenaApi(), transport = useAthenaTransport()
   const [scope, setScope] = useState<Scope>(initialScope), [section, setSection] = useState('identity')
   const [preview, setPreview] = useState<{ signature: string; report: Report } | null>(null)
   const [loading, setLoading] = useState(false), [downloading, setDownloading] = useState(false)
@@ -52,7 +54,7 @@ export function AthenaParameterReport({ project, initialScope, close, onBusyChan
     const token = serial.current, abort = new AbortController()
     downloadAbort.current = abort; pending.current = true; setDownloading(true); busy.current(true); setError(''); setNotice('')
     try {
-      const response = await athenaTransport().fetch(`/api/athena${base}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: signature, signal: abort.signal })
+      const response = await transport.fetch(`/api/athena${base}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: signature, signal: abort.signal })
       if (!response.ok) throw decodeApiError(response.status, await response.json().catch(() => null))
       if (response.headers.get('X-Athena-Project-Version') !== String(project.version)
         || response.headers.get('Content-Disposition') !== `attachment; filename="${preview.report.filename}"`)

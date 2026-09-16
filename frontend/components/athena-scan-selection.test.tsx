@@ -6,7 +6,7 @@ import { AthenaImportPreview } from './athena-import-preview'
 import { AthenaScanSelection } from './athena-scan-selection'
 
 vi.mock('./athena-import-preview', () => ({ AthenaImportPreview: vi.fn(() => <div data-testid="scan-curve" />) }))
-vi.mock('@/lib/athena', () => ({ athenaDownload: vi.fn() }))
+vi.mock('@/lib/athena', async importOriginal => ({ ...await importOriginal<typeof import('@/lib/athena')>(), athenaDownload: vi.fn() }))
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllEnvs() })
 const scans: ScanInspectionResponse = { kind: 'scan_list', display_name: 'multi.spec',
   file_plugin: { id: 'SPEC', description: 'ESRF SPEC', source_sha256: 'hash', total_points: 12, skipped_scans: [] },

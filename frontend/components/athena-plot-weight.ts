@@ -1,7 +1,8 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import { athenaApi, type AthenaGroup, type AthenaResult } from "@/lib/athena"
+import { type AthenaGroup, type AthenaResult } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 import type { PlotSpace } from "./athena-plot-range"
 
 export interface PlotWeightResult extends AthenaResult {
@@ -50,6 +51,7 @@ function validTransform(data: PlotWeightResult, space: "R" | "q", weight: number
 
 /** Display-only Fourier products; saved processing parameters and project groups stay untouched. */
 export function useAthenaPlotWeight({ projectId, version, groups, kWeight, space, pending = false }: Options) {
+  const athenaApi = useAthenaApi()
   const [attempt, setAttempt] = useState(0)
   const [response, setResponse] = useState<{
     key: string

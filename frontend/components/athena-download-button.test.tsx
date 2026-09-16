@@ -4,7 +4,11 @@ import { afterEach, expect, it, vi } from "vitest"
 import { athenaDownload } from "@/lib/athena"
 import { AthenaDownloadButton } from "./athena-download-button"
 
-vi.mock("@/lib/athena", () => ({ athenaDownload: vi.fn() }))
+vi.mock("@/lib/athena", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/athena")>(),
+  athenaDownload: vi.fn(),
+  athenaTransport: () => ({ download: vi.mocked(athenaDownload) }),
+}))
 
 afterEach(() => { cleanup(); vi.mocked(athenaDownload).mockReset() })
 
