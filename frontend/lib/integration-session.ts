@@ -5,7 +5,7 @@ export const integrationReturnSelectionStorageKey = "xraylarch.integration.retur
 type IntegratedSession = Extract<AthenaSession, { mode: "integration" }>
 
 export const integrationOperations = new Set([
-  "read_project", "upload", "import", "preview", "read_upload", "command", "report", "plot", "read_group", "analyze", "restore", "export", "project", "example", "reorder", "metadata", "parameters", "set_e0", "undo", "redo", "duplicate", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "delete", "change_datatype", "xdi_comments", "selection", "background_standard", "copy_series", "copy_parameters", "reset_parameters", "context_parameters", "align", "smooth", "tie_reference", "untie_reference",
+  "read_project", "upload", "import", "preview", "read_upload", "command", "report", "plot", "read_group", "analyze", "restore", "export", "project", "example", "reorder", "metadata", "parameters", "set_e0", "undo", "redo", "duplicate", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "delete", "change_datatype", "xdi_comments", "selection", "background_standard", "copy_series", "copy_parameters", "reset_parameters", "context_parameters", "align", "smooth", "deconvolve", "self_absorption", "tie_reference", "untie_reference",
 ])
 
 function validString(value: unknown, maximum = 512): value is string {

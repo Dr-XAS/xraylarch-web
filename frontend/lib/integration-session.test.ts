@@ -48,6 +48,12 @@ describe("integration session storage", () => {
     expect(loadIntegrationSession()).toBeNull()
   })
 
+  it.each(["deconvolve", "self_absorption"])("round trips the %s command operation through validated storage", operation => {
+    const granted = { ...session, allowedOperations: ["read_project", operation] }
+    saveIntegrationSession(granted)
+    expect(loadIntegrationSession()).toEqual(granted)
+  })
+
   it("binds return selection to the current expiring session without capability material", () => {
     saveReturnSelection(session, 7, [{ id: "g1", version: 7 }])
     expect(JSON.parse(sessionStorage.getItem(integrationReturnSelectionStorageKey)!)).toEqual({

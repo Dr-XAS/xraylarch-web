@@ -32,6 +32,7 @@ interface Props {
   onComplete: () => void
   onBusyChange: (label: string) => void
   disabled?: boolean
+  canRestore?: boolean
   initialFiles?: File[]
   initialPreview?: ProjectPreview | null
   onRemainingFiles?: (files: File[]) => void
@@ -41,7 +42,7 @@ const modeLabels: Record<PreviewMode, string> = {
   mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", chi: "χ(k)",
 }
 
-export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, initialFiles, initialPreview, onRemainingFiles }: Props) {
+export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, canRestore = true, initialFiles, initialPreview, onRemainingFiles }: Props) {
   const athenaApi = useAthenaApi()
   const [files, setFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<ProjectPreview | null>(null)
@@ -101,7 +102,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     else await task("Reading project preview", async () => { await inspect(incoming[0]) })
   }
   async function importSelected() {
-    if (!preview || !files.length) return
+    if (!canRestore || !preview || !files.length) return
     const wholeBatch = all
     let remainingData: File[] | null = null
     await task("Importing project groups", async () => {
@@ -252,7 +253,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     {files.length > 0 && <div className="ath-modal-actions">
       <button disabled={locked} onClick={() => { setFiles([]); setPreview(null); setError(""); setTrace(null) }}>Choose other projects</button>
       {!preview ? <button disabled={locked} onClick={() => { void task("Reading project preview", async () => { await inspect(files[0]) }) }}>Retry preview</button>
-        : <button className="ath-primary" disabled={locked} onClick={() => { void importSelected() }}>{busy ? "Importing…" : !preview.groups.length ? "Import project" : all ? "Import all groups" : `Import ${selected.length} selected groups`}</button>}
+        : <button className="ath-primary" disabled={locked || !canRestore} onClick={() => { void importSelected() }}>{busy ? "Importing…" : !preview.groups.length ? "Import project" : all ? "Import all groups" : `Import ${selected.length} selected groups`}</button>}
     </div>}
   </section>
 }

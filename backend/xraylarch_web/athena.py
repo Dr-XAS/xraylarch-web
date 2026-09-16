@@ -3468,7 +3468,7 @@ def build_athena_router(
         "multi_electron", "convolve", "deglitch", "truncate", "delete",
         "change_datatype", "xdi_comments", "selection", "background_standard",
         "copy_series", "copy_parameters", "reset_parameters", "context_parameters",
-        "align", "smooth", "tie_reference", "untie_reference",
+        "align", "smooth", "deconvolve", "self_absorption", "tie_reference", "untie_reference",
     ]
     route_operations: dict[tuple[str, str], IntegrationOperation] = {
         ("GET", "/api/athena/projects/{ident}"): "read_project",

@@ -894,6 +894,54 @@ def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_l
     assert not list(workspace.glob("upload-*"))
 
 
+@pytest.mark.parametrize("action", ("deconvolve", "self_absorption"))
+def test_scientific_command_action_requires_its_exact_scope(tmp_path, action):
+    from test_integration_contracts import launch_payload
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
+
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    seed = launch_payload()
+    energy = [8800.0 + index * 2 for index in range(551)]
+    mu = [0.7 + math.atan((value - 8980.0) / 4.0) / math.pi for value in energy]
+    spectrum = AuthoritativeSpectrum(energy=tuple(energy), mu=tuple(mu))
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"),
+            "recipe": seed["recipe"], "spectrum_sha256": canonical_sha256(spectrum),
+            "recipe_sha256": seed["recipe_sha256"]}
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        created = request(client, "POST", "/api/integration/v2/projects", {
+            "contract_version": 2, "name": "Scientific command", "persistent": True,
+            "source": source, "seed": seed,
+        }, nonce="q" * 32).json()
+        allowed_capability = service.storage.create_project_session(
+            project_id=created["project_id"], owner_capability=created["capability"],
+            allowed_operations=("command", action), expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        denied_capability = service.storage.create_project_session(
+            project_id=created["project_id"], owner_capability=created["capability"],
+            allowed_operations=("command", "project"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        group_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        options = ({"form": "gaussian", "width": 1, "xmin": 8950, "xmax": 9100}
+                   if action == "deconvolve" else
+                   {"formula": "Cu", "element": "Cu", "edge": "K", "angle_in": 45, "angle_out": 45})
+        payload = {"version": 0, "action": action, "group_ids": [group_id], "options": options}
+        allowed = client.post(
+            f"/api/athena/projects/{created['project_id']}/command",
+            headers=project_headers(allowed_capability), json=payload,
+        )
+        denied = client.post(
+            f"/api/athena/projects/{created['project_id']}/command",
+            headers=project_headers(denied_capability), json=payload,
+        )
+
+    assert allowed.status_code == 200, allowed.text
+    assert denied.status_code == 404
+    assert denied.json() == {"detail": "Project was not found."}
+
+
 def test_command_action_requires_its_individual_scope(tmp_path):
     app = create_app(settings(tmp_path))
     with TestClient(app) as client:

@@ -47,6 +47,16 @@ describe("IntegrationLaunch", () => {
     expect(sessionStorage.getItem("xraylarch.integration.session.v2")).toBeNull()
   })
 
+  it.each(["deconvolve", "self_absorption"])("consumes and stores the %s command operation", async operation => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      ...response,
+      allowed_operations: ["read_project", operation],
+    }))))
+    render(<IntegrationLaunch />)
+    await screen.findByText(/spectrum/i)
+    expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.session.v2")!).allowedOperations).toEqual(["read_project", operation])
+  })
+
   it("rejects an oversized consume response without parsing or storing it", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...response, seed_group: { ...response.seed_group, source: { data: "x".repeat(70_000) } } }))))
     render(<IntegrationLaunch />)

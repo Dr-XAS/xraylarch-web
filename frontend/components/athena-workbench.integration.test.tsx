@@ -3,6 +3,9 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { AthenaProject, Parameters } from "@/lib/athena"
+import { AthenaProvider } from "@/lib/athena-context"
+import { AthenaPointEdit } from "./athena-point-edit"
+import { AthenaProjectImport, type ProjectPreview } from "./athena-project-import"
 import { AthenaWorkbench } from "./athena-workbench"
 
 vi.mock("next/dynamic", () => ({ default: () => () => null }))
@@ -72,5 +75,57 @@ describe("AthenaWorkbench integrated request gating", () => {
     expect(fetcher.mock.calls[0][0]).toBe("/api/backend/api/athena/projects/integrated-project")
     expect(fetcher.mock.calls[0][1]).toMatchObject({ method: "GET" })
     expect((fetcher.mock.calls[0][1]?.headers as Headers).get("x-xraylarch-project-capability")).toBe("read-only-capability")
+  })
+
+  it("keeps ordinary raw import available without restore", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/api/athena/projects/integrated-project")) return new Response(JSON.stringify(eligibleProject()))
+      return new Response(JSON.stringify({ detail: "unexpected" }), { status: 404 })
+    })
+    vi.stubGlobal("fetch", fetcher)
+    render(<AthenaWorkbench session={{
+      mode: "integration", projectId: "integrated-project", capability: "raw-import", allowedOperations: ["read_project", "upload", "preview", "read_upload", "import"], expiresAt: "2099-01-01T00:00:00Z",
+    }} />)
+    await screen.findByRole("button", { name: /EXAFS sample/ })
+    expect(screen.getByRole("button", { name: "Import spectra" })).toBeEnabled()
+  })
+
+  it("keeps reviewed project restoration inert without restore", async () => {
+    const project = eligibleProject()
+    const preview: ProjectPreview = {
+      upload_id: "upload-project", filename: "source.prj", name: "Source project", journal: "",
+      warnings: [], groups: [{ id: "source", label: "Source", data_type: "mu", points: 3,
+        x: [1, 2, 3], y: [1, 2, 3], notes: "", reference_id: null }],
+    }
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ detail: "unexpected" }), { status: 404 }))
+    render(<AthenaProvider session={{
+      mode: "integration", projectId: project.id, capability: "no-restore", allowedOperations: ["upload", "read_upload"], expiresAt: "2099-01-01T00:00:00Z",
+    }} fetcher={fetcher}><AthenaProjectImport getProject={() => project} onImported={vi.fn()} onComplete={vi.fn()} onBusyChange={vi.fn()}
+      initialFiles={[new File(["project"], "source.prj")]} initialPreview={preview} canRestore={false} /></AthenaProvider>)
+
+    const restore = await screen.findByRole("button", { name: "Import all groups" })
+    expect(restore).toBeDisabled()
+    fireEvent.click(restore)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it("keeps unsupported point-edit modes and history requests inert", async () => {
+    const project = eligibleProject()
+    project.undo = ["edit"]
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ detail: "unexpected" }), { status: 404 }))
+    render(<AthenaProvider session={{
+      mode: "integration", projectId: project.id, capability: "deglitch-only", allowedOperations: ["preview", "deglitch"], expiresAt: "2099-01-01T00:00:00Z",
+    }} fetcher={fetcher}><AthenaPointEdit project={project} activeId="sample" selectGroup={vi.fn()} initialMode="point" rememberDraft={vi.fn()}
+      setBusy={vi.fn()} disabled={false} allowedActions={{ preview: true, deglitch: true, truncate: false, undo: false, redo: false }} saved={vi.fn()} close={vi.fn()} /></AthenaProvider>)
+
+    const operations = screen.getByRole("combobox", { name: "Operation" })
+    expect(screen.queryByRole("option", { name: "Truncate before or after" })).not.toBeInTheDocument()
+    fireEvent.change(operations, { target: { value: "truncate" } })
+    fireEvent.click(screen.getByRole("button", { name: "Undo last edit" }))
+    await new Promise(resolve => window.setTimeout(resolve, 400))
+    expect(fetcher).toHaveBeenCalledTimes(1)
+    expect(fetcher.mock.calls[0][0]).toBe("/api/backend/api/athena/projects/integrated-project/point-edit/preview")
+    expect(fetcher.mock.calls[0][1]).toMatchObject({ method: "POST" })
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ action: "deglitch" })
   })
 })

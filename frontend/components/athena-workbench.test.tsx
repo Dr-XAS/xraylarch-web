@@ -2458,6 +2458,7 @@ describe("AthenaWorkbench project import integration", () => {
     const panelProps = () => projectImport.mock.calls.at(-1)![0]
     expect(panelProps().initialFiles).toBeDefined()
     expect(panelProps().initialFiles).toEqual(files)
+    expect(panelProps().canRestore).toBe(true)
     expect(api.mock.calls.some(([path]) => path.endsWith("/inspect"))).toBe(false)
   })
 

@@ -39,6 +39,22 @@ beforeEach(() => { api.mockReset(); api.mockRejectedValue(new Error("Unexpected 
 afterEach(cleanup)
 
 describe("Athena project preview and selection", () => {
+  it("does not expose or issue project restoration without restore authority", async () => {
+    setup({ canRestore: false }); api.mockResolvedValueOnce(preview()); choose(); await ready()
+    const restore = screen.getByRole("button", { name: "Import all groups" })
+    expect(restore).toBeDisabled()
+    fireEvent.click(restore)
+    expect(imports()).toHaveLength(0)
+  })
+
+  it("restores a reviewed project when restore authority is granted", async () => {
+    const state = setup({ canRestore: true }); api.mockResolvedValueOnce(preview()); choose(); await ready()
+    api.mockResolvedValueOnce(state.result(1))
+    fireEvent.click(screen.getByRole("button", { name: "Import all groups" }))
+    await waitFor(() => expect(state.imported).toHaveBeenCalledOnce())
+    expect(imports()).toHaveLength(1)
+  })
+
   it("consumes a batch forwarded from Import data exactly once in StrictMode", async () => {
     const initialFiles = [new File(["project"], "first.PRJ")]
     api.mockResolvedValueOnce(preview())
