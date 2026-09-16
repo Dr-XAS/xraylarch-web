@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { apiBase, athenaApi, type AthenaProject } from '@/lib/athena'
+import { athenaApi, athenaTransport, type AthenaProject } from '@/lib/athena'
 import { decodeApiError } from '@/lib/backend-client'
 import styles from './athena-data-export.module.css'
 
@@ -69,7 +69,7 @@ export function AthenaDataExport({ project, groupId, close, onBusyChange }: {
     const token = generation.current, abort = new AbortController()
     running.current = true; downloadAbort.current = abort; setDownloading(true); busy.current(true); setError(''); setNotice('')
     try {
-      const response = await fetch(`${apiBase}${base}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: signature, signal: abort.signal })
+      const response = await athenaTransport().fetch(`/api/athena${base}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: signature, signal: abort.signal })
       if (!response.ok) throw decodeApiError(response.status, await response.json().catch(() => null))
       if (response.headers.get('X-Athena-Project-Version') !== String(project.version)) throw new Error('The downloaded revision could not be confirmed. Reload the project before retrying.')
       const filename = /filename="([^"/\\]+)"/.exec(response.headers.get('Content-Disposition') ?? '')?.[1]

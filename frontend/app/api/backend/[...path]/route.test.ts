@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { GET, POST } from "./route"
+import { DELETE, GET, PATCH, POST, PUT } from "./route"
 
 const validParams = { params: Promise.resolve({ path: ["api", "workspaces", "workspace-1", "mapping"] }) }
 
@@ -158,6 +158,97 @@ describe("backend proxy", () => {
     const init = fetcher.mock.calls[0][1] as RequestInit & { duplex?: string }
     expect(init.body).toBe(request.body)
     expect(init.duplex).toBe("half")
+  })
+
+  it.each([
+    ["POST", ["api", "integration", "v2", "browser", "consume"]],
+    ["GET", ["health"]],
+    ["GET", ["api", "workspaces"]],
+    ["GET", ["api", "athena", "preferences", "plugins"]],
+  ])("does not forward project capability to non-project %s %j", async (method, path) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}"))
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, {
+      method, headers: { "x-xraylarch-project-capability": "browser-capability" },
+      ...(method === "POST" ? { body: "{}" } : {}),
+    })
+    await (method === "POST" ? POST : GET)(request, { params: Promise.resolve({ path }) })
+    expect((fetcher.mock.calls[0][1].headers as Headers).get("x-xraylarch-project-capability")).toBeNull()
+  })
+
+  it.each([
+    ["POST", ["health"]],
+    ["GET", ["api", "integration", "v2", "browser", "consume"]],
+    ["DELETE", ["api", "athena", "projects", "p1"]],
+    ["PATCH", ["api", "athena", "projects", "p1"]],
+    ["GET", ["api", "athena", "projects", "p1", "not-a-route"]],
+    ["PUT", ["api", "athena", "projects", "p1"]],
+    ["GET", ["api", "workspaces", "p1", "not-a-route"]],
+    ["POST", ["api", "workspaces", "p1", "revisions", "2", "data.csv"]],
+  ])("blocks unsupported method/path %s %j before fetching", async (method, path) => {
+    const fetcher = vi.fn()
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, { method })
+    const handler = method === "POST" ? POST : method === "DELETE" ? DELETE : method === "PATCH" ? PATCH : GET
+    expect((await handler(request, { params: Promise.resolve({ path }) })).status).toBe(404)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it.each(["GET", "PUT"])("keeps the legacy Athena merge preference route available for %s", async method => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}"))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "athena", "preferences", "merge"]
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, {
+      method, ...(method === "PUT" ? { body: "{}" } : {}),
+    })
+    const response = await (method === "PUT" ? PUT : GET)(request, { params: Promise.resolve({ path }) })
+    expect(response.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it("forwards only the project capability among security headers", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("ok"))
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request("http://localhost/api/backend/api/athena/projects/p1", {
+      headers: {
+        "x-xraylarch-project-capability": "browser-capability",
+        "x-drxas-signature": "service-secret",
+        "x-drxas-issuer": "service",
+        authorization: "Bearer owner-secret",
+        cookie: "session=secret",
+      },
+    })
+    await GET(request, { params: Promise.resolve({ path: ["api", "athena", "projects", "p1"] }) })
+    const headers = fetcher.mock.calls[0][1]?.headers as Headers
+    expect(headers.get("x-xraylarch-project-capability")).toBe("browser-capability")
+    expect(headers.get("x-drxas-signature")).toBeNull()
+    expect(headers.get("x-drxas-issuer")).toBeNull()
+    expect(headers.get("authorization")).toBeNull()
+    expect(headers.get("cookie")).toBeNull()
+  })
+
+  it.each([
+    ["POST", ["api", "integration", "v2", "projects"]],
+    ["PATCH", ["api", "integration", "v2", "projects", "p1"]],
+    ["DELETE", ["api", "integration", "v2", "projects", "p1"]],
+    ["POST", ["api", "integration", "v2", "projects", "p1", "capability", "rotate"]],
+    ["POST", ["api", "integration", "v2", "projects", "p1", "exports", "reservations", "r1", "commit"]],
+  ])("blocks service-only %s %j before fetching", async (method, path) => {
+    const fetcher = vi.fn()
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, { method })
+    const response = await (method === "DELETE" ? DELETE : method === "PATCH" ? PATCH : POST)(request, { params: Promise.resolve({ path }) })
+    expect(response.status).toBe(404)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it("allows only the browser v2 consume endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}"))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "integration", "v2", "browser", "consume"]
+    const response = await POST(new Request(`http://localhost/api/backend/${path.join("/")}`, { method: "POST", body: "{}" }), { params: Promise.resolve({ path }) })
+    expect(response.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledOnce()
   })
 
   it("forwards only allowed request headers", async () => {

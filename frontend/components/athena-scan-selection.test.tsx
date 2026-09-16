@@ -6,9 +6,7 @@ import { AthenaImportPreview } from './athena-import-preview'
 import { AthenaScanSelection } from './athena-scan-selection'
 
 vi.mock('./athena-import-preview', () => ({ AthenaImportPreview: vi.fn(() => <div data-testid="scan-curve" />) }))
-vi.mock('@/lib/athena', () => ({
-  get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend/api/athena` },
-}))
+vi.mock('@/lib/athena', () => ({ athenaDownload: vi.fn() }))
 afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllEnvs() })
 const scans: ScanInspectionResponse = { kind: 'scan_list', display_name: 'multi.spec',
   file_plugin: { id: 'SPEC', description: 'ESRF SPEC', source_sha256: 'hash', total_points: 12, skipped_scans: [] },
@@ -40,12 +38,11 @@ it('changes preview without changing which scans will be imported', () => {
   expect(vi.mocked(AthenaImportPreview).mock.calls.at(-1)?.[0].uploadId).toBe('u2')
   expect(screen.getByLabelText('Include Scan 1 · entry 1')).toBeChecked()
   expect(screen.getByLabelText('Include Scan 1 · entry 2')).toBeChecked()
-  expect(screen.getByRole('link', { name: 'Download original SPEC file' })).toHaveAttribute('href', '/api/backend/api/athena/projects/p/uploads/u2/file')
+  expect(screen.getByRole('button', { name: 'Download original SPEC file' })).toBeEnabled()
 })
-it('prefixes the SPEC source download under the configured mount path', () => {
-  vi.stubEnv('NEXT_PUBLIC_APP_BASE_PATH', '/advanced-xas/app')
+it('offers a transport-backed SPEC source download', () => {
   setup()
-  expect(screen.getByRole('link', { name: 'Download original SPEC file' })).toHaveAttribute('href', '/advanced-xas/app/api/backend/api/athena/projects/p/uploads/u1/file')
+  expect(screen.getByRole('button', { name: 'Download original SPEC file' })).toBeEnabled()
 })
 
 it('supports all/none/invert, requires a selection and preserves source order after reselecting', () => {

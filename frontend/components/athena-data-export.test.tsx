@@ -1,12 +1,13 @@
 import '@testing-library/jest-dom/vitest'
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { athenaApi, athenaTransport, type AthenaProject } from '@/lib/athena'
 import { AthenaDataExport } from './athena-data-export'
 
 vi.mock('@/lib/athena', () => ({
   get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend/api/athena` },
   athenaApi: vi.fn(),
+  athenaTransport: vi.fn(() => ({ fetch: (path: string, init: RequestInit) => fetch(`${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend${path}`, init) })),
 }))
 const api = vi.mocked(athenaApi)
 const project = { id: 'p', version: 4, groups: [{ id: 'cu', label: 'Cu foil', marked: true }, { id: 'fe', label: 'Fe foil', marked: true }] } as AthenaProject

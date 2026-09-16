@@ -9,7 +9,7 @@ import { AthenaColumnSelection } from "./athena-column-selection"
 
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div /> }))
 vi.mock("@/lib/athena", () => ({
-  get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ""}/api/backend/api/athena` },
+  athenaDownload: vi.fn(),
 }))
 afterEach(() => { cleanup(); vi.unstubAllEnvs() })
 const columns = ["energy", "i0", "it", "detA", "detB", "ref"].map((name, index) => ({ name, index, column_id: `c${index}`,
@@ -70,7 +70,7 @@ it('presents binary source bytes as hexadecimal with the original download', () 
   render(<Harness inspection={{ source_preview_format: 'hex', source_preview: '00000000  53 53 52 4c' }} />)
   fireEvent.click(screen.getByText('Binary source bytes (hex) (first section)'))
   expect(screen.getByText(/00000000\s+53 53 52 4c/)).toBeVisible()
-  expect(screen.getByRole('link', { name: 'Download original file' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Download original file' })).toBeVisible()
 })
 it('shows file conversion and separate original/converted downloads without changing detector choices', () => {
   render(<Harness inspection={{ file_plugin: { id: 'X10C', version: '0.1', description: 'NSLS beamline X10C',
@@ -80,23 +80,22 @@ it('shows file conversion and separate original/converted downloads without chan
   fireEvent.click(screen.getByText('Source file contents (first section)'))
   fireEvent.click(screen.getByText('Converted columns (first section)'))
   expect(screen.getByText('EXAFS␀padding')).toBeVisible()
-  expect(screen.getByRole('link', { name: 'Download original file' })).toHaveAttribute('href', '/api/backend/api/athena/projects/p/uploads/u/file')
-  expect(screen.getByRole('link', { name: 'Download converted file' })).toHaveAttribute('href', '/api/backend/api/athena/projects/p/uploads/u/file?variant=converted')
+  expect(screen.getByRole('button', { name: 'Download original file' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Download converted file' })).toBeEnabled()
   expect(accepted()).toEqual(initial)
 })
-it('prefixes original and converted upload downloads under the configured mount', () => {
-  vi.stubEnv('NEXT_PUBLIC_APP_BASE_PATH', '/advanced-xas/app')
+it('offers transport-backed original and converted upload downloads', () => {
   render(<Harness inspection={{ source_preview: 'source', converted_preview: 'converted' }} />)
   fireEvent.click(screen.getByText('Source file contents (first section)'))
   fireEvent.click(screen.getByText('Converted columns'))
-  expect(screen.getByRole('link', { name: 'Download original file' })).toHaveAttribute('href', '/advanced-xas/app/api/backend/api/athena/projects/p/uploads/u/file')
-  expect(screen.getByRole('link', { name: 'Download converted file' })).toHaveAttribute('href', '/advanced-xas/app/api/backend/api/athena/projects/p/uploads/u/file?variant=converted')
+  expect(screen.getByRole('button', { name: 'Download original file' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Download converted file' })).toBeEnabled()
 })
 
 it('offers the original full file for ordinary tables without a conversion label', () => {
   render(<Harness />)
   fireEvent.click(screen.getByText('Source file contents (first section)'))
-  expect(screen.getByRole('link', { name: 'Download original file' })).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Download original file' })).toBeVisible()
   expect(screen.queryByLabelText('File conversion')).not.toBeInTheDocument()
   expect(screen.queryByText(/Converted columns/)).not.toBeInTheDocument()
 })

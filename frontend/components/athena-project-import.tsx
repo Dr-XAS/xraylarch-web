@@ -3,9 +3,10 @@
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { FolderOpen } from "lucide-react"
-import { apiBase, athenaApi, type AthenaProject } from "@/lib/athena"
+import { athenaApi, type AthenaProject } from "@/lib/athena"
 import { isAthenaProjectFile } from "@/lib/athena-file-types"
 import { AthenaPluginConfiguration } from "./athena-plugin-configuration"
+import { AthenaDownloadButton } from "./athena-download-button"
 import styles from "./athena-project-import.module.css"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false })
@@ -194,8 +195,8 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
       {preview.file_plugin && <section aria-label="Project file conversion">
         <h4>{preview.file_plugin.description}</h4><p>{preview.file_plugin.summary}</p>
         <div className="ath-modal-actions">
-          <a className="ath-button" href={`${apiBase}/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=source`} download>Download original file</a>
-          <a className="ath-button" href={`${apiBase}/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=converted`} download>Download converted project</a>
+          <AthenaDownloadButton className="ath-button" path={`/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=source`}>Download original file</AthenaDownloadButton>
+          <AthenaDownloadButton className="ath-button" path={`/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=converted`}>Download converted project</AthenaDownloadButton>
           <button disabled={locked} onClick={() => { void choose(files) }}>Reinspect source file</button>
           {preview.file_plugin.configurable && <button disabled={locked} onClick={() => setConfigurationOpen(value => !value)}>{configurationOpen ? 'Hide reader configuration' : 'Configure reader'}</button>}
         </div>

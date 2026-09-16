@@ -7,6 +7,7 @@ import { AthenaParameterReport } from './athena-parameter-report'
 vi.mock('@/lib/athena', () => ({
   get apiBase() { return `${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend/api/athena` },
   athenaApi: vi.fn(),
+  athenaTransport: vi.fn(() => ({ fetch: (path: string, init: RequestInit) => fetch(`${process.env.NEXT_PUBLIC_APP_BASE_PATH ?? ''}/api/backend${path}`, init) })),
 }))
 const api = vi.mocked(athenaApi)
 const project = { id:'p', version:4, groups:[{id:'a',label:'Cu',marked:true},{id:'b',label:'Fe',marked:false}] } as AthenaProject

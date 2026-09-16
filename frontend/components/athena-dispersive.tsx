@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useEffect, useRef, useState } from 'react'
 import { apiBase, athenaApi, isDifferenceGroup, type AthenaProject } from '@/lib/athena'
 import type { InspectionResponse } from '@/lib/contracts'
+import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-dispersive.module.css'
 
 const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
@@ -172,7 +173,7 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
       {fitted?.sum_squares!==undefined&&<p role="status">Derivative fit sum of squares: {fitted.initial_sum_squares?.toPrecision(5)} → {fitted.sum_squares.toPrecision(5)} · {fitted.evaluations} evaluations · scale {fitted.scale?.toPrecision(5)}</p>}
       {[...(pixel?.warnings??[]),...(current?.warnings??[]),...(fitted?.warnings??[])].map((w,i)=><p key={i} className="ath-warning">{w}</p>)}
       {problem&&<p role="alert" className="ath-error">{problem}</p>}
-      {inspection&&<details><summary>Pixel source file</summary><pre>{inspection.source_preview}</pre><a href={`${apiBase}/projects/${project.id}/uploads/${inspection.upload_id}/file`} download>Download original pixel file</a></details>}
+      {inspection&&<details><summary>Pixel source file</summary><pre>{inspection.source_preview}</pre><AthenaDownloadButton path={`/projects/${project.id}/uploads/${inspection.upload_id}/file`}>Download original pixel file</AthenaDownloadButton></details>}
     </section>
   </div>{error&&<p role="alert" className="ath-error">{error}</p>}{notice&&<p role="status">{notice}</p>}</div>
 }

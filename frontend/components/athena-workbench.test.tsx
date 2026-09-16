@@ -22,7 +22,9 @@ vi.setConfig({ testTimeout: 15000 })
 vi.mock("@/lib/athena", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/athena")>(),
   athenaApi: vi.fn(),
+  bindAthenaClient: vi.fn(),
 }))
+vi.mock("next/dynamic", () => ({ default: () => () => null }))
 // Preferences use their own service boundary and have real-store/browser coverage.
 // Keep the scientific API request assertions below independent of that service.
 vi.mock('@/lib/athena-preferences', () => ({
@@ -48,10 +50,70 @@ const api = vi.mocked(athenaApi)
 const plot = vi.mocked(AthenaPlot)
 const projectImport = vi.mocked(AthenaProjectImport)
 const storageKey = "athena.project"
+const integrationSession = { mode: "integration" as const, projectId: "integrated-project", capability: "browser-capability", allowedOperations: ["read_project"] }
 const dialogDescriptors = {
   showModal: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal"),
   close: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close"),
 }
+
+describe("integration mode", () => {
+  it("never opens the legacy project list or local project storage", async () => {
+    localStorage.setItem(storageKey, "legacy-project")
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={integrationSession} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(api).toHaveBeenCalledWith("/projects/integrated-project")
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(api).not.toHaveBeenCalledWith("/projects")
+    expect(localStorage.getItem(storageKey)).toBe("legacy-project")
+  })
+
+  it("hides legacy project controls and shows return and selected import actions", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "export"], returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.queryByRole("button", { name: /open project/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /return to dr\.xas/i })).toHaveAttribute("href", "/projects/native")
+    expect(screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })).toHaveAttribute("href", "/projects/native")
+    expect(screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })).not.toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("allows a specific command action without requiring the generic command operation", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "metadata"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeEnabled()
+  })
+
+  it("stores only bounded selected group revisions before returning for import", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", version: 7 }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "export"], returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    const importLink = screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })
+    importLink.addEventListener("click", event => event.preventDefault(), { once: true })
+    fireEvent.click(importLink)
+    expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.return-selection.v1")!)).toEqual({
+      projectId: "integrated-project", projectVersion: 7,
+      groups: [{ id: "sample", version: 7 }, { id: "oxide", version: 7 }],
+    })
+  })
+
+  it("gates mutation controls and selected import when operations are not granted", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.queryByRole("button", { name: /^Import data$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Group" }))
+    expect(screen.getByRole("button", { name: /duplicate current group/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /remove current group/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
+    expect(screen.getByRole("button", { name: /smooth data/i })).toBeDisabled()
+    expect(screen.getByRole("link", { name: /import 0 selected groups into dr\.xas/i })).toHaveAttribute("aria-disabled", "true")
+  })
+})
 
 beforeAll(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
@@ -2362,7 +2424,7 @@ describe("AthenaWorkbench project import integration", () => {
     if (!hasMarks) project.groups.forEach(g => { g.marked = false })
     await openSaved(project)
     fireEvent.click(within(screen.getByRole("navigation", { name: /Main menu/ })).getByRole("button", { name: "File" }))
-    if (hasMarks) expect(screen.getByRole("link", { name: /Save marked project/ })).toHaveAttribute("href", expect.stringContaining(`/projects/${project.id}/export?format=prj&marked_only=true`))
+    if (hasMarks) expect(screen.getByRole("button", { name: /Save marked project/ })).toBeEnabled()
     else {
       expect(screen.queryByRole("link", { name: /Save marked project/ })).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: /Save marked project/ })).toBeDisabled()

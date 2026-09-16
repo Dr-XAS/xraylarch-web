@@ -1,5 +1,5 @@
 import { backendUrl } from "./app-url"
-import { decodeApiError } from "./backend-client"
+import { createAthenaTransport, type AthenaSession } from "./athena-transport"
 
 export type Parameters = {
   e0: number | null; step: number | null; pre1: number | null; pre2: number | null
@@ -107,17 +107,23 @@ export interface Analysis {
   result: Record<string, unknown>
 }
 export const apiBase = backendUrl("/api/athena")
-export async function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(apiBase + path, {
+export function athenaClient(session: AthenaSession = { mode: "legacy" }) {
+  const transport = createAthenaTransport(session)
+  return <T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> => transport.api<T>(`/api/athena${path}`, {
     signal,
     method: method ?? (body === undefined ? "GET" : "POST"),
     ...(body instanceof FormData ? { body } : body !== undefined ? {
       headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     } : {}),
   })
-  const data = await response.json().catch(() => undefined)
-  if (!response.ok) throw decodeApiError(response.status, data)
-  return data as T
+}
+let activeClient = athenaClient()
+let activeTransport = createAthenaTransport({ mode: "legacy" })
+export function bindAthenaClient(session: AthenaSession) { activeClient = athenaClient(session); activeTransport = createAthenaTransport(session) }
+export function athenaTransport() { return activeTransport }
+export function athenaDownload(path: string, filename?: string) { return activeTransport.download(`/api/athena${path}`, filename) }
+export function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
+  return activeClient<T>(path, body, method, signal)
 }
 
 export const resources = [
