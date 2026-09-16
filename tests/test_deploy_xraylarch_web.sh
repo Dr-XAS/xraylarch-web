@@ -39,6 +39,41 @@ curl() {
   printf '404'
 }
 
+assert_invalid_frontend_marker() {
+  local description="$1"
+  if frontend_health_path "$health_root/malformed" >/dev/null 2>&1; then
+    test_fail "$description marker must fail direct health-path selection"
+  fi
+  (
+    component_record_matches() { return 0; }
+    assert_listener_address() { return 0; }
+    backend_health_ok() { return 0; }
+    http_200() { return 0; }
+    TEST_FRONTEND_RELEASE="$health_root/malformed"
+    TEST_BACKEND_RELEASE="$health_root/integration"
+    TEST_BACKEND_RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+    if verify_component_pair TEST_FRONTEND TEST_BACKEND 127.0.0.1 13004 http://127.0.0.1:18006 0 >/dev/null 2>&1; then
+      test_fail "$description marker must fail component-pair qualification"
+    fi
+  )
+}
+
+mkdir -p "$health_root/malformed"
+printf '2\ncorrupt-data\n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "trailing content"
+printf '' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "empty"
+printf ' 2\n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "leading whitespace"
+printf '2 \n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "trailing whitespace"
+printf '2\n\n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "extra blank line"
+printf '2trailing' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "trailing bytes"
+printf '2' >"$health_root/malformed/.xraylarch-integration-contract"
+[[ "$(frontend_health_path "$health_root/malformed")" == "/advanced-xas/app/" ]] || test_fail "canonical marker without final newline must pass"
+
 for release_kind in integration legacy; do
 (
   component_record_matches() { return 0; }

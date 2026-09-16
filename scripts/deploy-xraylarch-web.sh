@@ -600,15 +600,20 @@ http_200() {
 }
 
 frontend_health_path() {
-  local release="$1" marker value
+  local release="$1" marker content bytes
   marker="${release}/.xraylarch-integration-contract"
   if [[ ! -e "$marker" && ! -L "$marker" ]]; then
     printf '/\n'
     return
   fi
   [[ -f "$marker" && ! -L "$marker" ]] || { fail "integration contract marker is not a regular file"; return 1; }
-  IFS= read -r value <"$marker" || return 1
-  [[ "$value" == "$INTEGRATION_CONTRACT_VERSION" ]] || { fail "unsupported integration contract marker"; return 1; }
+  bytes=$(LC_ALL=C wc -c <"$marker") || return 1
+  content=$(LC_ALL=C cat -- "$marker"; printf x) || return 1
+  if ! { [[ "$bytes" -eq 1 && "$content" == "${INTEGRATION_CONTRACT_VERSION}x" ]] ||
+         [[ "$bytes" -eq 2 && "$content" == "${INTEGRATION_CONTRACT_VERSION}"$'\n''x' ]]; }; then
+    fail "unsupported integration contract marker"
+    return 1
+  fi
   printf '%s/\n' "$APP_BASE_PATH"
 }
 
