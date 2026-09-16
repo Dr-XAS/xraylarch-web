@@ -39,6 +39,42 @@ function eligibleProject(): AthenaProject {
   }
 }
 
+function pointEditPreview(project: AthenaProject, body: string) {
+  const request = JSON.parse(body) as { options: { mode: string, scope: string } }
+  const group = project.groups[0]
+  const removed = request.options.mode === "inspect" ? [] : [1]
+  const kept = group.energy.map((_, index) => index).filter(index => !removed.includes(index))
+  return {
+    project_id: project.id, version: project.version, options: request.options,
+    skipped_reasons: {}, changed_group_ids: removed.length ? [group.id] : [],
+    results: [{
+      group_id: group.id, label: group.label, kept_indices: kept, removed_indices: removed,
+      energy: kept.map(index => group.energy[index]), mu: kept.map(index => group.mu[index]),
+      selected_energy: removed.map(index => group.energy[index]), selected_mu: removed.map(index => group.mu[index]),
+      input_points: group.energy.length, output_points: kept.length, snapped: null, processing_error: null, margins: null,
+      original: { mu: { x: group.energy, y: group.mu }, chie: null },
+      modified: { mu: { x: kept.map(index => group.energy[index]), y: kept.map(index => group.mu[index]) }, chie: null },
+      selected_chie: null,
+    }],
+  }
+}
+
+const pointEditSession = {
+  mode: "integration" as const, projectId: "integrated-project", capability: "point-edit-capability",
+  allowedOperations: ["preview"], expiresAt: "2099-01-01T00:00:00Z",
+}
+
+function pointEdit(project: AthenaProject, allowedActions: { preview: boolean, deglitch: boolean, truncate: boolean, undo: boolean, redo: boolean }) {
+  return <AthenaPointEdit project={project} activeId="sample" selectGroup={vi.fn()} initialMode="point" rememberDraft={vi.fn()}
+    setBusy={vi.fn()} disabled={false} allowedActions={allowedActions} saved={vi.fn()} close={vi.fn()} />
+}
+
+function attemptDisabledAction(name: string) {
+  const button = screen.getByRole("button", { name })
+  button.removeAttribute("disabled")
+  fireEvent.click(button)
+}
+
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
@@ -109,23 +145,61 @@ describe("AthenaWorkbench integrated request gating", () => {
     expect(fetcher).not.toHaveBeenCalled()
   })
 
-  it("keeps unsupported point-edit modes and history requests inert", async () => {
+  it("does not send a point-edit preview through provider transport without preview", async () => {
+    const project = eligibleProject()
+    const fetcher = vi.fn()
+    render(<AthenaProvider session={{ ...pointEditSession, allowedOperations: ["deglitch"] }} fetcher={fetcher}>
+      {pointEdit(project, { preview: false, deglitch: true, truncate: false, undo: false, redo: false })}
+    </AthenaProvider>)
+
+    attemptDisabledAction("Replot selection")
+    await new Promise(resolve => window.setTimeout(resolve, 400))
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
+  it("does not send a point-edit command through provider transport without the current mutation capability", async () => {
+    const project = eligibleProject()
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Response(JSON.stringify(pointEditPreview(project, String(init?.body)))))
+    const rendered = render(<AthenaProvider session={pointEditSession} fetcher={fetcher}>
+      {pointEdit(project, { preview: true, deglitch: true, truncate: false, undo: false, redo: false })}
+    </AthenaProvider>)
+    fireEvent.change(screen.getByLabelText("Point energy · eV", { exact: true }), { target: { value: "8980" } })
+    await waitFor(() => expect(screen.getByRole("button", { name: "Remove point" })).toBeEnabled())
+
+    rendered.rerender(<AthenaProvider session={pointEditSession} fetcher={fetcher}>
+      {pointEdit(project, { preview: true, deglitch: false, truncate: false, undo: false, redo: false })}
+    </AthenaProvider>)
+    attemptDisabledAction("Remove point")
+    await new Promise(resolve => window.setTimeout(resolve, 50))
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith("/command"))).toHaveLength(0)
+  })
+
+  it("does not send undo through provider transport without undo despite available history", async () => {
     const project = eligibleProject()
     project.undo = ["edit"]
-    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ detail: "unexpected" }), { status: 404 }))
-    render(<AthenaProvider session={{
-      mode: "integration", projectId: project.id, capability: "deglitch-only", allowedOperations: ["preview", "deglitch"], expiresAt: "2099-01-01T00:00:00Z",
-    }} fetcher={fetcher}><AthenaPointEdit project={project} activeId="sample" selectGroup={vi.fn()} initialMode="point" rememberDraft={vi.fn()}
-      setBusy={vi.fn()} disabled={false} allowedActions={{ preview: true, deglitch: true, truncate: false, undo: false, redo: false }} saved={vi.fn()} close={vi.fn()} /></AthenaProvider>)
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Response(JSON.stringify(pointEditPreview(project, String(init?.body)))))
+    render(<AthenaProvider session={pointEditSession} fetcher={fetcher}>
+      {pointEdit(project, { preview: true, deglitch: true, truncate: false, undo: false, redo: false })}
+    </AthenaProvider>)
 
-    const operations = screen.getByRole("combobox", { name: "Operation" })
-    expect(screen.queryByRole("option", { name: "Truncate before or after" })).not.toBeInTheDocument()
-    fireEvent.change(operations, { target: { value: "truncate" } })
-    fireEvent.click(screen.getByRole("button", { name: "Undo last edit" }))
+    attemptDisabledAction("Undo last edit")
     await new Promise(resolve => window.setTimeout(resolve, 400))
-    expect(fetcher).toHaveBeenCalledTimes(1)
-    expect(fetcher.mock.calls[0][0]).toBe("/api/backend/api/athena/projects/integrated-project/point-edit/preview")
-    expect(fetcher.mock.calls[0][1]).toMatchObject({ method: "POST" })
-    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toMatchObject({ action: "deglitch" })
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith("/command"))).toHaveLength(0)
+  })
+
+  it("does not send redo through provider transport without redo despite available history", async () => {
+    const project = eligibleProject()
+    project.redo = ["edit"]
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) =>
+      new Response(JSON.stringify(pointEditPreview(project, String(init?.body)))))
+    render(<AthenaProvider session={pointEditSession} fetcher={fetcher}>
+      {pointEdit(project, { preview: true, deglitch: true, truncate: false, undo: false, redo: false })}
+    </AthenaProvider>)
+
+    attemptDisabledAction("Redo last edit")
+    await new Promise(resolve => window.setTimeout(resolve, 400))
+    expect(fetcher.mock.calls.filter(([input]) => String(input).endsWith("/command"))).toHaveLength(0)
   })
 })
