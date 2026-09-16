@@ -98,6 +98,21 @@ def test_create_launch_rename_rotate_and_delete_project(tmp_path):
         assert created["project"]["name"] == "Persistent project"
         assert created["project"]["group_count"] == 0
 
+        summary_path = f"/api/integration/v2/projects/{project_id}"
+        summary = request(
+            client, "GET", summary_path, {}, nonce="s" * 32, capability=capability
+        )
+        assert summary.status_code == 200
+        assert summary.json() == created["project"]
+        assert request(
+            client,
+            "GET",
+            summary_path,
+            {},
+            nonce="t" * 32,
+            capability="invalid-capability-value",
+        ).status_code == 404
+
         launched = request(client, "POST", f"/api/integration/v2/projects/{project_id}/launch", {"capability": capability}, nonce="l" * 32, capability=capability)
         assert launched.status_code == 200
         handle = launched.json()["handle"]

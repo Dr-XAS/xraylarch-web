@@ -231,6 +231,20 @@ def build_integration_router(
         return {"contract_version": 2, "project_id": project_id, "capability": capability,
                 "project": summary.model_dump(mode="json")}
 
+    @v2.get("/projects/{project_id}")
+    async def project_summary(project_id: str, request: Request):
+        _, nonce, timestamp = await signed(request)
+        capability = request.headers.get("X-XrayLarch-Project-Capability")
+        if not capability:
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
+        try:
+            record = service.storage.load_project(project_id, capability, now=_now())
+            project = service.athena_store.load(project_id)
+            claim(nonce, timestamp)
+            return service._project_summary(project, record).model_dump(mode="json")
+        except Exception as exc:
+            raise _http_error(exc)
+
     @v2.post("/projects/{project_id}/launch")
     async def launch_project(project_id: str, request: Request):
         raw, nonce, timestamp = await signed(request)
