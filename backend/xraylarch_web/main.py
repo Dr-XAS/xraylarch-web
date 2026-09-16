@@ -93,6 +93,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             integration_service=integration_service,
         )
     )
+    from .artemis import build_artemis_router
+
+    app.include_router(build_artemis_router(athena_store))
     return app
 
 

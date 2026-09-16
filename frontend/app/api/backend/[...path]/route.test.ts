@@ -10,6 +10,23 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
+  it("forwards Artemis fitting requests and preserves stale revision errors", async () => {
+    const body = JSON.stringify({ version: 4, paths: [], parameters: [] })
+    const error = { error: { code: "stale_revision", message: "Reload the project." } }
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(error), {
+      status: 409, headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "artemis", "projects", "cu", "groups", "foil", "fit"]
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, {
+      method: "POST", headers: { "content-type": "application/json" }, body,
+    })
+    const response = await POST(request, { params: Promise.resolve({ path }) })
+    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/artemis/projects/cu/groups/foil/fit")
+    expect(fetcher.mock.calls[0][1].body).toBe(request.body)
+    expect(response.status).toBe(409)
+    expect(await response.json()).toEqual(error)
+  })
   it("preserves the Athena export revision with attachment bytes", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("# saved data\n8970 1", {
       headers: { "content-type": "text/plain", "content-disposition": 'attachment; filename="Cu.xmu"', "x-athena-project-version": "17" },

@@ -8,6 +8,7 @@ import { ApiRequestError } from "@/lib/backend-client"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./athena-plot"
 import { AthenaWavelet } from "./athena-wavelet"
+import { ArtemisFittingPanel } from "./artemis-fitting"
 import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
 import { AthenaWorkbench } from "./athena-workbench"
@@ -36,6 +37,11 @@ vi.mock("./athena-plot", () => ({
 }))
 // Wavelet requests and mode switching have dedicated panel tests.
 vi.mock("./athena-wavelet", () => ({ AthenaWavelet: vi.fn(() => <div data-testid="athena-wavelet" />) }))
+// Fitting interactions have dedicated tests; verify the current spectrum handoff here.
+vi.mock("./artemis-fitting", () => ({
+  ArtemisFittingPanel: vi.fn(() => <div data-testid="artemis-panel" />),
+  ArtemisFitResultViewer: () => <div data-testid="artemis-results" />,
+}))
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // Live arithmetic and stale-response behavior have dedicated preview tests.
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div data-testid="column-preview" /> }))
@@ -352,6 +358,43 @@ function identityResponse(project: AthenaProject, id: string) {
     result: saved.result ? { ...saved.result, effective: { ...saved.result.effective, element: "Fe", edge: "K" } } : null,
   } })
 }
+
+describe("AthenaWorkbench EXAFS fitting", () => {
+  it("accepts saved CIF revisions only for the current project without changing the active spectrum", async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole("tab", { name: "EXAFS fitting" }))
+    selectGroup("Sample scan")
+    const saved = vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)![0].onProjectChange!
+    act(() => saved({ ...project, version: project.version + 1 }))
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      projectId: project.id, version: project.version + 1, group: { id: "sample" },
+    })
+    act(() => saved(project))
+    act(() => saved({ ...project, id: "another-project", version: project.version + 2 }))
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      projectId: project.id, version: project.version + 1, group: { id: "sample" },
+    })
+  })
+
+  it("adds a middle-panel workflow and follows the current spectrum without a project mutation", async () => {
+    const project = await openSaved()
+    const initialCalls = api.mock.calls.length
+    const tab = screen.getByRole("tab", { name: "EXAFS fitting" })
+    fireEvent.click(tab)
+    expect(screen.getByRole("tabpanel", { name: "EXAFS fitting" })).toContainElement(screen.getByTestId("artemis-panel"))
+    expect(screen.getByTestId("artemis-results")).toBeVisible()
+    expect(screen.queryByRole("spinbutton", { name: "Rbkg" })).toBeNull()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      projectId: project.id, version: project.version, group: { id: "foil" }, pending: false,
+    })
+    selectGroup("Sample scan")
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].group?.id).toBe("sample")
+    fireEvent.click(screen.getByRole("tab", { name: "Processing" }))
+    expect(screen.getByRole("heading", { name: "Processing parameters" })).toBeVisible()
+    expect(screen.queryByTestId("artemis-results")).toBeNull()
+    expect(api.mock.calls.length).toBe(initialCalls)
+  })
+})
 
 describe("AthenaWorkbench branding", () => {
   it("identifies Larch-Web and links its Xraylarch and Demeter credits", async () => {
@@ -1607,7 +1650,7 @@ describe("AthenaWorkbench plot picking", () => {
     if (reason === "cancel") fireEvent.click(screen.getByRole("button", { name: /Cancel pick/ }))
     if (reason === "escape") fireEvent.keyDown(document, { key: "Escape" })
     if (reason === "group") selectGroup("Sample scan")
-    if (reason === "space") fireEvent.click(screen.getByRole("tab", { name: /EXAFS/ }))
+    if (reason === "space") fireEvent.click(within(screen.getByRole("tablist", { name: "Plot space" })).getByRole("tab", { name: /EXAFS/ }))
     if (reason === "plotted groups") fireEvent.click(screen.getByRole("radio", { name: "Current spectrum" }))
     if (reason === "draft") editNumber(/^Rbkg/, 1.7)
     if (reason === "dialog") await openGroupControls()
@@ -2260,7 +2303,7 @@ describe("AthenaWorkbench project loading", () => {
     fireEvent.blur(minimum())
     expect(minimum()).toHaveValue(-19)
 
-    fireEvent.click(screen.getByRole("tab", { name: /EXAFS/ }))
+    fireEvent.click(within(screen.getByRole("tablist", { name: "Plot space" })).getByRole("tab", { name: /EXAFS/ }))
     expect(screen.queryByRole("checkbox", { name: "Relative to E₀" })).not.toBeInTheDocument()
     expect(minimum()).toHaveValue(0)
     expect(maximum()).toHaveValue(12)

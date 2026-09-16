@@ -132,6 +132,11 @@
 .ath-parameters { grid-area: processing; background: #fff; display: flex; flex-direction: column; min-width: 0; }
 .ath-parameters .ath-panel-heading { border-bottom: 1px solid var(--ath-line); }
 .ath-parameters .ath-panel-heading svg { color: var(--ath-muted); }
+.ath-parameter-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--ath-line); }
+.ath-app .ath-parameter-tabs button { min-height: 43px; border-radius: 0; border-bottom: 2px solid transparent; justify-content: center; font-size: 12px; }
+.ath-app .ath-parameter-tabs button[aria-selected=true] { color: var(--ath-primary); background: var(--ath-primary-soft); border-bottom-color: var(--ath-primary); }
+.ath-parameter-tab-panel { min-width: 0; flex: 1; display: flex; flex-direction: column; }
+.ath-parameter-tab-panel[hidden] { display: none; }
 .ath-param-current { padding: 12px 17px; display: flex; align-items: center; gap: 7px; background: var(--ath-surface-muted); border-bottom: 1px solid var(--ath-line); }
 .ath-param-current strong { font-size: 10px; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .ath-app .ath-param-current button { color: var(--ath-muted); font-size: 12px; padding: 4px 3px; }

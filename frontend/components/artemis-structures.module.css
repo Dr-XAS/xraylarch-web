@@ -1,0 +1,61 @@
+.panel { margin: 0 0 18px; padding: 10px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 5px; background: var(--ath-canvas, #f5f8f5); }
+.panel .openButton { width: 100%; min-height: 34px; }
+.attachedList { list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow-y: auto; overscroll-behavior: contain; }
+.attachedList li { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 7px 0; }
+.attachedList li + li { border-top: 1px solid var(--ath-line, #dce5dc); }
+.attachedList span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.attachedList strong { font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
+.attachedList small { font-size: 10px; color: var(--ath-muted, #647669); }
+.dialog { display: none; width: min(940px, calc(100vw - 36px)); max-width: none; max-height: min(90dvh, 920px); padding: 0; margin: auto; border: 1px solid var(--ath-line, #dce5dc); border-radius: 9px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); box-shadow: 0 20px 70px #14241b40; }
+.dialog[open] { display: flex; flex-direction: column; }
+.dialog::backdrop { background: #10241b70; }
+.dialogHeader { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 22px; border-bottom: 1px solid var(--ath-line, #dce5dc); }
+.dialogHeader h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.dialogHeader p { margin: 6px 0 0; font-size: 12px; color: var(--ath-muted, #647669); }
+.dialogHeader > button { flex-shrink: 0; }
+.content { display: grid; grid-template-columns: minmax(230px, .8fr) minmax(0, 1.4fr); min-width: 0; min-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
+.searchColumn { min-width: 0; padding: 16px 20px; border-right: 1px solid var(--ath-line, #dce5dc); background: var(--ath-canvas, #f5f8f5); }
+.detailColumn { min-width: 0; padding: 16px 22px; }
+.dialogFooter { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 22px; border-top: 1px solid var(--ath-line, #dce5dc); }
+.dialogFooter span { color: var(--ath-muted, #647669); font-size: 11px; }
+.placeholder { padding: 24px 10px; color: var(--ath-muted, #647669); text-align: center; font-size: 13px; line-height: 1.6; }
+.savedStructures { margin-top: 18px; border-top: 1px solid var(--ath-line, #dce5dc); }
+.savedStructures h4 { font-size: 12px; font-weight: 500; }
+.panel button.attachButton { background: var(--ath-primary, #268553); color: #fff; border-color: var(--ath-primary, #268553); padding: 8px 12px; }
+.panel button.attachButton:not(:disabled):hover { background: #216940; color: #fff; }
+.help, .source, .citation { color: var(--ath-muted, #647669); font-size: 10px; line-height: 1.55; margin: 7px 0; overflow-wrap: anywhere; }
+.source { font-size: 9px; }
+.searchFields, .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px; margin: 10px 0; }
+.searchFields { grid-template-columns: minmax(0, 1fr) 80px; }
+.searchFields label, .grid label { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--ath-muted, #647669); font-size: 10px; }
+.searchResults { margin: 10px 0; max-height: 250px; overflow-y: auto; }
+.panel button.result { display: flex; width: 100%; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left; margin: 5px 0; padding: 8px; }
+.result strong { font-size: 11px; font-weight: 500; }
+.result span, .result small { color: var(--ath-muted, #647669); font-size: 10px; }
+.panel button.result[aria-pressed=true] { border-color: var(--ath-primary, #268553); background: var(--ath-canvas, #f5f8f5); }
+.structure { margin-top: 0; padding-top: 0; }
+.structure h4 { font-size: 12px; font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; }
+.structure h4 span { display: block; color: var(--ath-muted, #647669); font-size: 10px; margin-top: 4px; }
+.toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.textDetails { margin: 9px 0; font-size: 10px; }
+.textDetails summary { cursor: pointer; margin: 6px 0; }
+.textDetails pre { padding: 9px; background: var(--ath-canvas, #f5f8f5); max-height: 200px; overflow: auto; white-space: pre; font-size: 9px; line-height: 1.5; }
+.sites { padding: 0; margin: 12px 0; border: 0; min-width: 0; }
+.sites legend { color: var(--ath-muted, #647669); font-size: 10px; margin: 0 0 5px; padding: 0; }
+.sites label, .paths label { display: flex; gap: 7px; align-items: flex-start; padding: 7px 0; font-size: 10px; }
+.sites input, .paths input { margin: 2px 0 0; accent-color: var(--ath-primary, #268553); flex-shrink: 0; }
+.sites label span, .paths label span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sites strong, .paths strong { font-weight: 500; font-size: 11px; overflow-wrap: anywhere; }
+.sites small, .paths small { font-size: 9px; color: var(--ath-muted, #647669); overflow-wrap: anywhere; }
+.status, .warning, .error { display: flex; flex-direction: column; gap: 4px; padding: 9px; border-radius: 4px; margin: 10px 0; background: var(--ath-canvas, #f5f8f5); color: var(--ath-muted, #647669); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.status strong { font-weight: 500; color: var(--ath-ink, #24362c); }
+.warning { background: #fff7df; color: #805c10; }
+.error { background: #fff1ec; color: #9c3425; }
+.paths { max-height: 260px; overflow-y: auto; margin-bottom: 8px; }
+.paths label + label { border-top: 1px solid var(--ath-line, #dce5dc); }
+.job { border-top: 1px solid var(--ath-line, #dce5dc); margin-top: 14px; }
+.dialog .help, .dialog .citation, .dialog .searchFields label, .dialog .grid label, .dialog .sites legend, .dialog .status, .dialog .warning, .dialog .error { font-size: 12px; }
+.dialog .result strong, .dialog .structure h4, .dialog .sites strong, .dialog .paths strong { font-size: 13px; }
+.dialog .sites small, .dialog .paths small, .dialog .result small, .dialog .result span, .dialog .structure h4 span, .dialog .textDetails { font-size: 11px; }
+.dialog .textDetails pre { font-size: 11px; }
+@media(max-width:700px) { .dialog { width: calc(100vw - 20px); max-height: 94dvh; }.content { grid-template-columns: minmax(0, 1fr); }.searchColumn { border-right: 0; border-bottom: 1px solid var(--ath-line, #dce5dc); }.dialogHeader, .dialogFooter, .detailColumn, .searchColumn { padding-left: 14px; padding-right: 14px; }.dialogFooter span { max-width: 70%; } }

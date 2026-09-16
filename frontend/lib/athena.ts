@@ -1,4 +1,5 @@
 import { decodeApiError } from "./backend-client"
+import type { ArtemisStructureAttachment } from "./artemis-structures"
 
 export type Parameters = {
   e0: number | null; step: number | null; pre1: number | null; pre2: number | null
@@ -94,6 +95,7 @@ export interface RebinPreview {
   }[]
 }
 export interface AthenaProject {
+  artemis_structures?: ArtemisStructureAttachment[]
   import_preferences_warning?: string
   id: string; name: string; version: number; groups: AthenaGroup[]; journal: string
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]

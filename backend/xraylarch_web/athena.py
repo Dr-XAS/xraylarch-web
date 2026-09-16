@@ -296,7 +296,9 @@ def _native_perl_document(text):
                 metadata[key] = value
     if record:
         fail("Native project has an unterminated data record.")
-    if not records:
+    # A web project can contain attached CIFs before spectra are imported.
+    # The attachment schema and checksum are validated by _parse_project below.
+    if not records and not (isinstance(sidecar, dict) and sidecar.get("artemis_structures")):
         fail("No supported data records were found in the project.")
     for record in records:
         flat = record.get("args", [])
@@ -2970,6 +2972,9 @@ class AthenaStore:
                    "native_projects": p.get("native_projects", []), "import_warnings": p.get("import_warnings", []),
                    "groups": [dict({k: g[k] for k in ("id", "parameters", "notes", "source", "reference_id")},
                                    background_standard_id=g.get("background_standard_id")) for g in p["groups"]]}
+        if p.get("artemis_structures"):
+            from .artemis_attachments import validate_attachments
+            sidecar["artemis_structures"] = validate_attachments(p["artemis_structures"])
         for meta, g in zip(sidecar["groups"], p["groups"]):
             meta["parameters"] = _exchange_recipe(g["parameters"], g.get("result"))
             meta["is_difference"] = _is_difference(g)
@@ -3175,9 +3180,11 @@ class AthenaStore:
         if not isinstance(prior_warnings, list) or not all(isinstance(w, str) for w in prior_warnings):
             fail("import_warnings must be a list of strings.")
         analyses = _validate_analysis_records(sidecar.get("analyses", []))
+        from .artemis_attachments import validate_attachments
+        structures = validate_attachments(sidecar.get("artemis_structures", []))
         return {"name": str(name)[:200], "journal": journal[:50_000], "groups": provisional,
                 "format": "athena-web" if web else "athena-json" if native_project and native_project["format"] == "athena-json" else "athena-perl",
-                "native_projects": retained_projects, "analyses": analyses, "version": sidecar.get("version"),
+                "native_projects": retained_projects, "analyses": analyses, "artemis_structures": structures, "version": sidecar.get("version"),
                 "warnings": list(dict.fromkeys(prior_warnings + import_warnings))}
 
     @staticmethod
@@ -3358,6 +3365,9 @@ class AthenaStore:
                 fail("A project can contain at most 100 groups.")
             _exchange_budget([*old["groups"], *records], self.settings)
             p = copy.deepcopy(old)
+            if parsed["artemis_structures"]:
+                from .artemis_attachments import merge_attachments
+                p["artemis_structures"] = merge_attachments(old.get("artemis_structures", []), parsed["artemis_structures"])
             imported, idmap, pristine = [], {}, set()
             import_warnings = list(parsed["warnings"])
             for record in records:

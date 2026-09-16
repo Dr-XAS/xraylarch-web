@@ -36,6 +36,20 @@ Open [http://localhost:3004](http://localhost:3004) using the local commands
 below, then import spectra or load the measured copper foil example. The
 earlier single-spectrum interface is at `/classic`.
 
+The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
+middle parameter panel. Search the bundled AMCSD crystal-structure database in
+a popup, attach the selected CIF directly to the project, select an absorber
+site, and calculate FEFF8L scattering paths using
+Larch/Larixite. Review the generated paths and add the selected ones to the
+model, or import existing FEFF path files. Define Guess/Set/Def parameters
+and fit the current spectrum with Larch's `feffit` core in k or R space. A Cu
+first-shell starter model is included. The right panel shows data/model/residual
+curves, uncertainties, correlations, and the fit report. Use model JSON exports
+to preserve the fit setup; Athena `.prj` exports retain attached CIFs through
+web metadata but do not include fitting models.
+See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
+conventions, supported expressions, and current limitations.
+
 In the spectrum viewer, **All selected** plots the checked data groups;
 **Current spectrum** plots only the highlighted group, independently of its
 checkbox. For an individual **μ(E)** plot, use **Pre-edge line** and
