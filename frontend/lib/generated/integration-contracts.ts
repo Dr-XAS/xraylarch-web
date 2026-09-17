@@ -116,11 +116,45 @@ export interface SelectedGroupExportRequest {
   readonly selections: ReadonlyArray<SelectedGroupRef>;
 }
 
+export interface ComputedImportResult {
+  readonly arrays: Readonly<Record<string, ReadonlyArray<number>>>;
+  readonly e0: number;
+  readonly edge_step: number;
+}
+
+export interface RecomputableGroupScience {
+  readonly computed: ComputedImportResult;
+  readonly kind?: 'recomputable';
+  readonly recipe: CoreProcessingRecipe;
+  readonly recipe_sha256: string;
+}
+
+export interface ExportedGroupScience {
+  readonly arrays: Readonly<Record<string, ReadonlyArray<number>>>;
+  readonly data_type: 'mu' | 'xanes' | 'norm' | 'chi' | 'xmudat' | 'detector';
+  readonly e0?: number | null;
+  readonly edge_step?: number | null;
+  readonly kind?: 'exported';
+  readonly reason: 'data_type' | 'difference' | 'incomplete_result' | 'unportable_recipe';
+}
+
+export interface ExportedGroup {
+  readonly group_id: string;
+  readonly group_version: number;
+  readonly label: string;
+  readonly larch_version: string;
+  readonly science: RecomputableGroupScience | ExportedGroupScience;
+  readonly source: ExistingDrXasSource | AthenaUploadedSource | AthenaInternalSource;
+  readonly source_sha256: string;
+  readonly spectrum: AuthoritativeSpectrum;
+  readonly spectrum_sha256: string;
+}
+
 export interface SelectedGroupExportBatch {
   readonly contract_version?: 2;
+  readonly groups: ReadonlyArray<ExportedGroup>;
   readonly project_id: string;
   readonly project_version: number;
-  readonly sources: ReadonlyArray<ExistingDrXasSource | AthenaUploadedSource>;
 }
 
 export interface ExistingDrXasSource {
@@ -136,6 +170,11 @@ export interface AthenaUploadedSource {
   readonly original_filename: string;
   readonly parse_metadata: Readonly<Record<string, JsonValue>>;
   readonly raw_sha256: string;
+}
+
+export interface AthenaInternalSource {
+  readonly kind?: 'athena_internal';
+  readonly parent_group_ids?: ReadonlyArray<string>;
 }
 
 export interface ExportReservation {
@@ -157,3 +196,5 @@ export interface ProjectQuota {
 }
 
 export type ProjectSource = ExistingDrXasSource | AthenaUploadedSource;
+export type ExportedGroupSource = ProjectSource | AthenaInternalSource;
+export type GroupScience = RecomputableGroupScience | ExportedGroupScience;

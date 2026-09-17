@@ -331,11 +331,13 @@ def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monk
 
 
 def test_export_reservation_transitions_are_idempotent(tmp_path):
-    with TestClient(create_app(settings(tmp_path))) as client:
-        created = create(client)
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = seeded(client, name="Reservation transitions", nonce="t" * 32)
         project_id, capability = created["project_id"], created["capability"]
+        group_id = app.state.integration_service.athena_store.load(project_id)["groups"][0]["id"]
         payload = {"contract_version": 2, "project_id": project_id, "project_version": 0,
-                   "selections": [{"group_id": "selected-group", "group_version": 0}]}
+                   "selections": [{"group_id": group_id, "group_version": 0}]}
         reserve_path = f"/api/integration/v2/projects/{project_id}/exports/reservations/reservation-1"
         first = request(client, "POST", reserve_path, payload, nonce="p" * 32, capability=capability)
         second = request(client, "POST", reserve_path, payload, nonce="s" * 32, capability=capability)
@@ -1092,3 +1094,267 @@ def test_every_integrated_athena_project_route_requires_matching_capability(tmp_
             )
             assert missing.status_code == 404, (route.methods, route.path, missing.text)
             assert wrong.status_code == 404, (route.methods, route.path, wrong.text)
+
+
+def seeded(client, *, name="Exportable", nonce="s" * 32, **overrides):
+    """Create a persistent project seeded with one recomputable Dr.XAS group."""
+    from test_integration_contracts import launch_payload
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
+
+    source = {"kind": "drxas", "turn_id": "turn", "artifact_id": "artifact",
+              "artifact_version": 1, "source_sha256": "a" * 64}
+    energy = [8800.0 + index * 2 for index in range(551)]
+    mu = [0.7 + math.atan((value - 8980.0) / 4.0) / math.pi for value in energy]
+    spectrum = AuthoritativeSpectrum(energy=tuple(energy), mu=tuple(mu))
+    seed = {"source": source, "spectrum": spectrum.model_dump(mode="json"),
+            "recipe": launch_payload()["recipe"], "spectrum_sha256": canonical_sha256(spectrum),
+            "recipe_sha256": launch_payload()["recipe_sha256"]}
+    response = request(client, "POST", "/api/integration/v2/projects", {
+        "contract_version": 2, "name": name, "persistent": True,
+        "source": source, "seed": seed, **overrides,
+    }, nonce=nonce)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def export_groups(client, project, selections, *, project_version=0, nonce="e" * 32, capability=None):
+    path = f"/api/integration/v2/projects/{project['project_id']}/exports/groups"
+    return request(client, "POST", path, {
+        "contract_version": 2, "project_id": project["project_id"],
+        "project_version": project_version, "selections": selections,
+    }, nonce=nonce, capability=project["capability"] if capability is None else capability)
+
+
+def test_seeded_creation_records_the_seed_group_revision(tmp_path):
+    """The seed is written straight to disk, so ``save`` never stamps it."""
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = seeded(client)
+        project = app.state.integration_service.athena_store.load(created["project_id"])
+    assert project["group_versions"] == {project["groups"][0]["id"]: 0}
+
+
+def test_selected_group_export_carries_recomputable_science_for_a_seeded_group(tmp_path):
+    from xraylarch_web.integration_contracts import SelectedGroupExportBatch, canonical_sha256
+
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = seeded(client)
+        group_id = app.state.integration_service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        response = export_groups(client, created, [{"group_id": group_id, "group_version": 0}])
+
+    assert response.status_code == 200, response.text
+    batch = SelectedGroupExportBatch.model_validate_json(response.content)
+    assert batch.project_id == created["project_id"] and batch.project_version == 0
+    (group,) = batch.groups
+    assert (group.group_id, group.group_version, group.label) == (group_id, 0, "Dr.XAS source")
+    assert group.source.kind == "drxas" and group.source.turn_id == "turn"
+    assert group.science.kind == "recomputable"
+    assert group.science.recipe_sha256 == canonical_sha256(group.science.recipe)
+    assert group.science.recipe.larch_version == group.larch_version
+    assert len(group.science.computed.arrays["chi"]) > 1
+
+
+def test_selected_group_export_refuses_a_stale_project_or_group_revision(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = seeded(client)
+        group_id = app.state.integration_service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        stale_project = export_groups(client, created, [{"group_id": group_id, "group_version": 0}],
+                                      project_version=1, nonce="f" * 32)
+        stale_group = export_groups(client, created, [{"group_id": group_id, "group_version": 1}],
+                                    nonce="g" * 32)
+        absent = export_groups(client, created, [{"group_id": "no-such-group", "group_version": 0}],
+                               nonce="h" * 32)
+    assert stale_project.status_code == 409, stale_project.text
+    assert stale_group.status_code == 409, stale_group.text
+    assert absent.status_code == 409, absent.text
+
+
+def test_selected_group_export_requires_both_the_signature_and_the_project_capability(tmp_path):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        created = seeded(client)
+        group_id = app.state.integration_service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        selections = [{"group_id": group_id, "group_version": 0}]
+        path = f"/api/integration/v2/projects/{created['project_id']}/exports/groups"
+        body = {"contract_version": 2, "project_id": created["project_id"],
+                "project_version": 0, "selections": selections}
+        uncapable = export_groups(client, created, selections, nonce="i" * 32, capability="")
+        unsigned = client.post(path, json=body, headers=project_headers(created["capability"]))
+        wrong_capability = export_groups(client, created, selections, nonce="j" * 32,
+                                         capability="not-the-owner-capability")
+    assert uncapable.status_code == 404
+    assert unsigned.status_code == 401
+    assert wrong_capability.status_code == 404
+
+
+def test_selected_group_export_puts_a_derived_group_under_xraylarch_web_authority(tmp_path):
+    """A deconvolved group is norm(E) with no portable recipe: xraylarch-web owns it."""
+    from xraylarch_web.integration_contracts import SelectedGroupExportBatch
+
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        created = seeded(client, nonce="k" * 32)
+        seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        session = service.storage.create_project_session(
+            project_id=created["project_id"], owner_capability=created["capability"],
+            allowed_operations=("command", "deconvolve"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        commanded = client.post(
+            f"/api/athena/projects/{created['project_id']}/command",
+            headers=project_headers(session),
+            json={"version": 0, "action": "deconvolve", "group_ids": [seed_id],
+                  "options": {"form": "gaussian", "width": 1}},
+        )
+        assert commanded.status_code == 200, commanded.text
+        project = service.athena_store.load(created["project_id"])
+        derived = project["groups"][1]
+        response = export_groups(
+            client, created,
+            [{"group_id": derived["id"], "group_version": project["group_versions"][derived["id"]]}],
+            project_version=project["version"], nonce="l" * 32,
+        )
+
+    assert response.status_code == 200, response.text
+    (group,) = SelectedGroupExportBatch.model_validate_json(response.content).groups
+    assert group.source.kind == "athena_internal"
+    assert group.source.parent_group_ids == (seed_id,)
+    assert group.science.kind == "exported"
+    assert (group.science.reason, group.science.data_type) == ("data_type", "norm")
+    assert "energy" in group.science.arrays and "norm" in group.science.arrays
+
+
+def test_selected_group_export_refuses_a_group_whose_processing_failed(tmp_path):
+    """A group Athena could not process has no science to export, only an error."""
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        created = seeded(client, nonce="m" * 32)
+        seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        session = service.storage.create_project_session(
+            project_id=created["project_id"], owner_capability=created["capability"],
+            allowed_operations=("command", "deconvolve"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        # Deconvolving a narrow window leaves too little post-edge k to process.
+        commanded = client.post(
+            f"/api/athena/projects/{created['project_id']}/command",
+            headers=project_headers(session),
+            json={"version": 0, "action": "deconvolve", "group_ids": [seed_id],
+                  "options": {"form": "gaussian", "width": 1, "xmin": 8950, "xmax": 9100}},
+        )
+        assert commanded.status_code == 200, commanded.text
+        project = service.athena_store.load(created["project_id"])
+        broken = project["groups"][1]
+        assert broken["processing_error"]
+        response = export_groups(
+            client, created,
+            [{"group_id": broken["id"], "group_version": project["group_versions"][broken["id"]]}],
+            project_version=project["version"], nonce="n" * 32,
+        )
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Selected group has no processed result; repair its processing first."
+    )
+
+
+def reserve(client, project, selections, *, project_version, reservation="reservation-1", nonce="p" * 32):
+    path = f"/api/integration/v2/projects/{project['project_id']}/exports/reservations/{reservation}"
+    return request(client, "POST", path, {
+        "contract_version": 2, "project_id": project["project_id"],
+        "project_version": project_version, "selections": selections,
+    }, nonce=nonce, capability=project["capability"])
+
+
+def test_export_reservation_pins_the_revisions_it_was_asked_for(tmp_path):
+    """A reservation that records version 0 for every project cannot bind anything."""
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        created = seeded(client, nonce="o" * 32)
+        seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        session = service.storage.create_project_session(
+            project_id=created["project_id"], owner_capability=created["capability"],
+            allowed_operations=("command", "deconvolve"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        assert client.post(
+            f"/api/athena/projects/{created['project_id']}/command",
+            headers=project_headers(session),
+            json={"version": 0, "action": "deconvolve", "group_ids": [seed_id],
+                  "options": {"form": "gaussian", "width": 1}},
+        ).status_code == 200
+        project = service.athena_store.load(created["project_id"])
+        selections = [{"group_id": seed_id, "group_version": 0}]
+        reserved = reserve(client, created, selections, project_version=project["version"])
+        stale = reserve(client, created, selections, project_version=0,
+                        reservation="reservation-2", nonce="q" * 32)
+        absent = reserve(client, created, [{"group_id": "no-such-group", "group_version": 0}],
+                         project_version=project["version"], reservation="reservation-3",
+                         nonce="r" * 32)
+    assert reserved.status_code == 200, reserved.text
+    assert reserved.json()["project_version"] == project["version"] == 1
+    assert stale.status_code == 409, stale.text
+    assert absent.status_code == 409, absent.text
+
+
+def test_selected_group_export_refuses_a_result_that_predates_version_attribution(tmp_path):
+    """Science whose computing Larch was never recorded cannot be credited."""
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        created = seeded(client, nonce="u" * 32)
+        stored = tmp_path / "athena" / created["project_id"] / "project.json"
+        project = json.loads(stored.read_text())
+        group_id = project["groups"][0]["id"]
+        assert project["groups"][0]["result"].pop("larch_version")
+        stored.write_text(json.dumps(project))
+        response = export_groups(client, created, [{"group_id": group_id, "group_version": 0}],
+                                 nonce="v" * 32)
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "Selected group's cached result predates version attribution; reprocess it."
+    )
+
+
+def test_selected_group_export_puts_a_difference_spectrum_under_xraylarch_web_authority(tmp_path):
+    """A difference has no absorption edge, so no recipe could replay it."""
+    from xraylarch_web.integration_contracts import SelectedGroupExportBatch
+
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        created = seeded(client, nonce="w" * 32)
+        seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
+        session = service.storage.create_project_session(
+            project_id=created["project_id"], owner_capability=created["capability"],
+            allowed_operations=("command", "duplicate", "difference"),
+            expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+
+        def command(version, action, group_ids):
+            response = client.post(
+                f"/api/athena/projects/{created['project_id']}/command",
+                headers=project_headers(session),
+                json={"version": version, "action": action, "group_ids": group_ids, "options": {}},
+            )
+            assert response.status_code == 200, response.text
+
+        command(0, "duplicate", [seed_id])
+        copy_id = service.athena_store.load(created["project_id"])["groups"][1]["id"]
+        command(1, "difference", [seed_id, copy_id])
+        project = service.athena_store.load(created["project_id"])
+        difference = project["groups"][2]
+        assert difference["is_difference"]
+        response = export_groups(
+            client, created,
+            [{"group_id": difference["id"],
+              "group_version": project["group_versions"][difference["id"]]}],
+            project_version=project["version"], nonce="x" * 32,
+        )
+
+    assert response.status_code == 200, response.text
+    (group,) = SelectedGroupExportBatch.model_validate_json(response.content).groups
+    assert group.science.kind == "exported" and group.science.reason == "difference"
+    assert group.source.kind == "athena_internal"
+    assert set(group.source.parent_group_ids) == {seed_id, copy_id}

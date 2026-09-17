@@ -591,7 +591,7 @@ class IntegrationStorage:
 
     def reserve_export(
         self, project_id: str, capability: str, selections: tuple[SelectedGroupRef, ...],
-        reservation_id: str, *, now: datetime,
+        reservation_id: str, *, project_version: int, now: datetime,
     ) -> ExportReservation:
         selections = self._validate_selections(selections)
         with self.project_lock(project_id):
@@ -606,7 +606,7 @@ class IntegrationStorage:
             reservation = ExportReservation(
                 reservation_id=reservation_id,
                 project_id=record.project_id,
-                project_version=0,
+                project_version=project_version,
                 selections=selections,
                 status="prepared",
             )

@@ -23,6 +23,8 @@ from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from larch import __version__ as larch_version
+
 from .athena_science import (AthenaParameters, process_spectrum, calibrate_shift,
                              align_shift, merge_spectra, combine_spectra, linear_combination,
                              principal_components)
@@ -725,7 +727,7 @@ class AthenaStore:
         ident = uid()
         self.storage.workspace_dir(ident, create=True)
         project = {"id": ident, "format": "athena-web", "schema_version": 1,
-                   "name": "Untitled project", "version": 0, "groups": [],
+                   "name": "Untitled project", "version": 0, "groups": [], "group_versions": {},
                    "journal": "", "history": [], "undo": [], "redo": [], "analyses": [],
                    "created": now(), "updated": now()}
         self.storage.write_json(ident, "project.json", project)
@@ -799,10 +801,32 @@ class AthenaStore:
         p["undo"] = (old["undo"] + [snapshot])[-30:]
         p["redo"] = []
         p["version"] = old["version"] + 1
+        self._stamp_group_revisions(p, old)
         p["updated"] = now()
         p["history"] = (old["history"] + [{"time": now(), "message": message}])[-200:]
         self.storage.write_json(p["id"], "project.json", p)
         return p
+
+    @staticmethod
+    def _stamp_group_revisions(p: dict, old: dict) -> None:
+        """Record the project version in which each group's content last changed.
+
+        An integration export pins one selected group, so a revision must move
+        only for the group that actually changed: a project-wide stamp would
+        let an unrelated edit void a pending import. The revisions live beside
+        the groups rather than inside them, so a group payload keeps the exact
+        shape every native export, stored project and editor view already
+        depends on.
+        """
+        previous_groups = {g["id"]: g for g in old["groups"]}
+        previous_revisions = old.get("group_versions") or {}
+        revisions = {}
+        for group in p["groups"]:
+            before = previous_groups.get(group["id"])
+            kept = previous_revisions.get(group["id"])
+            unchanged = before is not None and kept is not None and before == group
+            revisions[group["id"]] = kept if unchanged else p["version"]
+        p["group_versions"] = revisions
 
     def group(self, p: dict, ident: str) -> dict:
         matches = [g for g in p["groups"] if g["id"] == ident]
@@ -1052,7 +1076,8 @@ class AthenaStore:
             arrays = {key: [] for key in ARRAY_NAMES}
             arrays.update(energy=x.tolist(), mu=y.tolist(), norm=y.tolist(), flat=y.tolist(), dmude=np.gradient(y, x).tolist())
             g["result"] = {"arrays": arrays, "effective": {"e0": None, "edge_step": None, "exafs": False},
-                           "warnings": ["Difference spectrum: the signed difference is shown without edge normalization or EXAFS processing."]}
+                           "warnings": ["Difference spectrum: the signed difference is shown without edge normalization or EXAFS processing."],
+                           "larch_version": larch_version}
             g["processing_error"] = None
             _ensure_edge_identity(g)
             return
@@ -1064,6 +1089,9 @@ class AthenaStore:
         g["result"] = process_spectrum(g["energy"], g["mu"], recipe,
                                        data_type=g["data_type"], background_standard=standard,
                                        is_normalized=normalized)
+        # Attribute the cached arrays to the version that computed them: an
+        # integration export must not credit them to a later upgrade.
+        g["result"]["larch_version"] = larch_version
         g["result"]["effective"]["background_standard_id"] = standard_id
         _ensure_edge_identity(g)
         g["processing_error"] = None

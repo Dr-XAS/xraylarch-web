@@ -314,6 +314,30 @@ def build_integration_router(
         except Exception as exc:
             raise _http_error(exc)
 
+    @v2.post("/projects/{project_id}/exports/groups")
+    async def export_group_science(project_id: str, request: Request):
+        from .integration_contracts import SelectedGroupExportRequest
+        raw, nonce, timestamp = await signed(request)
+        capability = request.headers.get("X-XrayLarch-Project-Capability")
+        if not capability:
+            raise HTTPException(status_code=404, detail="Integration project was not found.")
+        try:
+            payload = SelectedGroupExportRequest.model_validate_json(raw)
+        except ValidationError:
+            raise HTTPException(status_code=422, detail="Export request is invalid.")
+        try:
+            if payload.project_id != project_id:
+                raise IntegrationAuthorizationError()
+            claim(nonce, timestamp)
+            # A contract violation here is the stored project failing to cross
+            # its own boundary, not a malformed request; never report it as one.
+            return service.export_v2_group_science(
+                project_id, capability, payload.selections,
+                project_version=payload.project_version, now=_now(),
+            ).model_dump(mode="json")
+        except Exception as exc:
+            raise _http_error(exc)
+
     @v2.post("/projects/{project_id}/exports/reservations/{reservation_id}")
     async def reserve_export(project_id: str, reservation_id: str, request: Request):
         from .integration_contracts import SelectedGroupExportRequest
@@ -327,7 +351,10 @@ def build_integration_router(
                 raise IntegrationAuthorizationError()
             service.storage.load_project(project_id, capability, now=_now())
             claim(nonce, timestamp)
-            return service.reserve_v2_export(project_id, capability, payload.selections, reservation_id, now=_now()).model_dump(mode="json")
+            return service.reserve_v2_export(
+                project_id, capability, payload.selections, reservation_id,
+                project_version=payload.project_version, now=_now(),
+            ).model_dump(mode="json")
         except ValidationError:
             raise HTTPException(status_code=422, detail="Export request is invalid.")
         except Exception as exc:

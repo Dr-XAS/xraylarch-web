@@ -7,10 +7,14 @@ from pathlib import Path
 
 from xraylarch_web.integration_contracts import (
     AuthoritativeSpectrum,
+    AthenaInternalSource,
     AthenaUploadedSource,
     AutobkParameters,
+    ComputedImportResult,
     CoreProcessingRecipe,
     ExistingDrXasSource,
+    ExportedGroup,
+    ExportedGroupScience,
     ExportReservation,
     ForwardFtParameters,
     NormalizationParameters,
@@ -19,6 +23,7 @@ from xraylarch_web.integration_contracts import (
     ProjectQuota,
     ProjectSeed,
     ProjectSummary,
+    RecomputableGroupScience,
     ReverseFtParameters,
     SelectedGroupExportBatch,
     SelectedGroupExportRequest,
@@ -38,9 +43,14 @@ MODELS = (
     ProjectSummary,
     SelectedGroupRef,
     SelectedGroupExportRequest,
+    ComputedImportResult,
+    RecomputableGroupScience,
+    ExportedGroupScience,
+    ExportedGroup,
     SelectedGroupExportBatch,
     ExistingDrXasSource,
     AthenaUploadedSource,
+    AthenaInternalSource,
     ExportReservation,
     ProjectQuota,
 )
@@ -89,6 +99,8 @@ def render() -> str:
         "export type JsonValue = null | boolean | number | string | ReadonlyArray<JsonValue> | JsonObject;\n\n"
         f"{declarations}\n\n"
         "export type ProjectSource = ExistingDrXasSource | AthenaUploadedSource;\n"
+        "export type ExportedGroupSource = ProjectSource | AthenaInternalSource;\n"
+        "export type GroupScience = RecomputableGroupScience | ExportedGroupScience;\n"
     )
 
 

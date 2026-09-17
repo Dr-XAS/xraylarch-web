@@ -179,7 +179,8 @@ def test_expired_guest_is_expired_during_authorized_read_and_mutation(store):
 
     with pytest.raises(IntegrationNotFoundError):
         store.reserve_export(
-            "guest", capability, selections("g1"), "import-1", now=NOW + timedelta(seconds=61)
+            "guest", capability, selections("g1"), "import-1",
+            project_version=4, now=NOW + timedelta(seconds=61),
         )
     expired_record = json.loads((store.projects_dir / "guest.json").read_text(encoding="utf-8"))
     assert expired_record["status"] == "expired"
@@ -188,24 +189,25 @@ def test_expired_guest_is_expired_during_authorized_read_and_mutation(store):
 
 
 def test_export_reservation_is_idempotent(store, capability):
-    first = store.reserve_export("p1", capability, selections("g1", "g2"), "import-1", now=NOW)
-    second = store.reserve_export("p1", capability, selections("g1", "g2"), "import-1", now=NOW)
+    first = store.reserve_export("p1", capability, selections("g1", "g2"), "import-1", project_version=4, now=NOW)
+    second = store.reserve_export("p1", capability, selections("g1", "g2"), "import-1", project_version=4, now=NOW)
 
     assert second == first
     assert second.status == "prepared"
+    assert first.project_version == 4
 
 
 def test_export_reservation_rejects_duplicate_selections_and_conflicting_reuse(store, capability):
     with pytest.raises(IntegrationConflictError):
-        store.reserve_export("p1", capability, selections("g1", "g1"), "import-1", now=NOW)
+        store.reserve_export("p1", capability, selections("g1", "g1"), "import-1", project_version=4, now=NOW)
 
-    store.reserve_export("p1", capability, selections("g1"), "import-1", now=NOW)
+    store.reserve_export("p1", capability, selections("g1"), "import-1", project_version=4, now=NOW)
     with pytest.raises(IntegrationConflictError):
-        store.reserve_export("p1", capability, selections("g2"), "import-1", now=NOW)
+        store.reserve_export("p1", capability, selections("g2"), "import-1", project_version=4, now=NOW)
 
 
 def test_export_reservation_commit_and_abort_are_idempotent(store, capability):
-    prepared = store.reserve_export("p1", capability, selections("g1"), "import-1", now=NOW)
+    prepared = store.reserve_export("p1", capability, selections("g1"), "import-1", project_version=4, now=NOW)
 
     committed = store.commit_export_reservation("p1", capability, "import-1", now=NOW)
     assert committed.status == "committed"
@@ -213,7 +215,7 @@ def test_export_reservation_commit_and_abort_are_idempotent(store, capability):
     with pytest.raises(IntegrationConflictError):
         store.abort_export_reservation("p1", capability, "import-1", now=NOW)
 
-    store.reserve_export("p1", capability, selections("g2"), "import-2", now=NOW)
+    store.reserve_export("p1", capability, selections("g2"), "import-2", project_version=4, now=NOW)
     aborted = store.abort_export_reservation("p1", capability, "import-2", now=NOW)
     assert aborted.status == "aborted"
     assert store.abort_export_reservation("p1", capability, "import-2", now=NOW) == aborted
@@ -366,7 +368,7 @@ def test_deleted_project_rejects_load_and_mutation(store, capability):
     with pytest.raises(IntegrationNotFoundError):
         store.load_project("p1", capability)
     with pytest.raises(IntegrationNotFoundError):
-        store.reserve_export("p1", capability, selections("g1"), "import-1", now=NOW)
+        store.reserve_export("p1", capability, selections("g1"), "import-1", project_version=4, now=NOW)
 
 
 def test_expire_due_marks_guests_terminal_and_rejects_load(store, clock):
@@ -399,7 +401,8 @@ def test_concurrent_rotation_leaves_exactly_one_winning_capability(store, capabi
 def test_concurrent_reservations_do_not_lose_updates(store, capability):
     def reserve(reservation_id: str):
         return store.reserve_export(
-            "p1", capability, selections(f"group-{reservation_id}"), reservation_id, now=NOW
+            "p1", capability, selections(f"group-{reservation_id}"), reservation_id,
+            project_version=4, now=NOW
         )
 
     with ThreadPoolExecutor(max_workers=2) as executor:

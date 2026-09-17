@@ -41,11 +41,20 @@ from .integration_storage import (
     capability_for_handle,
 )
 from .integration_contracts import (
+    AthenaInternalSource,
+    AthenaUploadedSource,
+    ExistingDrXasSource,
     ExportReservation,
+    ExportedGroup,
+    ExportedGroupScience,
     ProjectBootstrapRequest,
     ProjectQuota,
     ProjectSummary,
+    RecomputableGroupScience,
+    SelectedGroupExportBatch,
     SelectedGroupRef,
+    V2_CONTRACT_VERSION,
+    validate_recipe_for_spectrum,
 )
 
 
@@ -404,6 +413,7 @@ class IntegrationService:
             "name": request.name, "version": 0, "groups": [], "journal": "",
             "history": [], "undo": [], "redo": [], "analyses": [],
             "created": athena_now(), "updated": athena_now(), "integration": True,
+            "group_versions": {},
         }
         if request.seed is not None:
             group = {
@@ -415,6 +425,7 @@ class IntegrationService:
                 "result": None, "processing_error": None, "is_difference": False,
             }
             project["groups"].append(group)
+            project["group_versions"][group["id"]] = project["version"]
         # Processing materializes many derived arrays. Reject against their
         # conservative serialized ceiling before spending CPU or mutating Athena.
         if self._processed_project_byte_bound(project) > quota.max_bytes:
@@ -623,8 +634,17 @@ class IntegrationService:
             return {"project_id": project_id, "status": "deleted", "cleanup_pending": True}
         return {"project_id": project_id, "status": "deleted", "cleanup_pending": False}
 
-    def reserve_v2_export(self, project_id: str, capability: str, selections: tuple[SelectedGroupRef, ...], reservation_id: str, *, now: datetime) -> ExportReservation:
-        return self.storage.reserve_export(project_id, capability, selections, reservation_id, now=now)
+    def reserve_v2_export(self, project_id: str, capability: str, selections: tuple[SelectedGroupRef, ...], reservation_id: str, *, project_version: int, now: datetime) -> ExportReservation:
+        # Resolve the selection before reserving, so the reservation records the
+        # revisions it actually pins instead of an unbinding placeholder.
+        with self.athena_store.storage.lock(project_id):
+            self._selected_groups(
+                self.athena_store.load(project_id), project_version, selections
+            )
+        return self.storage.reserve_export(
+            project_id, capability, selections, reservation_id,
+            project_version=project_version, now=now,
+        )
 
     def complete_v2_export(self, project_id: str, capability: str, reservation_id: str, *, commit: bool, now: datetime) -> ExportReservation:
         complete = self.storage.commit_export_reservation if commit else self.storage.abort_export_reservation
@@ -770,6 +790,199 @@ class IntegrationService:
         )
 
         return envelope, project, group
+
+    def export_v2_group_science(
+        self,
+        project_id: str,
+        capability: str,
+        selections: tuple[SelectedGroupRef, ...],
+        *,
+        project_version: int,
+        now: datetime,
+    ) -> SelectedGroupExportBatch:
+        """Export the science of the selected groups at the revisions pinned.
+
+        Read-only: the owner capability authorizes one project, and every
+        selection names the project version its group last changed in, so a
+        caller can never be handed science from a revision it did not choose.
+        """
+
+        self.storage.load_project(project_id, capability, now=now)
+        with self.athena_store.storage.lock(project_id):
+            project = self.athena_store.load(project_id)
+            exported = [
+                self._exported_group(group, selection.group_version)
+                for selection, group in zip(
+                    selections,
+                    self._selected_groups(project, project_version, selections),
+                )
+            ]
+        return SelectedGroupExportBatch(
+            contract_version=V2_CONTRACT_VERSION,
+            project_id=project_id,
+            project_version=project_version,
+            groups=tuple(exported),
+        )
+
+    @staticmethod
+    def _selected_groups(
+        project: dict, project_version: int, selections: tuple[SelectedGroupRef, ...]
+    ) -> list[dict]:
+        """Resolve selections against the exact revisions they name.
+
+        Both the project version and each group's own revision must match, so a
+        caller is never served — or handed a reservation over — science from a
+        revision it did not choose.
+        """
+
+        if project["version"] != project_version:
+            raise IntegrationConflictError(
+                "Integration project has changed since the selection was made."
+            )
+        revisions = project.get("group_versions") or {}
+        groups = {group["id"]: group for group in project["groups"]}
+        resolved = []
+        for selection in selections:
+            group = groups.get(selection.group_id)
+            if group is None or revisions.get(selection.group_id) != selection.group_version:
+                raise IntegrationConflictError(
+                    "Selected group is absent or has changed since it was selected."
+                )
+            resolved.append(group)
+        return resolved
+
+    def _exported_group(self, group: dict, group_version: int) -> ExportedGroup:
+        if group.get("processing_error") or not isinstance(group.get("result"), dict):
+            raise IntegrationConflictError(
+                "Selected group has no processed result; repair its processing first."
+            )
+        larch_version = group["result"].get("larch_version")
+        if not isinstance(larch_version, str) or not larch_version:
+            # Results cached before the computing version was recorded cannot be
+            # attributed, and unattributed science must not cross the boundary.
+            raise IntegrationConflictError(
+                "Selected group's cached result predates version attribution; reprocess it."
+            )
+        # A chi(k) or detector group keeps its own abscissa in the energy slot,
+        # which the exported data type names; the axis is authoritative either way.
+        spectrum = AuthoritativeSpectrum.model_validate(
+            {"energy": tuple(group["energy"]), "mu": tuple(group["mu"])}
+        )
+        source = self._exported_source(group)
+        return ExportedGroup(
+            group_id=group["id"],
+            group_version=group_version,
+            label=group["label"],
+            larch_version=larch_version,
+            source=source,
+            source_sha256=canonical_sha256(source),
+            spectrum=spectrum,
+            spectrum_sha256=canonical_sha256(spectrum),
+            science=self._group_science(group, spectrum, larch_version),
+        )
+
+    @staticmethod
+    def _exported_source(group: dict):
+        """Map Athena's open-ended source metadata onto the portable shapes.
+
+        Only a Dr.XAS seed and a column-mapped upload have a portable identity;
+        everything else — derived, combined, natively imported — keeps its
+        provenance inside xraylarch-web and names only its parents.
+        """
+
+        source = group.get("source") or {}
+        if source.get("kind") == "drxas":
+            # Athena enriches a stored source in place (an inferred edge
+            # identity, XDI history), so project it back onto the seed's own
+            # fields rather than handing the accumulated dict to a strict model.
+            return ExistingDrXasSource.model_validate(
+                {
+                    name: value
+                    for name, value in source.items()
+                    if name in ExistingDrXasSource.model_fields
+                }
+            )
+        if source.get("original_filename") and source.get("source_sha256"):
+            try:
+                return AthenaUploadedSource(
+                    original_filename=source["original_filename"],
+                    raw_sha256=source["source_sha256"],
+                    parse_metadata=source.get("parse_metadata") or {},
+                )
+            except ValidationError:
+                pass
+        parents = source.get("parents") if isinstance(source.get("parents"), list) else None
+        if parents is None and isinstance(source.get("parent"), str):
+            parents = [source["parent"]]
+        return AthenaInternalSource(
+            parent_group_ids=tuple(
+                parent for parent in (parents or ()) if isinstance(parent, str) and parent
+            )
+        )
+
+    def _group_science(
+        self, group: dict, spectrum: AuthoritativeSpectrum, larch_version: str
+    ) -> RecomputableGroupScience | ExportedGroupScience:
+        """Pick the strongest kind this group's processing can honestly cross as.
+
+        Recomputable is offered only when the portable recipe really describes
+        this spectrum and the cached result is complete; anything short of that
+        travels as computed arrays under xraylarch-web's own authority, naming
+        which shortfall it hit.
+        """
+
+        result = group["result"]
+        arrays = result.get("arrays") or {}
+        effective = result.get("effective") or {}
+        if group["is_difference"]:
+            return self._exported_science(group, "difference", arrays, effective)
+        if group["data_type"] != "mu":
+            return self._exported_science(group, "data_type", arrays, effective)
+        try:
+            recipe = self._recipe_from_parameters(
+                group["parameters"], recipe_version=1, larch_version=larch_version
+            )
+        except (ValidationError, KeyError, TypeError):
+            return self._exported_science(group, "unportable_recipe", arrays, effective)
+        try:
+            validate_recipe_for_spectrum(spectrum, recipe)
+        except ValueError:
+            return self._exported_science(group, "unportable_recipe", arrays, effective)
+        try:
+            computed = ComputedImportResult.model_validate({
+                "arrays": {name: tuple(arrays.get(name, ())) for name in get_args(ComputedArray)},
+                "e0": effective.get("e0"), "edge_step": effective.get("edge_step"),
+            })
+        except ValidationError:
+            return self._exported_science(group, "incomplete_result", arrays, effective)
+        return RecomputableGroupScience(
+            recipe=recipe, recipe_sha256=canonical_sha256(recipe), computed=computed
+        )
+
+    @staticmethod
+    def _exported_science(
+        group: dict, reason: str, arrays: Mapping, effective: Mapping
+    ) -> ExportedGroupScience:
+        def positive(name: str) -> float | None:
+            value = effective.get(name)
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                return None
+            return float(value) if math.isfinite(value) and value > 0 else None
+
+        present = {
+            name: tuple(arrays[name])
+            for name in get_args(ComputedArray)
+            if arrays.get(name)
+        }
+        try:
+            return ExportedGroupScience(
+                reason=reason, data_type=group["data_type"], arrays=present,
+                e0=positive("e0"), edge_step=positive("edge_step"),
+            )
+        except ValidationError as exc:
+            raise IntegrationConflictError(
+                "Selected group's cached result is not exportable; reprocess it."
+            ) from exc
 
     def _project(self, envelope: LaunchEnvelope, project_id: str, group_id: str) -> dict:
         parameters = self._parameters(envelope)

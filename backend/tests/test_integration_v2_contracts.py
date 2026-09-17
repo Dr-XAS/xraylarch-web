@@ -229,6 +229,7 @@ def test_generated_typescript_matches_json_schema_requiredness():
     assert "readonly contract_version?: 2;" in generated
     assert "readonly source?: ExistingDrXasSource | AthenaUploadedSource | null;" in generated
     assert "readonly kind?: 'athena_upload';" in generated
+    assert "readonly science: RecomputableGroupScience | ExportedGroupScience;" in generated
     assert "readonly name: string;" in generated
     assert "readonly persistent: boolean;" in generated
     assert "readonly original_filename: string;" in generated
@@ -245,3 +246,188 @@ def test_v2_contract_generator_is_deterministic_in_a_fresh_checkout():
         check=True,
     )
     assert generated.read_bytes() == before
+
+
+def valid_spectrum() -> AuthoritativeSpectrum:
+    return AuthoritativeSpectrum(
+        energy=tuple(8800.0 + index * 2 for index in range(551)),
+        mu=tuple(
+            0.7 + math.atan((8800.0 + index * 2 - 8980.0) / 4.0) / math.pi
+            for index in range(551)
+        ),
+    )
+
+
+def computed_arrays() -> dict:
+    names = ("energy", "mu", "norm", "flat", "pre_edge", "post_edge", "k", "chi",
+             "r", "chir_re", "chir_im", "chir_mag", "q", "chiq_re", "chiq_im", "chiq_mag")
+    return {name: tuple(float(index + 1) for index in range(4)) for name in names}
+
+
+def exported_group(**changes) -> dict:
+    """Keyword arguments for one valid, recomputable exported group."""
+    from test_integration_contracts import launch_payload
+    from xraylarch_web.integration_contracts import (
+        ComputedImportResult, CoreProcessingRecipe, RecomputableGroupScience,
+    )
+
+    recipe = CoreProcessingRecipe.model_validate(launch_payload()["recipe"])
+    spectrum = valid_spectrum()
+    source = AthenaUploadedSource.model_validate(valid_uploaded_source())
+    return {
+        "group_id": "group-1",
+        "group_version": 3,
+        "label": "Cu foil",
+        "larch_version": recipe.larch_version,
+        "source": source,
+        "source_sha256": canonical_sha256(source),
+        "spectrum": spectrum,
+        "spectrum_sha256": canonical_sha256(spectrum),
+        "science": RecomputableGroupScience(
+            recipe=recipe,
+            recipe_sha256=canonical_sha256(recipe),
+            computed=ComputedImportResult(arrays=computed_arrays(), e0=8980.0, edge_step=0.9),
+        ),
+        **changes,
+    }
+
+
+def test_exported_group_binds_its_own_source_spectrum_and_recipe_digests():
+    from xraylarch_web.integration_contracts import ExportedGroup, RecomputableGroupScience
+
+    group = ExportedGroup(**exported_group())
+    assert group.science.kind == "recomputable"
+
+    for field in ("source_sha256", "spectrum_sha256"):
+        with pytest.raises(ValidationError, match=field):
+            ExportedGroup(**exported_group(**{field: "0" * 64}))
+    science = exported_group()["science"]
+    with pytest.raises(ValidationError, match="recipe_sha256"):
+        RecomputableGroupScience(
+            recipe=science.recipe, recipe_sha256="0" * 64, computed=science.computed
+        )
+
+
+def test_exported_group_rejects_science_credited_to_another_larch():
+    from xraylarch_web.integration_contracts import ExportedGroup
+
+    with pytest.raises(ValidationError, match="larch_version"):
+        ExportedGroup(**exported_group(larch_version="0.0.0-not-the-one-that-ran"))
+
+
+def test_exported_group_digest_binds_the_revision_and_the_science():
+    from xraylarch_web.integration_contracts import (
+        ComputedImportResult, ExportedGroup, RecomputableGroupScience,
+    )
+
+    group = ExportedGroup(**exported_group())
+    digest = canonical_sha256(group)
+    assert digest == canonical_sha256(ExportedGroup(**exported_group()))
+    assert canonical_sha256(ExportedGroup(**exported_group(group_version=4))) != digest
+
+    science = exported_group()["science"]
+    moved = RecomputableGroupScience(
+        recipe=science.recipe,
+        recipe_sha256=science.recipe_sha256,
+        computed=ComputedImportResult(arrays=computed_arrays(), e0=8981.0, edge_step=0.9),
+    )
+    assert canonical_sha256(ExportedGroup(**exported_group(science=moved))) != digest
+
+
+def test_a_group_with_no_portable_recipe_keeps_xraylarch_web_as_its_authority():
+    from xraylarch_web.integration_contracts import ExportedGroup, ExportedGroupScience
+
+    partial = {name: (1.0, 2.0, 3.0, 4.0) for name in ("energy", "mu", "norm", "flat")}
+    science = ExportedGroupScience(
+        reason="incomplete_result", data_type="xanes", arrays=partial, e0=8980.0, edge_step=0.9
+    )
+    group = ExportedGroup(**exported_group(science=science))
+    assert group.science.kind == "exported" and group.science.reason == "incomplete_result"
+    # There is no recipe to replay, so none may be smuggled back in.
+    assert not hasattr(group.science, "recipe")
+
+    with pytest.raises(ValidationError, match="aligned"):
+        ExportedGroupScience(
+            reason="incomplete_result", data_type="xanes",
+            arrays={"energy": (1.0, 2.0), "mu": (1.0, 2.0, 3.0, 4.0)},
+            e0=None, edge_step=None,
+        )
+    with pytest.raises(ValidationError, match="without energy"):
+        ExportedGroupScience(
+            reason="difference", data_type="mu",
+            arrays={"norm": (1.0, 2.0, 3.0, 4.0)}, e0=None, edge_step=None,
+        )
+    # A chi(k) group has no energy axis, and a XANES-range scan has no chi(k);
+    # each carries the families it computed and no more.
+    chi_only = ExportedGroupScience(
+        reason="data_type", data_type="chi",
+        arrays={"k": (0.0, 1.0, 2.0), "chi": (0.1, 0.2, 0.3)}, e0=None, edge_step=None,
+    )
+    assert set(chi_only.arrays) == {"k", "chi"}
+    with pytest.raises(ValidationError):
+        ExportedGroupScience(reason="incomplete_result", data_type="xanes", arrays={}, e0=None, edge_step=None)
+    with pytest.raises(ValidationError):
+        ExportedGroupScience(reason="invented", data_type="xanes", arrays=partial, e0=None, edge_step=None)
+
+
+def test_a_derived_group_names_its_parents_without_athena_source_metadata():
+    from xraylarch_web.integration_contracts import AthenaInternalSource, ExportedGroup
+
+    source = AthenaInternalSource(parent_group_ids=("group-a", "group-b"))
+    group = ExportedGroup(**exported_group(source=source, source_sha256=canonical_sha256(source)))
+    assert group.source.parent_group_ids == ("group-a", "group-b")
+
+    with pytest.raises(ValidationError, match="unique"):
+        AthenaInternalSource(parent_group_ids=("group-a", "group-a"))
+    with pytest.raises(ValidationError):
+        AthenaInternalSource.model_validate(
+            {"kind": "athena_internal", "parent_group_ids": ["group-a"], "column_arrays": {}}
+        )
+
+
+def test_selected_group_export_batch_carries_unique_bounded_group_science():
+    from xraylarch_web.integration_contracts import ExportedGroup, SelectedGroupExportBatch
+
+    group = ExportedGroup(**exported_group())
+    batch = SelectedGroupExportBatch(
+        contract_version=2, project_id="project-1", project_version=7, groups=(group,)
+    )
+    assert batch.groups[0].science.computed.e0 == 8980.0
+
+    with pytest.raises(ValidationError, match="unique"):
+        SelectedGroupExportBatch(
+            contract_version=2, project_id="project-1", project_version=7,
+            groups=(group, ExportedGroup(**exported_group(group_version=4))),
+        )
+    with pytest.raises(ValidationError):
+        SelectedGroupExportBatch(
+            contract_version=2, project_id="project-1", project_version=7, groups=()
+        )
+
+
+def test_a_recomputable_recipe_must_describe_the_spectrum_it_travels_with():
+    """A recipe offered for replay is held to the same physics as a launch.
+
+    Anything this rejects has to travel under the exported kind instead, so the
+    check must live on the group and not only on the launch envelope.
+    """
+    from xraylarch_web.integration_contracts import ExportedGroup, RecomputableGroupScience
+
+    science = exported_group()["science"]
+    off_axis = science.recipe.model_copy(
+        update={
+            "normalization": science.recipe.normalization.model_copy(
+                update={"e0": science.recipe.normalization.e0 + 5000.0}
+            )
+        }
+    )
+    with pytest.raises(ValidationError, match="normalization.e0"):
+        ExportedGroup(
+            **exported_group(
+                science=RecomputableGroupScience(
+                    recipe=off_axis,
+                    recipe_sha256=canonical_sha256(off_axis),
+                    computed=science.computed,
+                )
+            )
+        )
