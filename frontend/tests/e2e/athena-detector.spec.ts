@@ -59,7 +59,7 @@ test('native detector probe previews measured counts, corrects type, and survive
   await page.getByRole('button', { name: 'Undo', exact: true }).click(); await undo
   await expect(page.getByRole('button', { name: 'Data type: Detector signal', exact: true })).toBeVisible()
   const downloading = page.waitForEvent('download')
-  await page.getByRole('link', { name: 'Save project', exact: true }).click()
+  await page.getByRole('button', { name: 'Save project', exact: true }).click()
   const exported = info.outputPath('detector-roundtrip.prj'); await (await downloading).saveAs(exported)
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await expect(page.getByLabel('Open project file', { exact: true })).toBeEnabled()

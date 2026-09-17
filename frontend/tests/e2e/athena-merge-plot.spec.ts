@@ -52,7 +52,7 @@ for(const [file,how] of [['AsScorodite.prj','e'],['Fe.prj','n'],['bal3ybco.prj',
   expect(await(await page.request.get(`/api/backend/api/athena/projects/${initial.id}`)).json()).toEqual(initial)
   await page.reload();await page.locator('.ath-group-select').filter({hasText:g.label}).first().click();dialog=await open(page)
   const baseline=await review(page,dialog);await dialog.getByRole('button',{name:'Close merge plot',exact:true}).click()
-  const download=page.waitForEvent('download');await page.getByRole('link',{name:'Save project',exact:true}).click();const savedPath=info.outputPath('saved-native.prj');await(await download).saveAs(savedPath)
+  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click();const savedPath=info.outputPath('saved-native.prj');await(await download).saveAs(savedPath)
   writeFileSync(savedPath,gunzipSync(readFileSync(savedPath)).toString().split('\n').filter(l=>!l.startsWith('# Athena-Web ')).join('\n'))
   await page.getByRole('button',{name:'File',exact:true}).click();await page.getByRole('button',{name:'Open project…',exact:true}).click();await page.getByLabel('Open project file',{exact:true}).setInputFiles(savedPath)
   const restoring=page.waitForResponse(r=>r.url().endsWith('/restore-upload'));await page.getByRole('button',{name:'Import all groups',exact:true}).click();const restoredResponse=await restoring;expect(restoredResponse.ok()).toBe(true)

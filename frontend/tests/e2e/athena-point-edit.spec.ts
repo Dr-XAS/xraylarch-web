@@ -119,7 +119,7 @@ test('measured ORP import preview, mu/chi point picking, margins, truncate, undo
   const undone=await apply(page,dialog,'Undo last edit','undo');expect(undone.groups[0].mu.length).toBeGreaterThan(latest.groups[0].mu.length)
   const redone=await apply(page,dialog,'Redo last edit','redo');expect(redone.groups).toEqual(latest.groups)
   await dialog.getByRole('button',{name:'Close point editing',exact:true}).click()
-  const downloading=page.waitForEvent('download');await page.getByRole('link',{name:'Save project',exact:true}).click()
+  const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click()
   const path=info.outputPath('ORP-edited-native.prj');await(await downloading).saveAs(path)
   writeFileSync(path,gunzipSync(readFileSync(path)).toString().split('\n').filter(l=>!l.startsWith('# Athena-Web ')).join('\n'))
   await page.getByRole('button',{name:'File',exact:true}).click();await page.getByRole('button',{name:'Open project…',exact:true}).click()

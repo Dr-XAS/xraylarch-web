@@ -58,6 +58,17 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
   if (body) init.duplex = "half"
 
   const backendResponse = await fetch(upstream, init)
+  if (routePath.join("/") === "health") {
+    // This mount shares Dr.XAS's public origin, so this route is reachable
+    // from the internet, and the backend's own health body names the deployed
+    // 40-hex revision. The deploy script probes this path to prove the proxy
+    // works and reads only the status code; the revision is read separately,
+    // straight off the loopback backend. So answer the status and nothing else.
+    return new Response(JSON.stringify({ status: backendResponse.ok ? "ok" : "error" }), {
+      status: backendResponse.status,
+      headers: { "content-type": "application/json" },
+    })
+  }
   const outputHeaders = new Headers()
   for (const header of responseHeaders) {
     const value = backendResponse.headers.get(header)

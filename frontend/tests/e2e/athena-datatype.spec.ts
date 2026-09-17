@@ -81,7 +81,7 @@ test('normalized XANES survives downloaded .prj and reopened plots', async ({ pa
   await panel.getByRole('button', { name: 'Close', exact: true }).click()
   const saved = await command(page, () => page.getByRole('button', { name: 'Data type: Normalized μ(E)', exact: true }).click({ modifiers: ['Control', 'Alt'] }))
   const download = page.waitForEvent('download')
-  await page.getByRole('link', { name: 'Save project', exact: true }).click()
+  await page.getByRole('button', { name: 'Save project', exact: true }).click()
   const path = info.outputPath('normalized-xanes.prj'); await (await download).saveAs(path)
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await page.getByLabel('Open project file', { exact: true }).setInputFiles(path)

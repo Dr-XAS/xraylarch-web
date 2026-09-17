@@ -10,7 +10,9 @@ const issuer = "playwright-drxas"
 const audience = "playwright-athena"
 const secret = "playwright-only-integration-secret-32-bytes"
 const backendOrigin = `http://127.0.0.1:${process.env.XRAYLARCH_E2E_BACKEND_PORT ?? "18006"}`
-const frontendOrigin = `http://127.0.0.1:${process.env.XRAYLARCH_E2E_FRONTEND_PORT ?? "13004"}`
+// The mounted server is a second dev server on its own port; the standalone one on
+// XRAYLARCH_E2E_FRONTEND_PORT serves the origin root for every other spec.
+const frontendOrigin = `http://127.0.0.1:${process.env.XRAYLARCH_E2E_MOUNT_PORT ?? "13005"}`
 
 type CreatedProject = { project_id: string; capability: string }
 
@@ -124,6 +126,17 @@ test("mounted persistent Athena completes its authorized lifecycle", async ({ pa
 
     const unauthenticated = await request.get(`${mount}/api/backend/api/athena/projects/${project.project_id}`)
     expect(unauthenticated.status()).toBe(404)
+
+    // The mount shares Dr.XAS's public origin, so anything this proxy
+    // allowlists is internet-reachable. The deploy script probes this exact
+    // path to prove the proxy works and reads only the status code, so the
+    // route has to stay reachable — but the backend's health body names the
+    // deployed 40-hex revision, which no anonymous caller needs.
+    const health = await request.get(`${mount}/api/backend/health`)
+    expect(health.status()).toBe(200)
+    const body = await health.json()
+    expect(body).toEqual({ status: "ok" })
+    expect(Object.keys(body)).not.toContain("git_revision")
 
     const deleteRoute = `/api/integration/v2/projects/${project.project_id}`
     const response = await signedRequest(request, "DELETE", deleteRoute, {}, project.capability)

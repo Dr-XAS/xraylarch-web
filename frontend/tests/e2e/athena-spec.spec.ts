@@ -78,7 +78,7 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
   await panel.getByRole('button', { name: 'Invert scan selection' }).click()
   await expect(panel.getByLabel('Include Scan 1 · entry 1')).toBeChecked()
   await expect(panel.getByLabel('Include Scan 2 · entry 2')).toBeChecked()
-  const download = page.waitForEvent('download'); await panel.getByRole('link', { name: 'Download original SPEC file' }).click()
+  const download = page.waitForEvent('download'); await panel.getByRole('button', { name: 'Download original SPEC file' }).click()
   const original = info.outputPath('original.spec'); await (await download).saveAs(original)
   expect(readFileSync(original)).toEqual(readFileSync(fixture))
   await plot.scrollIntoViewIfNeeded()
@@ -115,7 +115,7 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
     await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
       .toEqual({ x: active.result.arrays[xkey], y: active.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
   }
-  const save = page.waitForEvent('download'); await page.getByRole('link', { name: 'Save project', exact: true }).click()
+  const save = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save project', exact: true }).click()
   const prj = info.outputPath('spec-roundtrip.prj'); await (await save).saveAs(prj)
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

@@ -98,7 +98,7 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
     await matches(panel.getByLabel(`Preview of ${expected[0].label}`, { exact: true }), expected[0])
     for (const variant of ['original file','converted project']) {
       const downloading = page.waitForEvent('download')
-      await panel.getByRole('link', { name: `Download ${variant}`, exact: true }).click()
+      await panel.getByRole('button', { name: `Download ${variant}`, exact: true }).click()
       const file = info.outputPath(variant === 'original file' ? 'original.dat' : 'converted.json')
       await (await downloading).saveAs(file)
       if (variant === 'original file') expect(readFileSync(file)).toEqual(readFileSync(fixture(ref.input)))
@@ -130,7 +130,7 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
       }
     }
     const downloading = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const prj = info.outputPath('multichannel.prj'); await (await downloading).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)
