@@ -86,7 +86,7 @@ test('ESRF Cu: live pixel columns, fitted calibration, native settings, make, un
   expect(g.source.calibration).toEqual(fitted.coefficients);expect(g.processing_error).toBeNull()
   await panel.getByRole('button',{name:'Close dialog',exact:true}).click()
   await page.getByRole('radio',{name:'Current spectrum',exact:true}).check()
-  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_mag']]) {
+  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
     await page.getByRole('tab',{name:tab,exact:true}).click()
     await signal(page.getByLabel(`${space}-space spectrum plot`,{exact:true}),g.result.arrays[xkey],g.result.arrays[ykey])
   }

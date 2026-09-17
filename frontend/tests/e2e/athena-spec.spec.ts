@@ -110,7 +110,7 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
   await expect(dialog).not.toBeVisible()
   const active = project.groups[1]
   for (const [tab, space, xkey, ykey] of [['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
-    ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_mag']]) {
+    ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re']]) {
     await page.getByRole('tab', { name: tab, exact: true }).click()
     await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
       .toEqual({ x: active.result.arrays[xkey], y: active.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })

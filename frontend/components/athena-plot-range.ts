@@ -48,5 +48,10 @@ export function automaticPlotRange(
   analysis: Analysis | null = null, analysisVisible = false, kWeight: number | null = null,
 ): PlotRange {
   if (analysisVisible) return outwardRange(analysisXValues(analysis))
-  return outwardRange(groups.flatMap(group => spectrumTraceCoordinates(group, space, energyMode, component, kWeight)?.x ?? []))
+  return outwardRange(groups.flatMap(group => {
+    const coordinates = spectrumTraceCoordinates(group, space, energyMode, component, kWeight)
+    if (!coordinates) return []
+    const k = space === "q" && component === "re" ? spectrumTraceCoordinates(group, "k", energyMode)?.x ?? [] : []
+    return [...coordinates.x, ...k]
+  }))
 }

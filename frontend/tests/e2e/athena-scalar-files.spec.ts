@@ -123,7 +123,7 @@ for (const name of ['cmc', 'hxma', 'lnls']) {
     }
     await expect(dialog).not.toBeVisible()
     const plots = [['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
-      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_mag']]
+      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re']]
     for (const [tab, space, xkey, ykey] of name === 'cmc' ? plots.slice(0, 1) : plots) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))

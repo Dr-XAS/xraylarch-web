@@ -1,9 +1,12 @@
 .layout { display: grid; grid-template-columns: minmax(300px, 1fr) minmax(300px, 1.05fr); align-items: start; gap: 24px; }
-.importHeader { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-bottom: 18px; padding-bottom: 18px; border-bottom: 1px solid var(--ath-line); }
-.fileSummary { min-width: 0; margin: 0; overflow-wrap: anywhere; }
-.importActions { flex: 0 0 auto; flex-wrap: wrap; margin: 0; padding: 0; border-top: 0; }
+.importHeader { position: sticky; top: 0; z-index: 3; display: flex; align-items: center; justify-content: space-between; gap: 18px; min-height: 64px; margin: 0 0 18px; padding: 11px 0; border-bottom: 1px solid var(--ath-line); background: #fff; box-shadow: 0 10px 14px -16px rgb(24 24 27 / 55%); }
+.fileSummary { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; min-width: 0; margin: 0; overflow-wrap: anywhere; }
+.fileSummary :global(.ath-chip) { margin-left: 0; }
+.importActions { flex: 0 0 auto; flex-wrap: nowrap; margin: 0; padding: 0; border-top: 0; }
+.importActions button { min-width: 145px; }
+.importActions :global(.ath-primary) { min-width: 165px; }
 .controls { min-width: 0; }
-.preview { min-width: 0; position: sticky; top: 0; }
+.preview { min-width: 0; position: sticky; top: 82px; }
 .readerPreviews { max-height: max(380px, calc(84vh - 170px)); overflow-y: auto; padding-right: 6px; }
 .readerPreviews > section + section { margin-top: 18px; }
 .previewPanel { min-width: 0; }
@@ -17,5 +20,5 @@
 .range label { flex: 1; margin-bottom: 0 !important; }
 .range button { border: 1px solid var(--ath-line); padding: 8px; }
 .raw { margin: 15px 0; }
-@media (max-width: 850px) { .importHeader { align-items: stretch; flex-direction: column; gap: 12px; }.importActions { align-self: stretch; justify-content: flex-end; }.layout { display: flex; flex-direction: column; gap: 16px; }.controls, .preview { width: 100%; }.preview { position: static; order: -1; }.plot { height: 300px; } }
+@media (max-width: 850px) { .importHeader { align-items: stretch; flex-direction: column; gap: 9px; padding-block: 12px; }.importActions { align-self: stretch; justify-content: flex-end; flex-wrap: wrap; }.importActions button { flex: 1 1 175px; }.layout { display: flex; flex-direction: column; gap: 16px; }.controls, .preview { width: 100%; }.preview { position: static; order: -1; }.plot { height: 300px; } }
 @media (max-width: 850px) { .readerPreviews { max-height: none; overflow: visible; padding-right: 0; } }

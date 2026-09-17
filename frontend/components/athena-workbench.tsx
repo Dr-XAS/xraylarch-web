@@ -1,10 +1,12 @@
 "use client"
 
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent } from "react"
-import { Activity, ArrowDown, ArrowUp, BookOpen, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
+import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { Activity, BookOpen, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, GripVertical, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
 import { apiBase, athenaApi, resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { ATHENA_COLORMAPS, DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
+import { parameterHelp, additionalParameterHelp } from "@/lib/athena-parameter-help"
+import { ParameterHelp } from "./parameter-help"
 import { AthenaPlot, type Space } from "./athena-plot"
 import { automaticPlotRange, spectrumTraceCoordinates } from "./athena-plot-range"
 import { ResizableAthenaWorkspace } from "./athena-workspace"
@@ -78,6 +80,8 @@ const parameterSections = {
 type ParameterSection = "all" | keyof typeof parameterSections
 type ParameterSelection = { section: ParameterSection } | { parameter: keyof Parameters }
 type AutoApplyPlan = { token: number; projectId: string; sourceId: string; mode: "current" | "marked"; targetIds: string[]; status: "queued" | "failed" }
+type GroupDropTarget = { id: string; position: "before" | "after" }
+type GroupReorderFocus = { id: string; handle: HTMLButtonElement }
 type ContextEvent = MouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>
 type ContextState = { target: ContextTarget; projectId: string; version: number; groupId: string; anchor: { x: number; y: number }; trigger: HTMLElement }
 const parameterLabels: Record<keyof Parameters, string> = {
@@ -176,23 +180,24 @@ function energyRangeValue(value: number | null, e0: number | null, relative: boo
   return Number((value + direction * e0).toPrecision(12))
 }
 
-function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any", pick, showAutomaticValue = false, contextMenu, disabled = false, onEditingChange }: {
+function NumberField({ label, value, onChange, unit, effective, optional = false, step = "any", pick, contextMenu, disabled = false, onEditingChange, help }: {
   label: string; value: number | null; onChange: (v: number | null) => void; unit?: string
-  effective?: unknown; optional?: boolean; step?: string; pick?: ReactNode; showAutomaticValue?: boolean; disabled?: boolean; contextMenu?: (event: ContextEvent) => void
-  onEditingChange?: (editing: boolean) => void
+  effective?: unknown; optional?: boolean; step?: string; pick?: ReactNode; disabled?: boolean; contextMenu?: (event: ContextEvent) => void
+  onEditingChange?: (editing: boolean) => void; help?: string
 }) {
   const inputId = useId()
   const [emptyWhileEditing, setEmptyWhileEditing] = useState(false)
-  const automaticValue = showAutomaticValue && optional && typeof effective === "number" && Number.isFinite(effective)
+  const automaticValue = optional && typeof effective === "number" && Number.isFinite(effective)
     ? Number(effective.toPrecision(10)) : null
   // Display the result without turning an automatic (null) recipe into an
   // explicit override. Clearing stays blank until blur so typing still works.
   const displayedValue = value ?? (!emptyWhileEditing ? automaticValue : null) ?? ""
-  const input = <label className="ath-field" htmlFor={inputId}>{contextMenu ? <ContextLabel label={label} open={contextMenu}>{label}{unit && <small>{unit}</small>}</ContextLabel> : <span>{label}{unit && <small>{unit}</small>}</span>}<input id={inputId} disabled={disabled} aria-label={`${label}${unit ? ` ${unit}` : ""}`} type="number" step={step} value={displayedValue} placeholder={optional ? "Auto" : ""} onFocus={() => onEditingChange?.(true)} onChange={e => {
+  const input = (descriptionId?: string) => <label className="ath-field" htmlFor={inputId}>{contextMenu ? <ContextLabel label={label} open={contextMenu}>{label}{unit && <small>{unit}</small>}</ContextLabel> : <span>{label}{unit && <small>{unit}</small>}</span>}<input id={inputId} disabled={disabled} aria-describedby={[descriptionId, optional && value === null ? `${inputId}-calculated` : undefined].filter(Boolean).join(" ") || undefined} aria-label={`${label}${unit ? ` ${unit}` : ""}`} type="number" step={step} value={displayedValue} onFocus={() => onEditingChange?.(true)} onChange={e => {
     setEmptyWhileEditing(e.target.value === "")
     onChange(e.target.value === "" ? null : Number(e.target.value))
-  }} onBlur={() => { setEmptyWhileEditing(false); onEditingChange?.(false) }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur() } }} />{optional && value === null && typeof effective === "number" && <em>{automaticValue !== null ? "Automatic" : `Auto: ${effective.toFixed(3).replace(/\.?0+$/, "")}`}</em>}{optional && value !== null && typeof effective === 'number' && value !== effective && <em>Used in saved result: {Number(effective.toPrecision(10))}</em>}</label>
-  return pick ? <div className="ath-pick-field">{input}{pick}</div> : input
+  }} onBlur={() => { setEmptyWhileEditing(false); onEditingChange?.(false) }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); event.currentTarget.blur() } }} />{optional && value === null && <span id={`${inputId}-calculated`} className="ath-sr-only">Calculated from this spectrum. Edit to override; clear to use the calculated value.</span>}{optional && value !== null && typeof effective === 'number' && value !== effective && <em>Used in saved result: {Number(effective.toPrecision(10))}</em>}</label>
+  const content = (descriptionId?: string) => pick ? <div className="ath-pick-field">{input(descriptionId)}{pick}</div> : input(descriptionId)
+  return help ? <ParameterHelp label={label} help={help}>{content}</ParameterHelp> : content()
 }
 
 const e0Methods: Record<E0Method, { label: string; hint: string }> = {
@@ -312,17 +317,30 @@ export function AthenaWorkbench() {
   const [registryPending, setRegistryPending] = useState(false)
   const registryReturn = useRef<ModalName>(null)
   const [search, setSearch] = useState("")
+  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null)
+  const [groupDropTarget, setGroupDropTarget] = useState<GroupDropTarget | null>(null)
+  const [reorderAnnouncement, setReorderAnnouncement] = useState("")
+  const groupDragRef = useRef<{ id: string; pointerId: number; projectId: string; version: number } | null>(null)
+  const groupDropTargetRef = useRef<GroupDropTarget | null>(null)
+  const groupDragPointerYRef = useRef<number | null>(null)
+  const groupDragScrollFrameRef = useRef<number | null>(null)
+  const reorderFocusRef = useRef<GroupReorderFocus | null>(null)
   const [space, setSpace] = useState<Space>("E")
   const [parameterTab, setParameterTab] = useState<ParameterTab>("processing")
   const [artemisResult, setArtemisResult] = useState<ArtemisFitResult | null>(null)
   const [energyMode, setEnergyMode] = useState("norm")
-  const [component, setComponent] = useState("mag")
-  const [plotScope, setPlotScope] = useState<"selected" | "current">("selected")
+  const [rComponent, setRComponent] = useState("mag")
+  const [qComponent, setQComponent] = useState("re")
+  const component = space === "q" ? qComponent : rComponent
+  const setComponent = space === "q" ? setQComponent : setRComponent
+  const [plotScope, setPlotScope] = useState<"selected" | "current">("current")
   const [background, setBackground] = useState(false)
   const [preEdge, setPreEdge] = useState(false)
   const [postEdge, setPostEdge] = useState(false)
   const [showWindow, setShowWindow] = useState(false)
   const [showLegend, setShowLegend] = useState(true)
+  const [showGrid, setShowGrid] = useState(true)
+  const [showDataPoints, setShowDataPoints] = useState(false)
   const [viewerKWeight, setViewerKWeight] = useState<number | null>(null)
   const [viewerColormap, setViewerColormap] = useState<AthenaColormap>(DEFAULT_COLORMAP)
   const [offset, setOffset] = useState(0)
@@ -372,12 +390,30 @@ export function AthenaWorkbench() {
   }, [menu])
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
   const marked = project?.groups.filter(g => g.marked) ?? []
+  const visibleGroups = project?.groups.filter(group => group.label.toLowerCase().includes(search.toLowerCase())) ?? []
   const plotEnergyMode = active?.data_type === "detector" ? "mu" : energyMode
   const parameters = active && (drafts[active.id] ?? active.parameters)
   const dirty = active && parameters && !sameParameters(parameters, active.parameters)
   const activeAutoApplyPlan = active ? autoApplyPlans[active.id] : undefined
   const parameterUpdatePending = Object.keys(autoApplyPlans).length > 0
   const parameterUpdateRunning = Object.values(autoApplyPlans).some(plan => plan.status === "queued")
+  useEffect(() => {
+    const pendingFocus = reorderFocusRef.current
+    if (!pendingFocus || busy || parameterUpdatePending) return
+    if (document.activeElement !== document.body && document.activeElement !== pendingFocus.handle) {
+      reorderFocusRef.current = null
+      return
+    }
+    const row = Array.from(document.querySelectorAll<HTMLElement>("#athena-data-groups .ath-group[data-group-id]"))
+      .find(candidate => candidate.dataset.groupId === pendingFocus.id)
+    const handle = row?.querySelector<HTMLButtonElement>(".ath-group-drag-handle")
+    if (!handle || handle.disabled) return
+    handle.focus()
+    reorderFocusRef.current = null
+  }, [busy, parameterUpdatePending, project?.version, search])
+  useEffect(() => () => {
+    if (groupDragScrollFrameRef.current !== null) cancelAnimationFrame(groupDragScrollFrameRef.current)
+  }, [])
   const selectedGroups = plotScope === "selected" ? marked : active ? [active] : []
   const weightedPlot = useAthenaPlotWeight({ projectId: project?.id, version: project?.version, groups: selectedGroups,
     kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
@@ -390,7 +426,8 @@ export function AthenaWorkbench() {
     return typeof effective === "number" && Number.isFinite(effective) ? effective : group.parameters.kweight
   }
   const automaticWeights = [...new Set(selectedGroups.map(savedPlotWeight))]
-  const automaticWeightLabel = automaticWeights.length > 1 ? "per spectrum" : automaticWeights[0] ?? (active ? savedPlotWeight(active) : 2)
+  const savedViewerWeight = automaticWeights.length > 1 ? null : automaticWeights[0] ?? (active ? savedPlotWeight(active) : 2)
+  const displayedViewerWeight = viewerKWeight ?? savedViewerWeight ?? ""
   const overlayArrays = space === "E" && plotEnergyMode === "mu" && !analysisVisible && active &&
     !["detector", "chi"].includes(active.data_type) && !isDifferenceGroup(active) &&
     selectedGroups.some(group => group.id === active.id) ? active.result?.arrays : undefined
@@ -641,6 +678,10 @@ export function AthenaWorkbench() {
   function accept(p: AthenaProject) {
     if (p.import_preferences_warning && !preferenceWarnings.current.includes(p.import_preferences_warning)) preferenceWarnings.current.push(p.import_preferences_warning)
     const previous = projectRef.current
+    if (previous?.id !== p.id || previous.groups.length !== p.groups.length) {
+      setPlotScope(p.groups.length > 1 ? "selected" : "current")
+      setAnalysisVisible(false)
+    }
     if (previous?.id !== p.id) {
       setStandardDrafts({}); setDrafts({}); setAutoApplyPlans({})
     } else {
@@ -963,12 +1004,12 @@ export function AthenaWorkbench() {
   }
   function field(key: keyof Parameters, label: string, unit?: string, optional = false) {
     if (!parameters || !active) return null
-    return <NumberField key={`${active.id}:${key}`} label={label} disabled={active.frozen} contextMenu={event => showContext(event, { kind: "field", field: key })} value={parameters[key] as number | null} unit={unit} optional={optional} showAutomaticValue={parameterSections.normalization.keys.some(normalizationKey => normalizationKey === key)} effective={active.result?.effective[key === "step" ? "edge_step" : key]} onEditingChange={setParameterFieldEditing} onChange={v => changeParameter(key, v)} pick={key in pickFields ? pickButton(key as PickKey, label) : undefined} />
+    return <NumberField key={`${active.id}:${key}`} label={label} help={parameterHelp[key]} disabled={active.frozen} contextMenu={event => showContext(event, { kind: "field", field: key })} value={parameters[key] as number | null} unit={unit} optional={optional} effective={active.result?.effective[key === "step" ? "edge_step" : key]} onEditingChange={setParameterFieldEditing} onChange={v => changeParameter(key, v)} pick={key in pickFields ? pickButton(key as PickKey, label) : undefined} />
   }
   function splineEnergyField(key: "bkg_kmin" | "bkg_kmax", label: string) {
     const k = parameters?.[key]
     const effective = active?.result?.effective[key]
-    return <NumberField label={label} disabled={active?.frozen} contextMenu={event => showContext(event, { kind: "field", field: "spline_energy" })} unit="E − E₀ (eV)" value={typeof k === "number" ? k * k * ktoe : null} optional={key === "bkg_kmax"} effective={typeof effective === "number" ? effective * effective * ktoe : undefined} pick={pickButton(key, label, true)} onEditingChange={setParameterFieldEditing} onChange={value => {
+    return <NumberField label={label} help={additionalParameterHelp[key === "bkg_kmin" ? "spline_energy_min" : "spline_energy_max"]} disabled={active?.frozen} contextMenu={event => showContext(event, { kind: "field", field: "spline_energy" })} unit="E − E₀ (eV)" value={typeof k === "number" ? k * k * ktoe : null} optional={key === "bkg_kmax"} effective={typeof effective === "number" ? effective * effective * ktoe : undefined} pick={pickButton(key, label, true)} onEditingChange={setParameterFieldEditing} onChange={value => {
       if (value !== null && (!Number.isFinite(value) || value < 0)) { cancelPick(); setError("Spline energy relative to E₀ must be nonnegative. Correct the value to continue."); return }
       setError(""); changeParameter(key, value === null ? key === "bkg_kmin" ? 0 : null : Math.sqrt(value / ktoe))
     }} />
@@ -977,7 +1018,7 @@ export function AthenaWorkbench() {
     return <NumberField key={key} label={label} disabled={modal === "metadata" && key === "importance" && active?.frozen} contextMenu={modal === "metadata" && ["multiplier", "offset", "importance"].includes(key) ? event => showContext(event, { kind: "field", field: key as NativeField }) : undefined} unit={unit} value={typeof options[key] === "number" ? options[key] as number : null} onChange={v => setOptions(o => ({ ...o, [key]: v ?? "" }))} />
   }
   function optionText(key: string, label: string) { return <label className="ath-field"><span>{label}</span><input value={String(options[key] ?? "")} onChange={e => setOptions(o => ({ ...o, [key]: e.target.value }))} /></label> }
-  function selectParameter(key: "window" | "rwindow" | "bkg_window", label: string) { return <label className="ath-field" htmlFor={`ath-select-${key}`}><ContextLabel label={label} open={event => showContext(event, { kind: "field", field: key })}>{label}</ContextLabel><select id={`ath-select-${key}`} disabled={active?.frozen} aria-label={label} value={parameters?.[key]} onChange={e => changeParameter(key, e.target.value)}>{windows.map(w => <option key={w}>{w}</option>)}</select></label> }
+  function selectParameter(key: "window" | "rwindow" | "bkg_window", label: string) { return <ParameterHelp label={label} help={parameterHelp[key]}>{descriptionId => <label className="ath-field" htmlFor={`ath-select-${key}`}><ContextLabel label={label} open={event => showContext(event, { kind: "field", field: key })}>{label}</ContextLabel><select aria-describedby={descriptionId} id={`ath-select-${key}`} disabled={active?.frozen} aria-label={label} value={parameters?.[key]} onChange={e => changeParameter(key, e.target.value)}>{windows.map(w => <option key={w}>{w}</option>)}</select></label>}</ParameterHelp> }
   async function inspectFile(file: ImportFile, reuseFrom?: InspectionResponse, pending = files) {
     const p = projectRef.current
     if (!p) return
@@ -1155,12 +1196,137 @@ export function AthenaWorkbench() {
     if (kind) { cancelPick(); setSpecialPlot(kind); setModal('special_plot') }
     else changeSpace(value)
   }
-  function moveGroup(delta: number) {
-    if (!project || !active) return
-    const ids = project.groups.map(g => g.id), index = ids.indexOf(active.id)
-    if (index + delta < 0 || index + delta >= ids.length) return
-    ;[ids[index], ids[index + delta]] = [ids[index + delta], ids[index]]
-    act("reorder", [], { ids })
+  function announceGroupPosition(id: string, ids: string[]) {
+    const groups = projectRef.current?.groups ?? []
+    const byId = new Map(groups.map(group => [group.id, group]))
+    const label = byId.get(id)?.label ?? "Spectrum"
+    const query = search.toLowerCase()
+    const visibleIds = ids.filter(groupId => byId.get(groupId)?.label.toLowerCase().includes(query))
+    const filtered = visibleIds.length !== ids.length
+    setReorderAnnouncement(`Moved ${label} to position ${visibleIds.indexOf(id) + 1} of ${visibleIds.length}${filtered ? " in filtered results" : ""}.`)
+  }
+  function submitGroupOrder(id: string, ids: string[]) {
+    const current = projectRef.current
+    if (!current || busy || parameterActionBlocked() || ids.length !== current.groups.length || ids.some(groupId => !current.groups.some(group => group.id === groupId))) return
+    const savedIds = current.groups.map(group => group.id)
+    if (ids.every((groupId, index) => groupId === savedIds[index])) return
+    const focused = document.activeElement
+    reorderFocusRef.current = focused instanceof HTMLButtonElement && focused.classList.contains("ath-group-drag-handle") && focused.closest<HTMLElement>(".ath-group")?.dataset.groupId === id
+      ? { id, handle: focused }
+      : null
+    const label = current.groups.find(group => group.id === id)?.label ?? "spectrum"
+    setReorderAnnouncement(`Reordering ${label}.`)
+    void task("reorder", async () => {
+      const next = await command("reorder", [], { ids })
+      announceGroupPosition(id, next.groups.map(group => group.id))
+    }).then(succeeded => {
+      if (!succeeded) setReorderAnnouncement(`Could not move ${label}. Position unchanged.`)
+    })
+    setMenu("")
+  }
+  function moveGroupBy(id: string, delta: number) {
+    const current = projectRef.current
+    if (!current || busy || parameterUpdatePending) return
+    const visibleIds = current.groups.filter(group => group.label.toLowerCase().includes(search.toLowerCase())).map(group => group.id)
+    const index = visibleIds.indexOf(id), destination = index + delta
+    if (index < 0 || destination < 0 || destination >= visibleIds.length) return
+    ;[visibleIds[index], visibleIds[destination]] = [visibleIds[destination], visibleIds[index]]
+    const visible = new Set(visibleIds)
+    let cursor = 0
+    submitGroupOrder(id, current.groups.map(group => visible.has(group.id) ? visibleIds[cursor++] : group.id))
+  }
+  function moveGroupTo(id: string, target: GroupDropTarget) {
+    const current = projectRef.current
+    if (!current || id === target.id) return
+    const visibleIds = current.groups.filter(group => group.label.toLowerCase().includes(search.toLowerCase())).map(group => group.id)
+    if (!visibleIds.includes(id) || !visibleIds.includes(target.id)) return
+    const reordered = visibleIds.filter(groupId => groupId !== id)
+    const targetIndex = reordered.indexOf(target.id)
+    reordered.splice(targetIndex + (target.position === "after" ? 1 : 0), 0, id)
+    const visible = new Set(reordered)
+    let cursor = 0
+    submitGroupOrder(id, current.groups.map(group => visible.has(group.id) ? reordered[cursor++] : group.id))
+  }
+  function cancelGroupDrag() {
+    if (groupDragScrollFrameRef.current !== null) cancelAnimationFrame(groupDragScrollFrameRef.current)
+    groupDragScrollFrameRef.current = null
+    groupDragPointerYRef.current = null
+    groupDragRef.current = null
+    groupDropTargetRef.current = null
+    setDraggingGroupId(null)
+    setGroupDropTarget(null)
+  }
+  function beginGroupDrag(event: ReactPointerEvent<HTMLButtonElement>, group: AthenaGroup) {
+    const current = projectRef.current
+    const visibleCount = current?.groups.filter(candidate => candidate.label.toLowerCase().includes(search.toLowerCase())).length ?? 0
+    if ((typeof event.button === "number" && event.button !== 0) || event.isPrimary === false || !current || busy || parameterUpdatePending || visibleCount < 2) return
+    event.preventDefault()
+    event.currentTarget.focus()
+    try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* Pointer capture is unavailable in some test/browser environments. */ }
+    groupDragRef.current = { id: group.id, pointerId: event.pointerId, projectId: current.id, version: current.version }
+    groupDropTargetRef.current = null
+    setDraggingGroupId(group.id)
+    setGroupDropTarget(null)
+    setReorderAnnouncement(`Moving ${group.label}. Drag above or below another spectrum, then release.`)
+  }
+  function updateGroupDropTarget(clientY: number) {
+    const drag = groupDragRef.current
+    if (!drag) return
+    const rows = Array.from(document.querySelectorAll<HTMLElement>("#athena-data-groups .ath-group[data-group-id]"))
+      .filter(row => row.dataset.groupId !== drag.id)
+    if (!rows.length) return
+    const row = rows.find(candidate => clientY <= candidate.getBoundingClientRect().bottom) ?? rows.at(-1)!
+    const bounds = row.getBoundingClientRect()
+    const next: GroupDropTarget = { id: row.dataset.groupId!, position: clientY < bounds.top + bounds.height / 2 ? "before" : "after" }
+    const previous = groupDropTargetRef.current
+    if (previous?.id === next.id && previous.position === next.position) return
+    groupDropTargetRef.current = next
+    setGroupDropTarget(next)
+  }
+  function scrollGroupListForDrag(clientY: number) {
+    const list = document.querySelector<HTMLElement>("#athena-data-groups .ath-group-list")
+    if (!list) return false
+    const bounds = list.getBoundingClientRect()
+    const maxScroll = list.scrollHeight - list.clientHeight
+    if (bounds.height <= 0 || maxScroll <= 0) return false
+    const edge = Math.min(48, bounds.height / 3)
+    let intensity = 0
+    if (clientY < bounds.top + edge) intensity = -Math.min(1.5, (bounds.top + edge - clientY) / edge)
+    else if (clientY > bounds.bottom - edge) intensity = Math.min(1.5, (clientY - (bounds.bottom - edge)) / edge)
+    if (!intensity) return false
+    const next = Math.max(0, Math.min(maxScroll, list.scrollTop + Math.sign(intensity) * Math.max(2, Math.ceil(Math.abs(intensity) * 10))))
+    if (next === list.scrollTop) return false
+    list.scrollTop = next
+    return true
+  }
+  function scheduleGroupDragScroll() {
+    if (groupDragScrollFrameRef.current !== null || groupDragPointerYRef.current === null) return
+    groupDragScrollFrameRef.current = requestAnimationFrame(() => {
+      groupDragScrollFrameRef.current = null
+      const clientY = groupDragPointerYRef.current
+      if (!groupDragRef.current || clientY === null || !scrollGroupListForDrag(clientY)) return
+      updateGroupDropTarget(clientY)
+      scheduleGroupDragScroll()
+    })
+  }
+  function updateGroupDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = groupDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    event.preventDefault()
+    groupDragPointerYRef.current = event.clientY
+    const scrolled = scrollGroupListForDrag(event.clientY)
+    updateGroupDropTarget(event.clientY)
+    if (scrolled) scheduleGroupDragScroll()
+  }
+  function finishGroupDrag(event: ReactPointerEvent<HTMLButtonElement>) {
+    const drag = groupDragRef.current
+    if (!drag || drag.pointerId !== event.pointerId) return
+    const target = groupDropTargetRef.current
+    const current = projectRef.current
+    try { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* No active pointer capture. */ }
+    cancelGroupDrag()
+    if (!target || !current || busy || parameterUpdatePending || current.id !== drag.projectId || current.version !== drag.version) return
+    moveGroupTo(drag.id, target)
   }
   const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"] as const satisfies readonly Exclude<ModalName, null>[]
   const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as const satisfies readonly Exclude<ModalName, null>[]
@@ -1279,11 +1445,16 @@ export function AthenaWorkbench() {
     <ResizableAthenaWorkspace
       groups={<aside id="athena-data-groups" className="ath-groups"><div className="ath-panel-heading"><h2><ContextLabel label="current group" open={event => showContext(event, { kind: "group" })}>Data groups <span>{project?.groups.length ?? 0}</span></ContextLabel></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div>
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions"><button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button><button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending} aria-label="Project journal"><FileText size={15} /></button></div>
-        <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => setSearch(e.target.value)} /></label>
-        <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><div><button onClick={() => moveGroup(-1)} disabled={!active || !!busy} aria-label="Move group up"><ArrowUp size={13} /></button><button onClick={() => moveGroup(1)} disabled={!active || !!busy} aria-label="Move group down"><ArrowDown size={13} /></button></div></div>
-        <div className="ath-group-list" onContextMenu={event => showContext(event, { kind: "group" })} onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) showContext(event, { kind: "group" }) }}>{project?.groups.filter(g => g.label.toLowerCase().includes(search.toLowerCase())).map(g => {
+        <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => { cancelGroupDrag(); setSearch(e.target.value) }} /></label>
+        <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><span className="ath-reorder-hint" id="ath-group-reorder-help"><GripVertical size={12} />Drag to reorder<span className="ath-sr-only">. Use the Up and Down arrow keys for precise movement.</span></span><span className="ath-sr-only" aria-live="polite">{reorderAnnouncement}</span></div>
+        <div className="ath-group-list" role="list" onContextMenu={event => showContext(event, { kind: "group" })} onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) showContext(event, { kind: "group" }) }}>{visibleGroups.map(g => {
           const measurementMode = measurementModeLabel(g)
-          return <div key={g.id} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy || parameterUpdatePending} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className="ath-swatch" style={{ background: spectrumColors.get(g.id) ?? "var(--ath-line)" }} /><span><strong>{g.label}</strong><small>{isDifferenceGroup(g) ? (g.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(g)} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title={autoApplyPlans[g.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[g.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button></div>
+          const dropPosition = groupDropTarget?.id === g.id ? groupDropTarget.position : undefined
+          return <div key={g.id} role="listitem" data-group-id={g.id} data-dragging={draggingGroupId === g.id || undefined} data-drop-position={dropPosition} className={`ath-group ${active?.id === g.id ? "selected" : ""}`}><button type="button" className="ath-group-drag-handle" aria-label={`Reorder ${g.label}`} aria-describedby="ath-group-reorder-help" aria-keyshortcuts="ArrowUp ArrowDown" title="Drag to reorder; use the Up and Down arrow keys for precise movement" disabled={!!busy || parameterUpdatePending || visibleGroups.length < 2} onPointerDown={event => beginGroupDrag(event, g)} onPointerMove={updateGroupDrag} onPointerUp={finishGroupDrag} onPointerCancel={cancelGroupDrag} onLostPointerCapture={event => { if (groupDragRef.current?.pointerId === event.pointerId) cancelGroupDrag() }} onKeyDown={event => {
+            if (event.key === "Escape" && groupDragRef.current?.id === g.id) { event.preventDefault(); cancelGroupDrag(); return }
+            if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
+            event.preventDefault(); cancelGroupDrag(); moveGroupBy(g.id, event.key === "ArrowUp" ? -1 : 1)
+          }}><GripVertical size={14} /></button><input aria-label={`Mark ${g.label}`} type="checkbox" checked={g.marked} disabled={!!busy || parameterUpdatePending} onChange={e => act("metadata", [g.id], { marked: e.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(g.id); setAnalysisVisible(false) }}><span className="ath-swatch" style={{ background: spectrumColors.get(g.id) ?? "var(--ath-line)" }} /><span><strong>{g.label}</strong><small>{isDifferenceGroup(g) ? (g.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(g)} · {g.energy.length.toLocaleString()} points{g.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{g.frozen && <LockKeyhole size={12} />}{drafts[g.id] && !sameParameters(drafts[g.id], g.parameters) && <i title={autoApplyPlans[g.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[g.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button></div>
         })}</div>
         {!project?.groups.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
         <div className="ath-sidebar-bottom"><button disabled={!!busy || !project} onClick={() => { void task("Loading copper example", async () => { const next = await command("example"); setActiveId(next.groups.at(-3)!.id) }) }}><Activity size={16} />Load copper foil example</button><small>Real spectra · 10 K, 50 K & 300 K</small></div>
@@ -1298,9 +1469,13 @@ export function AthenaWorkbench() {
                 {ATHENA_COLORMAPS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <label className="ath-kweight-control" title="Shared k-weight for k, R, back-transform, and wavelet views. Auto uses each spectrum’s saved weight.">k-weight
-              <select aria-label="Viewer k-weight" value={viewerKWeight ?? ""} disabled={!active} onChange={event => setViewerKWeight(event.target.value === "" ? null : Number(event.target.value))}>
-                <option value="">Auto ({automaticWeightLabel})</option>
+            <label className="ath-kweight-control" title="Shared k-weight for k, R, back-transform, and wavelet views. Choosing the saved weight follows each spectrum’s saved settings.">k-weight
+              <select aria-label="Viewer k-weight" value={displayedViewerWeight} disabled={!active} onChange={event => {
+                const value = event.target.value === "" ? null : Number(event.target.value)
+                setViewerKWeight(value === savedViewerWeight ? null : value)
+              }}>
+                {savedViewerWeight === null && <option value="">Per spectrum</option>}
+                {typeof displayedViewerWeight === "number" && ![0, 1, 2, 3, 4].includes(displayedViewerWeight) && <option value={displayedViewerWeight}>{displayedViewerWeight}</option>}
                 {[0, 1, 2, 3, 4].map(weight => <option key={weight} value={weight}>{weight}</option>)}
               </select>
             </label>
@@ -1308,7 +1483,7 @@ export function AthenaWorkbench() {
           </div>
         </div>
         {active && <section className="ath-group-identity" aria-label="Current absorber and edge"><span onContextMenu={event => showContext(event, { kind: "section", section: "group" })}>Absorber / edge: <strong>{edgeIdentityDescription(active)}</strong></span><button disabled={active.frozen || !!busy} onClick={openEdgeIdentity}>Edit absorber and edge…</button></section>}
-        <ResizablePlotCard><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onContextMenu={event => { event.preventDefault(); specialPlotShortcut(s) }} title="Right-click for Athena’s special plot" onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div><button type="button" disabled={!active || !!busy} onClick={() => setModal("special_plot")}>Plot shortcuts…</button><label className="ath-check"><input type="checkbox" checked={showLegend} onChange={e => setShowLegend(e.target.checked)} />Show legend</label></div>
+        <ResizablePlotCard><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onContextMenu={event => { event.preventDefault(); specialPlotShortcut(s) }} title="Right-click for Athena’s special plot" onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div><button type="button" disabled={!active || !!busy} onClick={() => setModal("special_plot")}>Plot shortcuts…</button></div>
           <div className="ath-plot-scope" role="radiogroup" aria-label="Plot spectra">
             <span className="ath-plot-scope-label">Plot</span>
             {([{ value: "selected", label: "All selected", hint: "Plot the checked data groups" }, { value: "current", label: "Current spectrum", hint: "Plot only the highlighted data group" }] as const).map(option =>
@@ -1322,12 +1497,12 @@ export function AthenaWorkbench() {
             <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background</label>
             <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
             <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>
-          </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">Real part</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} disabled={plotScope === "current"} onChange={e => setOffset(Number(e.target.value))} /></label></div>
+          </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<div className="ath-plot-display-controls"><label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} disabled={plotScope === "current"} onChange={e => setOffset(Number(e.target.value))} /></label><label className="ath-check"><input type="checkbox" checked={showLegend} onChange={e => setShowLegend(e.target.checked)} />Show legend</label></div></div>
           {space === "E" && (plotScope !== "current" || plotEnergyMode !== "mu") && <p className="ath-plot-overlay-hint">For pre-/post-edge lines, choose Current spectrum and μ(E).</p>}
           {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes process automatically.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
           {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
             : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
-            : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} colormap={viewerColormap} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />}
+            : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }} colormap={viewerColormap} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />}
           {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
             {(active?.data_type === "detector" ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${active?.data_type === "detector" ? " disabled" : ""}`} key={option.value}><input type="radio" name="ath-energy-plot" value={option.value} checked={plotEnergyMode === option.value} disabled={active?.data_type === "detector"} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
           </div>}
@@ -1343,10 +1518,10 @@ export function AthenaWorkbench() {
             void task('Changing data type', async () => { await command('change_datatype', [active.id], { toggle: true }); setSpace('E'); setAnalysisVisible(false) })
           } else openTool('datatype')
         }}>{dataTypeLabel(active)}</button><button aria-label={active.frozen ? "Unfreeze group" : "Freeze group"} disabled={!!busy} onClick={() => act("metadata", [active.id], { frozen: !active.frozen })}><LockKeyhole size={14} />{active.frozen ? "Frozen" : "Freeze"}</button></div><fieldset disabled={!!busy} className="ath-param-fields">
-        <details open><summary><ContextLabel label="Normalization" open={event => showContext(event, { kind: "section", section: "background" })}>Normalization <small>μ(E)</small></ContextLabel></summary><fieldset className="ath-e0-fields" disabled={active.data_type === "chi" || active.data_type === "detector"}><div className="ath-fields">{field("e0", "E₀", "eV", true)}{field("step", "Edge step", undefined, true)}{field("pre1", "Pre-edge start", "eV relative", true)}{field("pre2", "Pre-edge end", "eV relative", true)}{field("norm1", "Post-edge start", "eV relative", true)}{field("norm2", "Post-edge end", "eV relative", true)}<label className="ath-field" htmlFor="ath-polynomial-degree"><ContextLabel label="Polynomial degree" open={event => showContext(event, { kind: "field", field: "nnorm" })}>Polynomial degree</ContextLabel><select id="ath-polynomial-degree" disabled={active.frozen} aria-label="Polynomial degree" value={parameters?.nnorm ?? ""} onChange={e => changeParameter("nnorm", e.target.value === "" ? null : Number(e.target.value))}><option value="">{typeof active.result?.effective.nnorm === "number" && [0, 1, 2, 3].includes(active.result.effective.nnorm) ? `${active.result.effective.nnorm} (Auto)` : "Auto"}</option>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></label>{active.data_type !== "detector" && field("energy_shift", "Energy shift", "eV")}</div><label className="ath-check"><input type="checkbox" disabled={active.frozen} aria-label="Flatten normalized data" checked={parameters?.flatten} onChange={e => changeParameter("flatten", e.target.checked)} /><ContextLabel label="Flatten normalized data" open={event => showContext(event, { kind: "field", field: "flatten" })}>Flatten normalized data</ContextLabel></label><label className="ath-check"><input type="checkbox" aria-label="Fix edge step" disabled={active.frozen || typeof (parameters?.step ?? active.result?.effective.edge_step) !== "number"} checked={parameters?.step !== null} onChange={event => changeParameter("step", event.target.checked ? Number(active.result?.effective.edge_step) : null)} /><ContextLabel label="Fix edge step" open={event => showContext(event, { kind: "field", field: "fix_step" })}>Fix edge step</ContextLabel></label><p className="ath-hint">Values marked Automatic are calculated from this spectrum. Edit a value to override it; clear it to return to automatic.</p></fieldset>{active.data_type === "detector" && <div className="ath-fields">{field("energy_shift", "Energy shift", "eV")}</div>}</details>
+        <details open><summary><ContextLabel label="Normalization" open={event => showContext(event, { kind: "section", section: "background" })}>Normalization <small>μ(E)</small></ContextLabel></summary><fieldset className="ath-e0-fields" disabled={active.data_type === "chi" || active.data_type === "detector"}><div className="ath-fields">{field("e0", "E₀", "eV", true)}{field("step", "Edge step", undefined, true)}{field("pre1", "Pre-edge start", "eV relative", true)}{field("pre2", "Pre-edge end", "eV relative", true)}{field("norm1", "Post-edge start", "eV relative", true)}{field("norm2", "Post-edge end", "eV relative", true)}<ParameterHelp label="Polynomial degree" help={parameterHelp.nnorm}>{descriptionId => <label className="ath-field" htmlFor="ath-polynomial-degree"><ContextLabel label="Polynomial degree" open={event => showContext(event, { kind: "field", field: "nnorm" })}>Polynomial degree</ContextLabel><select aria-describedby={descriptionId} id="ath-polynomial-degree" disabled={active.frozen} aria-label="Polynomial degree" value={parameters?.nnorm ?? ""} onChange={e => changeParameter("nnorm", e.target.value === "" ? null : Number(e.target.value))}><option value="" hidden>{typeof active.result?.effective.nnorm === "number" && [0, 1, 2, 3].includes(active.result.effective.nnorm) ? active.result.effective.nnorm : "—"}</option>{[0, 1, 2, 3].map(n => <option key={n} value={n}>{n}</option>)}</select></label>}</ParameterHelp>{active.data_type !== "detector" && field("energy_shift", "Energy shift", "eV")}</div><ParameterHelp label="Flatten normalized data" help={parameterHelp.flatten}>{descriptionId => <label className="ath-check"><input aria-describedby={descriptionId} type="checkbox" disabled={active.frozen} aria-label="Flatten normalized data" checked={parameters?.flatten} onChange={e => changeParameter("flatten", e.target.checked)} /><ContextLabel label="Flatten normalized data" open={event => showContext(event, { kind: "field", field: "flatten" })}>Flatten normalized data</ContextLabel></label>}</ParameterHelp><ParameterHelp label="Fix edge step" help={additionalParameterHelp.fix_step}>{descriptionId => <label className="ath-check"><input aria-describedby={descriptionId} type="checkbox" aria-label="Fix edge step" disabled={active.frozen || typeof (parameters?.step ?? active.result?.effective.edge_step) !== "number"} checked={parameters?.step !== null} onChange={event => changeParameter("step", event.target.checked ? Number(active.result?.effective.edge_step) : null)} /><ContextLabel label="Fix edge step" open={event => showContext(event, { kind: "field", field: "fix_step" })}>Fix edge step</ContextLabel></label>}</ParameterHelp><p className="ath-hint">Calculated values come from this spectrum. Edit a value to override it; clear it to use the calculated value again.</p></fieldset>{active.data_type === "detector" && <div className="ath-fields">{field("energy_shift", "Energy shift", "eV")}</div>}</details>
         <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "chi" || active.data_type === "detector"}><details open><summary><ContextLabel label="Background removal" open={event => showContext(event, { kind: "section", section: "background" })}>Background removal <small>AUTOBK</small></ContextLabel></summary><div className="ath-fields">{field("rbkg", "Rbkg", "Å")}{field("bkg_kweight", "Spline k-weight")}{field("bkg_kmin", "Spline k min", "Å⁻¹")}{field("bkg_kmax", "Spline k max", "Å⁻¹", true)}{splineEnergyField("bkg_kmin", "Spline energy min")}{splineEnergyField("bkg_kmax", "Spline energy max")}{field("clamp_lo", "Low clamp")}{field("clamp_hi", "High clamp")}{field("bkg_dk", "Spline dk", "Å⁻¹")}{field("nclamp", "Clamp points")}{selectParameter("bkg_window", "Spline window")}</div><p className="ath-hint">Spline energy is relative to E₀; energy and k limits update each other. Use ⌖ to pick a plotted x value or type either limit. Changes process automatically.</p>
-          <label className="ath-check"><input type="checkbox" aria-label="Energy-dependent normalization" checked={parameters?.fnorm ?? false} disabled={active.frozen || active.data_type !== "mu"} onChange={e => changeParameter("fnorm", e.target.checked)} /><ContextLabel label="Energy-dependent normalization" open={event => showContext(event, { kind: "field", field: "fnorm" })}>Energy-dependent normalization</ContextLabel></label><p className="ath-hint">For low-energy fluorescence EXAFS in raw μ(E) groups, with well-chosen pre/post-edge fits. Affects χ(k), not the energy plot. Changes process automatically.</p>
-          <label className="ath-field" htmlFor="ath-background-standard"><ContextLabel label="Background removal standard" open={event => showContext(event, { kind: "field", field: "background_standard_id" })}>Background removal standard</ContextLabel><select id="ath-background-standard" disabled={active.frozen} aria-label="Background removal standard" value={backgroundStandard} onChange={e => { cancelPick(); setStandardDrafts(d => ({ ...d, [active.id]: e.target.value })) }}><option value="">None</option>{backgroundStandard && !backgroundStandards.some(g => g.id === backgroundStandard) && <option disabled value={backgroundStandard}>Unavailable standard</option>}{backgroundStandards.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label><button disabled={active.frozen || backgroundStandard === (active.background_standard_id ?? "")} onClick={() => { void applyBackgroundStandard() }}>Apply standard</button><p className="ath-hint">Uses the standard’s live processed χ(k). Apply standard saves this choice and processes the current group with saved parameters. Parameter copy uses the saved standard, so apply a new choice first. Other parameter edits process automatically. Frozen groups are skipped.</p>
+          <ParameterHelp label="Energy-dependent normalization" help={parameterHelp.fnorm}>{descriptionId => <label className="ath-check"><input aria-describedby={descriptionId} type="checkbox" aria-label="Energy-dependent normalization" checked={parameters?.fnorm ?? false} disabled={active.frozen || active.data_type !== "mu"} onChange={e => changeParameter("fnorm", e.target.checked)} /><ContextLabel label="Energy-dependent normalization" open={event => showContext(event, { kind: "field", field: "fnorm" })}>Energy-dependent normalization</ContextLabel></label>}</ParameterHelp><p className="ath-hint">For low-energy fluorescence EXAFS in raw μ(E) groups, with well-chosen pre/post-edge fits. Affects χ(k), not the energy plot. Changes process automatically.</p>
+          <ParameterHelp label="Background removal standard" help={additionalParameterHelp.background_standard_id}>{descriptionId => <label className="ath-field" htmlFor="ath-background-standard"><ContextLabel label="Background removal standard" open={event => showContext(event, { kind: "field", field: "background_standard_id" })}>Background removal standard</ContextLabel><select aria-describedby={descriptionId} id="ath-background-standard" disabled={active.frozen} aria-label="Background removal standard" value={backgroundStandard} onChange={e => { cancelPick(); setStandardDrafts(d => ({ ...d, [active.id]: e.target.value })) }}><option value="">None</option>{backgroundStandard && !backgroundStandards.some(g => g.id === backgroundStandard) && <option disabled value={backgroundStandard}>Unavailable standard</option>}{backgroundStandards.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label>}</ParameterHelp><button disabled={active.frozen || backgroundStandard === (active.background_standard_id ?? "")} onClick={() => { void applyBackgroundStandard() }}>Apply standard</button><p className="ath-hint">Uses the standard’s live processed χ(k). Apply standard saves this choice and processes the current group with saved parameters. Parameter copy uses the saved standard, so apply a new choice first. Other parameter edits process automatically. Frozen groups are skipped.</p>
         </details></fieldset>
         <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "detector"}><details open><summary><ContextLabel label="Forward Fourier transform" open={event => showContext(event, { kind: "section", section: "forward" })}>Forward Fourier transform <small>k → R</small></ContextLabel></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
         <details><summary><ContextLabel label="Backward Fourier transform" open={event => showContext(event, { kind: "section", section: "reverse" })}>Backward Fourier transform <small>R → q</small></ContextLabel></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
@@ -1413,7 +1588,7 @@ export function AthenaWorkbench() {
     {modal === "plugins" && <Modal title="Plugin registry" close={closePluginRegistry}><div className="ath-modal-body"><AthenaPluginRegistry onPendingChange={setRegistryPending} /><div className="ath-modal-actions"><button disabled={registryPending} onClick={closePluginRegistry}>{registryReturn.current === "import" ? "Return to import" : "Close registry"}</button></div></div></Modal>}
     {modal === "context_report" && contextReport && <Modal title={contextReport.title} wide close={() => setModal(null)}><div className="ath-modal-body"><AthenaContextReport key={`${contextReport.project.id}:${contextReport.project.version}:${contextReport.kind}:${contextReport.groups.map(g => g.id).join()}`} {...contextReport} /><div className="ath-modal-actions"><button onClick={() => setModal(null)}>Close report</button></div></div></Modal>}
     {modal === "rename" && active && <Modal title="Rename current group" close={() => { if (!busy) setModal(null) }}><form className="ath-modal-body" onSubmit={event => { event.preventDefault(); void task('Renaming group', async () => { await command('metadata', [active.id], { label: String(options.label).trim() }); setModal(null) }) }}><p>{active.label}</p>{optionText('label', 'New group label')}{error && <p role="alert" className="ath-error">{error}</p>}<div className="ath-modal-actions"><button type="button" disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="ath-primary" disabled={!!busy || !String(options.label ?? '').trim()}>Rename group</button></div></form></Modal>}
-    {modal === "special_plot" && project && active && <Modal title="Athena plot shortcuts" wide close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Plot shortcut</span><select aria-label="Plot shortcut" value={specialPlot} onChange={event => setSpecialPlot(event.target.value as AthenaSpecialPlotKind)}>{Object.entries(athenaSpecialPlotLabels).map(([kind, label]) => <option value={kind} key={kind}>{label}</option>)}</select></label><AthenaSpecialPlot kind={specialPlot} groups={project.groups} active={active} projectId={project.id} version={project.version} energyMode={energyMode} component={component} offset={offset} selectGroup={setActiveId} /><div className="ath-modal-actions"><button onClick={() => setModal(null)}>Close plot shortcuts</button></div></div></Modal>}
+    {modal === "special_plot" && project && active && <Modal title="Athena plot shortcuts" wide close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Plot shortcut</span><select aria-label="Plot shortcut" value={specialPlot} onChange={event => setSpecialPlot(event.target.value as AthenaSpecialPlotKind)}>{Object.entries(athenaSpecialPlotLabels).map(([kind, label]) => <option value={kind} key={kind}>{label}</option>)}</select></label><AthenaSpecialPlot kind={specialPlot} groups={project.groups} active={active} projectId={project.id} version={project.version} energyMode={energyMode} component={rComponent} offset={offset} selectGroup={setActiveId} /><div className="ath-modal-actions"><button onClick={() => setModal(null)}>Close plot shortcuts</button></div></div></Modal>}
     {contextMenu && <AthenaContextMenu key={`${contextMenu.groupId}:${JSON.stringify(contextMenu.target)}:${contextMenu.anchor.x}:${contextMenu.anchor.y}`} label={`Actions for ${active?.label}`} items={contextItems(contextMenu.target)} anchor={contextMenu.anchor} returnFocus={contextMenu.trigger} onClose={() => setContextMenu(null)} />}
     {modal === "e0" && <E0Dialog key={`${project?.id}:${active?.id}`} project={project} active={active} busy={!!busy} error={error} clearError={() => setError("")} selectGroup={id => { setActiveId(id); setAnalysisVisible(false) }} close={() => setModal(null)} apply={applySelectedE0} />}
     {modal === "groups" && <Modal title="Mark / freeze groups" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body ath-group-controls">
@@ -1449,7 +1624,7 @@ export function AthenaWorkbench() {
     </div></Modal>}
 
     {modal === "learn" && <Modal title="Learn Athena" close={() => setModal(null)}><div className="ath-modal-body"><p className="ath-intro">From your first spectrum to EXAFS analysis.</p><p className="ath-hint">Tutorials and demonstrations from Athena’s author and the XAS community. This web implementation is under development; the desktop manual describes additional capabilities.</p><div className="ath-resource-grid">{resources.map(r => <a key={r.url} href={r.url} target="_blank" rel="noreferrer"><span>{r.kind}<ExternalLink size={13} /></span><h3>{r.title}</h3><small>{r.author}</small><p>{r.description}</p></a>)}</div><p className="ath-hint">Video references were identified through the <a href="https://xafs.xrayabsorption.org/videos.html" target="_blank" rel="noreferrer">IXAS video index</a>. Athena / Demeter is by Bruce Ravel; this is an independent web implementation using XrayLarch.</p></div></Modal>}
-    {modal === "import" && <Modal title="Import spectra" wide close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}<div className="ath-modal-actions"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0]) }) }}>Reinspect selected file</button>}</div>{inspection?.file_plugin && <p className="ath-hint">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</p>}{archiveSelection ? <AthenaArchiveSelection key={archiveSelection.upload_id} archive={archiveSelection} projectId={project!.id} busy={!!busy} onContinue={selected => { void reviewArchive(selected) }} onCancel={() => { setArchiveSelection(null); setInspection(null); setFiles([]) }} /> : scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj, ZIP · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</p></> : <AthenaColumnSelection key={inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={reviewed => { void importCurrent(reviewed) }} />}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "import" && <Modal title="Import spectra" wide close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{importPolicyNotice()}<div className="ath-modal-actions ath-import-toolbar" aria-label="File import tools"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0]) }) }}>Reinspect selected file</button>}</div>{inspection?.file_plugin && <p className="ath-hint">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</p>}{archiveSelection ? <AthenaArchiveSelection key={archiveSelection.upload_id} archive={archiveSelection} projectId={project!.id} busy={!!busy} onContinue={selected => { void reviewArchive(selected) }} onCancel={() => { setArchiveSelection(null); setInspection(null); setFiles([]) }} /> : scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files</strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj, ZIP · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><p className="ath-hint">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</p></> : <AthenaColumnSelection key={inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={reviewed => { void importCurrent(reviewed) }} />}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport initialFiles={projectFiles} initialPreview={projectPreview} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={p => { accept(p); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setProjectPreview(null); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { accept(await athenaApi(`/projects/${p.id}`)); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
     {modal && modal !== "difference" && modal !== "rebin" && modal !== "dispersive" && modal !== 'multi_electron' && modal !== 'smooth' && modal !== 'convolve' && modal !== 'deglitch' && modal !== 'truncate' && modal !== 'calibrate' && modal !== 'align' && modal !== 'merge' && toolTitles[modal] && <Modal title={toolTitles[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>

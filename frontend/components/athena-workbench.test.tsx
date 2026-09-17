@@ -523,6 +523,124 @@ describe("AthenaWorkbench measurement mode tags", () => {
   })
 })
 
+describe("AthenaWorkbench data group reordering", () => {
+  function reorderedProject(project: AthenaProject, ids: string[]) {
+    const groups = new Map(project.groups.map(group => [group.id, group]))
+    return { ...project, version: project.version + 1, groups: ids.map(id => groups.get(id)!) }
+  }
+  function groupPointer(type: string, clientY: number, pointerId = 7) {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    Object.defineProperties(event, {
+      button: { value: 0 }, clientY: { value: clientY }, isPrimary: { value: true }, pointerId: { value: pointerId },
+    })
+    return event
+  }
+
+  it("replaces the toolbar arrows with row grips and drags filtered groups without moving hidden slots", async () => {
+    const project = await openSaved()
+    expect(screen.queryByRole("button", { name: "Move group up" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Move group down" })).not.toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: /^Reorder / })).toHaveLength(project.groups.length)
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "scan" } })
+    const rows = screen.getAllByRole("listitem")
+    expect(rows.map(row => row.dataset.groupId)).toEqual(["foil", "sample"])
+    rows.forEach((row, index) => vi.spyOn(row, "getBoundingClientRect").mockReturnValue({
+      top: index * 60, bottom: (index + 1) * 60, height: 60, left: 0, right: 220, width: 220, x: 0, y: index * 60, toJSON: () => ({}),
+    }))
+
+    const handle = screen.getByRole("button", { name: "Reorder Foil scan" })
+    fireEvent(handle, groupPointer("pointerdown", 20))
+    fireEvent(handle, groupPointer("pointermove", 110))
+    expect(rows[0]).toHaveAttribute("data-dragging", "true")
+    expect(rows[1]).toHaveAttribute("data-drop-position", "after")
+
+    const ids = ["sample", "foil", "oxide", "unused"]
+    api.mockResolvedValueOnce(reorderedProject(project, ids))
+    fireEvent(handle, groupPointer("pointerup", 110))
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "reorder", group_ids: [], options: { ids },
+    }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled())
+
+    expect(Array.from(document.querySelectorAll<HTMLElement>(".ath-group")).map(row => row.dataset.groupId)).toEqual(["sample", "foil"])
+    expect(document.querySelector(".ath-group[data-dragging], .ath-group[data-drop-position]")).toBeNull()
+    expect(screen.getByText("Moved Foil scan to position 2 of 2 in filtered results.")).toHaveAttribute("aria-live", "polite")
+    expect(plotProps().active?.id).toBe("foil")
+  })
+
+  it("supports precise keyboard reordering, boundary no-ops, and an accessible position announcement", async () => {
+    const project = await openSaved()
+    const handle = screen.getByRole("button", { name: "Reorder Foil scan" })
+    expect(handle).toHaveAttribute("aria-keyshortcuts", "ArrowUp ArrowDown")
+    expect(handle).toHaveAccessibleDescription(/Use the Up and Down arrow keys for precise movement/)
+    handle.focus()
+    fireEvent.keyDown(handle, { key: "ArrowUp" })
+    expect(api).toHaveBeenCalledOnce()
+
+    const ids = ["sample", "foil", "oxide", "unused"]
+    const response = deferred<AthenaProject>()
+    api.mockReturnValueOnce(response.promise)
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "reorder", group_ids: [], options: { ids },
+    }))
+    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(button => button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getByText("Reordering Foil scan.")).toHaveAttribute("aria-live", "polite")
+    expect(screen.queryByText("Moved Foil scan to position 2 of 4.")).not.toBeInTheDocument()
+
+    await act(async () => response.resolve(reorderedProject(project, ids)))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled())
+    expect(screen.getByText("Moved Foil scan to position 2 of 4.")).toHaveAttribute("aria-live", "polite")
+    expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toHaveFocus()
+  })
+
+  it("announces a failed reorder without claiming that the spectrum moved", async () => {
+    await openSaved()
+    api.mockRejectedValueOnce(new Error("The project version changed."))
+    const handle = screen.getByRole("button", { name: "Reorder Foil scan" })
+    handle.focus()
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("The project version changed."))
+    expect(screen.getByText("Could not move Foil scan. Position unchanged.")).toHaveAttribute("aria-live", "polite")
+    expect(screen.queryByText(/^Moved Foil scan/)).not.toBeInTheDocument()
+    expect(handle).toHaveFocus()
+  })
+
+  it("keeps a user's new focus target when a pending keyboard reorder finishes", async () => {
+    const project = await openSaved()
+    const response = deferred<AthenaProject>()
+    api.mockReturnValueOnce(response.promise)
+    const handle = screen.getByRole("button", { name: "Reorder Foil scan" })
+    handle.focus()
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+    const searchbox = screen.getByRole("textbox", { name: "Search groups" })
+    searchbox.focus()
+
+    await act(async () => response.resolve(reorderedProject(project, ["sample", "foil", "oxide", "unused"])))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled())
+    expect(searchbox).toHaveFocus()
+  })
+
+  it("auto-scrolls a long group list while pointer dragging near its edge", async () => {
+    await openSaved()
+    const list = screen.getByRole("list")
+    Object.defineProperties(list, {
+      clientHeight: { configurable: true, value: 120 },
+      scrollHeight: { configurable: true, value: 500 },
+    })
+    vi.spyOn(list, "getBoundingClientRect").mockReturnValue({
+      top: 0, bottom: 120, height: 120, left: 0, right: 220, width: 220, x: 0, y: 0, toJSON: () => ({}),
+    })
+    const handle = screen.getByRole("button", { name: "Reorder Foil scan" })
+    fireEvent(handle, groupPointer("pointerdown", 20, 8))
+    fireEvent(handle, groupPointer("pointermove", 115, 8))
+    expect(list.scrollTop).toBeGreaterThan(0)
+    fireEvent(handle, groupPointer("pointercancel", 115, 8))
+  })
+})
+
 describe("AthenaWorkbench native context actions", () => {
   function groupContext() {
     fireEvent.click(screen.getByRole('button', { name: 'Actions for current group' }))
@@ -2561,6 +2679,20 @@ describe("AthenaWorkbench automatic normalization values", () => {
     return project
   }
 
+  it("shows calculated background and Fourier limits directly without creating overrides", async () => {
+    const initial = automaticProject()
+    initial.groups[0].parameters.kmax = null
+    initial.groups[0].result!.effective = { ...initial.groups[0].result!.effective, bkg_kmax: 25.019, kmax: 12.5 }
+    await openSaved(initial)
+    expect(screen.getByRole("spinbutton", { name: /^Spline k max/ })).toHaveValue(25.019)
+    expect(Number((screen.getByRole("spinbutton", { name: /^Spline energy max/ }) as HTMLInputElement).value)).toBeCloseTo(25.019 ** 2 * 3.8099821109685847, 5)
+    expect(screen.getByRole("spinbutton", { name: /^FT k max/ })).toHaveValue(12.5)
+    expect(screen.queryByText(/^Auto:/)).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("Auto")).not.toBeInTheDocument()
+    expect(plotProps().active!.parameters).toMatchObject({ bkg_kmax: null, kmax: null })
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
   it("shows calculated normalization values without changing the automatic recipe or creating a draft", async () => {
     const project = await openSaved(automaticProject())
     for (const [label, value] of [
@@ -2576,8 +2708,11 @@ describe("AthenaWorkbench automatic normalization values", () => {
     }
     const degree = screen.getByRole("combobox", { name: "Polynomial degree" })
     expect(degree).toHaveValue("")
-    expect(within(degree).getByRole("option", { name: "2 (Auto)" })).toHaveProperty("selected", true)
-    expect(screen.getAllByText("Automatic", { exact: true })).toHaveLength(6)
+    expect(degree.querySelector('option[value=""]')).toHaveTextContent("2")
+    expect(degree.querySelector('option[value=""]')).toHaveProperty("selected", true)
+    expect(degree.querySelector('option[value=""]')).toHaveAttribute("hidden")
+    expect(screen.queryByText("Automatic", { exact: true })).not.toBeInTheDocument()
+    expect(screen.queryByPlaceholderText("Auto")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
     for (const key of ["e0", "step", "pre1", "pre2", "norm1", "norm2", "nnorm"] as const) {
       expect(plotProps().active!.parameters[key]).toBeNull()
@@ -2602,7 +2737,8 @@ describe("AthenaWorkbench automatic normalization values", () => {
     expect(screen.getByRole("spinbutton", { name: /^Post-edge end/ })).toHaveValue(200)
     const degree = screen.getByRole("combobox", { name: "Polynomial degree" })
     expect(degree).toHaveValue("")
-    expect(within(degree).getByRole("option", { name: "1 (Auto)" })).toHaveProperty("selected", true)
+    expect(degree.querySelector('option[value=""]')).toHaveTextContent("1")
+    expect(degree.querySelector('option[value=""]')).toHaveProperty("selected", true)
     expect(plotProps().active!.parameters).toMatchObject({ e0: null, norm2: null, nnorm: null })
     expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
   })
@@ -2679,7 +2815,8 @@ describe("AthenaWorkbench automatic normalization values", () => {
     expect(screen.getByRole("spinbutton", { name: /^Edge step/ })).toHaveValue(null)
     const degree = screen.getByRole("combobox", { name: "Polynomial degree" })
     expect(degree).toHaveValue("")
-    expect(within(degree).getByRole("option", { name: "0 (Auto)" })).toHaveProperty("selected", true)
+    expect(degree.querySelector('option[value=""]')).toHaveTextContent("0")
+    expect(degree.querySelector('option[value=""]')).toHaveProperty("selected", true)
     expect(plotProps().active!.parameters.nnorm).toBeNull()
   })
 })
@@ -2782,15 +2919,36 @@ describe("AthenaWorkbench group selection and drafts", () => {
     const project = await openSaved()
     const before = structuredClone(project)
     const selector = screen.getByRole("combobox", { name: "Viewer k-weight" })
-    expect(selector).toHaveValue("")
+    expect(selector).toHaveValue("2")
+    expect(plotProps().kWeight).toBeNull()
+    expect(within(selector).getAllByRole("option").map(option => option.textContent)).toEqual(["0", "1", "2", "3", "4"])
     expect(document.querySelector(".ath-center-heading")).toContainElement(selector)
     expect(screen.queryByRole("combobox", { name: "Wavelet k-weight" })).not.toBeInTheDocument()
-    for (const value of ["3", "0", ""]) {
+    for (const value of ["3", "0", "2"]) {
       fireEvent.change(selector, { target: { value } })
-      const kWeight = value === "" ? null : Number(value)
+      const kWeight = value === "2" ? null : Number(value)
       expect(plotProps().kWeight).toBe(kWeight)
       expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0].kWeight).toBe(kWeight)
     }
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(project).toEqual(before)
+  })
+
+  it("retains per-spectrum saved viewer weights when selected groups have different weights", async () => {
+    const initial = projectFixture()
+    initial.groups[1].result!.effective.kweight = 1
+    initial.groups[2].result!.effective.kweight = 3
+    const project = await openSaved(initial)
+    const before = structuredClone(project)
+    const selector = screen.getByRole("combobox", { name: "Viewer k-weight" })
+    expect(selector).toHaveValue("")
+    expect(within(selector).getByRole("option", { name: "Per spectrum" })).toHaveProperty("selected", true)
+    expect(within(selector).queryByRole("option", { name: /Auto/ })).not.toBeInTheDocument()
+    fireEvent.change(selector, { target: { value: "2" } })
+    expect(plotProps().kWeight).toBe(2)
+    fireEvent.change(selector, { target: { value: "" } })
+    expect(plotProps().kWeight).toBeNull()
+    expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0].kWeight).toBeNull()
     expect(api).toHaveBeenCalledTimes(1)
     expect(project).toEqual(before)
   })
@@ -3792,6 +3950,125 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     })
     return project
   }
+
+  it('defaults the q comparison to real while retaining independent R and q component choices', async () => {
+    await openSaved()
+    const chooseSpace = (name: RegExp) => fireEvent.click(within(screen.getByRole('tablist', { name: 'Plot space' })).getByRole('tab', { name }))
+    const component = () => screen.getByRole('combobox', { name: 'Complex component' })
+
+    chooseSpace(/Fourier/)
+    expect(component()).toHaveValue('mag')
+    expect(plotProps()).toMatchObject({ space: 'R', component: 'mag' })
+
+    chooseSpace(/Back transform/)
+    expect(component()).toHaveValue('re')
+    expect(within(component()).getByRole('option', { name: 'Real part + χ(k)' })).toHaveProperty('selected', true)
+    expect(plotProps()).toMatchObject({ space: 'q', component: 're' })
+    fireEvent.change(component(), { target: { value: 'im' } })
+
+    chooseSpace(/Fourier/)
+    expect(component()).toHaveValue('mag')
+    fireEvent.change(component(), { target: { value: 'pha' } })
+    chooseSpace(/Back transform/)
+    expect(component()).toHaveValue('im')
+    expect(plotProps()).toMatchObject({ space: 'q', component: 'im' })
+    fireEvent.change(component(), { target: { value: 're' } })
+    chooseSpace(/Fourier/)
+    expect(component()).toHaveValue('pha')
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows the full measured k extent in automatic q comparison limits', async () => {
+    const spectrum = group('foil', 'Foil scan')
+    Object.assign(spectrum.result!.arrays, {
+      k: [0, 4, 8, 14], weighted_chi: [0, 1, -1, 2],
+      q: [2, 4, 8], chiq_re: [0, 1, -1], chiq_im: [1, 0, -1],
+    })
+    await openSaved(projectFixture({ groups: [spectrum] }))
+    fireEvent.click(screen.getByRole('tab', { name: /Back transform/ }))
+    const minimum = () => screen.getByRole('spinbutton', { name: 'Plot minimum' })
+    const maximum = () => screen.getByRole('spinbutton', { name: 'Plot maximum' })
+    const component = screen.getByRole('combobox', { name: 'Complex component' })
+
+    expect(minimum()).toHaveValue(0)
+    expect(maximum()).toHaveValue(14)
+    expect(plotProps().range).toEqual([null, null])
+
+    fireEvent.change(component, { target: { value: 'im' } })
+    expect(minimum()).toHaveValue(2)
+    expect(maximum()).toHaveValue(8)
+    fireEvent.change(component, { target: { value: 're' } })
+    expect(maximum()).toHaveValue(14)
+
+    fireEvent.change(maximum(), { target: { value: '11' } })
+    expect(plotProps().range).toEqual([null, 11])
+    fireEvent.change(maximum(), { target: { value: '' } })
+    fireEvent.blur(maximum())
+    expect(maximum()).toHaveValue(14)
+    expect(plotProps().range).toEqual([null, null])
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps spectrum display preferences while changing plot spaces', async () => {
+    await openSaved()
+    expect(plotProps()).toMatchObject({ showGrid: true, showDataPoints: false })
+    act(() => plotProps().onShowGridChange?.(false))
+    act(() => plotProps().onShowDataPointsChange?.(true))
+    expect(plotProps()).toMatchObject({ showGrid: false, showDataPoints: true })
+    fireEvent.click(within(screen.getByRole('tablist', { name: 'Plot space' })).getByRole('tab', { name: /EXAFS/ }))
+    expect(plotProps()).toMatchObject({ space: 'k', showGrid: false, showDataPoints: true })
+  })
+
+  it('places Show legend underneath Stack offset and keeps the toggle functional', async () => {
+    await openSaved()
+    const legend = screen.getByRole('checkbox', { name: 'Show legend' })
+    const stackOffset = screen.getByRole('spinbutton', { name: 'Stack offset' })
+    const controls = legend.closest('.ath-plot-display-controls')
+    expect(controls).toBeInTheDocument()
+    expect(Array.from(controls!.children)).toEqual([stackOffset.closest('label'), legend.closest('label')])
+    expect(screen.getByRole('button', { name: 'Plot shortcuts…' }).closest('.ath-plot-top')).not.toContainElement(legend)
+    expect(plotProps().showLegend).toBe(true)
+    fireEvent.click(legend)
+    expect(plotProps().showLegend).toBe(false)
+  })
+
+  it.each([
+    { count: 0, scope: 'current', label: 'Current spectrum' },
+    { count: 1, scope: 'current', label: 'Current spectrum' },
+    { count: 2, scope: 'selected', label: 'All selected' },
+  ] as const)('defaults to $label with $count imported spectra', async ({ count, scope, label }) => {
+    const project = projectFixture()
+    project.groups = project.groups.slice(0, count)
+    await openSaved(project)
+
+    expect(screen.getByRole('radio', { name: label })).toBeChecked()
+    expect(plotProps().plotScope).toBe(scope)
+  })
+
+  it('switches from Current spectrum to All selected as a second spectrum is imported', async () => {
+    const initial = projectFixture({ groups: [] })
+    await openSaved(initial)
+    expect(screen.getByRole('radio', { name: 'Current spectrum' })).toBeChecked()
+
+    const first = inspectionFixture('first.dat')
+    const second = inspectionFixture('second.dat')
+    const { dialog } = await chooseImportFiles([first, second])
+    const afterFirst = importedProject(initial, first.display_name)
+    const afterSecond = importedProject(afterFirst, second.display_name)
+    const secondInspection = deferred<InspectionResponse>()
+    api.mockResolvedValueOnce(afterFirst).mockReturnValueOnce(secondInspection.promise)
+    submitImport(dialog)
+
+    await waitFor(() => expect(plotProps().active?.id).toBe(first.display_name))
+    expect(screen.getByRole('radio', { name: 'Current spectrum' })).toBeChecked()
+    expect(plotProps().plotScope).toBe('current')
+
+    api.mockResolvedValueOnce(afterSecond)
+    await act(async () => secondInspection.resolve(second))
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: /import spectra/i })).not.toBeInTheDocument())
+    expect(screen.getByRole('radio', { name: 'All selected' })).toBeChecked()
+    expect(plotProps().plotScope).toBe('selected')
+  })
 
   it('leaves All selected empty when no groups are marked and can still plot the current spectrum', async () => {
     const project = projectFixture()

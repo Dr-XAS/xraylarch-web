@@ -19,6 +19,8 @@
 .ath-edge-policy-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 4px 20px; border-bottom: 1px solid var(--ath-line); background: var(--ath-surface-muted); font-size: 11px; line-height: 1.4; }
 .ath-edge-policy-bar > span { flex: 1; min-width: 220px; }
 .ath-import-policy { padding: 10px; margin-bottom: 12px; border: 1px solid var(--ath-line); border-radius: 5px; font-size: 12px; line-height: 1.5; }
+.ath-import-toolbar { align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 0 0 14px; border-top: 0; border-bottom: 1px solid var(--ath-line); }
+.ath-app .ath-import-toolbar button { padding: 8px 13px; }
 .ath-group-identity { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px; margin-bottom: 12px; font-size: 12px; color: var(--ath-ink); }
 .ath-group-identity strong { color: var(--ath-ink); }
 @media (max-width: 700px) { .ath-pick-prompt { align-items: flex-start; flex-direction: column; }.ath-edge-policy-bar { padding: 3px 9px; font-size: 10px; line-height: 1.35; } }

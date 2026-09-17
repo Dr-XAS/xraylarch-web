@@ -1,22 +1,23 @@
 import "@testing-library/jest-dom/vitest"
 import type { ComponentProps } from "react"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AthenaGroup, Parameters } from "@/lib/athena"
 import { AthenaPlot, type Space } from "./athena-plot"
+import { automaticPlotRange } from "./athena-plot-range"
 
 type Trace = {
-  name: string; x: number[]; y: number[]; yaxis?: string; line?: { dash: string }
+  name: string; x: number[]; y: number[]; yaxis?: string; line?: { color?: string; dash: string }
   mode?: string; text?: string[]; customdata?: number[]; showlegend?: boolean
-  marker?: { symbol: string[] }
+  marker?: { symbol?: string[]; color?: string; size?: number }
 }
 type Handoff = {
   data: Trace[]
   onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
   layout: {
-    xaxis: { title: { text: string }; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
-    yaxis: { title: { text: string } }
+    xaxis: { title: { text: string }; showgrid?: boolean; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
+    yaxis: { title: { text: string }; showgrid?: boolean }
     yaxis2?: { title: { text: string } }
     uirevision: string
   }
@@ -81,6 +82,59 @@ function handoff(): Handoff {
   if (!call) throw new Error("No Plotly handoff was rendered")
   return call[0]
 }
+
+describe("AthenaPlot display options", () => {
+  it("keeps the current line-and-grid presentation by default", () => {
+    show()
+    expect(handoff().data[0]).toMatchObject({ mode: "lines" })
+    expect(handoff().data[0].marker).toBeUndefined()
+    expect(handoff().layout.xaxis.showgrid).toBe(true)
+    expect(handoff().layout.yaxis.showgrid).toBe(true)
+  })
+
+  it("shows measured data points without adding points to fitted overlays", () => {
+    show({ showGrid: false, showDataPoints: true, plotScope: "current", background: true })
+    const [spectrum, background] = handoff().data
+    expect(spectrum).toMatchObject({ mode: "lines+markers", marker: { color: spectrum.line?.color, size: 4 } })
+    expect(background).toMatchObject({ mode: "lines", name: "Background μ₀(E) · Sample" })
+    expect(background.marker).toBeUndefined()
+    expect(handoff().layout.xaxis.showgrid).toBe(false)
+    expect(handoff().layout.yaxis.showgrid).toBe(false)
+  })
+
+  it("opens checked plot options on right-click and sends the inverse settings", () => {
+    const onShowGridChange = vi.fn()
+    const onShowDataPointsChange = vi.fn()
+    const onOptionsMenuOpen = vi.fn()
+    show({ onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen })
+    const plot = screen.getByTestId("athena-plot")
+    fireEvent.contextMenu(plot, { clientX: 120, clientY: 160 })
+    expect(onOptionsMenuOpen).toHaveBeenCalledOnce()
+    expect(screen.getByRole("menu", { name: "Spectrum plot options" })).toBeVisible()
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show grids" })).toHaveAttribute("aria-checked", "true")
+    const points = screen.getByRole("menuitemcheckbox", { name: "Show data points" })
+    expect(points).toHaveAttribute("aria-checked", "false")
+    fireEvent.click(points)
+    expect(onShowDataPointsChange).toHaveBeenCalledWith(true)
+    expect(plot).toHaveFocus()
+
+    fireEvent.contextMenu(plot, { clientX: 130, clientY: 170 })
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show grids" }))
+    expect(onShowGridChange).toHaveBeenCalledWith(false)
+  })
+
+  it("opens from the keyboard and restores plot focus on Escape", () => {
+    show()
+    const plot = screen.getByTestId("athena-plot")
+    plot.focus()
+    fireEvent.keyDown(plot, { key: "F10", shiftKey: true })
+    const menu = screen.getByRole("menu", { name: "Spectrum plot options" })
+    expect(menu).toBeVisible()
+    fireEvent.keyDown(menu, { key: "Escape" })
+    expect(screen.queryByRole("menu", { name: "Spectrum plot options" })).not.toBeInTheDocument()
+    expect(plot).toHaveFocus()
+  })
+})
 
 describe("AthenaPlot difference signal labels", () => {
   it.each(["mu", "norm", "flat"])("uses saved form units for an unrenormalized difference in %s", energyMode => {
@@ -508,10 +562,65 @@ describe("AthenaPlot weight labels and complex components", () => {
       const key = `${space === "R" ? "chir" : "chiq"}_${component}`
       expect(handoff().data[0].x).toEqual(a[space === "R" ? "r" : "q"])
       expect(handoff().data[0].y).toEqual(a[key].map(value => 2 * value + 3))
-      expect(handoff().layout.xaxis.title.text).toBe(space === "R" ? "R (Å)" : "q (Å⁻¹)")
+      expect(handoff().layout.xaxis.title.text).toBe(space === "R" ? "R (Å)" : component === "re" ? "k, q (Å⁻¹)" : "q (Å⁻¹)")
       if (component === "pha") expect(handoff().layout.yaxis.title.text).toContain("(rad)")
     }
     expect(sample).toEqual(before)
+  })
+})
+
+describe("AthenaPlot k and q comparison", () => {
+  it("overlays unwindowed weighted k and real q on their full native grids with identical scaling", () => {
+    const first = group("First", 1.75), second = group("Second", 3)
+    first.multiplier = 2
+    first.offset = 1
+    second.multiplier = 0.5
+    second.offset = -2
+    // Saved weighted arrays describe the transform, even if the recipe changed.
+    first.parameters.kweight = 4
+    const groups = freeze([first, second])
+    show({ groups, active: first, space: "q", component: "re", offset: 5, showDataPoints: true })
+    const traces = handoff().data
+    expect(traces).toHaveLength(4)
+    for (const [index, sample] of groups.entries()) {
+      const [q, k] = traces.slice(index * 2, index * 2 + 2)
+      const a = sample.result!.arrays
+      const scale = (values: number[]) => values.map(v => v * sample.multiplier + sample.offset + index * 5)
+      expect(q.x).toEqual(a.q)
+      expect(q.y).toEqual(scale(a.chiq_re))
+      expect(q.name).toContain("Re[χ(q)]")
+      expect(q.line?.dash).toBe("solid")
+      expect(q.mode).toBe("lines")
+      expect(k.x).toEqual(a.k)
+      expect(k.y).toEqual(scale(a.weighted_chi))
+      expect(k.name).toContain("χ(k)")
+      expect(k.name).toContain(`k-weight ${sample.result!.effective.kweight}`)
+      expect(k.line).toMatchObject({ color: q.line?.color, dash: "dash" })
+      expect(k.mode).toBe("lines+markers")
+      expect(k.yaxis).toBeUndefined()
+    }
+    expect(handoff().layout.xaxis.title.text).toBe("k, q (Å⁻¹)")
+    expect(handoff().layout.yaxis.title.text).toContain("weights in legend")
+    expect(automaticPlotRange(groups, "q", "mu", "re")).toEqual([0, 4])
+    expect(automaticPlotRange(groups, "q", "mu", "im")).toEqual([1, 3])
+  })
+
+  it("uses the k-weight of the returned q transform once for both curves", () => {
+    const sample = group("Weight override", 4)
+    sample.parameters.kweight = 2
+    show({ groups: [sample], active: sample, space: "q", component: "re", kWeight: 4 })
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.chiq_re)
+    expect(handoff().data[1].y).toEqual(sample.result!.arrays.chi.map((v, i) => v * sample.result!.arrays.k[i] ** 4))
+    expect(handoff().layout.yaxis.title.text).toBe("k<sup>4</sup> χ(k), Re[χ(q)]")
+  })
+
+  it("keeps the q curve usable without inventing missing k data", () => {
+    const sample = group()
+    delete sample.result!.arrays.weighted_chi
+    show({ groups: [sample], active: sample, space: "q", component: "re" })
+    expect(handoff().data).toHaveLength(1)
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.chiq_re)
+    expect(automaticPlotRange([sample], "q", "mu", "re")).toEqual([1, 3])
   })
 })
 

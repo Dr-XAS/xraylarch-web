@@ -76,7 +76,7 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   const project=await response.json();expect(project.groups.map((g:{label:string})=>g.label)).toEqual(['fe.060','fe.062'])
   expect(project.groups.every((g:{processing_error:unknown})=>g.processing_error===null)).toBe(true)
   const group=project.groups[1]
-  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_mag']]) {
+  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
     await page.getByRole('tab',{name:tab,exact:true}).click()
     await expect.poll(()=>curve(page.getByLabel(`${space}-space spectrum plot`,{exact:true})))
       .toEqual({x:group.result.arrays[xkey],y:group.result.arrays[ykey].map((v:number)=>v===0?0:v)})

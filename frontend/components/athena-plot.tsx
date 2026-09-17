@@ -1,9 +1,10 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 import { DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
+import { AthenaContextMenu } from "./athena-context-menu"
 import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div> })
@@ -12,10 +13,14 @@ interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string
   background: boolean; window: boolean; component: string; offset: number
   plotScope?: "selected" | "current"; preEdge?: boolean; postEdge?: boolean; showLegend?: boolean; kWeight?: number | null
+  showGrid?: boolean; showDataPoints?: boolean
+  onShowGridChange?: (show: boolean) => void; onShowDataPointsChange?: (show: boolean) => void; onOptionsMenuOpen?: () => void
   colormap?: AthenaColormap
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
   picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
+type PlotOptionsEvent = MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>
+type PlotOptionsMenu = { anchor: { x: number; y: number }; trigger: HTMLDivElement }
 
 // Window values are dimensionless. Interpolate only within the paired k/kwin
 // support: q and k need not have identical spacing or endpoints.
@@ -48,13 +53,16 @@ function signalAtEnergy(energy: number[], mu: number[], target: number) {
   return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, kWeight = null, colormap = DEFAULT_COLORMAP, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colormap = DEFAULT_COLORMAP, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
+  const [optionsMenu, setOptionsMenu] = useState<PlotOptionsMenu | null>(null)
+  const compareK = space === "q" && component === "re"
   const data: Record<string, unknown>[] = []
-  const add = (x: number[], y: number[], name: string, color: string, dash = "solid") => {
+  const add = (x: number[], y: number[], name: string, color: string, dash = "solid", measured = false) => {
     if (!Array.isArray(x) || !Array.isArray(y) || !x.length || x.length !== y.length) return
-    const trace: Record<string, unknown> = { x: x.slice(), y: y.slice(), name, type: "scatter", mode: "lines", line: { color, width: 1.8, dash }, hovertemplate: "%{x:.3f}, %{y:.5f}<extra>%{fullData.name}</extra>" }
+    const points = measured && showDataPoints
+    const trace: Record<string, unknown> = { x: x.slice(), y: y.slice(), name, type: "scatter", mode: points ? "lines+markers" : "lines", line: { color, width: 1.8, dash }, ...(points ? { marker: { color, size: 4 } } : {}), hovertemplate: "%{x:.3f}, %{y:.5f}<extra>%{fullData.name}</extra>" }
     data.push(trace)
     return trace
   }
@@ -84,7 +92,15 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "") + (mixedEnergyForms ? ` (${energyForm(g)})` : "")
     // R/q products already include the forward k-weight. Apply display
     // multiplier/offset only, never another k- or q-dependent weighting.
-    add(x, transform(y), name, spectrumColor(colormap, colorIndex, displayed.length))
+    const color = spectrumColor(colormap, colorIndex, displayed.length)
+    add(x, transform(y), compareK ? `Re[χ(q)] · ${name}` : name, color, "solid", !compareK)
+    if (compareK) {
+      // Compare with the unwindowed input on its own full k grid, including
+      // data beyond the FT cutoff. Both curves use the transform's k-weight
+      // and identical display scaling; q is already weighted by the FFT.
+      const kTrace = spectrumTraceCoordinates(g, "k", energyMode)
+      if (kTrace) add(kTrace.x, transform(kTrace.y), `χ(k) · ${name}`, color, "dash", true)
+    }
   }
   const current = displayed.find(trace => trace.g.id === active?.id)
   const a = current?.arrays
@@ -135,9 +151,10 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       : { x: nativeX.slice(0, count), y: window.slice(0, count) }
     if (values.x.length) add(values.x, values.y, `${space === "R" ? "R" : "Forward"} window · ${current.g.label}`, "#a8ad9d", "dot")
   }
-  let xTitle = { E: "Energy (eV)", k: "k (Å⁻¹)", R: "R (Å)", q: "q (Å⁻¹)" }[space]
+  let xTitle = { E: "Energy (eV)", k: "k (Å⁻¹)", R: "R (Å)", q: compareK ? "k, q (Å⁻¹)" : "q (Å⁻¹)" }[space]
   const kTitle = mixedWeights ? "k-weighted χ(k) (weights in legend)" : weights[0] === 0 ? "χ(k)" : `k<sup>${weights[0] ?? 2}</sup> χ(k)`
   let yTitle = { E: mixedEnergyForms ? "Signal (forms in legend)" : energyForms[0] ?? energyTitle, k: kTitle, R: component === "mag" ? "|χ(R)|" : component === "pha" ? "Phase χ(R) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(R)]`, q: component === "mag" ? "|χ(q)|" : component === "pha" ? "Phase χ(q) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(q)]` }[space]
+  if (compareK) yTitle = `${kTitle}, Re[χ(q)]`
   if (analysis && analysisVisible) {
     data.length = 0
     const result = analysis.result
@@ -152,7 +169,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       xTitle = "k (Å⁻¹)"; yTitle = "Log amplitude ratio"
     } else {
       const x = (result.x ?? []) as number[]
-      add(x, (result.observed ?? []) as number[], "Observed", "#16736b")
+      add(x, (result.observed ?? []) as number[], "Observed", "#16736b", "solid", true)
       add(x, (result.fit ?? []) as number[], "Fit", "#c37b38", "dash")
       add(x, (result.residual ?? []) as number[], "Residual", "#7470b0")
       xTitle = analysis.options.array === "chi" || analysis.options.array === "weighted_chi" ? "k (Å⁻¹)" : "Energy (eV)"
@@ -183,7 +200,31 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       hovertemplate: typeof trace.hovertemplate === "string" ? trace.hovertemplate.replace("%{fullData.name}", "%{meta.legendLabel}") : undefined }
   })
   const noSelection = !groups.length && active && plotScope === "selected" && !analysisVisible
-  if (!hasData) return <div ref={plotRef} className="ath-no-plot"><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}</h3><p>{noSelection ? "Check data groups or choose Current spectrum to plot the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or open the copper foil example to begin."}</p></div>
+  function openOptionsMenu(event: PlotOptionsEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    const trigger = event.currentTarget
+    const bounds = trigger.getBoundingClientRect()
+    const pointer = event.type === "contextmenu" && "clientX" in event && (event.clientX || event.clientY)
+    onOptionsMenuOpen?.()
+    setOptionsMenu({ trigger, anchor: pointer ? { x: event.clientX, y: event.clientY } : { x: bounds.left, y: bounds.bottom } })
+  }
+  const plotInteraction = {
+    tabIndex: 0,
+    role: "group" as const,
+    "aria-haspopup": "menu" as const,
+    "aria-expanded": !!optionsMenu,
+    "aria-keyshortcuts": "Shift+F10",
+    onContextMenu: openOptionsMenu,
+    onKeyDown: (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) openOptionsMenu(event)
+    },
+  }
+  const options = optionsMenu && <AthenaContextMenu key={`${optionsMenu.anchor.x}:${optionsMenu.anchor.y}`} label="Spectrum plot options" anchor={optionsMenu.anchor} returnFocus={optionsMenu.trigger} onClose={() => setOptionsMenu(null)} items={[
+    { id: "grid", label: "Show grids", checked: showGrid, onSelect: () => onShowGridChange?.(!showGrid) },
+    { id: "points", label: "Show data points", checked: showDataPoints, onSelect: () => onShowDataPointsChange?.(!showDataPoints) },
+  ]} />
+  if (!hasData) return <><div ref={plotRef} className="ath-no-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}</h3><p>{noSelection ? "Check data groups or choose Current spectrum to plot the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or open the copper foil example to begin."}</p></div>{options}</>
   const canPick = picking && !analysisVisible && space !== "q"
   const xRange = analysisVisible || (range[0] === null && range[1] === null)
     ? { autorange: true as const }
@@ -192,16 +233,16 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       : range[0] !== null
         ? { range: [range[0], null], autorange: "max" as const }
         : { range: [null, range[1]], autorange: "min" as const }
-  return <div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`}><Plot data={plotData} onClick={event => {
+  return <><div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><Plot data={plotData} onClick={event => {
     const x = event.points?.[0]?.x
     if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
   }} layout={{
     autosize: true, margin: { l: 72, r: 25, t: 24, b: 60 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
     font: { family: "Arial, sans-serif", color: "#586661", size: 12 },
     hoverlabel: { namelength: -1 },
-    xaxis: { title: { text: xTitle, standoff: 16 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...xRange },
-    yaxis: { title: { text: yTitle, standoff: 15 }, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", automargin: true },
+    xaxis: { title: { text: xTitle, standoff: 16 }, showgrid: showGrid, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...xRange },
+    yaxis: { title: { text: yTitle, standoff: 15 }, showgrid: showGrid, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", automargin: true },
     ...(analysisVisible && analysis?.kind === "log_ratio" ? { yaxis2: { title: {text: "Phase difference (rad)"}, overlaying: "y", side: "right", showgrid: false, automargin: true } } : {}),
     showlegend: showLegend, legend: { orientation: "v", x: 1.02, xanchor: "left", y: 1, yanchor: "top", maxheight: 1 }, hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${range.join()}-${plotScope}-${plotScope === "current" ? active?.id ?? "" : ""}-${kWeight ?? "auto"}`,
-  }} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>
+  }} config={{ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>{options}</>
 }

@@ -116,7 +116,7 @@ for (const name of ['X15B', 'X23A2MED']) {
     group.mu.forEach((v: number, i: number) => expect(Math.abs(v - expectedMu[i])).toBeLessThan(1e-10))
     await expect(dialog).not.toBeVisible()
     for (const [tab, space, xkey, ykey] of [['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
-      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_mag']]) {
+      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re']]) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
