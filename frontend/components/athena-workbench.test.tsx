@@ -109,6 +109,23 @@ describe("integration mode", () => {
     })
   })
 
+  it("names each selected group's own revision, not the project's", async () => {
+    // A group's revision only moves when that group changes, and the export
+    // reservation resolves a selection against the exact revision it names.
+    // Claiming the project version for a group that did not change in it is
+    // rejected as a changed selection, which breaks the whole round trip.
+    api.mockImplementation(async path => path === "/projects/integrated-project"
+      ? projectFixture({ id: "integrated-project", version: 9, group_versions: { foil: 2, sample: 3, oxide: 9, unused: 4 } })
+      : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "export"], returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    const importLink = screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })
+    importLink.addEventListener("click", event => event.preventDefault(), { once: true })
+    fireEvent.click(importLink)
+    expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.return-selection.v1")!).groups)
+      .toEqual([{ id: "sample", version: 3 }, { id: "oxide", version: 9 }])
+  })
+
   it.each([
     ["deconvolve", /deconvolve data/i],
     ["self_absorption", /fluorescence self-absorption/i],

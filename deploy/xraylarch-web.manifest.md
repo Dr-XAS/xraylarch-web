@@ -184,6 +184,36 @@ An active release is healthy only when all of the following hold:
 The checker only reads process, listener, filesystem, Git, and HTTP state. It
 never stops processes or changes host state.
 
+### The Dr.XAS-side pin
+
+A healthy release here is not sufficient: Dr.XAS pins this application's exact
+revision in **three** places that must all agree with the active SHA —
+`xraylarchRevision` in its `ops/drxas/role-prod.json` and `ops/drxas/role-dev.json`,
+and `sibling_revision` in its `backend/xraylarch_settings.py`. Its
+`verify-topology.sh` compares the manifest's pinned revision against this
+application's `/health` and fails closed on a mismatch, refusing the Dr.XAS role
+activation.
+
+This matters for both directions of a change:
+
+- a `deploy` or `rollback` here that moves the revision must be matched by that
+  three-place bump on the Dr.XAS side before its next role activation;
+- Dr.XAS role cutover never starts, stops or rolls back this pair. It is a
+  host-wide singleton shared by Dr.XAS prod and dev, and `deploy-xraylarch-web.sh`
+  is its only lifecycle owner. Dr.XAS verifies; it does not own.
+
+Dr.XAS accepts a **deliberately absent** pair: its hop then answers the mount
+with a stable `503 {"detail":{"code":"xraylarch_unavailable"}}` and its
+verification treats that as a valid topology. Stopping this pair therefore does
+not block a Dr.XAS deploy — but a **half-started** pair does.
+
+The end-to-end seam (both frontends, both backends, and the Dr.XAS public
+ingress hop driven as one system through a single origin) is covered by
+`frontend/tests/e2e/xraylarch-native-integration.spec.ts` in the Dr.XAS
+repository. It starts its own five processes on ephemeral ports under temporary
+data roots and mutates no host state, so it is safe to run on a deploy host,
+but it is a pre-deploy gate and not a substitute for `check-xraylarch-web.sh`.
+
 The default sibling-service profile is `drxas` and validates the established
 Dr.XAS production, development, and bot endpoints listed above. Goldendale is
 an approved alternate host profile because its production pair is intentionally

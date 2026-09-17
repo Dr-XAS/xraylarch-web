@@ -39,6 +39,30 @@ Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
 both the frontend and backend to loopback and relies on Dr.XAS ingress rather
 than exposing either service port directly.
 
+When mounted, this application is half of a two-repository system, and three
+things about the seam are contracts rather than details:
+
+- **Dr.XAS pins this repository's exact revision**, in its role manifests
+  (`xraylarchRevision`) and its backend settings (`sibling_revision`), together
+  with `integration_contract_version` 2. Its topology verification fails closed
+  on a mismatch, so a deploy or rollback here that changes the revision has to
+  be matched on the Dr.XAS side before its next role activation.
+- **`/api/integration/v2/**` is service-only.** Only the Dr.XAS backend calls
+  it, over loopback, with an HMAC-SHA256 signature and a per-project capability
+  header. No browser path reaches it, and the capability never travels to a
+  browser.
+- **The `return` launch parameter must be an app-relative Dr.XAS path.**
+  `parseSafeInternalReturn` rejects anything else, and a rejected value silently
+  removes the "Import into Dr.XAS" and "Return to Dr.XAS" affordances — the
+  scientist is left in Athena with no way back. Dr.XAS sends
+  `/chat/<conversation_id>`.
+
+`frontend/tests/e2e/integration-mounted.spec.ts` covers this application's own
+mounted lifecycle. The *cross-application* acceptance — both frontends, both
+backends and the Dr.XAS public ingress hop as one system — lives in the Dr.XAS
+repository at `frontend/tests/e2e/xraylarch-native-integration.spec.ts` and
+starts its own five processes on ephemeral ports.
+
 In the spectrum viewer, **All selected** plots the checked data groups;
 **Current spectrum** plots only the highlighted group, independently of its
 checkbox. For an individual **μ(E)** plot, use **Pre-edge line** and
