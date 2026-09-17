@@ -1,5 +1,6 @@
 """Exercise Athena's real HTTP boundary, including scientific array serialization."""
 from io import StringIO
+import hashlib
 import json
 
 import numpy as np
@@ -25,6 +26,67 @@ def create(client):
 def command(client, p, action, ids=(), **options):
     return client.post(f"/api/athena/projects/{p['id']}/command", json={
         "version": p["version"], "action": action, "group_ids": list(ids), "options": options})
+
+
+def test_uploaded_group_preserves_sanitized_parse_provenance(client):
+    project = create(client)
+    raw = ("energy i0 it\n" + "".join(
+        f"{100 + index} {10 + index} {5 + index / 2}\n" for index in range(12)
+    )).encode()
+    inspected = client.post(
+        f"/api/athena/projects/{project['id']}/inspect",
+        files={"file": ("../unsafe sample.dat", raw)},
+    ).json()
+    columns = {column["name"]: column["column_id"] for column in inspected["columns"]}
+
+    imported = client.post(
+        f"/api/athena/projects/{project['id']}/import",
+        json={
+            "version": 0,
+            "upload_id": inspected["upload_id"],
+            "energy_column": columns["energy"],
+            "numerator": [columns["i0"]],
+            "denominator": columns["it"],
+            "mode": "transmission",
+        },
+    )
+
+    assert imported.status_code == 200, imported.text
+    source = imported.json()["groups"][0]["source"]
+    assert source["original_filename"] == "unsafe sample.dat"
+    assert source["source_sha256"] == hashlib.sha256(raw).hexdigest()
+    assert source["parser_identity"] == "xraylarch.parse_upload"
+    assert source["parse_metadata"] == {"row_count": 12, "column_count": 3}
+
+
+def test_selected_group_export_recursively_redacts_sensitive_keys(tmp_path):
+    from xraylarch_web.athena import AthenaStore
+
+    configured = Settings(data_root=tmp_path)
+    store = AthenaStore(configured)
+    with TestClient(create_app(configured)) as client:
+        project = example(client)
+    group = project["groups"][0]
+    group["source"]["native"] = {
+        "path": "/private/source",
+        "fields": [{"owner": "person", "safe": "kept"}],
+    }
+    project["analyses"] = [{
+        "id": "analysis-1",
+        "group_ids": [group["id"]],
+        "project_version": project["version"],
+        "options": {"cache_path": "/private/cache", "nested": [{"handle": "secret"}]},
+        "result": {"identity": "secret", "value": 7},
+    }]
+    store.storage.write_json(project["id"], "project.json", project)
+
+    exported = store.export_selected_groups(project["id"], [group["id"]])
+
+    encoded = json.dumps(exported)
+    assert "/private" not in encoded
+    assert "secret" not in encoded
+    assert exported["groups"][0]["source"]["native"]["fields"] == [{"safe": "kept"}]
+    assert exported["analyses"][0]["result"] == {"value": 7}
 
 
 def example(client):

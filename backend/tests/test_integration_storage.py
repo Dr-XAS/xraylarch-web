@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+from pathlib import Path
+import builtins
 import stat
 
 import pytest
@@ -80,6 +83,157 @@ def test_expire_due_retains_malformed_nonce_records_without_crashing(tmp_path):
 
     assert store.expire_due(NOW) == ()
     assert malformed.is_file()
+
+
+def test_expire_due_is_bounded_and_persists_progress(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(6):
+        store.claim_nonce(
+            nonce=f"nonce-{index:011d}", expires_at=NOW + timedelta(minutes=5)
+        )
+    reads = []
+    original = Path.read_text
+
+    def count_read(path, *args, **kwargs):
+        if path.parent == store.nonces_dir:
+            reads.append(path.name)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_read)
+    store.expire_due(NOW, max_items=2)
+    first_cursor = (store.root / ".cleanup-queue.json").read_text(encoding="utf-8")
+    assert len(reads) == 2
+    reads.clear()
+
+    store.expire_due(NOW, max_items=2)
+    second_cursor = (store.root / ".cleanup-queue.json").read_text(encoding="utf-8")
+
+    assert len(reads) == 2
+    assert first_cursor != second_cursor
+    assert json.loads(second_cursor)["sequence"] == 4
+
+
+def test_expire_due_resumes_without_rescanning_a_large_prefix(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(12):
+        store.claim_nonce(
+            nonce=f"queued-nonce-{index:06d}", expires_at=NOW + timedelta(minutes=5)
+        )
+    reads = []
+    original = Path.read_text
+
+    def count_read(path, *args, **kwargs):
+        if path.parent == store.nonces_dir:
+            reads.append(path.name)
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "read_text", count_read)
+    store.expire_due(NOW, max_items=3)
+    first = tuple(reads)
+    reads.clear()
+
+    store.expire_due(NOW, max_items=3)
+
+    assert len(reads) == 3
+    assert not set(first) & set(reads)
+
+
+def test_concurrent_expire_due_does_not_regress_persistent_progress(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    for index in range(12):
+        store.claim_nonce(
+            nonce=f"parallel-nonce-{index:04d}", expires_at=NOW + timedelta(minutes=5)
+        )
+
+    before = json.loads((store.root / ".cleanup-queue.json").read_text(encoding="utf-8"))["sequence"] if (store.root / ".cleanup-queue.json").exists() else 0
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        tuple(executor.map(lambda _: store.expire_due(NOW, max_items=3), range(2)))
+
+    state = json.loads((store.root / ".cleanup-queue.json").read_text(encoding="utf-8"))
+    assert before <= state["sequence"] <= before + 6
+    assert state["sequence"] > before
+
+
+def test_expire_due_tolerates_malformed_drafts_per_item(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    (store.drafts_dir / "broken.json").write_bytes(b"\xff")
+    (store.drafts_dir / "truncated.json").write_text('{"id":', encoding="utf-8")
+
+    assert store.expire_due(NOW, max_items=20) == ()
+
+
+def test_expire_due_discovers_pre_upgrade_and_interrupted_records_in_bounded_batches(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    filenames = []
+    for index in range(12):
+        nonce = f"orphan-nonce-{index:04d}"
+        filename = f"{hashlib.sha256(nonce.encode()).hexdigest()}.json"
+        filenames.append(filename)
+        (store.nonces_dir / filename).write_text(json.dumps({
+            "nonce_hash": hashlib.sha256(nonce.encode()).hexdigest(),
+            "expires_at": (NOW + timedelta(minutes=5)).isoformat(),
+        }), encoding="utf-8")
+
+    for _ in range(40):
+        store.expire_due(NOW, max_items=2)
+
+    queued = {
+        json.loads(line)["filename"]
+        for line in (store.root / ".cleanup-queue.jsonl").read_text(encoding="utf-8").splitlines()
+    }
+    assert set(filenames) <= queued
+
+
+def test_expire_due_recovers_a_partial_journal_tail(tmp_path):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    queue = store.root / ".cleanup-queue.jsonl"
+    queue.write_text('{"phase":', encoding="utf-8")
+
+    store.claim_nonce(
+        nonce="partial-tail-nonce", expires_at=NOW - timedelta(seconds=1)
+    )
+    store.expire_due(NOW, max_items=1)
+
+    assert list(store.nonces_dir.glob("*.json")) == []
+    assert queue.read_text(encoding="utf-8").endswith("\n")
+
+
+def test_expire_due_large_tail_never_reads_or_rewrites_unbounded_bytes(tmp_path, monkeypatch):
+    store = IntegrationStorage(tmp_path, integration_secret=SECRET)
+    queue = store.root / ".cleanup-queue.jsonl"
+    queue.write_bytes(
+        b'{"phase":"nonces","filename":"missing.json"}\n' * 100_000
+    )
+    (store.root / ".cleanup-queue.json").write_text(
+        json.dumps({"offset": 1_048_600, "sequence": 0}), encoding="utf-8"
+    )
+    reads = []
+    original_open = builtins.open
+
+    class MeasuredReader:
+        def __init__(self, stream):
+            self.stream = stream
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return self.stream.__exit__(*args)
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+        def read(self, size=-1):
+            reads.append(size)
+            assert 0 <= size <= 65_536
+            return self.stream.read(size)
+
+    def measured_open(path, mode="r", *args, **kwargs):
+        stream = original_open(path, mode, *args, **kwargs)
+        if Path(path) == queue and "b" in mode and "r" in mode:
+            return MeasuredReader(stream)
+        return stream
+
+    monkeypatch.setattr(builtins, "open", measured_open)
+    store.expire_due(NOW, max_items=2)
+
+    assert -1 not in reads
 
 
 def test_draft_persists_only_hashes_and_private_permissions(tmp_path):

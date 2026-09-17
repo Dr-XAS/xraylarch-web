@@ -49,6 +49,7 @@ backend/*.egg-info/
 frontend/node_modules/
 frontend/.next/
 frontend/.next-e2e/
+frontend/.next-e2e-mounted/
 frontend/.next-verify/
 frontend/.next-artemis/
 frontend/.next-artemis-check/

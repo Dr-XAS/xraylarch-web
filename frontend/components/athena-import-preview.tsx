@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic"
 import { useEffect, useState } from "react"
-import { athenaApi } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 import { columnPayload, columnProblem, type ColumnMapping, type ColumnPreview } from "@/lib/athena-import"
 import styles from "./athena-column-selection.module.css"
 
@@ -12,6 +12,7 @@ const colors = ["#16736b", "#c37b38", "#7470b0", "#467cac", "#c85a65"]
 export function AthenaImportPreview({ projectId, version, uploadId, mapping, disabled = false }: {
   projectId: string; version: number; uploadId: string; mapping: ColumnMapping; disabled?: boolean
 }) {
+  const athenaApi = useAthenaApi()
   const [paused, setPaused] = useState(false)
   const [showReference, setShowReference] = useState(true)
   const [retry, setRetry] = useState(0)

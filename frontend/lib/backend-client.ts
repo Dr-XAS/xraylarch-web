@@ -1,3 +1,4 @@
+import { backendUrl } from "@/lib/app-url"
 import type {
   ApplyRequest,
   ErrorEnvelope,
@@ -10,8 +11,6 @@ import type {
 } from "@/lib/contracts"
 
 type Fetcher = typeof fetch
-
-const backendPath = "/api/backend"
 
 export class ApiRequestError extends Error {
   readonly code: string
@@ -115,7 +114,7 @@ export class BackendClient {
   }
 
   private url(path: string): string {
-    return `${backendPath}${path}`
+    return backendUrl(path)
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {

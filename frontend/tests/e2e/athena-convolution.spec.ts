@@ -74,7 +74,7 @@ test('measured Cu live import, convolution/noise comparisons, exact save, undo a
   expect(latest.groups).toHaveLength(5)
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 4',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 5',exact:true})).toBeVisible()
-  const downloading=page.waitForEvent('download');await page.getByRole('link',{name:'Save project',exact:true}).click()
+  const downloading=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click()
   const path=info.outputPath('Cu-convolution-native.prj');await(await downloading).saveAs(path)
   writeFileSync(path,gunzipSync(readFileSync(path)).toString('utf8').split('\n').filter(l=>!l.startsWith('# Athena-Web ')).join('\n'))
   await page.getByRole('button',{name:'File',exact:true}).click();await page.getByRole('button',{name:'Open project…',exact:true}).click()

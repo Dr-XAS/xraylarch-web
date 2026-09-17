@@ -8,11 +8,13 @@ export function AthenaParameterTabs({ tab, select, processing, fitting }: {
   tab: ParameterTab
   select: (tab: ParameterTab) => void
   processing: ReactNode
-  fitting: ReactNode
+  /** Pass null to drop the fitting tab entirely: a linked integration project cannot be fitted. */
+  fitting: ReactNode | null
 }) {
   const id = useId()
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
   const tabs = ["processing", "fitting"] as const
+  if (fitting === null) return <>{processing}</>
   return <>
     <div className="ath-parameter-tabs" role="tablist" aria-label="Parameter workflow">
       {tabs.map((value, index) => <button key={value} type="button"

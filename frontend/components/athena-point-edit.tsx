@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
@@ -44,12 +45,17 @@ function validate(v:PointEditPreview,p:AthenaProject,ids:string[],options:Option
   if(ids.some(id=>!seen.has(id)&&!v.skipped_reasons?.[id]))throw new Error('The preview is missing a selected group.')
 }
 
-export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initialDraft,rememberDraft,setBusy,disabled,saved,close}:{
+type AllowedActions={preview:boolean;deglitch:boolean;truncate:boolean;undo:boolean;redo:boolean}
+const allActions:AllowedActions={preview:true,deglitch:true,truncate:true,undo:true,redo:true}
+
+export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initialDraft,rememberDraft,setBusy,disabled,allowedActions=allActions,saved,close}:{
   project:AthenaProject;activeId:string;selectGroup:(id:string)=>void;initialMode:'point'|'truncate';initialDraft?:PointEditDraft;rememberDraft:(d:PointEditDraft)=>void;
-  setBusy:(v:string)=>void;disabled:boolean;saved:(p:AthenaProject)=>void;close:()=>void;
+  setBusy:(v:string)=>void;disabled:boolean;allowedActions?:AllowedActions;saved:(p:AthenaProject)=>void;close:()=>void;
 }){
+  const athenaApi=useAthenaApi()
   const group=project.groups.find(g=>g.id===activeId),effective=group?.result?.effective??{},e0=typeof effective.e0==='number'?effective.e0:null
-  const [draft,setDraft]=useState<PointEditDraft>(()=>({...initialDraft,mode:initialMode,point:'',
+  const initialAuthorizedMode=initialMode==='truncate'&&allowedActions.truncate?'truncate':allowedActions.deglitch?'point':'truncate'
+  const [draft,setDraft]=useState<PointEditDraft>(()=>({...initialDraft,mode:initialAuthorizedMode,point:'',
     emin:initialDraft?.emin??String(effective.norm1??30),emax:initialDraft?.emax??String(effective.norm2??(e0&&group?group.energy.at(-1)!+group.parameters.energy_shift-e0:200)),
     tolerance:initialDraft?.tolerance??String(typeof effective.edge_step==='number'?effective.edge_step*.1:.1),
     side:initialDraft?.side??'after',value:initialDraft?.value??String(group?group.energy.at(-1)!+group.parameters.energy_shift:''),scope:'current'}))
@@ -58,6 +64,8 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
   const [preview,setPreview]=useState<{key:string;value:PointEditPreview}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[retry,setRetry]=useState(0)
   const generation=useRef(0),saving=useRef(false),alive=useRef(true)
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;generation.current++}},[])
+  const mutation=draft.mode==='truncate'?'truncate':'deglitch'
+  const modeAuthorized=allowedActions[mutation]
   const scope=draft.mode==='truncate'?draft.scope:'current'
   const ids=scope==='marked'?project.groups.filter(g=>g.marked).map(g=>g.id):[activeId]
   const inspecting=draft.mode==='point'&&!draft.point.trim()
@@ -71,12 +79,12 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
   useLayoutEffect(()=>{pickContext.current={key,picking}},[key,picking])
   useEffect(()=>{setDraft(d=>({...d,point:''}));setView('mu')},[activeId])
   useEffect(()=>{
-    if(!eligible||!valid||disabled)return
+    if(!eligible||!valid||disabled||!allowedActions.preview||!modeAuthorized)return
     const abort=new AbortController(),token=++generation.current
     const timer=setTimeout(async()=>{
       setLoading(true);setError('')
       try{
-        const value=await athenaApi<PointEditPreview>(`/projects/${project.id}/point-edit/preview`,{version:project.version,action:draft.mode==='truncate'?'truncate':'deglitch',group_ids:ids,options},'POST',abort.signal)
+        const value=await athenaApi<PointEditPreview>(`/projects/${project.id}/point-edit/preview`,{version:project.version,action:mutation,group_ids:ids,options},'POST',abort.signal)
         if(token!==generation.current||committed.current!==key)return
         validate(value,project,ids,options);setPreview({key,value})
       }catch(e){if(!abort.signal.aborted&&token===generation.current)setError(e instanceof Error?e.message:'Preview failed.')}
@@ -85,7 +93,7 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
     return()=>{clearTimeout(timer);abort.abort();generation.current++}
   // The complete request is captured in key.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[key,retry,eligible,valid,disabled])
+  },[key,retry,eligible,valid,disabled,allowedActions.preview,modeAuthorized])
   const row=current?.results.find(r=>r.group_id===activeId)??current?.results[0]
   const total=current?.results.reduce((n,r)=>n+r.removed_indices.length,0)??0
   const base=group&&group.data_type!=='chi'?{x:group.energy.map(x=>x+(group.data_type==='chi'?0:group.parameters.energy_shift)),y:group.mu}:null
@@ -104,10 +112,11 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
     setDraft(d=>({...d,[field]:field==='emin'||field==='emax'?(x-e0!).toFixed(2):String(x)}));setPicking(null)
   }
   async function apply(action:'remove'|'undo'|'redo'){
-    if(disabled||saving.current||(action==='remove'&&(!current||!total||committed.current!==key)))return
+    const authorized=action==='remove'?modeAuthorized:allowedActions[action]
+    if(disabled||!authorized||saving.current||(action==='remove'&&(!current||!total||committed.current!==key)))return
     saving.current=true;setBusy(action==='remove'?'Removing selected points':action==='undo'?'Undoing edit':'Redoing edit');setError('')
     try{
-      const next=await athenaApi<AthenaProject>(`/projects/${project.id}/command`,action==='remove'?{version:current!.version,action:draft.mode==='truncate'?'truncate':'deglitch',group_ids:ids,options:current!.options}:{version:project.version,action})
+      const next=await athenaApi<AthenaProject>(`/projects/${project.id}/command`,action==='remove'?{version:current!.version,action:mutation,group_ids:ids,options:current!.options}:{version:project.version,action})
       if(!alive.current)return
       if(committed.current!==key||next.id!==project.id||next.version!==project.version+1)throw new Error('The workspace changed while applying this edit. Reload the project.')
       if(action==='remove'&&(next.groups.length!==project.groups.length||current!.results.some(r=>{const g=next.groups.find(g=>g.id===r.group_id);return !g||g.energy.length!==r.energy.length||g.energy.some((x,i)=>x!==r.energy[i])||g.mu.length!==r.mu.length||g.mu.some((y,i)=>y!==r.mu[i])})))throw new Error('The saved point removal does not match the preview. Reload the project.')
@@ -120,7 +129,7 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
     <p>Review the highlighted measurements before removing them from the current group. The source file stays unchanged. Undo restores the previous data and processing settings.</p>
     <div className={styles.layout}><fieldset className={styles.controls} disabled={disabled}>
       <label className="ath-field"><span>Source group</span><select aria-label="Source group" value={activeId} onChange={e=>selectGroup(e.target.value)}>{project.groups.map(g=><option key={g.id} value={g.id}>{g.label}{g.frozen?' · frozen':''}</option>)}</select></label>
-      <label className="ath-field"><span>Operation</span><select aria-label="Operation" value={draft.mode} onChange={e=>{setDraft(d=>({...d,mode:e.target.value as Mode}));setView('mu')}}><option value="point">Remove a point</option><option value="margins">Remove outside margins</option><option value="truncate">Truncate before or after</option></select></label>
+      <label className="ath-field"><span>Operation</span><select aria-label="Operation" value={draft.mode} onChange={e=>{const mode=e.target.value as Mode;if((mode==='truncate'&&!allowedActions.truncate)||(mode!=='truncate'&&!allowedActions.deglitch))return;setDraft(d=>({...d,mode}));setView('mu')}}>{allowedActions.deglitch&&<><option value="point">Remove a point</option><option value="margins">Remove outside margins</option></>}{allowedActions.truncate&&<option value="truncate">Truncate before or after</option>}</select></label>
       {draft.mode==='point'&&<>{field('point','Point energy · eV',true)}<p className="ath-hint">Pick a plotted point or type an energy. The closest measured point is highlighted; exact ties select the higher energy.</p></>}
       {draft.mode==='margins'&&<>{field('tolerance','Margin tolerance · signal units')}{field('emin','Minimum relative to E0 · eV',true)}{field('emax','Maximum relative to E0 · eV',true)}<p className="ath-hint">Use negative bounds for the pre-edge or positive bounds for the post-edge. The margins follow the saved normalization line; points strictly outside are selected. Inspect the curves so real spectral structure is retained.</p></>}
       {draft.mode==='truncate'&&<><label className="ath-field"><span>Drop points</span><select aria-label="Drop points" value={draft.side} onChange={e=>setDraft(d=>({...d,side:e.target.value as 'before'|'after'}))}><option value="before">Before cutoff</option><option value="after">After cutoff</option></select></label>{field('value','Cutoff energy · eV',true)}<label className="ath-field"><span>Apply to</span><select aria-label="Apply to" value={draft.scope} onChange={e=>setDraft(d=>({...d,scope:e.target.value as 'current'|'marked'}))}><option value="current">Current group</option><option value="marked">Marked groups</option></select></label><p className="ath-hint">The cutoff snaps to the measured point at or below the typed value. Before keeps that point; after removes it. Marked groups use the same absolute cutoff.</p></>}
@@ -135,6 +144,6 @@ export function AthenaPointEdit({project,activeId,selectGroup,initialMode,initia
       {current&&Object.entries(current.skipped_reasons).map(([id,reason])=><p key={id} className="ath-warning">{project.groups.find(g=>g.id===id)?.label}: {reason}</p>)}
       {error&&<div className="ath-error" role="alert">{error}</div>}
     </section></div>
-    <div className={`ath-modal-actions ${controls.actions}`}><button disabled={disabled} onClick={close}>Close point editing</button><button disabled={disabled||!project.undo?.length} onClick={()=>void apply('undo')}>Undo last edit</button><button disabled={disabled||!project.redo?.length} onClick={()=>void apply('redo')}>Redo last edit</button><button disabled={disabled||!eligible||!valid||loading} onClick={()=>{setPreview(null);setRetry(n=>n+1)}}>Replot selection</button><button className="ath-primary" disabled={disabled||!current||!total||loading} onClick={()=>void apply('remove')}>{draft.mode==='truncate'?'Truncate data':draft.mode==='margins'?'Remove selected glitches':'Remove point'}</button></div>
+    <div className={`ath-modal-actions ${controls.actions}`}><button disabled={disabled} onClick={close}>Close point editing</button><button disabled={disabled||!allowedActions.undo||!project.undo?.length} onClick={()=>void apply('undo')}>Undo last edit</button><button disabled={disabled||!allowedActions.redo||!project.redo?.length} onClick={()=>void apply('redo')}>Redo last edit</button><button disabled={disabled||!allowedActions.preview||!modeAuthorized||!eligible||!valid||loading} onClick={()=>{setPreview(null);setRetry(n=>n+1)}}>Replot selection</button><button className="ath-primary" disabled={disabled||!modeAuthorized||!current||!total||loading} onClick={()=>void apply('remove')}>{draft.mode==='truncate'?'Truncate data':draft.mode==='margins'?'Remove selected glitches':'Remove point'}</button></div>
   </div>
 }

@@ -3,7 +3,8 @@
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
 import { Box, Grid2X2, Waves } from "lucide-react"
-import { athenaApi, type AthenaGroup } from "@/lib/athena"
+import { type AthenaGroup } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 import { DEFAULT_COLORMAP, plotlyColorscale, type AthenaColormap } from "@/lib/athena-colormaps"
 import { ResizablePlotCard } from "./athena-plot-card"
 import styles from "./athena-wavelet.module.css"
@@ -83,6 +84,7 @@ function WaveletFigure({ data, mode, colormap }: { data: WaveletResult; mode: "2
 }
 
 export function AthenaWavelet({ projectId, version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP }: Props) {
+  const athenaApi = useAthenaApi()
   const [mode, setMode] = useState<"2d" | "3d">("2d")
   const [retry, setRetry] = useState(0)
   const [response, setResponse] = useState<{ key: string; data?: WaveletResult; error?: string } | null>(null)

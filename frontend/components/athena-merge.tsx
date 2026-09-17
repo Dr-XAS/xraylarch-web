@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
@@ -45,6 +46,7 @@ function validate(v:MergePreview,p:AthenaProject,ids:string[],options:Options){
 }
 
 export function AthenaMerge({project,initialDraft,rememberDraft,initialArray,disabled=false,setBusy,saved,close}:{project:AthenaProject;initialDraft?:MergeDraft;rememberDraft:(d:MergeDraft)=>void;initialArray?:Options['array'];disabled?:boolean;setBusy:(s:string)=>void;saved:(p:AthenaProject,id:string)=>void;close:()=>void}){
+  const athenaApi=useAthenaApi()
   const marked=project.groups.filter(g=>g.marked),ids=marked.map(g=>g.id)
   const refs=project.groups.filter(g=>marked.some(m=>m.reference_id===g.id))
   const [draft,setDraft]=useState<MergeDraft>(()=>({...factory,array:'mu',short_data_margin:'10',weights:{},reference_weights:{},label:'',...initialDraft,...(initialArray?{array:initialArray}:{})}))

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from 'react'
-import { apiBase } from '@/lib/athena'
+import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-archive-selection.module.css'
 
 export interface ArchiveInspection {
@@ -29,7 +29,7 @@ export function AthenaArchiveSelection({ archive, projectId, busy, onContinue, o
         <label><input type="checkbox" aria-label={`Include ${member.name} · entry ${member.index + 1}`} checked={selected.includes(member.index)}
           onChange={e => setSelected(ids => e.target.checked ? [...ids, member.index] : ids.filter(id => id !== member.index))} />
           <span>{member.name}<small>Entry {member.index + 1} · {member.bytes.toLocaleString()} bytes</small></span></label>
-        <a href={`${apiBase}/projects/${projectId}/archives/${archive.upload_id}/members/${member.index}`} download>Download {member.name}</a>
+        <AthenaDownloadButton path={`/projects/${projectId}/archives/${archive.upload_id}/members/${member.index}`}>Download {member.name}</AthenaDownloadButton>
       </li>)}</ul>
       <p>{selected.length} files selected. Files are reviewed in archive order.</p>
       <div className="ath-modal-actions">
@@ -38,6 +38,6 @@ export function AthenaArchiveSelection({ archive, projectId, busy, onContinue, o
       </div>
     </fieldset>
     {!!archive.file_plugin.directory_count && <p className="ath-hint">{archive.file_plugin.directory_count} directory entries omitted. All file paths are shown above.</p>}
-    <a href={`${apiBase}/projects/${projectId}/uploads/${archive.upload_id}/file`} download>Download original ZIP</a>
+    <AthenaDownloadButton path={`/projects/${projectId}/uploads/${archive.upload_id}/file`}>Download original ZIP</AthenaDownloadButton>
   </section>
 }

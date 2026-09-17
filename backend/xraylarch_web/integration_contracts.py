@@ -16,6 +16,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    JsonValue,
     StringConstraints,
     field_validator,
     model_validator,
@@ -341,6 +342,13 @@ ComputedArray = Literal[
 ComputedValues = Annotated[tuple[FiniteFloat, ...], Field(min_length=1, max_length=MAX_SPECTRUM_POINTS)]
 
 
+_COMPUTED_ARRAY_FAMILIES = (
+    ("energy", "mu", "norm", "flat", "pre_edge", "post_edge"),
+    ("k", "chi"), ("r", "chir_re", "chir_im", "chir_mag"),
+    ("q", "chiq_re", "chiq_im", "chiq_mag"),
+)
+
+
 class ComputedImportResult(IntegrationModel):
     arrays: dict[ComputedArray, ComputedValues]
     e0: Annotated[float, Field(strict=True, gt=0, le=1e7, allow_inf_nan=False)]
@@ -348,11 +356,7 @@ class ComputedImportResult(IntegrationModel):
 
     @model_validator(mode="after")
     def complete_aligned_results(self):
-        groups = (
-            ("energy", "mu", "norm", "flat", "pre_edge", "post_edge"),
-            ("k", "chi"), ("r", "chir_re", "chir_im", "chir_mag"),
-            ("q", "chiq_re", "chiq_im", "chiq_mag"),
-        )
+        groups = _COMPUTED_ARRAY_FAMILIES
         if set(self.arrays) != {name for group in groups for name in group}:
             raise ValueError("Computed import result is incomplete.")
         for group in groups:
@@ -464,6 +468,315 @@ def _bounded_lifetime(
         )
 
 
+# Version 2 persistent-project wire contract.  These models intentionally do not
+# inherit v1's schema-version aliases, preserving the v1 wire surface unchanged.
+V2_CONTRACT_VERSION = 2
+MAX_PROJECT_NAME_LENGTH = 120
+MAX_GROUP_SELECTIONS = 128
+
+ProjectId = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=255)]
+ProjectName = Annotated[
+    str, StringConstraints(strict=True, min_length=1, max_length=MAX_PROJECT_NAME_LENGTH)
+]
+GroupId = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=255)]
+ReservationId = Annotated[str, StringConstraints(strict=True, min_length=1, max_length=255)]
+V2SchemaVersion = Literal[2]
+V2PositiveInt = Annotated[int, Field(strict=True, gt=0)]
+
+
+class PersistentIntegrationModel(BaseModel):
+    """Strict, immutable v2 integration models independent of the v1 contract."""
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid", allow_inf_nan=False)
+
+
+class ExistingDrXasSource(PersistentIntegrationModel):
+    kind: Literal["drxas"] = "drxas"
+    turn_id: Identifier
+    artifact_id: Identifier
+    artifact_version: int = Field(strict=True, ge=1)
+    source_sha256: Sha256
+
+
+class AthenaUploadedSource(PersistentIntegrationModel):
+    kind: Literal["athena_upload"] = "athena_upload"
+    original_filename: Identifier
+    raw_sha256: Sha256
+    parse_metadata: dict[str, JsonValue]
+
+    @field_validator("parse_metadata")
+    @classmethod
+    def bounded_metadata(cls, value: dict[str, JsonValue]):
+        encoded = json.dumps(value, allow_nan=False, separators=(",", ":")).encode()
+        if len(encoded) > 16_384:
+            raise ValueError("parse_metadata exceeds 16384 bytes.")
+        def visit(item, depth=0):
+            if depth > 6:
+                raise ValueError("parse_metadata nesting exceeds six levels.")
+            if isinstance(item, str) and len(item) > 1024:
+                raise ValueError("parse_metadata strings exceed 1024 characters.")
+            if isinstance(item, dict):
+                if len(item) > 128:
+                    raise ValueError("parse_metadata objects exceed 128 entries.")
+                for key, child in item.items():
+                    if len(key) > 128:
+                        raise ValueError("parse_metadata keys exceed 128 characters.")
+                    visit(child, depth + 1)
+            elif isinstance(item, list):
+                if len(item) > 128:
+                    raise ValueError("parse_metadata arrays exceed 128 entries.")
+                for child in item:
+                    visit(child, depth + 1)
+        visit(value)
+        return value
+
+
+ProjectSource = Annotated[
+    ExistingDrXasSource | AthenaUploadedSource, Field(discriminator="kind")
+]
+
+
+class ProjectSeed(PersistentIntegrationModel):
+    source: ExistingDrXasSource
+    spectrum: AuthoritativeSpectrum
+    recipe: CoreProcessingRecipe
+    spectrum_sha256: Sha256
+    recipe_sha256: Sha256
+
+    @model_validator(mode="after")
+    def matching_digests(self):
+        # Athena's μ(E) processing cannot form a usable group from fewer than
+        # ten aligned points; keep that domain minimum at the v2 boundary.
+        if len(self.spectrum.energy) < 10:
+            raise ValueError("seed spectrum must contain at least ten points.")
+        if self.spectrum_sha256 != canonical_sha256(self.spectrum):
+            raise ValueError("spectrum_sha256 does not match the canonical spectrum.")
+        if self.recipe_sha256 != canonical_sha256(self.recipe):
+            raise ValueError("recipe_sha256 does not match the canonical recipe.")
+        _validate_digests_and_science(self)
+        return self
+
+
+class ProjectBootstrapRequest(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    name: ProjectName
+    persistent: bool
+    source: ProjectSource | None = None
+    seed: ProjectSeed | None = None
+
+    @model_validator(mode="after")
+    def seed_matches_source(self):
+        if self.seed is not None and self.source != self.seed.source:
+            raise ValueError("seed source must match source.")
+        return self
+
+
+class ProjectLaunch(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    capability: LaunchHandle
+    project: "ProjectSummary"
+
+
+class ProjectSummary(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    name: ProjectName
+    persistent: bool
+    project_version: int = Field(strict=True, ge=0)
+    group_count: int = Field(strict=True, ge=0)
+    file_count: int = Field(strict=True, ge=0)
+    stored_bytes: int = Field(strict=True, ge=0)
+    expires_at: AwareDatetime | None
+
+    @model_validator(mode="after")
+    def persistence_matches_expiry(self):
+        if self.persistent != (self.expires_at is None):
+            raise ValueError("expires_at must be absent for persistent projects and present for guests.")
+        return self
+
+
+class SelectedGroupRef(PersistentIntegrationModel):
+    group_id: GroupId
+    group_version: int = Field(strict=True, ge=0)
+
+
+class SelectedGroupExportRequest(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    project_version: int = Field(strict=True, ge=0)
+    selections: tuple[SelectedGroupRef, ...] = Field(min_length=1, max_length=MAX_GROUP_SELECTIONS)
+
+    @model_validator(mode="after")
+    def selections_are_unique(self):
+        keys = {(selection.group_id, selection.group_version) for selection in self.selections}
+        if len(keys) != len(self.selections):
+            raise ValueError("selected group references must be unique.")
+        return self
+
+
+class AthenaInternalSource(PersistentIntegrationModel):
+    """A group whose provenance stays inside xraylarch-web.
+
+    Athena's own source metadata carries parsed column arrays, plugin payloads
+    and native-project records, none of which crosses this boundary; and a
+    combined, transformed or natively imported group has no single raw file to
+    name. So this source claims nothing beyond the parents it was derived from
+    (none, for a natively imported group), and the exported digests bind the
+    science itself.
+    """
+
+    kind: Literal["athena_internal"] = "athena_internal"
+    parent_group_ids: tuple[GroupId, ...] = Field(default=(), max_length=MAX_GROUP_SELECTIONS)
+
+    @model_validator(mode="after")
+    def unique_parents(self):
+        if len(set(self.parent_group_ids)) != len(self.parent_group_ids):
+            raise ValueError("parent_group_ids must be unique.")
+        return self
+
+
+ExportedGroupSource = Annotated[
+    ExistingDrXasSource | AthenaUploadedSource | AthenaInternalSource,
+    Field(discriminator="kind"),
+]
+GroupLabel = Annotated[str, StringConstraints(strict=True, max_length=200)]
+AthenaDataType = Literal["mu", "xanes", "norm", "chi", "xmudat", "detector"]
+
+
+class RecomputableGroupScience(PersistentIntegrationModel):
+    """Processing that maps exactly onto the portable recipe.
+
+    Both the recipe and the complete result travel, so an importer can replay
+    the recipe with its own Larch and compare the two.
+    """
+
+    kind: Literal["recomputable"] = "recomputable"
+    recipe: CoreProcessingRecipe
+    recipe_sha256: Sha256
+    computed: ComputedImportResult
+
+    @model_validator(mode="after")
+    def matching_recipe_digest(self):
+        if self.recipe_sha256 != canonical_sha256(self.recipe):
+            raise ValueError("recipe_sha256 does not match the canonical recipe.")
+        return self
+
+
+class ExportedGroupScience(PersistentIntegrationModel):
+    """Processing with no portable-recipe equivalent.
+
+    A non-mu(E) data type, a signed difference, a spectrum with no reachable
+    EXAFS range, or a recipe this contract rejects: there is nothing an
+    importer could replay, so xraylarch-web remains the computation authority
+    and only the arrays it actually produced travel. Carrying no recipe is the
+    point — an importer cannot mistake these for its own recomputation.
+
+    Athena leaves the arrays it did not compute empty, and an empty array is
+    not a result, so a family that was never computed is absent rather than
+    blank. What travels is therefore a subset: a XANES-range scan carries no
+    chi(k), and a chi(k) group carries no energy axis at all. Each family that
+    does travel has to be plottable on arrival, so it must include its own
+    coordinate and agree on length.
+    """
+
+    kind: Literal["exported"] = "exported"
+    reason: Literal["data_type", "difference", "incomplete_result", "unportable_recipe"]
+    data_type: AthenaDataType
+    arrays: dict[ComputedArray, ComputedValues] = Field(min_length=1)
+    e0: Annotated[float, Field(strict=True, gt=0, le=1e7, allow_inf_nan=False)] | None = None
+    edge_step: Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)] | None = None
+
+    @model_validator(mode="after")
+    def aligned_present_results(self):
+        for family in _COMPUTED_ARRAY_FAMILIES:
+            present = [name for name in family if name in self.arrays]
+            if not present:
+                continue
+            coordinate = family[0]
+            if coordinate not in self.arrays:
+                raise ValueError(f"Exported result carries {family[1]} without {coordinate}.")
+            if len({len(self.arrays[name]) for name in present}) != 1:
+                raise ValueError("Exported result arrays are not aligned.")
+        return self
+
+
+class ExportedGroup(PersistentIntegrationModel):
+    """One selected Athena group, with the science needed to import it.
+
+    ``group_version`` is the project version in which this group's content last
+    changed, so a caller can pin exactly what it selected. The group's snapshot
+    digest is ``canonical_sha256`` of this model: it is derived on both sides
+    rather than carried, because a stored digest can disagree with the payload
+    it claims to bind.
+    """
+
+    group_id: GroupId
+    group_version: int = Field(strict=True, ge=0)
+    label: GroupLabel
+    larch_version: Identifier
+    source: ExportedGroupSource
+    source_sha256: Sha256
+    spectrum: AuthoritativeSpectrum
+    spectrum_sha256: Sha256
+    science: RecomputableGroupScience | ExportedGroupScience = Field(discriminator="kind")
+
+    @model_validator(mode="after")
+    def matching_digests_and_authority(self):
+        if self.source_sha256 != canonical_sha256(self.source):
+            raise ValueError("source_sha256 does not match the canonical source.")
+        if self.spectrum_sha256 != canonical_sha256(self.spectrum):
+            raise ValueError("spectrum_sha256 does not match the canonical spectrum.")
+        if isinstance(self.science, RecomputableGroupScience):
+            if self.science.recipe.larch_version != self.larch_version:
+                raise ValueError(
+                    "recipe larch_version must name the version that computed the result."
+                )
+            # A recipe offered for replay has to describe the axis it travels
+            # with; one that does not is exported under its own authority
+            # instead, never silently handed over as recomputable.
+            validate_recipe_for_spectrum(self.spectrum, self.science.recipe)
+        return self
+
+
+class SelectedGroupExportBatch(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    project_id: ProjectId
+    project_version: int = Field(strict=True, ge=0)
+    groups: tuple[ExportedGroup, ...] = Field(min_length=1, max_length=MAX_GROUP_SELECTIONS)
+
+    @model_validator(mode="after")
+    def groups_are_unique(self):
+        if len({group.group_id for group in self.groups}) != len(self.groups):
+            raise ValueError("exported groups must be unique.")
+        return self
+
+
+class ExportReservation(PersistentIntegrationModel):
+    contract_version: V2SchemaVersion = V2_CONTRACT_VERSION
+    reservation_id: ReservationId
+    project_id: ProjectId
+    project_version: int = Field(strict=True, ge=0)
+    selections: tuple[SelectedGroupRef, ...] = Field(min_length=1, max_length=MAX_GROUP_SELECTIONS)
+    status: Literal["prepared", "committed", "aborted"]
+
+    @model_validator(mode="after")
+    def selections_are_unique(self):
+        keys = {(selection.group_id, selection.group_version) for selection in self.selections}
+        if len(keys) != len(self.selections):
+            raise ValueError("selected group references must be unique.")
+        return self
+
+
+class ProjectQuota(PersistentIntegrationModel):
+    max_projects: V2PositiveInt
+    max_files: V2PositiveInt
+    max_bytes: V2PositiveInt
+    max_groups: V2PositiveInt
+    max_exports: V2PositiveInt
+    ttl_seconds: V2PositiveInt | None
+
+
 def _validate_digests_and_science(
     envelope: LaunchEnvelope | SealedImportEnvelope,
 ) -> None:
@@ -471,12 +784,19 @@ def _validate_digests_and_science(
         raise ValueError("spectrum_sha256 does not match the canonical spectrum.")
     if envelope.recipe_sha256 != canonical_sha256(envelope.recipe):
         raise ValueError("recipe_sha256 does not match the canonical recipe.")
+    validate_recipe_for_spectrum(envelope.spectrum, envelope.recipe)
 
-    normalization = envelope.recipe.normalization
-    shifted_min = envelope.spectrum.energy[0] + normalization.energy_shift
-    shifted_max = envelope.spectrum.energy[-1] + normalization.energy_shift
-    e0_min = envelope.spectrum.energy[1] + normalization.energy_shift
-    e0_max = envelope.spectrum.energy[-2] + normalization.energy_shift
+
+def validate_recipe_for_spectrum(
+    spectrum: AuthoritativeSpectrum, recipe: CoreProcessingRecipe
+) -> None:
+    """Check a recipe against the measured axis it claims to describe."""
+
+    normalization = recipe.normalization
+    shifted_min = spectrum.energy[0] + normalization.energy_shift
+    shifted_max = spectrum.energy[-1] + normalization.energy_shift
+    e0_min = spectrum.energy[1] + normalization.energy_shift
+    e0_max = spectrum.energy[-2] + normalization.energy_shift
     if not e0_min <= normalization.e0 <= e0_max:
         raise ValueError(
             "normalization.e0 must lie between the second and penultimate shifted "
@@ -493,8 +813,8 @@ def _validate_digests_and_science(
             )
 
     reachable_k = math.sqrt(max(shifted_max - normalization.e0, 0) / _ENERGY_TO_K)
-    forward_ft = envelope.recipe.forward_ft
-    processing_kmax = envelope.recipe.autobk.kmax
+    forward_ft = recipe.forward_ft
+    processing_kmax = recipe.autobk.kmax
     if forward_ft.kmax > processing_kmax:
         raise ValueError("forward_ft.kmax must not exceed autobk.kmax.")
     required_points = int(

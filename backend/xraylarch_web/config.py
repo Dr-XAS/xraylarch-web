@@ -12,6 +12,17 @@ DEFAULT_MAX_COLUMNS = 256
 _DEFAULT_MAX_NFFT = 262_144
 _DEFAULT_DRAFT_TTL_SECONDS = 7 * 24 * 60 * 60
 _MAX_DRAFT_TTL_SECONDS = 7 * 24 * 60 * 60
+_DEFAULT_INTEGRATION_MAX_PROJECTS = 20
+_DEFAULT_INTEGRATION_MAX_FILES = 100
+_DEFAULT_INTEGRATION_MAX_BYTES = 500_000_000
+_DEFAULT_INTEGRATION_MAX_GROUPS = 500
+_DEFAULT_INTEGRATION_MAX_EXPORTS = 100
+_DEFAULT_INTEGRATION_GUEST_MAX_PROJECTS = 3
+_DEFAULT_INTEGRATION_GUEST_MAX_FILES = 10
+_DEFAULT_INTEGRATION_GUEST_MAX_BYTES = 50_000_000
+_DEFAULT_INTEGRATION_GUEST_MAX_GROUPS = 50
+_DEFAULT_INTEGRATION_GUEST_MAX_EXPORTS = 10
+_DEFAULT_INTEGRATION_GUEST_TTL_SECONDS = 24 * 60 * 60
 
 
 @dataclass(frozen=True)
@@ -27,6 +38,17 @@ class Settings:
     browser_consume_enabled: bool = False
     import_enabled: bool = False
     draft_ttl_seconds: int = _DEFAULT_DRAFT_TTL_SECONDS
+    integration_max_projects: int = _DEFAULT_INTEGRATION_MAX_PROJECTS
+    integration_max_files: int = _DEFAULT_INTEGRATION_MAX_FILES
+    integration_max_bytes: int = _DEFAULT_INTEGRATION_MAX_BYTES
+    integration_max_groups: int = _DEFAULT_INTEGRATION_MAX_GROUPS
+    integration_max_exports: int = _DEFAULT_INTEGRATION_MAX_EXPORTS
+    integration_guest_max_projects: int = _DEFAULT_INTEGRATION_GUEST_MAX_PROJECTS
+    integration_guest_max_files: int = _DEFAULT_INTEGRATION_GUEST_MAX_FILES
+    integration_guest_max_bytes: int = _DEFAULT_INTEGRATION_GUEST_MAX_BYTES
+    integration_guest_max_groups: int = _DEFAULT_INTEGRATION_GUEST_MAX_GROUPS
+    integration_guest_max_exports: int = _DEFAULT_INTEGRATION_GUEST_MAX_EXPORTS
+    integration_guest_ttl_seconds: int = _DEFAULT_INTEGRATION_GUEST_TTL_SECONDS
     integration_issuer: str | None = None
     integration_audience: str | None = None
     integration_hmac_secret: str | None = None
@@ -46,6 +68,17 @@ class Settings:
             ("XRAYLARCH_MAX_COLUMNS", self.max_columns),
             ("XRAYLARCH_MAX_NFFT", self.max_nfft),
             ("XRAYLARCH_DRAFT_TTL_SECONDS", self.draft_ttl_seconds),
+            ("XRAYLARCH_INTEGRATION_MAX_PROJECTS", self.integration_max_projects),
+            ("XRAYLARCH_INTEGRATION_MAX_FILES", self.integration_max_files),
+            ("XRAYLARCH_INTEGRATION_MAX_BYTES", self.integration_max_bytes),
+            ("XRAYLARCH_INTEGRATION_MAX_GROUPS", self.integration_max_groups),
+            ("XRAYLARCH_INTEGRATION_MAX_EXPORTS", self.integration_max_exports),
+            ("XRAYLARCH_INTEGRATION_GUEST_MAX_PROJECTS", self.integration_guest_max_projects),
+            ("XRAYLARCH_INTEGRATION_GUEST_MAX_FILES", self.integration_guest_max_files),
+            ("XRAYLARCH_INTEGRATION_GUEST_MAX_BYTES", self.integration_guest_max_bytes),
+            ("XRAYLARCH_INTEGRATION_GUEST_MAX_GROUPS", self.integration_guest_max_groups),
+            ("XRAYLARCH_INTEGRATION_GUEST_MAX_EXPORTS", self.integration_guest_max_exports),
+            ("XRAYLARCH_INTEGRATION_GUEST_TTL_SECONDS", self.integration_guest_ttl_seconds),
         ):
             if isinstance(value, bool) or not isinstance(value, int):
                 raise ValueError(f"{name} must be an integer.")
@@ -55,6 +88,15 @@ class Settings:
             raise ValueError(
                 "XRAYLARCH_DRAFT_TTL_SECONDS must not exceed 604800 seconds."
             )
+        for account_name, guest_name in (
+            ("integration_max_projects", "integration_guest_max_projects"),
+            ("integration_max_files", "integration_guest_max_files"),
+            ("integration_max_bytes", "integration_guest_max_bytes"),
+            ("integration_max_groups", "integration_guest_max_groups"),
+            ("integration_max_exports", "integration_guest_max_exports"),
+        ):
+            if getattr(self, guest_name) > getattr(self, account_name):
+                raise ValueError(f"guest {guest_name} must not exceed {account_name}.")
         if not self.integration_api_enabled and (
             self.browser_consume_enabled or self.import_enabled
         ):
@@ -121,6 +163,39 @@ class Settings:
             import_enabled=boolean_setting("XRAYLARCH_IMPORT_ENABLED"),
             draft_ttl_seconds=integer_setting(
                 "XRAYLARCH_DRAFT_TTL_SECONDS", _DEFAULT_DRAFT_TTL_SECONDS
+            ),
+            integration_max_projects=integer_setting(
+                "XRAYLARCH_INTEGRATION_MAX_PROJECTS", _DEFAULT_INTEGRATION_MAX_PROJECTS
+            ),
+            integration_max_files=integer_setting(
+                "XRAYLARCH_INTEGRATION_MAX_FILES", _DEFAULT_INTEGRATION_MAX_FILES
+            ),
+            integration_max_bytes=integer_setting(
+                "XRAYLARCH_INTEGRATION_MAX_BYTES", _DEFAULT_INTEGRATION_MAX_BYTES
+            ),
+            integration_max_groups=integer_setting(
+                "XRAYLARCH_INTEGRATION_MAX_GROUPS", _DEFAULT_INTEGRATION_MAX_GROUPS
+            ),
+            integration_max_exports=integer_setting(
+                "XRAYLARCH_INTEGRATION_MAX_EXPORTS", _DEFAULT_INTEGRATION_MAX_EXPORTS
+            ),
+            integration_guest_max_projects=integer_setting(
+                "XRAYLARCH_INTEGRATION_GUEST_MAX_PROJECTS", _DEFAULT_INTEGRATION_GUEST_MAX_PROJECTS
+            ),
+            integration_guest_max_files=integer_setting(
+                "XRAYLARCH_INTEGRATION_GUEST_MAX_FILES", _DEFAULT_INTEGRATION_GUEST_MAX_FILES
+            ),
+            integration_guest_max_bytes=integer_setting(
+                "XRAYLARCH_INTEGRATION_GUEST_MAX_BYTES", _DEFAULT_INTEGRATION_GUEST_MAX_BYTES
+            ),
+            integration_guest_max_groups=integer_setting(
+                "XRAYLARCH_INTEGRATION_GUEST_MAX_GROUPS", _DEFAULT_INTEGRATION_GUEST_MAX_GROUPS
+            ),
+            integration_guest_max_exports=integer_setting(
+                "XRAYLARCH_INTEGRATION_GUEST_MAX_EXPORTS", _DEFAULT_INTEGRATION_GUEST_MAX_EXPORTS
+            ),
+            integration_guest_ttl_seconds=integer_setting(
+                "XRAYLARCH_INTEGRATION_GUEST_TTL_SECONDS", _DEFAULT_INTEGRATION_GUEST_TTL_SECONDS
             ),
             integration_issuer=os.environ.get("XRAYLARCH_INTEGRATION_ISSUER"),
             integration_audience=os.environ.get("XRAYLARCH_INTEGRATION_AUDIENCE"),

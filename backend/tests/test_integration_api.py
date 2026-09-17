@@ -266,7 +266,8 @@ def test_workspace_lifecycle_and_athena_capability_gateway(tmp_path):
             headers=auth,
             json={"version": 0, "action": "duplicate", "group_ids": [group_id], "options": {}},
         )
-        assert blocked.status_code == 403
+        assert blocked.status_code == 404
+        assert blocked.json() == {"detail": "Project was not found."}
         allowed = client.post(
             f"/api/athena/projects/{project_id}/command",
             headers=auth,
@@ -311,7 +312,8 @@ def test_workspace_lifecycle_and_athena_capability_gateway(tmp_path):
                 "options": {"label": "Must not persist"},
             },
         )
-        assert rejected.status_code == 403
+        assert rejected.status_code == 404
+        assert rejected.json() == {"detail": "Project was not found."}
         assert client.get(
             f"/api/athena/projects/{project_id}", headers=auth
         ).json() == before.json()
@@ -324,7 +326,10 @@ def test_command_persistence_is_serialized_before_seal(tmp_path, monkeypatch):
         for route in app.routes
         if getattr(route, "path", None) == "/api/athena/projects/{ident}/command"
     )
-    store = route.endpoint.__closure__[2].cell_contents
+    store = next(
+        cell.cell_contents for cell in route.endpoint.__closure__
+        if isinstance(cell.cell_contents, AthenaStore)
+    )
     original_command = store.command
     command_entered = Event()
     allow_command = Event()

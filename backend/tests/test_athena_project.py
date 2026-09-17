@@ -1006,3 +1006,51 @@ def test_calibration_and_alignment_keep_explicit_targets_on_native_linked_groups
     assert changed["groups"][1]["parameters"]["e0"] == pytest.approx(8985, abs=.005)
     assert changed["groups"][-1] == standard
     assert all(g["processing_error"] is None for g in changed["groups"])
+
+
+def test_saving_stamps_a_group_revision_only_on_the_groups_that_changed(store, two_groups):
+    """A selected group must be pinnable without another group's edit voiding it."""
+
+    first, second = (g["id"] for g in two_groups["groups"])
+    assert two_groups["group_versions"] == {first: 1, second: 2}
+
+    changed = command(store, two_groups, "parameters", [first], rbkg=1.2)
+    assert changed["version"] == 3
+    assert changed["group_versions"] == {first: 3, second: 2}
+    # The edited group's payload carries no revision of its own, so an editor
+    # view and a native export stay byte-identical to what they were.
+    assert set(group(changed, first)) == set(group(two_groups, first))
+
+    frozen = command(store, changed, "metadata", [second], frozen=True)
+    assert frozen["version"] == 4
+    assert frozen["group_versions"] == {first: 3, second: 4}
+    assert store.load(frozen["id"]) == frozen
+
+
+def test_a_project_stored_before_group_revisions_records_them_on_its_next_save(store, two_groups):
+    stored = store.storage.read_json(two_groups["id"], "project.json")
+    del stored["group_versions"]
+    store.storage.write_json(two_groups["id"], "project.json", stored)
+
+    # Loading invents nothing: a project written before revisions existed, or
+    # by a caller that assembled it itself, reads back exactly as stored.
+    loaded = store.load(two_groups["id"])
+    assert "group_versions" not in loaded
+
+    changed = command(store, loaded, "parameters", [loaded["groups"][0]["id"]], rbkg=1.2)
+    assert changed["group_versions"] == {
+        group_payload["id"]: changed["version"] for group_payload in changed["groups"]
+    }
+
+
+def test_processing_records_the_larch_version_that_produced_the_result(store, two_groups, xas_arrays):
+    from larch import __version__ as larch_version
+
+    assert all(g["result"]["larch_version"] == larch_version for g in two_groups["groups"])
+
+    # The difference branch computes its own arrays and returns early, so it
+    # needs the same stamp: an exported result is attributed to the version
+    # that produced it, not to whatever is installed when it is exported.
+    x, y = xas_arrays
+    difference = store.make_group("Difference", x, y - float(np.mean(y)), is_difference=True)
+    assert difference["result"]["larch_version"] == larch_version

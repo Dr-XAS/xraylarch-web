@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useRef, useState } from 'react'
-import { athenaApi } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-beamline-metadata.module.css'
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -49,6 +49,7 @@ function preference(value: unknown): Preference {
 }
 
 export function AthenaBeamlinePreferences({ close }: { close: () => void }) {
+  const athenaApi = useAthenaApi()
   const [saved, setSaved] = useState<Preference | null>(null), [enabled, setEnabled] = useState(true)
   const [pending, setPending] = useState(true), [error, setError] = useState(''), [notice, setNotice] = useState('')
   const running = useRef(false), generation = useRef(0)

@@ -24,6 +24,17 @@ vi.mock("@/lib/athena", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/athena")>(),
   athenaApi: vi.fn(),
 }))
+vi.mock("@/lib/athena-context", async importOriginal => {
+  const original = await importOriginal<typeof import("@/lib/athena-context")>()
+  const athena = await import("@/lib/athena")
+  return {
+    ...original,
+    AthenaProvider: ({ children }: { children: React.ReactNode }) => children,
+    useAthenaApi: () => athena.athenaApi,
+    useAthenaTransport: () => athena.athenaTransport(),
+  }
+})
+vi.mock("next/dynamic", () => ({ default: () => () => null }))
 // Preferences use their own service boundary and have real-store/browser coverage.
 // Keep the scientific API request assertions below independent of that service.
 vi.mock('@/lib/athena-preferences', () => ({
@@ -54,10 +65,168 @@ const api = vi.mocked(athenaApi)
 const plot = vi.mocked(AthenaPlot)
 const projectImport = vi.mocked(AthenaProjectImport)
 const storageKey = "athena.project"
+const integrationSession = { mode: "integration" as const, projectId: "integrated-project", capability: "browser-capability", allowedOperations: ["read_project"], expiresAt: "2099-01-01T00:00:00Z" }
 const dialogDescriptors = {
   showModal: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "showModal"),
   close: Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, "close"),
 }
+
+describe("integration mode", () => {
+  it("never opens the legacy project list or local project storage", async () => {
+    localStorage.setItem(storageKey, "legacy-project")
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={integrationSession} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(api).toHaveBeenCalledWith("/projects/integrated-project")
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(api).not.toHaveBeenCalledWith("/projects")
+    expect(localStorage.getItem(storageKey)).toBe("legacy-project")
+  })
+
+  it("hides legacy project controls and shows return and selected import actions", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "export"], returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.queryByRole("button", { name: /open project/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    expect(screen.queryByRole("button", { name: /new project/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("link", { name: /return to dr\.xas/i })).toHaveAttribute("href", "/projects/native")
+    expect(screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })).toHaveAttribute("href", "/projects/native")
+    expect(screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })).not.toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("allows a specific command action without requiring the generic command operation", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "metadata"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeEnabled()
+  })
+
+  it("stores only bounded selected group revisions before returning for import", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", version: 7 }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "export"], returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    const importLink = screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })
+    importLink.addEventListener("click", event => event.preventDefault(), { once: true })
+    fireEvent.click(importLink)
+    expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.return-selection.v1")!)).toEqual({
+      projectId: "integrated-project", projectVersion: 7, sessionExpiresAt: integrationSession.expiresAt,
+      groups: [{ id: "sample", version: 7 }, { id: "oxide", version: 7 }],
+    })
+  })
+
+  it("names each selected group's own revision, not the project's", async () => {
+    // A group's revision only moves when that group changes, and the export
+    // reservation resolves a selection against the exact revision it names.
+    // Claiming the project version for a group that did not change in it is
+    // rejected as a changed selection, which breaks the whole round trip.
+    api.mockImplementation(async path => path === "/projects/integrated-project"
+      ? projectFixture({ id: "integrated-project", version: 9, group_versions: { foil: 2, sample: 3, oxide: 9, unused: 4 } })
+      : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "export"], returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    const importLink = screen.getByRole("link", { name: /import 2 selected groups into dr\.xas/i })
+    importLink.addEventListener("click", event => event.preventDefault(), { once: true })
+    fireEvent.click(importLink)
+    expect(JSON.parse(sessionStorage.getItem("xraylarch.integration.return-selection.v1")!).groups)
+      .toEqual([{ id: "sample", version: 3 }, { id: "oxide", version: 9 }])
+  })
+
+  it.each([
+    ["deconvolve", /deconvolve data/i],
+    ["self_absorption", /fluorescence self-absorption/i],
+  ])("uses the submitted %s command action as its capability", async (operation, label) => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", operation] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
+    expect(screen.getByRole("button", { name: label })).toBeEnabled()
+  })
+
+  it("requires preview and mutation operations for preview-backed workflows", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    const { rerender } = render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "smooth"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
+    expect(screen.getByRole("button", { name: /smooth data/i })).toBeDisabled()
+
+    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "preview", "smooth"] }} />)
+    expect(screen.getByRole("button", { name: /smooth data/i })).toBeEnabled()
+  })
+
+  it("offers only the granted action in the shared parameter dialog", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "copy_parameters"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: /copy \/ reset parameters/i }))
+    const dialog = screen.getByRole("dialog", { name: /copy \/ reset parameters/i })
+    expect(within(dialog).getByRole("button", { name: /copy parameters/i })).toBeEnabled()
+    expect(within(dialog).getByRole("button", { name: /reset to defaults/i })).toBeDisabled()
+  })
+
+  it("requires read and mutation operations for XDI metadata", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
+    const { rerender } = render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "xdi_comments"] }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    fireEvent.click(screen.getByRole("button", { name: "Group" }))
+    expect(screen.getByRole("button", { name: /file metadata/i })).toBeDisabled()
+
+    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "read_group", "xdi_comments"] }} />)
+    expect(screen.getByRole("button", { name: /file metadata/i })).toBeEnabled()
+  })
+
+  it("gates mutation controls and selected import when operations are not granted", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, returnTo: "/projects/native" }} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.queryByRole("button", { name: /^Import data$/i })).not.toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /edit absorber and edge/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /edit group information/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+    expect(screen.getByRole("button", { name: /excel report on all groups/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Plot" }))
+    expect(screen.getByRole("button", { name: /diagnostic plots/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Energy" }))
+    expect(screen.getByRole("button", { name: /select e₀/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Group" }))
+    expect(screen.getByRole("button", { name: /mark \/ freeze groups/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /change data type/i })).toBeDisabled()
+    expect(screen.getAllByRole("button", { name: /edit absorber and edge/i }).every(button => button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getByRole("button", { name: /file metadata/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /duplicate current group/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /remove current group/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    expect(screen.getByRole("button", { name: /export column data/i })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
+    expect(screen.getByRole("button", { name: /smooth data/i })).toBeDisabled()
+    expect(screen.getByRole("link", { name: /import 0 selected groups into dr\.xas/i })).toHaveAttribute("aria-disabled", "true")
+  })
+
+  it("gates reordering, bulk marking, exports, and fitting on the controls master added", async () => {
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan"), group("oxide", "Oxide scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
+    const { rerender } = render(<AthenaWorkbench session={integrationSession} />)
+    await screen.findByText("SPECTRUM WORKSPACE")
+    expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeDisabled()
+    expect(screen.getByRole("checkbox", { name: "Mark all groups" })).toBeDisabled()
+    expect(screen.getByRole("combobox", { name: "Viewer k-weight" })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /^Save project$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "CSV" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("tab", { name: /EXAFS fitting/i })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    expect(screen.queryByRole("button", { name: /save athena project/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /save marked project/i })).not.toBeInTheDocument()
+
+    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "reorder", "metadata", "plot", "export"] }} />)
+    expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled()
+    expect(screen.getByRole("checkbox", { name: "Mark all groups" })).toBeEnabled()
+    expect(screen.getByRole("combobox", { name: "Viewer k-weight" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: /^Save project$/ })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "CSV" })).toBeEnabled()
+    expect(screen.queryByRole("tab", { name: /EXAFS fitting/i })).not.toBeInTheDocument()
+  })
+})
 
 beforeAll(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", {
@@ -2630,6 +2799,7 @@ describe("AthenaWorkbench project import integration", () => {
     const panelProps = () => projectImport.mock.calls.at(-1)![0]
     expect(panelProps().initialFiles).toBeDefined()
     expect(panelProps().initialFiles).toEqual(files)
+    expect(panelProps().canRestore).toBe(true)
     expect(api.mock.calls.some(([path]) => path.endsWith("/inspect"))).toBe(false)
   })
 
@@ -2663,7 +2833,7 @@ describe("AthenaWorkbench project import integration", () => {
     if (!hasMarks) project.groups.forEach(g => { g.marked = false })
     await openSaved(project)
     fireEvent.click(within(screen.getByRole("navigation", { name: /Main menu/ })).getByRole("button", { name: "File" }))
-    if (hasMarks) expect(screen.getByRole("link", { name: /Save marked project/ })).toHaveAttribute("href", expect.stringContaining(`/projects/${project.id}/export?format=prj&marked_only=true`))
+    if (hasMarks) expect(screen.getByRole("button", { name: /Save marked project/ })).toBeEnabled()
     else {
       expect(screen.queryByRole("link", { name: /Save marked project/ })).not.toBeInTheDocument()
       expect(screen.getByRole("button", { name: /Save marked project/ })).toBeDisabled()

@@ -90,7 +90,7 @@ for (const file of ['xdi-official-cu_metal_rt.xdi', 'demeter-x11a-cu.012']) {
     await dialog.getByRole('button', { name: 'Close metadata' }).click()
     await page.getByRole('button', { name: 'File', exact: true }).click()
     const downloading = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Save Athena project (.prj)', exact: true }).click()
+    await page.getByRole('button', { name: 'Save Athena project (.prj)', exact: true }).click()
     const download = await downloading, path = info.outputPath('comments.prj'); await download.saveAs(path)
     writeFileSync(path, gunzipSync(readFileSync(path)).toString('utf8').split('\n').filter(l => !l.startsWith('# Athena-Web ')).join('\n'))
     const menu = page.getByRole('button', { name: 'File', exact: true })

@@ -1,11 +1,13 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { athenaApi, type EdgeCatalog, type EdgePair } from "@/lib/athena"
+import { type EdgeCatalog, type EdgePair } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 
 // Shared read-only catalog interaction; neither group identity nor tab policy
 // is changed by looking up an element or choosing an edge.
 export function useEdgeCatalog(initial?: EdgePair | null) {
+  const athenaApi = useAthenaApi()
   const generation = useRef(0)
   const pending = useRef(false)
   const [element, setElement] = useState(initial?.element ?? "")

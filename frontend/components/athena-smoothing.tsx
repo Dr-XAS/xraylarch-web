@@ -2,7 +2,8 @@
 
 import dynamic from 'next/dynamic'
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import { SmoothingDefaults, useSmoothingPreferences } from './athena-smoothing-defaults'
 import styles from './athena-difference.module.css'
 import smoothingStyles from './athena-smoothing.module.css'
@@ -46,6 +47,7 @@ export function AthenaSmoothing({ project, activeId, selectGroup, setBusy, saved
   saved: (next: AthenaProject) => void; close: () => void; disabled: boolean
   initialDraft?: SmoothingDraft; rememberDraft?: (draft: SmoothingDraft) => void
 }) {
+  const athenaApi = useAthenaApi()
   const group = project.groups.find(g => g.id === activeId)
   const [draft, setDraft] = useState<SmoothingDraft>(() => initialDraft ?? { method: 'boxcar', window: '11', sigma: '4', sgWindow: '31', order: '9', sgEdited: false })
   const [preferencesOpen, setPreferencesOpen] = useState(false)
