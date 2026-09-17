@@ -39,7 +39,11 @@
     ".next-verify/types/**/*.ts",
     ".next-verify/dev/types/**/*.ts",
     ".next-wavelet-resize-e2e/types/**/*.ts",
-    ".next-wavelet-resize-e2e/dev/types/**/*.ts"
+    ".next-wavelet-resize-e2e/dev/types/**/*.ts",
+    ".next-artemis/types/**/*.ts",
+    ".next-artemis/dev/types/**/*.ts",
+    ".next-artemis-check/types/**/*.ts",
+    ".next-artemis-check/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -35,7 +35,22 @@ def spectrum():
                 parameters={}, source={}, result=dict(effective=dict(rbkg=1), arrays=dict(k=data.k.tolist(), chi=chi.tolist())))
 
 
-@pytest.mark.parametrize("space,weights", [("r", [2]), ("r", [1, 2, 3]), ("k", [2])])
+def assert_path_contributions(result):
+    for path in result["paths"]:
+        assert len(path["k"]["chi"]) == len(result["k"]["x"])
+        assert np.isfinite(path["k"]["chi"]).all()
+        for component in ("mag", "re", "im"):
+            assert len(path["r"][component]) == len(result["r"]["x"])
+            assert np.isfinite(path["r"][component]).all()
+        np.testing.assert_allclose(path["r"]["mag"], np.hypot(path["r"]["re"], path["r"]["im"]), atol=1e-12)
+    np.testing.assert_allclose(np.sum([path["k"]["chi"] for path in result["paths"]], axis=0),
+                               result["k"]["model"], atol=1e-12)
+    for component in ("re", "im"):
+        np.testing.assert_allclose(np.sum([path["r"][component] for path in result["paths"]], axis=0),
+                                   result["r"][f"model_{component}"], atol=1e-12)
+
+
+@pytest.mark.parametrize("space,weights", [("r", [2]), ("r", [1, 2, 3]), ("r", [0, 1, 2, 3]), ("k", [2])])
 def test_real_larch_recovers_known_structure_and_complex_residual(model, spectrum, space, weights):
     model["transform"].update(fitspace=space, kweight=weights)
     before = copy.deepcopy(spectrum)
@@ -60,6 +75,7 @@ def test_real_larch_recovers_known_structure_and_complex_residual(model, spectru
     np.testing.assert_allclose(r["residual_mag"], np.hypot(r["residual_re"], r["residual_im"]))
     np.testing.assert_allclose(result["k"]["residual"], np.array(result["k"]["data"]) - result["k"]["model"])
     assert len({len(value) for value in r.values()}) == 1
+    assert_path_contributions(result)
     assert spectrum == before
 
 
@@ -76,9 +92,57 @@ def test_gds_constraints_bounds_and_duplicate_path_labels(model, spectrum):
     assert values["half"]["value"] == 0.5 and values["half"]["kind"] == "set"
     assert values["amplitude"]["value"] == pytest.approx(values["amp"]["value"] / 2)
     assert result["statistics"]["n_varys"] == 4
+    assert_path_contributions(result)
+
+
+@pytest.mark.parametrize("space,weights,irregular", [
+    ("r", [2], False), ("r", [0, 1, 2, 3], False),
+    ("r", [3, 1, 2], True), ("k", [2], True),
+])
+def test_distinct_fitted_path_contributions_match_native_final_parameters(model, spectrum, space, weights, irregular):
+    # Two distances create interfering, nonproportional contributions. Use the
+    # same visible label to ensure path identities survive the native dataset.
+    model["transform"].update(fitspace=space, kweight=weights)
+    model["paths"][0]["s02"] = "0.65 * amp"
+    model["paths"].append(model["paths"][0] | dict(
+        id="cu2", s02="0.35 * amp", deltar="del_r + 0.11", sigma2="sig2 + 0.003"))
+    model["paths"].insert(1, model["paths"][0] | dict(id="disabled", enabled=False, s02="15"))
+    native_paths = [feffpath(str(artemis._EXAMPLE), s02=0.9 * ratio, e0=3,
+                            deltar=0.01 + shift, sigma2=0.008 + disorder, label=label)
+                    for ratio, shift, disorder, label in [(0.65, 0, 0, "one"), (0.35, 0.11, 0.003, "two")]]
+    native_data = Group()
+    k = np.arange(301) * 0.05
+    ff2chi(native_paths, group=native_data, k=k)
+    chi = native_data.chi + np.random.default_rng(321).normal(0, 0.00002, len(k))
+    measured_k = k.copy()
+    if irregular:
+        measured_k[1:-1] += 0.01 * np.sin(np.arange(1, len(k) - 1))
+    spectrum["result"]["arrays"] = dict(k=measured_k.tolist(), chi=np.interp(measured_k, k, chi).tolist())
+    result = fit_group(spectrum, FitRequest(**model))
+    assert result["success"]
+    assert [path["id"] for path in result["paths"]] == ["cu1", "cu2"]
+    assert result["k"]["weight"] == weights[0]
+    assert_path_contributions(result)
+    values = {row["name"]: row["value"] for row in result["parameters"]}
+    assert values["amp"] == pytest.approx(0.9, abs=0.01)
+    assert values["del_e0"] == pytest.approx(3, abs=0.03)
+    native_transform = feffit_transform(**model["transform"], kstep=0.05, nfft=2048, rwindow="hanning")
+    output_k = np.asarray(result["k"]["x"])
+    for path in result["paths"]:
+        # Recalculate from the returned optimized values, independently of the
+        # wrapper's dataset. This catches initial-state or double-weight output.
+        expected_path = feffpath(str(artemis._EXAMPLE), **path["values"])
+        ff2chi([expected_path], k=output_k)
+        expected_r = native_transform.fftf(expected_path.chi)[:len(result["r"]["x"])]
+        np.testing.assert_allclose(path["k"]["chi"], expected_path.chi * output_k ** weights[0], atol=1e-12)
+        np.testing.assert_allclose(path["r"]["re"], expected_r.real, atol=1e-12)
+        np.testing.assert_allclose(path["r"]["im"], expected_r.imag, atol=1e-12)
+    # Magnitudes are not additive when paths interfere; only complex R sums are.
+    assert not np.allclose(np.sum([path["r"]["mag"] for path in result["paths"]], axis=0), result["r"]["model_mag"])
 
 
 def test_nonuniform_input_matches_independent_native_larch_pipeline(model, spectrum):
+    model["transform"]["kweight"] = [2]
     arrays = spectrum["result"]["arrays"]
     # A real imported chi(k) can be sampled unevenly; interpolate a denser source
     # onto such a grid, then compare against an independently assembled core fit.
@@ -102,6 +166,9 @@ def test_nonuniform_input_matches_independent_native_larch_pipeline(model, spect
     assert actual["statistics"]["r_factor"] == pytest.approx(expected.rfactor, rel=1e-10)
     np.testing.assert_allclose(actual["r"]["model_re"], native_dataset.model.chir.real, atol=1e-12)
     np.testing.assert_allclose(actual["r"]["model_im"], native_dataset.model.chir.imag, atol=1e-12)
+    np.testing.assert_allclose(actual["paths"][0]["k"]["chi"], native_dataset.pathlist[0].chi * original_k ** 2, atol=1e-12)
+    np.testing.assert_allclose(actual["paths"][0]["r"]["re"], native_dataset.pathlist[0].chir.real, atol=1e-12)
+    np.testing.assert_allclose(actual["paths"][0]["r"]["im"], native_dataset.pathlist[0].chir.imag, atol=1e-12)
 
 
 @pytest.mark.parametrize("expression", ["__import__('os').getcwd()", "amp.real", "amp[0]", "[amp]", "unknown_name", "2 ** amp", "2 ** 100", "exp(10000)", "1 / 0", "1e309", "lambda: amp"])
@@ -163,6 +230,11 @@ def test_inspect_real_feff_metadata_and_invalid_files():
         inspect_path(PathInput(filename="feff0001.dat", content="1 2 3\n4 5 6\n"))
 
 
+def test_fit_transform_and_example_default_to_all_weights(model):
+    assert FitTransform().kweight == [0, 1, 2, 3]
+    assert model["transform"]["kweight"] == [0, 1, 2, 3]
+
+
 @pytest.mark.parametrize("value", [[True], [2, 2], [-1], [4], []])
 def test_weights_are_bounded_unique_real_integers(value):
     with pytest.raises(ValidationError):
@@ -196,6 +268,7 @@ def test_api_real_example_fit_readonly_and_stale_revision(client):
     assert result["success"] and result["project_id"] == project["id"]
     assert result["version"] == project["version"] and result["group_id"] == group["id"]
     assert all(np.isfinite(result["r"][key]).all() for key in result["r"])
+    assert_path_contributions(result)
     assert client.get(project_url).json() == project
     assert client.post(endpoint, json=request | dict(version=0)).status_code == 409
     assert client.get(project_url).json() == project

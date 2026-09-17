@@ -15,6 +15,9 @@
 .viewer .toolbar button { padding: 6px 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); cursor: pointer; font: inherit; font-size: 11px; }
 .editor button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); cursor: pointer; font: inherit; font-size: 11px; }
 .editor button:disabled { opacity: .5; cursor: default; }
+.editor button.syncButton { background: #7c3aed; border-color: #7c3aed; color: #fff; font-weight: 500; }
+.editor button.syncButton:not(:disabled):hover { background: #6d28d9; border-color: #6d28d9; color: #fff; }
+.editor button.syncButton:focus-visible { outline-color: #7c3aed; }
 .editor input:not([type=checkbox]):not([type=radio]):not([type=file]), .editor select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 29px; padding: 5px 6px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; color: var(--ath-ink, #24362c); background: var(--ath-surface, #fff); font: inherit; font-size: 11px; }
 .editor input:focus-visible, .editor select:focus-visible, .editor button:focus-visible, .viewer button:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
 .fileInput { display: none; }
@@ -46,6 +49,15 @@
 .resultHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--ath-line, #dce5dc); }
 .resultHeader h3 { font-size: 14px; font-weight: 500; margin: 0; }
 .resultControls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 16px; color: var(--ath-muted, #647669); font-size: 11px; }
+.plotOptions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px 18px; padding: 2px 16px 12px; font-size: 12px; color: var(--ath-ink, #24362c); }
+.plotOptions label { display: inline-flex; align-items: center; gap: 6px; }
+.plotOptions input[type=checkbox] { margin: 0; width: 14px; height: 14px; accent-color: var(--ath-primary, #268553); }
+.plotOptions input:focus-visible, .plotOptions button:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+.offsetSpacing { flex-wrap: wrap; }
+.offsetSpacing input { width: 90px; min-height: 28px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; padding: 4px 6px; font: inherit; color: inherit; background: var(--ath-surface, #fff); }
+.offsetSpacing input[aria-invalid=true] { border-color: #bd6549; }
+.offsetSpacing button { border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); padding: 4px 7px; font: inherit; font-size: 11px; color: var(--ath-muted, #647669); cursor: pointer; }
+.optionHint { color: var(--ath-muted, #647669); font-size: 11px; }
 .plot { height: var(--ath-plot-height, 380px); min-width: 0; }
 .empty { display: flex; align-items: center; justify-content: center; text-align: center; height: 100%; padding: 32px; margin: 0; color: var(--ath-muted, #647669); font-size: 12px; }
 .plotNote { margin: 0; padding: 8px 16px; color: var(--ath-muted, #647669); font-size: 10px; line-height: 1.5; }

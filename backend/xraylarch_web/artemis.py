@@ -100,7 +100,7 @@ class FitTransform(StrictModel):
     fitspace: Literal["k", "r"] = "r"
     kmin: float = Field(default=3, ge=0, le=50)
     kmax: float = Field(default=12, gt=0, le=50)
-    kweight: list[int] = Field(default_factory=lambda: [2], min_length=1, max_length=4)
+    kweight: list[int] = Field(default_factory=lambda: [0, 1, 2, 3], min_length=1, max_length=4)
     dk: float = Field(default=2, ge=0, le=10)
     window: Literal["hanning", "kaiser", "parzen", "welch"] = "hanning"
     rmin: float = Field(default=1, ge=0, le=10)
@@ -396,15 +396,25 @@ def fit_group(group: dict, request: FitRequest) -> dict:
             notices.append("Larch could not determine reliable parameter uncertainties; inspect parameter correlations and model constraints.")
         if not result.success:
             notices.append("The optimizer did not converge. These are the final attempted parameters, not a converged fit.")
+        model = dataset.model
+        weight = request.transform.kweight[0]
+        k_weight = data.k ** weight
         for definition, fitted_path, record in zip(active, dataset.pathlist, path_records):
             actual = fitted_path.path_paramvals()
             record["values"] = {field: _number(actual[field]) for field in _PATH_PARAMETERS}
+            # feffit recalculates these dataset-owned paths at the final fitted
+            # parameters. Its saved R outputs already use the model transform
+            # and the first k weight; chi(k) still needs the display weight.
+            if not np.array_equal(fitted_path.r, model.r):
+                _fail("Larch returned inconsistent path and model R grids.")
+            record["k"] = dict(chi=_finite_array(
+                np.interp(data.k, fitted_path.k, fitted_path.chi) * k_weight, f"{definition.id} chi(k)"))
+            record["r"] = {name: _finite_array(function(fitted_path.chir), f"{definition.id} R {name}")
+                           for name, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))}
             if actual["sigma2"] < 0 or actual["s02"] < 0 or fitted_path.reff + actual["deltar"] <= 0:
                 notices.append(f"{definition.label or definition.id}: fitted path parameters are outside physical bounds. Constrain S0², sigma², and distance.")
-        model = dataset.model
         model_chi = np.interp(data.k, model.k, model.chi)
-        weight = request.transform.kweight[0]
-        weighted_data, weighted_model = data.chi * data.k ** weight, model_chi * data.k ** weight
+        weighted_data, weighted_model = data.chi * k_weight, model_chi * k_weight
         r_data, r_model = dataset.data.chir, model.chir
         difference = r_data - r_model
         statistics = dict(n_varys=int(result.nvarys), n_independent=_number(result.n_independent),

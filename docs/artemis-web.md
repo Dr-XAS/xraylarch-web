@@ -37,6 +37,27 @@ model, and initial fit ranges. It represents 12 Cu neighbors at `Reff = 2.5478 Ã
 and is intended for Cu K-edge data. Inspect the spectrum's usable k range before
 fitting. The example button is available when the path list is empty.
 
+## Fitted path plots
+
+In the **EXAFS fit** viewer, enable **Show paths** to overlay each included FEFF
+path evaluated with the fitted parameters. Path curves use the same k grid,
+Fourier transform, and plot k-weight as the total model. They are available in
+k space and in the magnitude, real, and imaginary R-space views. The legend
+identifies individual paths and can hide or isolate their curves.
+
+Enable **Offset plot** to separate the curves vertically. Data and Model stay
+aligned; the residual and individual paths are shifted downward in successive
+steps. **Offset spacing** controls that separation, and **Auto** restores a
+spacing based on the displayed curves. Hover values retain the original signal
+and identify the display offset. Offsets do not change fitted parameters,
+statistics, or exported numerical results.
+
+Path contributions add to the model in k space and in complex R space. Their
+R-space magnitudes do not add because the paths interfere. For fits with more
+than one k-weight, plots use the first listed weight, consistent with Larch's
+saved fit outputs. Results obtained before path arrays were added need a new fit
+before **Show paths** is available.
+
 ## AMCSD structures and FEFF calculations
 
 The structure workflow uses the local AMCSD database packaged with Larixite.
@@ -145,6 +166,15 @@ invalid.
 Parameter names start with a letter and contain at most 32 letters, numbers,
 or underscores. Mathematical names and path metadata names are reserved.
 
+After editing the path expressions, choose **Sync parameters** below the
+Parameters heading. It adds missing names from included paths and their Def
+dependencies, removes parameters unused by that model, and keeps the values,
+types, and bounds of retained parameters. Excluded paths do not keep parameters
+in the table. Invalid or incomplete expressions leave the table unchanged.
+New parameters use Guess: a bare path symbol starts with that field's defaults;
+symbols within composite expressions start at 1 without bounds. Review these
+starting values and bounds before fitting.
+
 Expressions support `+`, `-`, `*`, `/`, parentheses, and integer powers `**`
 with exponents from -8 to 8. Supported one-argument functions are `sqrt`, `exp`,
 `log`, `sin`, `cos`, `tan`, and `abs`; constants are `pi` and `e`. Path expressions
@@ -196,8 +226,9 @@ the R bounds do not filter that residual, although Larch still uses them in its
 independent-point estimate. R space is the usual choice for isolating a shell.
 Select ranges justified by the measured signal and the structural model.
 
-The supported k weights are 0, 1, 2, and 3, and more than one may participate
-in a fit. They emphasize different parts of the same data and do not multiply
+The supported k weights are 0, 1, 2, and 3. New models and the copper example
+select all four by default; imported models retain their saved selections.
+They emphasize different parts of the same data and do not multiply
 the number of independent observations. Fit weights belong to the fit model;
 Athena's display weight remains a plotting choice. Fourier windows offered are
 Hanning, Kaiser, Parzen, and Welch.

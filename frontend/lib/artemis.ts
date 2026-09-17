@@ -74,7 +74,12 @@ export interface ArtemisFitResult {
   }
   parameters: (ArtemisParameter & { initial: number; stderr: number | null })[]
   correlations: { left: string; right: string; value: number }[]
-  paths: { id: string; label: string; filename: string; metadata: ArtemisPathMetadata }[]
+  paths: {
+    id: string; label: string; filename: string; metadata: ArtemisPathMetadata
+    /** Optimized path curves on the shared result axes; absent from older results. */
+    k?: { chi: number[] }
+    r?: { mag: number[]; re: number[]; im: number[] }
+  }[]
   k: { x: number[]; data: number[]; model: number[]; residual: number[]; weight: number }
   r: {
     x: number[]; data_mag: number[]; model_mag: number[]; residual_mag: number[]

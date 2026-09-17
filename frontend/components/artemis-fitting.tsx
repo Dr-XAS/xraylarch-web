@@ -2,13 +2,14 @@
 
 import dynamic from "next/dynamic"
 import { useEffect, useRef, useState } from "react"
-import { FlaskConical, Plus, Trash2, Upload } from "lucide-react"
+import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 import type { AthenaGroup, AthenaProject } from "@/lib/athena"
 import {
   artemisApi, validArtemisResult, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult,
   type ArtemisInspectedPath, type ArtemisParameter, type ArtemisPath, type ArtemisTransform,
 } from "@/lib/artemis"
 import { ResizablePlotCard } from "./athena-plot-card"
+import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { ArtemisStructures } from "./artemis-structures"
 import styles from "./artemis-fitting.module.css"
 
@@ -49,7 +50,7 @@ function transformDraft(transform: ArtemisTransform): TransformDraft {
 }
 function newDraft(): Draft {
   return { revision: 0, paths: [], parameters: defaultParameters.map(parameterDraft),
-    transform: transformDraft({ fitspace: "r", kmin: 3, kmax: 12, kweight: [2], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 }) }
+    transform: transformDraft({ fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 }) }
 }
 function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
   return { ...path, id: nextId(), label: path.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" }
@@ -176,6 +177,22 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   }
   function editPath(id: string, field: keyof ArtemisPath, value: string | boolean) {
     edit(previous => ({ ...previous, paths: previous.paths.map(path => path.id === id ? { ...path, [field]: value } : path) }))
+  }
+  function syncParameters() {
+    try {
+      const { added, removed } = planArtemisParameterSync(draft.parameters, draft.paths)
+      if (added.length || removed.length) {
+        const obsolete = new Set(removed)
+        edit(previous => ({ ...previous, parameters: [
+          ...previous.parameters.filter(parameter => !obsolete.has(parameter.name.trim())), ...added.map(parameterDraft),
+        ] }))
+      }
+      setError("")
+      setNotice(added.length || removed.length
+        ? [added.length ? `Added: ${added.map(parameter => parameter.name).join(", ")}. Review their starting values and bounds.` : "",
+          removed.length ? `Removed unused parameters: ${removed.join(", ")}.` : ""].filter(Boolean).join(" ")
+        : "Parameters are already in sync with the included paths.")
+    } catch (error) { setError(errorText(error)) }
   }
   function begin(kind: NonNullable<typeof busy>) {
     controller.current?.abort()
@@ -308,6 +325,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
 
     <fieldset className={styles.section} disabled={disabled}>
       <legend>Parameters <span>{freeCount} free</span></legend>
+      <div className={styles.toolbar}><button type="button" className={styles.syncButton} disabled={!draft.paths.some(path => path.enabled)} onClick={syncParameters}><RefreshCw size={13} />Sync parameters</button></div>
+      <p className={styles.help}>Sync adds missing parameters and removes those unused by included paths, including Def dependencies. Existing values and constraints are kept.</p>
       <p className={styles.help}>Guess refines a value, Set fixes it, Def evaluates an expression.</p>
       {draft.parameters.map((parameter, i) => <div key={parameter.id} className={styles.parameter}>
         <div className={styles.parameterHeader}>
@@ -351,31 +370,68 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
 export function ArtemisFitResultViewer({ result, group, pending = false }: { result?: ArtemisFitResult | null; group?: AthenaGroup; pending?: boolean }) {
   const [space, setSpace] = useState<"k" | "r">("r")
   const [component, setComponent] = useState<"mag" | "re" | "im">("mag")
+  const [showPaths, setShowPaths] = useState(false)
+  const [offsetPlot, setOffsetPlot] = useState(false)
+  const [offsetDraft, setOffsetDraft] = useState<{ result: ArtemisFitResult; space: "k" | "r"; component: "mag" | "re" | "im"; value: string } | null>(null)
   const [plotError, setPlotError] = useState(false)
   const visible = !pending && result?.group_id === group?.id ? result : null
-  useEffect(() => { setPlotError(false) }, [visible, space, component])
+  useEffect(() => { setPlotError(false) }, [visible, space, component, showPaths, offsetPlot])
   const series = visible ? space === "k" ? { x: visible.k.x, data: visible.k.data, model: visible.k.model, residual: visible.k.residual }
     : { x: visible.r.x, data: visible.r[`data_${component}`], model: visible.r[`model_${component}`], residual: visible.r[`residual_${component}`] } : null
+  const paths = visible?.paths ?? []
+  const pathCurves = paths.map(path => space === "k" ? path.k?.chi : path.r?.[component])
+  const pathsAvailable = paths.length > 0 && pathCurves.every(values => Array.isArray(values) && values.length === series?.x.length && values.every(Number.isFinite))
+  const pathsShown = showPaths && pathsAvailable
+  const curves = series ? [
+    { name: "Data", y: series.data, color: "#166d8d", dash: "solid", tier: 0 },
+    { name: "Model", y: series.model, color: "#db7835", dash: "solid", tier: 0 },
+    { name: "Residual", y: series.residual, color: "#8d5bab", dash: "dot", tier: 1 },
+    ...(pathsShown ? paths.map((path, i) => ({ name: `Path ${i + 1} · ${path.label || path.filename}`, y: pathCurves[i]!,
+      color: `hsl(${((i * 137.508 + 145) % 360).toFixed(1)}, 58%, 40%)`, dash: "solid", tier: i + 2 })) : []),
+  ] : []
+  // Use the full vertical excursion, including zero, so signed and magnitude curves both separate clearly.
+  const largestSpan = curves.reduce((span, curve) => {
+    let low = 0, high = 0
+    for (const value of curve.y) { low = Math.min(low, value); high = Math.max(high, value) }
+    return Math.max(span, high - low)
+  }, 0)
+  const automaticSpacing = largestSpan > 0 && Number.isFinite(largestSpan * 1.15) ? Number((largestSpan * 1.15).toPrecision(4)) : 1
+  const offsetText = offsetDraft && offsetDraft.result === visible && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
+  const validSpacing = offsetText.trim() !== "" && Number.isFinite(Number(offsetText)) && Number(offsetText) >= 0 && Number(offsetText) <= Number.MAX_VALUE / Math.max(curves.length, 1)
+  const spacing = validSpacing ? Number(offsetText) : automaticSpacing
+  const traces = series ? curves.map(curve => {
+    const offset = offsetPlot ? -curve.tier * spacing : 0
+    return { type: "scatter", mode: "lines", name: curve.name, x: series.x.slice(), y: curve.y.map(value => value + offset),
+      customdata: curve.y.map(value => [value, offset]),
+      hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
+      line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
+  }) : []
   return <section className={styles.viewer} aria-label="EXAFS fit results">
     <ResizablePlotCard storageKey="artemis.fit.height.v1" defaultHeight={380} plotSelector="#artemis-fit-plot" resizeLabel="Resize EXAFS fit plot height" controlsId="artemis-fit-plot">
       <header className={styles.resultHeader}><h3>EXAFS fit</h3><div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div></header>
       {visible && <div className={styles.resultControls}><span>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</span>{space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}</div>}
+      {visible && <div className={styles.plotOptions} role="group" aria-label="Fit plot display options">
+        <label title={pathsAvailable ? "Display the individual FEFF paths evaluated at the fitted parameters." : "Run the fit again to include individual path curves in its results."}><input type="checkbox" checked={pathsShown} disabled={!pathsAvailable} onChange={event => setShowPaths(event.target.checked)} />Show paths</label>
+        <label><input type="checkbox" checked={offsetPlot} onChange={event => setOffsetPlot(event.target.checked)} />Offset plot</label>
+        {offsetPlot && <label className={styles.offsetSpacing}>Offset spacing<input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
+          onChange={event => setOffsetDraft({ result: visible, space, component, value: event.target.value })} /><button type="button" onClick={() => setOffsetDraft(null)} title="Use automatic spacing for the visible curves">Auto</button></label>}
+        {!pathsAvailable && <span className={styles.optionHint}>Run the fit again to include path curves.</span>}
+        {offsetPlot && !validSpacing && <span className={styles.optionHint} role="status">Enter a finite, nonnegative spacing. Automatic spacing is shown until the value is valid.</span>}
+      </div>}
       <div id="artemis-fit-plot" className={styles.plot}>
         {!visible || !series ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : "Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model."}</p>
           : plotError ? <p className={styles.empty} role="alert">Could not render the fit plot. The numerical results and report remain available below.</p>
-            : <Plot data={([
-              ["Data", series.data, "#166d8d", "solid"], ["Model", series.model, "#db7835", "solid"], ["Residual", series.residual, "#8d5bab", "dot"],
-            ] as const).map(([name, y, color, dash]) => ({ type: "scatter", mode: "lines", name, x: series.x.slice(), y: y.slice(), line: { color, width: name === "Residual" ? 1.4 : 1.8, dash } }))}
+            : <Plot data={traces}
               layout={{ autosize: true, margin: { l: 65, r: 22, t: 18, b: 56 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
                 font: { family: "Arial, Helvetica, sans-serif", size: 12, color: "#52665b" },
                 xaxis: { title: { text: space === "k" ? "k (Å⁻¹)" : "R (Å, not phase corrected)" }, gridcolor: "#e6ece4", ...(space === "r" ? { range: [0, Math.max(6, visible.transform.rmax + 1)] } : {}) },
-                yaxis: { title: { text: space === "k" ? `k<sup>${visible.k.weight}</sup>χ(k) (Å<sup>−${visible.k.weight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${visible.k.weight + 1}</sup>)` }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
-                legend: { orientation: "h", x: 0, y: 1.12 }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}`,
+                yaxis: { title: { text: (space === "k" ? `k<sup>${visible.k.weight}</sup>χ(k) (Å<sup>−${visible.k.weight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${visible.k.weight + 1}</sup>)`) + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
+                legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24, ...(pathsShown ? { entrywidth: 0.49, entrywidthmode: "fraction" } : {}) }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}`,
                 shapes: [{ type: "rect", xref: "x", yref: "paper", x0: space === "k" ? visible.transform.kmin : visible.transform.rmin,
                   x1: space === "k" ? visible.transform.kmax : visible.transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }],
               }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-fit-${space}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}
       </div>
-      {visible && <p className={styles.plotNote}>{space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}Plot k-weight {visible.k.weight}; fit weights {visible.transform.kweight.join(", ")}.</p>}
+      {visible && <p className={styles.plotNote}>{space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {visible.k.weight}; fit weights {visible.transform.kweight.join(", ")}.</p>}
     </ResizablePlotCard>
     {visible && <div className={styles.results}>
       {!visible.success && <p className={styles.error} role="alert">Fit did not converge: {visible.message}</p>}

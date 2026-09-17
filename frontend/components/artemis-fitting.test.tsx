@@ -6,7 +6,7 @@ import type { AthenaGroup, Parameters } from "@/lib/athena"
 import { artemisApi, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import { ArtemisFittingPanel, ArtemisFitResultViewer } from "./artemis-fitting"
 
-type PlotProps = { data: { x: number[]; y: number[]; name: string }[]; layout: { xaxis: { title: { text: string } }; shapes: { x0: number; x1: number }[] }; onError: () => void }
+type PlotProps = { data: { x: number[]; y: number[]; name: string; customdata: number[][]; hovertemplate: string; line: { color: string } }[]; layout: { xaxis: { title: { text: string } }; yaxis: { title: { text: string } }; shapes: { x0: number; x1: number }[]; uirevision: string }; onError: () => void }
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="fit-plot" />))
 vi.mock("next/dynamic", () => ({ default: () => plot }))
 // Structure persistence and its modal lifecycle are covered in artemis-structures.test.tsx.
@@ -35,7 +35,7 @@ function example(): ArtemisExample {
       { name: "del_e0", kind: "guess", value: 0, expression: "", min: -20, max: 20 },
       { name: "del_r", kind: "guess", value: 0, expression: "", min: -0.2, max: 0.2 },
       { name: "sig2", kind: "guess", value: 0.003, expression: "", min: 0, max: 0.1 },
-    ], transform: { fitspace: "r", kmin: 3, kmax: 12, kweight: [2], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 } }
+    ], transform: { fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 } }
 }
 function fitResult(overrides: Partial<ArtemisFitResult> = {}): ArtemisFitResult {
   return { project_id: "p", group_id: "copper", group_label: "copper foil", version: 4, success: true, message: "Fit succeeded.", report: "[[Fit Statistics]]\nR-factor = 0.003", warnings: [],
@@ -47,6 +47,15 @@ function fitResult(overrides: Partial<ArtemisFitResult> = {}): ArtemisFitResult 
       data_re: [0, 1, -2, 1], model_re: [0, 0.9, -1.9, 1], residual_re: [0, 0.1, -0.1, 0],
       data_im: [0, 2, -1, 0], model_im: [0, 1.9, -0.9, 0], residual_im: [0, 0.1, -0.1, 0] },
     transform: example().transform, ...overrides }
+}
+function resultWithPaths(): ArtemisFitResult {
+  const result = fitResult()
+  return { ...result, paths: [
+    { ...result.paths[0], k: { chi: result.k.model.map(value => value * 0.6) },
+      r: { mag: [0, 2.5, 2, 0.5], re: [0, 1.5, -1.2, 0.4], im: [0, 2, -0.6, 0.3] } },
+    { ...result.paths[0], id: "b", filename: "feff0002.dat", k: { chi: result.k.model.map(value => value * 0.4) },
+      r: { mag: [0, 0.6, 0.8, 0.7], re: [0, -0.6, -0.7, 0.6], im: [0, -0.1, -0.3, -0.3] } },
+  ] }
 }
 function file(name: string, contents: string) {
   const value = new File([contents], name)
@@ -96,7 +105,9 @@ describe("ArtemisFittingPanel", () => {
     expect(api).toHaveBeenCalledWith("/paths/inspect", { filename: "feff0002.dat", content: "contents not a file path" }, expect.any(AbortSignal))
     expect(screen.getByText(/N 12/)).toBeInTheDocument()
     fireEvent.change(screen.getByLabelText("Path 1 S₀²"), { target: { value: "amp * 0.5" } })
-    fireEvent.click(screen.getByRole("checkbox", { name: "Fit k-weight 1" }))
+    for (const weight of [0, 1, 2, 3]) expect(screen.getByRole("checkbox", { name: `Fit k-weight ${weight}` })).toBeChecked()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Fit k-weight 0" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Fit k-weight 3" }))
     fireEvent.click(screen.getByRole("button", { name: "k space" }))
     await runFit()
     const request = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
@@ -116,6 +127,49 @@ describe("ArtemisFittingPanel", () => {
     const request = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
     expect(request.parameters[1]).toEqual({ name: "del_e0", kind: "set", value: 3.5, expression: "", min: null, max: null })
     expect(request.parameters[2]).toEqual({ name: "del_r", kind: "def", value: 0, expression: "sig2 * 2", min: null, max: null })
+  })
+
+  it("syncs renamed path parameters, preserves existing settings and makes the updated model ready to fit", async () => {
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} />)
+    expect(screen.getByRole("button", { name: "Sync parameters" })).toBeDisabled()
+    await loadExample()
+    for (const weight of [0, 1, 2, 3]) expect(screen.getByRole("checkbox", { name: `Fit k-weight ${weight}` })).toBeChecked()
+    fireEvent.change(screen.getByLabelText("Parameter 1 kind"), { target: { value: "set" } })
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.85" } })
+    fireEvent.change(screen.getByLabelText("Parameter 2 minimum"), { target: { value: "-10" } })
+    fireEvent.change(screen.getByLabelText("Path 1 ΔR (Å)"), { target: { value: "del_r1" } })
+    fireEvent.change(screen.getByLabelText("Path 1 σ² (Å²)"), { target: { value: "sig2_1" } })
+    fireEvent.click(screen.getByRole("button", { name: "Sync parameters" }))
+    expect(screen.getByRole("status")).toHaveTextContent("Removed unused parameters: del_r, sig2.")
+    expect(screen.getByLabelText("Parameter 3 name")).toHaveValue("del_r1")
+    expect(screen.getByLabelText("Parameter 4 name")).toHaveValue("sig2_1")
+    expect(screen.getByLabelText("Parameter 4 value")).toHaveValue("0.003")
+    expect(screen.getByLabelText("Parameter 1 kind")).toHaveValue("set")
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.85")
+    expect(screen.getByLabelText("Parameter 2 minimum")).toHaveValue("-10")
+    expect(api).toHaveBeenCalledTimes(1)
+    await runFit()
+    const request = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
+    expect(request.parameters.map(parameter => parameter.name)).toEqual(["amp", "del_e0", "del_r1", "sig2_1"])
+    expect(request.transform.kweight).toEqual([0, 1, 2, 3])
+    fireEvent.click(screen.getByRole("button", { name: "Sync parameters" }))
+    expect(screen.getByText("Parameters are already in sync with the included paths.")).toBeInTheDocument()
+    expect(screen.getByText("Fit completed. Results are in the plot panel.")).toBeInTheDocument()
+    expect(screen.getAllByLabelText(/^Parameter \d+ name$/)).toHaveLength(4)
+  })
+
+  it("keeps the entire draft when a path expression is incomplete and allows retrying sync", async () => {
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} />)
+    await loadExample()
+    fireEvent.change(screen.getByLabelText("Path 1 ΔR (Å)"), { target: { value: "new_r +" } })
+    fireEvent.click(screen.getByRole("button", { name: "Sync parameters" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Cannot sync expression")
+    expect(screen.getByLabelText("Parameter 3 name")).toHaveValue("del_r")
+    expect(screen.getAllByLabelText(/^Parameter \d+ name$/)).toHaveLength(4)
+    fireEvent.change(screen.getByLabelText("Path 1 ΔR (Å)"), { target: { value: "new_r" } })
+    fireEvent.click(screen.getByRole("button", { name: "Sync parameters" }))
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Parameter 4 name")).toHaveValue("new_r")
   })
 
   it("keeps incomplete numeric drafts and explains invalid ranges before a request", async () => {
@@ -201,6 +255,8 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("Path 1 label")).toHaveValue("Imported copper")
     expect(api).toHaveBeenCalledExactlyOnceWith("/paths/inspect", { filename: "feff0001.dat", content: "exported FEFF bytes" }, expect.any(AbortSignal))
     expect(screen.getByRole("checkbox", { name: "Fit k-weight 3" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Fit k-weight 0" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Fit k-weight 2" })).not.toBeChecked()
     expect(screen.queryByText("Fit completed. Results are in the plot panel.")).not.toBeInTheDocument()
     await runFit()
     const submitted = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
@@ -228,6 +284,118 @@ describe("ArtemisFittingPanel", () => {
 })
 
 describe("ArtemisFitResultViewer", () => {
+  it("shows fitted path curves only on request in k and every R component, using distinct path labels and colors", () => {
+    const result = resultWithPaths()
+    render(<ArtemisFitResultViewer result={result} group={group()} />)
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Offset plot" })).not.toBeChecked()
+    expect(plot.mock.calls.at(-1)![0].data).toHaveLength(3)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    let props = plot.mock.calls.at(-1)![0]
+    expect(props.data).toHaveLength(5)
+    expect(props.data[3]).toMatchObject({ name: "Path 1 · Cu–Cu", x: result.r.x, y: result.paths[0].r!.mag })
+    expect(props.data[4].name).toBe("Path 2 · Cu–Cu")
+    expect(new Set(props.data.map(trace => trace.line.color)).size).toBe(5)
+    expect(screen.getByText(/Individual path magnitudes do not add to the model magnitude/)).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Real" }))
+    expect(plot.mock.calls.at(-1)![0].data[3].y).toEqual(result.paths[0].r!.re)
+    fireEvent.click(screen.getByRole("button", { name: "Imaginary" }))
+    expect(plot.mock.calls.at(-1)![0].data[4].y).toEqual(result.paths[1].r!.im)
+    fireEvent.click(screen.getByRole("button", { name: "k space" }))
+    props = plot.mock.calls.at(-1)![0]
+    expect(props.data[3]).toMatchObject({ x: result.k.x, y: result.paths[0].k!.chi })
+    expect(screen.queryByText(/Individual path magnitudes/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    expect(plot.mock.calls.at(-1)![0].data).toHaveLength(3)
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("offsets residual and paths while keeping data/model aligned and hover values unshifted", () => {
+    const result = resultWithPaths()
+    const original = JSON.stringify(result)
+    render(<ArtemisFitResultViewer result={result} group={group()} />)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
+    expect(Number((screen.getByRole("spinbutton", { name: "Offset spacing" }) as HTMLInputElement).value)).toBeGreaterThan(0)
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "4" } })
+    const props = plot.mock.calls.at(-1)![0]
+    expect(props.data[0].y).toEqual(result.r.data_mag)
+    expect(props.data[1].y).toEqual(result.r.model_mag)
+    expect(props.data[2].y).toEqual(result.r.residual_mag.map(value => value - 4))
+    expect(props.data[3].y).toEqual(result.paths[0].r!.mag.map(value => value - 8))
+    expect(props.data[4].y).toEqual(result.paths[1].r!.mag.map(value => value - 12))
+    expect(props.data[3].customdata[1]).toEqual([2.5, -8])
+    expect(props.data[3].hovertemplate).toContain("Unshifted value = %{customdata[0]")
+    expect(props.data[3].hovertemplate).toContain("Display offset = %{customdata[1]")
+    expect(props.layout.yaxis.title.text).toContain("display offset")
+    expect(screen.getByText(/Data and Model share zero offset/)).toBeVisible()
+    props.data[3].y[1] = 999
+    props.data[3].customdata[1][0] = 999
+    expect(JSON.stringify(result)).toBe(original)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
+    expect(plot.mock.calls.at(-1)![0].data[3].y).toEqual(result.paths[0].r!.mag)
+    expect(screen.queryByRole("spinbutton", { name: "Offset spacing" })).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("recomputes automatic spacing per displayed component and supports manual/Auto reset without changing fit statistics", () => {
+    const result = resultWithPaths()
+    render(<ArtemisFitResultViewer result={result} group={group()} />)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveValue(3.45)
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "8" } })
+    expect(plot.mock.calls.at(-1)![0].data[2].customdata[0][1]).toBe(-8)
+    fireEvent.click(screen.getByRole("button", { name: "Real" }))
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveValue(3.45)
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "6" } })
+    fireEvent.click(screen.getByRole("button", { name: "Auto" }))
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveValue(3.45)
+    expect(screen.getByText("0.003", { selector: "dd" })).toBeVisible()
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "-1" } })
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveAttribute("aria-invalid", "true")
+    expect(screen.getByRole("status")).toHaveTextContent("Automatic spacing")
+    expect(plot.mock.calls.at(-1)![0].data.every(trace => trace.y.every(Number.isFinite))).toBe(true)
+    fireEvent.click(screen.getByRole("button", { name: "Auto" }))
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveAttribute("aria-invalid", "false")
+  })
+
+  it("disables path overlays for older or malformed curves while preserving the data/model plot", () => {
+    const result = fitResult()
+    const view = render(<ArtemisFitResultViewer result={result} group={group()} />)
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeDisabled()
+    expect(screen.getByText("Run the fit again to include path curves.")).toBeVisible()
+    expect(plot.mock.calls.at(-1)![0].data).toHaveLength(3)
+    const malformed = resultWithPaths()
+    malformed.paths[1].r!.mag = [0, Number.NaN]
+    view.rerender(<ArtemisFitResultViewer result={malformed} group={group()} />)
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("button", { name: "k space" }))
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeEnabled()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    expect(plot.mock.calls.at(-1)![0].data).toHaveLength(5)
+    fireEvent.click(screen.getByRole("button", { name: "R space" }))
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).not.toBeChecked()
+    expect(plot.mock.calls.at(-1)![0].data).toHaveLength(3)
+  })
+
+  it("does not retain previous path data or manual offsets when the result context changes", () => {
+    const result = resultWithPaths()
+    const view = render(<ArtemisFitResultViewer result={result} group={group()} />)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "99" } })
+    view.rerender(<ArtemisFitResultViewer result={result} group={group("iron")} />)
+    expect(screen.queryByTestId("fit-plot")).not.toBeInTheDocument()
+    const next = { ...resultWithPaths(), group_id: "iron", group_label: "Iron foil", version: 5 }
+    next.paths[0].label = "Fe–Fe"
+    view.rerender(<ArtemisFitResultViewer result={next} group={group("iron")} />)
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveValue(3.45)
+    expect(plot.mock.calls.at(-1)![0].data[3].name).toBe("Path 1 · Fe–Fe")
+    expect(plot.mock.calls.at(-1)![0].layout.uirevision).toContain(":iron:5:")
+    view.rerender(<ArtemisFitResultViewer result={next} group={group("iron")} pending />)
+    expect(screen.queryByTestId("fit-plot")).not.toBeInTheDocument()
+  })
+
   it("shows complex residual magnitude, switches real/k views, and does not mutate cached data", () => {
     const result = fitResult()
     render(<ArtemisFitResultViewer result={result} group={group()} />)
