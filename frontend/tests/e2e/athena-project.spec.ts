@@ -35,7 +35,7 @@ for (const example of examples) {
       await expect(page.getByLabel(`${space}-space spectrum plot`, { exact: true }).locator(".js-line").first()).toBeVisible()
     }
     const downloadPromise = page.waitForEvent("download")
-    await page.getByRole("link", { name: "Save project", exact: true }).click()
+    await page.getByRole("button", { name: "Save project", exact: true }).click()
     const downloaded = await downloadPromise
     const saved = info.outputPath("roundtrip.prj")
     await downloaded.saveAs(saved)

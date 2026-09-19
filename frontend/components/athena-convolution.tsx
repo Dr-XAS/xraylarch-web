@@ -1,12 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import convolutionStyles from './athena-smoothing.module.css'
 
-const Plot = dynamic(() => import('react-plotly.js').then(m => m.default), { ssr: false })
 type Space = 'E' | 'k' | 'R'
 type Options = { form: 'gaussian' | 'lorentzian'; width: number; noise: number; seed?: number | null }
 export type ConvolutionDraft = {form: Options['form']; width: string; noise: string}
@@ -45,6 +45,7 @@ export function AthenaConvolution({ project, activeId, selectGroup, setBusy, sav
   saved: (next: AthenaProject) => void; close: () => void; disabled: boolean
   initialDraft?: ConvolutionDraft; rememberDraft?: (draft: ConvolutionDraft) => void
 }) {
+  const athenaApi = useAthenaApi()
   const group = project.groups.find(g => g.id === activeId)
   const [draft, setDraft] = useState<ConvolutionDraft>(() => initialDraft ?? {form: 'gaussian', width: '0', noise: '0'})
   useEffect(() => { rememberDraft?.(draft) }, [draft, rememberDraft])

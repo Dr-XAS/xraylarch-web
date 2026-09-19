@@ -2024,6 +2024,36 @@
       "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/k123.tmpl",
       "git_blob_sha1": "2402f100b0dd0442a5942c61734d2865d7cb989c",
       "bytes": 263
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overe.tmpl",
+      "sha256": "7c6115881bdc47a4db26b8a087928841d9dd8a83b94c9bd0cd56682ddc2bc5b8",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overe.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overk.tmpl",
+      "sha256": "20607f051b1687ead9d9345b3da83e1cbc0e72d2283ce2e375a8441c86971098",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overk.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newr.tmpl",
+      "sha256": "3d349d8445dc8962fcaa7f8093221a5c83b6fd6859cec7786205649d43072d83",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/newr.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overr.tmpl",
+      "sha256": "24649925e1fefeb1da1446ce28328fdf52f72aa42d7185e3537dae1e1247938b",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/plot/gnuplot/overr.tmpl"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/plot.demeter_conf.in",
+      "sha256": "1ec19c44498cdd289d4ba6f14150b2b1ac22fd2d02fb6d3d398271a6330c809c",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/configuration/plot.demeter_conf.in"
+    },
+    {
+      "source": "https://raw.githubusercontent.com/bruceravel/demeter/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Plot/PlotE.pm",
+      "sha256": "65e501ad012feaec247aa4bc84d49f62ea01e950e908ba4c4ffa55a3ce6c9f86",
+      "file": "demeter-06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/UI/Athena/Plot/PlotE.pm"
     }
   ]
 }

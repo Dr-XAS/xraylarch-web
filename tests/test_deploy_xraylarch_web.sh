@@ -14,6 +14,22 @@ if validate_sha not-a-sha >/dev/null 2>&1; then
 fi
 validate_sha 0123456789abcdef0123456789abcdef01234567
 
+[[ "$FINAL_FRONTEND_HOST" == "127.0.0.1" ]] || test_fail "final frontend must bind loopback only"
+[[ "$FINAL_BACKEND_HOST" == "127.0.0.1" ]] || test_fail "final backend must bind loopback only"
+[[ "${APP_BASE_PATH:-}" == "/advanced-xas/app" ]] || test_fail "deployment must define the mounted frontend base path"
+[[ "${INTEGRATION_CONTRACT_VERSION:-}" == 2 ]] || test_fail "deployment must require integration contract version 2"
+
+health_root=$(mktemp -d)
+mkdir -p "$health_root/integration" "$health_root/legacy"
+printf '2\n' >"$health_root/integration/.xraylarch-integration-contract"
+[[ "$(frontend_health_path "$health_root/integration")" == "/advanced-xas/app/" ]] || test_fail "integration release health must use mounted path"
+[[ "$(frontend_health_path "$health_root/legacy")" == "/" ]] || test_fail "supported legacy release health must use root path"
+printf '1\n' >"$health_root/legacy/.xraylarch-integration-contract"
+if frontend_health_path "$health_root/legacy" >/dev/null 2>&1; then
+  test_fail "unknown integration release marker must fail closed"
+fi
+rm -f "$health_root/legacy/.xraylarch-integration-contract"
+
 sibling_http_events=()
 http_200() {
   sibling_http_events+=("$1")
@@ -22,6 +38,60 @@ curl() {
   sibling_http_events+=("${@: -1}")
   printf '404'
 }
+
+assert_invalid_frontend_marker() {
+  local description="$1"
+  if frontend_health_path "$health_root/malformed" >/dev/null 2>&1; then
+    test_fail "$description marker must fail direct health-path selection"
+  fi
+  (
+    component_record_matches() { return 0; }
+    assert_listener_address() { return 0; }
+    backend_health_ok() { return 0; }
+    http_200() { return 0; }
+    TEST_FRONTEND_RELEASE="$health_root/malformed"
+    TEST_BACKEND_RELEASE="$health_root/integration"
+    TEST_BACKEND_RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+    if verify_component_pair TEST_FRONTEND TEST_BACKEND 127.0.0.1 13004 http://127.0.0.1:18006 0 >/dev/null 2>&1; then
+      test_fail "$description marker must fail component-pair qualification"
+    fi
+  )
+}
+
+mkdir -p "$health_root/malformed"
+printf '2\ncorrupt-data\n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "trailing content"
+printf '' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "empty"
+printf ' 2\n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "leading whitespace"
+printf '2 \n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "trailing whitespace"
+printf '2\n\n' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "extra blank line"
+printf '2trailing' >"$health_root/malformed/.xraylarch-integration-contract"
+assert_invalid_frontend_marker "trailing bytes"
+printf '2' >"$health_root/malformed/.xraylarch-integration-contract"
+[[ "$(frontend_health_path "$health_root/malformed")" == "/advanced-xas/app/" ]] || test_fail "canonical marker without final newline must pass"
+
+for release_kind in integration legacy; do
+(
+  component_record_matches() { return 0; }
+  assert_listener_address() { return 0; }
+  backend_health_ok() { return 0; }
+  http_events=()
+  http_200() { http_events+=("$1"); }
+  TEST_FRONTEND_RELEASE="$health_root/$release_kind"
+  TEST_BACKEND_RELEASE="$health_root/$release_kind"
+  TEST_BACKEND_RELEASE_SHA=0123456789abcdef0123456789abcdef01234567
+  verify_component_pair TEST_FRONTEND TEST_BACKEND 127.0.0.1 13004 http://127.0.0.1:18006 0 || test_fail "$release_kind release health qualification must pass"
+  expected_frontend=http://127.0.0.1:13004/
+  [[ "$release_kind" != integration ]] || expected_frontend="http://127.0.0.1:13004${APP_BASE_PATH}/"
+  [[ "${http_events[0]}" == "$expected_frontend" ]] || test_fail "$release_kind release selected the wrong frontend health path"
+  [[ "${http_events[2]}" == "${expected_frontend}api/backend/health" ]] || test_fail "$release_kind release selected the wrong proxy health path"
+)
+done
+rm -rf -- "$health_root"
 
 unset XRAYLARCH_WEB_SIBLING_PROFILE
 assert_sibling_services_healthy || test_fail "default Dr.XAS sibling profile must pass with healthy responses"
@@ -169,7 +239,7 @@ stop_recorded_component xraylarch-web-candidate-frontend 405 "" 13004 /release f
 [[ "${raw_stop_events[*]-}" == *"405.xraylarch-web-candidate-frontend"* ]] || test_fail "staged startup failure must leave no candidate screen"
 
 mock_sessions="401.xraylarch-web-frontend"
-stop_recorded_component xraylarch-web-frontend 401 "" 3004 /release frontend 0.0.0.0 || test_fail "final startup cleanup must stop its recorded screen"
+stop_recorded_component xraylarch-web-frontend 401 "" 3004 /release frontend 127.0.0.1 || test_fail "final startup cleanup must stop its recorded screen"
 [[ "${raw_stop_events[*]-}" == *"401.xraylarch-web-frontend"* ]] || test_fail "final startup failure must release the final screen name"
 
 recovery_events=()

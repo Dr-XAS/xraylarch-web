@@ -1,0 +1,1043 @@
+{
+  "$defs": {
+    "ArtifactSourceIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "artifact_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Artifact Sha256",
+          "type": "string"
+        },
+        "artifact_version": {
+          "minimum": 1,
+          "title": "Artifact Version",
+          "type": "integer"
+        },
+        "branch_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Branch Id",
+          "type": "string"
+        },
+        "branch_revision": {
+          "minimum": 0,
+          "title": "Branch Revision",
+          "type": "integer"
+        },
+        "conversation_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Conversation Id",
+          "type": "string"
+        },
+        "turn_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Turn Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "conversation_id",
+        "turn_id",
+        "artifact_id",
+        "artifact_version",
+        "artifact_sha256",
+        "branch_id",
+        "branch_revision"
+      ],
+      "title": "ArtifactSourceIdentity",
+      "type": "object"
+    },
+    "AuthoritativeSpectrum": {
+      "additionalProperties": false,
+      "properties": {
+        "energy": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 100000,
+          "minItems": 3,
+          "title": "Energy",
+          "type": "array"
+        },
+        "mu": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 100000,
+          "minItems": 3,
+          "title": "Mu",
+          "type": "array"
+        }
+      },
+      "required": [
+        "energy",
+        "mu"
+      ],
+      "title": "AuthoritativeSpectrum",
+      "type": "object"
+    },
+    "AutobkParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "clamp_hi": {
+          "default": 1.0,
+          "maximum": 1000,
+          "minimum": 0,
+          "title": "Clamp Hi",
+          "type": "number"
+        },
+        "clamp_lo": {
+          "default": 0.0,
+          "maximum": 1000,
+          "minimum": 0,
+          "title": "Clamp Lo",
+          "type": "number"
+        },
+        "dk": {
+          "default": 1.0,
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Dk",
+          "type": "number"
+        },
+        "kmax": {
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "title": "Kmax",
+          "type": "number"
+        },
+        "kmin": {
+          "default": 0.0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Kmin",
+          "type": "number"
+        },
+        "kweight": {
+          "default": 2.0,
+          "maximum": 4,
+          "minimum": 0,
+          "title": "Kweight",
+          "type": "number"
+        },
+        "nclamp": {
+          "default": 5,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Nclamp",
+          "type": "integer"
+        },
+        "nknots": {
+          "default": 0,
+          "maximum": 10000,
+          "minimum": 0,
+          "title": "Nknots",
+          "type": "integer"
+        },
+        "rbkg": {
+          "default": 1.0,
+          "exclusiveMinimum": 0,
+          "maximum": 20,
+          "title": "Rbkg",
+          "type": "number"
+        },
+        "window": {
+          "default": "hanning",
+          "enum": [
+            "hanning",
+            "parzen",
+            "welch",
+            "gaussian",
+            "sine",
+            "kaiser"
+          ],
+          "title": "Window",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kmax"
+      ],
+      "title": "AutobkParameters",
+      "type": "object"
+    },
+    "ComputedImportResult": {
+      "additionalProperties": false,
+      "properties": {
+        "arrays": {
+          "additionalProperties": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 100000,
+            "minItems": 1,
+            "type": "array"
+          },
+          "propertyNames": {
+            "enum": [
+              "energy",
+              "mu",
+              "norm",
+              "flat",
+              "pre_edge",
+              "post_edge",
+              "k",
+              "chi",
+              "r",
+              "chir_re",
+              "chir_im",
+              "chir_mag",
+              "q",
+              "chiq_re",
+              "chiq_im",
+              "chiq_mag"
+            ]
+          },
+          "title": "Arrays",
+          "type": "object"
+        },
+        "e0": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000.0,
+          "title": "E0",
+          "type": "number"
+        },
+        "edge_step": {
+          "exclusiveMinimum": 0,
+          "title": "Edge Step",
+          "type": "number"
+        }
+      },
+      "required": [
+        "arrays",
+        "e0",
+        "edge_step"
+      ],
+      "title": "ComputedImportResult",
+      "type": "object"
+    },
+    "CoreProcessingRecipe": {
+      "additionalProperties": false,
+      "properties": {
+        "autobk": {
+          "$ref": "#/$defs/AutobkParameters"
+        },
+        "forward_ft": {
+          "$ref": "#/$defs/ForwardFtParameters"
+        },
+        "larch_version": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Larch Version",
+          "type": "string"
+        },
+        "normalization": {
+          "$ref": "#/$defs/NormalizationParameters"
+        },
+        "recipe_version": {
+          "const": 1,
+          "title": "Recipe Version",
+          "type": "integer"
+        },
+        "reverse_ft": {
+          "$ref": "#/$defs/ReverseFtParameters"
+        }
+      },
+      "required": [
+        "recipe_version",
+        "larch_version",
+        "normalization",
+        "autobk",
+        "forward_ft",
+        "reverse_ft"
+      ],
+      "title": "CoreProcessingRecipe",
+      "type": "object"
+    },
+    "DraftStatus": {
+      "enum": [
+        "active",
+        "importing",
+        "sealed",
+        "discarded",
+        "expired",
+        "failed"
+      ],
+      "title": "DraftStatus",
+      "type": "string"
+    },
+    "DraftSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "draft_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "latest_operation_id": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Latest Operation Id"
+        },
+        "operation_count": {
+          "minimum": 0,
+          "title": "Operation Count",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/DraftStatus"
+        },
+        "updated_at": {
+          "format": "date-time",
+          "title": "Updated At",
+          "type": "string"
+        }
+      },
+      "required": [
+        "draft_id",
+        "status",
+        "created_at",
+        "updated_at",
+        "expires_at",
+        "operation_count"
+      ],
+      "title": "DraftSummary",
+      "type": "object"
+    },
+    "DraftSummaryList": {
+      "additionalProperties": false,
+      "properties": {
+        "drafts": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/DraftSummary"
+          },
+          "title": "Drafts",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "title": "DraftSummaryList",
+      "type": "object"
+    },
+    "ForwardFtParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "dk": {
+          "default": 1.0,
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Dk",
+          "type": "number"
+        },
+        "dk2": {
+          "default": 1.0,
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Dk2",
+          "type": "number"
+        },
+        "kmax": {
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "title": "Kmax",
+          "type": "number"
+        },
+        "kmin": {
+          "default": 3.0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Kmin",
+          "type": "number"
+        },
+        "kstep": {
+          "default": 0.05,
+          "maximum": 1,
+          "minimum": 0.001,
+          "title": "Kstep",
+          "type": "number"
+        },
+        "kweight": {
+          "default": 2.0,
+          "maximum": 4,
+          "minimum": 0,
+          "title": "Kweight",
+          "type": "number"
+        },
+        "nfft": {
+          "default": 2048,
+          "maximum": 65536,
+          "minimum": 128,
+          "title": "Nfft",
+          "type": "integer"
+        },
+        "rmax_out": {
+          "default": 10.0,
+          "exclusiveMinimum": 0,
+          "maximum": 1000,
+          "title": "Rmax Out",
+          "type": "number"
+        },
+        "window": {
+          "default": "hanning",
+          "enum": [
+            "hanning",
+            "parzen",
+            "welch",
+            "gaussian",
+            "sine",
+            "kaiser"
+          ],
+          "title": "Window",
+          "type": "string"
+        },
+        "with_phase": {
+          "default": false,
+          "title": "With Phase",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "kmax"
+      ],
+      "title": "ForwardFtParameters",
+      "type": "object"
+    },
+    "ImportActionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "status",
+            "prepare",
+            "finalize",
+            "abort"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImportBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "draft_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "owner_capability": {
+          "maxLength": 128,
+          "minLength": 22,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Owner Capability",
+          "type": "string"
+        }
+      },
+      "required": [
+        "draft_id",
+        "owner_capability",
+        "action"
+      ],
+      "title": "ImportActionRequest",
+      "type": "object"
+    },
+    "ImportBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Attempt Id",
+          "type": "string"
+        },
+        "import_id": {
+          "pattern": "^[0-9a-f]{32}$",
+          "title": "Import Id",
+          "type": "string"
+        },
+        "project_version": {
+          "minimum": 0,
+          "title": "Project Version",
+          "type": "integer"
+        },
+        "snapshot_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Snapshot Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "import_id",
+        "attempt_id",
+        "project_version",
+        "snapshot_sha256"
+      ],
+      "title": "ImportBinding",
+      "type": "object"
+    },
+    "ImportSnapshot": {
+      "additionalProperties": false,
+      "properties": {
+        "computed": {
+          "$ref": "#/$defs/ComputedImportResult"
+        },
+        "envelope": {
+          "$ref": "#/$defs/SealedImportEnvelope"
+        },
+        "project_version": {
+          "minimum": 0,
+          "title": "Project Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "envelope",
+        "project_version",
+        "computed"
+      ],
+      "title": "ImportSnapshot",
+      "type": "object"
+    },
+    "ImportState": {
+      "additionalProperties": false,
+      "properties": {
+        "binding": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImportBinding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "source_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Source Sha256",
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/DraftStatus"
+        }
+      },
+      "required": [
+        "source_sha256",
+        "status"
+      ],
+      "title": "ImportState",
+      "type": "object"
+    },
+    "LaunchEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/PortableProvenance"
+        },
+        "recipe": {
+          "$ref": "#/$defs/CoreProcessingRecipe"
+        },
+        "recipe_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Sha256",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source": {
+          "$ref": "#/$defs/ArtifactSourceIdentity"
+        },
+        "spectrum": {
+          "$ref": "#/$defs/AuthoritativeSpectrum"
+        },
+        "spectrum_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Spectrum Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "source",
+        "provenance",
+        "spectrum",
+        "recipe",
+        "spectrum_sha256",
+        "recipe_sha256",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "LaunchEnvelope",
+      "type": "object"
+    },
+    "NormalizationParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "e0": {
+          "exclusiveMinimum": 0,
+          "maximum": 10000000.0,
+          "title": "E0",
+          "type": "number"
+        },
+        "edge_step": {
+          "exclusiveMinimum": 0,
+          "title": "Edge Step",
+          "type": "number"
+        },
+        "energy_shift": {
+          "default": 0.0,
+          "maximum": 100000,
+          "minimum": -100000,
+          "title": "Energy Shift",
+          "type": "number"
+        },
+        "flatten": {
+          "default": true,
+          "title": "Flatten",
+          "type": "boolean"
+        },
+        "nnorm": {
+          "anyOf": [
+            {
+              "maximum": 3,
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Nnorm"
+        },
+        "norm1": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Norm1"
+        },
+        "norm2": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Norm2"
+        },
+        "nvict": {
+          "default": 0,
+          "maximum": 10,
+          "minimum": 0,
+          "title": "Nvict",
+          "type": "integer"
+        },
+        "pre1": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pre1"
+        },
+        "pre2": {
+          "anyOf": [
+            {
+              "maximum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pre2"
+        }
+      },
+      "required": [
+        "e0",
+        "edge_step"
+      ],
+      "title": "NormalizationParameters",
+      "type": "object"
+    },
+    "NumericalTolerances": {
+      "additionalProperties": false,
+      "description": "Non-negotiable local policy for later numerical parity checks.",
+      "properties": {
+        "array_absolute": {
+          "const": 1e-07,
+          "default": 1e-07,
+          "title": "Array Absolute",
+          "type": "number"
+        },
+        "array_relative": {
+          "const": 1e-05,
+          "default": 1e-05,
+          "title": "Array Relative",
+          "type": "number"
+        },
+        "minimum_match_fraction": {
+          "const": 0.999,
+          "default": 0.999,
+          "title": "Minimum Match Fraction",
+          "type": "number"
+        },
+        "scalar_absolute": {
+          "const": 1e-08,
+          "default": 1e-08,
+          "title": "Scalar Absolute",
+          "type": "number"
+        },
+        "scalar_relative": {
+          "const": 1e-06,
+          "default": 1e-06,
+          "title": "Scalar Relative",
+          "type": "number"
+        }
+      },
+      "title": "NumericalTolerances",
+      "type": "object"
+    },
+    "OneTimeLaunchHandle": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "launch_handle": {
+          "maxLength": 128,
+          "minLength": 22,
+          "pattern": "^[A-Za-z0-9_-]+$",
+          "title": "Launch Handle",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "schema_version",
+        "launch_handle",
+        "created_at",
+        "expires_at"
+      ],
+      "title": "OneTimeLaunchHandle",
+      "type": "object"
+    },
+    "PortableProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "column_signature_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Column Signature Sha256"
+        },
+        "operation_ids": {
+          "default": [],
+          "items": {
+            "maxLength": 255,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Operation Ids",
+          "type": "array"
+        },
+        "parse_recipe_id": {
+          "anyOf": [
+            {
+              "maxLength": 255,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parse Recipe Id"
+        },
+        "source_filename": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Source Filename",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_filename"
+      ],
+      "title": "PortableProvenance",
+      "type": "object"
+    },
+    "ReverseFtParameters": {
+      "additionalProperties": false,
+      "properties": {
+        "dr": {
+          "default": 0.0,
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Dr",
+          "type": "number"
+        },
+        "dr2": {
+          "default": 0.0,
+          "maximum": 20,
+          "minimum": 0,
+          "title": "Dr2",
+          "type": "number"
+        },
+        "kstep": {
+          "default": 0.05,
+          "maximum": 1,
+          "minimum": 0.001,
+          "title": "Kstep",
+          "type": "number"
+        },
+        "nfft": {
+          "default": 2048,
+          "maximum": 65536,
+          "minimum": 128,
+          "title": "Nfft",
+          "type": "integer"
+        },
+        "qmax_out": {
+          "default": 30.0,
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "title": "Qmax Out",
+          "type": "number"
+        },
+        "rmax": {
+          "default": 3.0,
+          "exclusiveMinimum": 0,
+          "maximum": 100,
+          "title": "Rmax",
+          "type": "number"
+        },
+        "rmin": {
+          "default": 1.0,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Rmin",
+          "type": "number"
+        },
+        "window": {
+          "default": "hanning",
+          "enum": [
+            "hanning",
+            "parzen",
+            "welch",
+            "gaussian",
+            "sine",
+            "kaiser"
+          ],
+          "title": "Window",
+          "type": "string"
+        },
+        "with_phase": {
+          "default": false,
+          "title": "With Phase",
+          "type": "boolean"
+        }
+      },
+      "title": "ReverseFtParameters",
+      "type": "object"
+    },
+    "SealedImportEnvelope": {
+      "additionalProperties": false,
+      "properties": {
+        "draft_id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Draft Id",
+          "type": "string"
+        },
+        "parity_status": {
+          "const": "not_checked",
+          "default": "not_checked",
+          "title": "Parity Status",
+          "type": "string"
+        },
+        "recipe": {
+          "$ref": "#/$defs/CoreProcessingRecipe"
+        },
+        "recipe_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Recipe Sha256",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "sealed_at": {
+          "format": "date-time",
+          "title": "Sealed At",
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/ArtifactSourceIdentity"
+        },
+        "spectrum": {
+          "$ref": "#/$defs/AuthoritativeSpectrum"
+        },
+        "spectrum_sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Spectrum Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "schema_version",
+        "draft_id",
+        "source",
+        "spectrum",
+        "recipe",
+        "spectrum_sha256",
+        "recipe_sha256",
+        "sealed_at"
+      ],
+      "title": "SealedImportEnvelope",
+      "type": "object"
+    }
+  },
+  "$id": "https://drxas.local/contracts/xraylarch-integration-v1.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Root model used to export and compare the complete integration JSON schema.",
+  "properties": {
+    "draft_summaries": {
+      "$ref": "#/$defs/DraftSummaryList"
+    },
+    "import_action": {
+      "$ref": "#/$defs/ImportActionRequest"
+    },
+    "import_snapshot": {
+      "$ref": "#/$defs/ImportSnapshot"
+    },
+    "import_state": {
+      "$ref": "#/$defs/ImportState"
+    },
+    "launch": {
+      "$ref": "#/$defs/LaunchEnvelope"
+    },
+    "launch_handle": {
+      "$ref": "#/$defs/OneTimeLaunchHandle"
+    },
+    "sealed_import": {
+      "$ref": "#/$defs/SealedImportEnvelope"
+    },
+    "tolerances": {
+      "$ref": "#/$defs/NumericalTolerances",
+      "default": {
+        "array_absolute": 1e-07,
+        "array_relative": 1e-05,
+        "minimum_match_fraction": 0.999,
+        "scalar_absolute": 1e-08,
+        "scalar_relative": 1e-06
+      }
+    }
+  },
+  "required": [
+    "launch",
+    "launch_handle",
+    "draft_summaries",
+    "sealed_import",
+    "import_snapshot",
+    "import_state",
+    "import_action"
+  ],
+  "title": "IntegrationContractBundle",
+  "type": "object",
+  "x-schema-sha256": "44164b8ecbeef7985dc06967b8c51daaae6e2daeb0c34d24dfe716802d465e1b",
+  "x-schema-version": 1
+}

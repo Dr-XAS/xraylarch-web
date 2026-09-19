@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import re
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -62,12 +65,50 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok", "version": __version__}
+    def health() -> dict[str, str | int]:
+        revision = os.environ.get("XRAYLARCH_GIT_REVISION", "unknown")
+        if revision != "unknown" and not re.fullmatch(r"[0-9a-f]{40}", revision):
+            revision = "invalid"
+        return {
+            "status": "ok",
+            "version": __version__,
+            "git_revision": revision,
+            "integration_contract_version": 2,
+        }
 
     app.include_router(build_api_router(store, active_settings))
-    from .athena import build_athena_router
-    app.include_router(build_athena_router(active_settings))
+    from .athena import AthenaStore, build_athena_router
+
+    athena_store = AthenaStore(active_settings)
+    integration_service = None
+    if active_settings.integration_api_enabled:
+        from .integration_routes import build_integration_router
+        from .integration_service import IntegrationService
+        from .integration_storage import IntegrationStorage
+
+        integration_storage = IntegrationStorage(
+            active_settings.data_root,
+            integration_secret=active_settings.integration_hmac_secret or "",
+            draft_ttl_seconds=active_settings.draft_ttl_seconds,
+        )
+        integration_service = IntegrationService(
+            active_settings, athena_store, integration_storage
+        )
+        app.state.integration_service = integration_service
+        app.state.athena_store = athena_store
+        app.include_router(
+            build_integration_router(integration_service, active_settings)
+        )
+    app.include_router(
+        build_athena_router(
+            active_settings,
+            store=athena_store,
+            integration_service=integration_service,
+        )
+    )
+    from .artemis import build_artemis_router
+
+    app.include_router(build_artemis_router(athena_store))
     return app
 
 

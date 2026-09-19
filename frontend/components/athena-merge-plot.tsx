@@ -1,18 +1,19 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, hasSavedMerge, savedMergeSpace, type AthenaProject } from '@/lib/athena'
+import { hasSavedMerge, savedMergeSpace, type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Options={version:number;view:'stddev'|'variance';flatten:boolean|null;energy_display:'mu'|'norm'|'flat';kweight:number|null}
 export type SavedMergePlot={project_id:string;version:number;options:Options;result:{group_id:string;label:string;merge_space:'mu'|'norm'|'chi';origin:string;
   display:string;kweight:number|null;multiplier:number;offset:number;spread_scale:number|null;points:number;
   curves:{name:string;x:number[];y:number[]}[];notes:string[];x_label:string;y_label:string}}
 
 export function AthenaMergePlot({project,groupId,selectGroup,close}:{project:AthenaProject;groupId:string;selectGroup:(id:string)=>void;close:()=>void}){
+  const athenaApi=useAthenaApi()
   const group=project.groups.find(g=>g.id===groupId),merged=project.groups.filter(hasSavedMerge)
   const mergeSpace=group?savedMergeSpace(group):null
   const [view,setView]=useState<Options['view']>('stddev'),[flatten,setFlatten]=useState<boolean|null>(null)

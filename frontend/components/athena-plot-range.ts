@@ -3,7 +3,7 @@ import type { Analysis, AthenaGroup } from "@/lib/athena"
 export type PlotSpace = "E" | "k" | "R" | "q"
 export type PlotRange = [number | null, number | null]
 
-export function spectrumTraceCoordinates(group: AthenaGroup, space: PlotSpace, energyMode: string, component = "mag") {
+export function spectrumTraceCoordinates(group: AthenaGroup, space: PlotSpace, energyMode: string, component = "mag", kWeight: number | null = null) {
   if (group.data_type === "detector" && (space !== "E" || energyMode !== "mu")) return null
   const rawChi = !group.result && group.data_type === "chi"
   const arrays: Record<string, number[]> = group.result?.arrays ?? (rawChi
@@ -12,7 +12,9 @@ export function spectrumTraceCoordinates(group: AthenaGroup, space: PlotSpace, e
   const xKey = { E: "energy", k: "k", R: "r", q: "q" }[space]
   const yKey = { E: energyMode, k: "weighted_chi", R: `chir_${component}`, q: `chiq_${component}` }[space]
   const x = arrays[xKey]
-  const y = arrays[rawChi && space === "k" ? "chi" : yKey]
+  const y = space === "k" && kWeight !== null
+    ? x && arrays.chi && x.length === arrays.chi.length ? arrays.chi.map((value, index) => value * x[index] ** kWeight) : undefined
+    : arrays[rawChi && space === "k" ? "chi" : yKey]
   if (!x?.length || !y?.length || x.length !== y.length) return null
   return { arrays, rawChi, x, y }
 }
@@ -43,8 +45,13 @@ function outwardRange(values: unknown[]): PlotRange {
 
 export function automaticPlotRange(
   groups: AthenaGroup[], space: PlotSpace, energyMode: string, component: string,
-  analysis: Analysis | null = null, analysisVisible = false,
+  analysis: Analysis | null = null, analysisVisible = false, kWeight: number | null = null,
 ): PlotRange {
   if (analysisVisible) return outwardRange(analysisXValues(analysis))
-  return outwardRange(groups.flatMap(group => spectrumTraceCoordinates(group, space, energyMode, component)?.x ?? []))
+  return outwardRange(groups.flatMap(group => {
+    const coordinates = spectrumTraceCoordinates(group, space, energyMode, component, kWeight)
+    if (!coordinates) return []
+    const k = space === "q" && component === "re" ? spectrumTraceCoordinates(group, "k", energyMode)?.x ?? [] : []
+    return [...coordinates.x, ...k]
+  }))
 }

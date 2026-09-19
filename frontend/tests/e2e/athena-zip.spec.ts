@@ -50,10 +50,10 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   const chooser=dialog.getByRole('region',{name:'ZIP file selection',exact:true})
   await expect(chooser).toContainText('3 files')
   await chooser.getByRole('checkbox',{name:'Include fe.061 · entry 2',exact:true}).uncheck()
-  const original=page.waitForEvent('download');await chooser.getByRole('link',{name:'Download original ZIP',exact:true}).click()
+  const original=page.waitForEvent('download');await chooser.getByRole('button',{name:'Download original ZIP',exact:true}).click()
   const downloaded=info.outputPath('original.zip');await (await original).saveAs(downloaded)
   expect(readFileSync(downloaded)).toEqual(readFileSync(source))
-  const first=page.waitForEvent('download');await chooser.getByRole('link',{name:'Download fe.060',exact:true}).click()
+  const first=page.waitForEvent('download');await chooser.getByRole('button',{name:'Download fe.060',exact:true}).click()
   const firstPath=info.outputPath('fe.060');await (await first).saveAs(firstPath)
   expect(createHash('sha256').update(readFileSync(firstPath)).digest('hex')).toBe(oracle.members[0].sha256)
   await page.setViewportSize({width:390,height:844})
@@ -76,12 +76,12 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   const project=await response.json();expect(project.groups.map((g:{label:string})=>g.label)).toEqual(['fe.060','fe.062'])
   expect(project.groups.every((g:{processing_error:unknown})=>g.processing_error===null)).toBe(true)
   const group=project.groups[1]
-  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_mag']]) {
+  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
     await page.getByRole('tab',{name:tab,exact:true}).click()
     await expect.poll(()=>curve(page.getByLabel(`${space}-space spectrum plot`,{exact:true})))
       .toEqual({x:group.result.arrays[xkey],y:group.result.arrays[ykey].map((v:number)=>v===0?0:v)})
   }
-  const saving=page.waitForEvent('download');await page.getByRole('link',{name:'Save project',exact:true}).click()
+  const saving=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click()
   const prj=info.outputPath('zip-roundtrip.prj');await (await saving).saveAs(prj)
   await page.getByRole('button',{name:'Open project',exact:true}).click()
   await page.getByLabel('Open project file',{exact:true}).setInputFiles(prj)

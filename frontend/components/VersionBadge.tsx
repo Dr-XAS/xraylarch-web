@@ -85,7 +85,7 @@ export function VersionBadge() {
           right: 0.6rem;
           bottom: 0.4rem;
           z-index: 40;
-          color: rgb(100 116 139 / 55%);
+          color: color-mix(in srgb, var(--ath-muted) 70%, transparent);
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
             "Liberation Mono", "Courier New", monospace;
           font-size: 10px;
@@ -97,7 +97,7 @@ export function VersionBadge() {
         }
 
         .portable-version-badge:hover {
-          color: rgb(100 116 139 / 100%);
+          color: var(--ath-muted);
         }
 
         @media (min-width: 621px) {

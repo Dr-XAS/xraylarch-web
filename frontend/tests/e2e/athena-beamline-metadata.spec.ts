@@ -78,7 +78,7 @@ test('measured X11A live columns, metadata, processing, PRJ restore and persiste
   await groupInfo.getByRole('button', { name: 'Cancel', exact: true }).click()
   await page.getByRole('button', { name: 'File', exact: true }).click()
   const downloading = page.waitForEvent('download')
-  await page.getByRole('link', { name: 'Save Athena project (.prj)', exact: true }).click()
+  await page.getByRole('button', { name: 'Save Athena project (.prj)', exact: true }).click()
   const download = await downloading, path = info.outputPath('x11a.prj'); await download.saveAs(path)
   await page.getByRole('button', { name: 'File', exact: true }).click()
   await page.getByRole('button', { name: 'Open project', exact: true }).click()

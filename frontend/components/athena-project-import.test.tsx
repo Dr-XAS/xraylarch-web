@@ -39,6 +39,22 @@ beforeEach(() => { api.mockReset(); api.mockRejectedValue(new Error("Unexpected 
 afterEach(cleanup)
 
 describe("Athena project preview and selection", () => {
+  it("does not expose or issue project restoration without restore authority", async () => {
+    setup({ canRestore: false }); api.mockResolvedValueOnce(preview()); choose(); await ready()
+    const restore = screen.getByRole("button", { name: "Import all groups" })
+    expect(restore).toBeDisabled()
+    fireEvent.click(restore)
+    expect(imports()).toHaveLength(0)
+  })
+
+  it("restores a reviewed project when restore authority is granted", async () => {
+    const state = setup({ canRestore: true }); api.mockResolvedValueOnce(preview()); choose(); await ready()
+    api.mockResolvedValueOnce(state.result(1))
+    fireEvent.click(screen.getByRole("button", { name: "Import all groups" }))
+    await waitFor(() => expect(state.imported).toHaveBeenCalledOnce())
+    expect(imports()).toHaveLength(1)
+  })
+
   it("consumes a batch forwarded from Import data exactly once in StrictMode", async () => {
     const initialFiles = [new File(["project"], "first.PRJ")]
     api.mockResolvedValueOnce(preview())
@@ -268,8 +284,8 @@ it('uses the converted project snapshot once, with independent channel preview, 
   const file = new File(['XDAC'], 'channels.000')
   setup({ initialFiles: [file], initialPreview: staged }); await ready()
   expect(api).not.toHaveBeenCalled()
-  expect(screen.getByRole('link', { name: 'Download original file' })).toHaveAttribute('href', expect.stringContaining('/upload-first/file?variant=source'))
-  expect(screen.getByRole('link', { name: 'Download converted project' })).toHaveAttribute('href', expect.stringContaining('/upload-first/file?variant=converted'))
+  expect(screen.getByRole('button', { name: 'Download original file' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Download converted project' })).toBeEnabled()
   fireEvent.click(checkbox('Reference foil'))
   fireEvent.click(screen.getByRole('button', { name: 'Preview Oxide, group 3' }))
   await waitFor(() => expect(plot.mock.calls.at(-1)?.[0].data[0].y).toEqual(staged.groups[2].y))

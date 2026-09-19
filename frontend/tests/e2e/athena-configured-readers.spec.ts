@@ -94,13 +94,13 @@ for (const name of ['X15B', 'X23A2MED']) {
     const sourceSummary = dialog.getByText(name === 'X15B' ? /^Binary source bytes \(hex\)( \(first section\))?$/ : /^Source file contents( \(first section\))?$/)
     await sourceSummary.click()
     const rawDownload = page.waitForEvent('download')
-    await dialog.getByRole('link', { name: 'Download original file', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Download original file', exact: true }).click()
     const raw = info.outputPath('original.dat'); await (await rawDownload).saveAs(raw)
     expect(readFileSync(raw)).toEqual(readFileSync(fixture(manifest.file.file))); await sourceSummary.click()
     const convertedSummary = dialog.getByText(/^Converted columns( \(first section\))?$/)
     await convertedSummary.click()
     const convertedDownload = page.waitForEvent('download')
-    await dialog.getByRole('link', { name: 'Download converted file', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Download converted file', exact: true }).click()
     const converted = info.outputPath('converted.dat'); await (await convertedDownload).saveAs(converted)
     expect(readFileSync(converted, 'utf8').split('\n').filter(line => line.trim() && !line.startsWith('#'))
       .map(line => line.trim().split(/\s+/).map(Number))).toEqual(after)
@@ -116,12 +116,12 @@ for (const name of ['X15B', 'X23A2MED']) {
     group.mu.forEach((v: number, i: number) => expect(Math.abs(v - expectedMu[i])).toBeLessThan(1e-10))
     await expect(dialog).not.toBeVisible()
     for (const [tab, space, xkey, ykey] of [['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
-      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_mag']]) {
+      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re']]) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
-    const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const prj = info.outputPath('configured.prj'); await (await download).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

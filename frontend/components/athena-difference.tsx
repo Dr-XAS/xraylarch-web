@@ -1,7 +1,8 @@
 "use client"
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { athenaApi, type AthenaProject, type DifferenceForm, type DifferenceOptions, type DifferencePreview, type DifferenceResult } from "@/lib/athena"
+import { type AthenaProject, type DifferenceForm, type DifferenceOptions, type DifferencePreview, type DifferenceResult } from "@/lib/athena"
+import { useAthenaApi } from "@/lib/athena-context"
 import { ApiRequestError } from "@/lib/backend-client"
 import { AthenaDifferencePlot, type DifferenceView } from "./athena-difference-plot"
 import styles from "./athena-difference.module.css"
@@ -63,6 +64,7 @@ export function AthenaDifferenceDialog({ project, activeId, getProject, selectDa
   selectData: (id: string) => void; onSaved: (project: AthenaProject) => void
   onBusyChange: (busy: string) => void; close: () => void; disabled?: boolean
 }) {
+  const athenaApi = useAthenaApi()
   const dialog = useRef<HTMLDialogElement>(null)
   const generation = useRef(0), saving = useRef(false)
   const [draft, setDraft] = useState<Draft>({ ...defaults })

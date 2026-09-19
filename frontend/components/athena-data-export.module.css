@@ -1,10 +1,10 @@
 .export { overflow-wrap: anywhere; }
-.file { margin-top: 18px; border-top: 1px solid #dce5d3; padding-top: 16px; }
+.file { margin-top: 18px; border-top: 1px solid var(--ath-line); padding-top: 16px; }
 .file h3 { font-size: 14px; margin: 0; }
-.table { overflow-x: auto; max-width: 100%; border: 1px solid #dce5d3; border-radius: 5px; margin: 12px 0; }
+.table { overflow-x: auto; max-width: 100%; border: 1px solid var(--ath-line); border-radius: 5px; margin: 12px 0; }
 .table table { border-collapse: collapse; width: 100%; font-size: 11px; font-variant-numeric: tabular-nums; }
-.table th, .table td { text-align: right; white-space: nowrap; padding: 9px; border-bottom: 1px solid #e8ede3; }
-.table th { background: #f3f6ef; font-weight: 500; }
+.table th, .table td { text-align: right; white-space: nowrap; padding: 9px; border-bottom: 1px solid var(--ath-line); }
+.table th { background: var(--ath-surface-muted); font-weight: 500; }
 .table small { display: block; margin-top: 5px; font-size: 10px; }
 .file summary { cursor: pointer; font-size: 12px; padding: 8px 0; }
 .actions { flex-wrap: wrap; }

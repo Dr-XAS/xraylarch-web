@@ -91,13 +91,13 @@ for (const { name, reader } of samples) {
     await signal(preview, x, y)
     await dialog.getByText('Source file contents (first section)', { exact: true }).click()
     const originalDownload = page.waitForEvent('download')
-    await dialog.getByRole('link', { name: 'Download original file', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Download original file', exact: true }).click()
     const original = info.outputPath('original.dat'); await (await originalDownload).saveAs(original)
     expect(readFileSync(original)).toEqual(source)
     await dialog.getByText('Source file contents (first section)', { exact: true }).click()
     await dialog.getByText('Converted columns (first section)', { exact: true }).click()
     const convertedDownload = page.waitForEvent('download')
-    await dialog.getByRole('link', { name: 'Download converted file', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Download converted file', exact: true }).click()
     const converted = info.outputPath('converted.dat'); await (await convertedDownload).saveAs(converted)
     const convertedRows = readFileSync(converted, 'utf8').split('\n').filter(line => line.trim() && !line.startsWith('#'))
       .map(line => line.trim().split(/\s+/).map(Number))
@@ -113,12 +113,12 @@ for (const { name, reader } of samples) {
     expect(group.source.file_plugin.id).toBe(reader)
     await expect(dialog).not.toBeVisible()
     for (const [tab, space, xkey, ykey] of [['E Energy','E','energy','norm'], ['k EXAFS','k','k','weighted_chi'],
-      ['R Fourier','R','r','chir_mag'], ['q Back transform','q','q','chiq_mag']]) {
+      ['R Fourier','R','r','chir_mag'], ['q Back transform','q','q','chiq_re']]) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
-    const download = page.waitForEvent('download'); await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    const download = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const prj = info.outputPath('angles.prj'); await (await download).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

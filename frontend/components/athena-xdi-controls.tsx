@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import { AthenaContextMenu } from './athena-context-menu'
 import styles from './athena-xdi-controls.module.css'
 
@@ -30,6 +31,7 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
   projectId: string; groupId: string; onSaved: (project: AthenaProject) => void
   onBusyChange: (busy: boolean) => void; close: () => void
 }) {
+  const athenaApi = useAthenaApi()
   const [saved, setSaved] = useState<XDIMetadata | null>(null), [comments, setComments] = useState('')
   const [expanded, setExpanded] = useState<string[]>([]), [report, setReport] = useState<Report | null>(null)
   const [pending, setPending] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('')

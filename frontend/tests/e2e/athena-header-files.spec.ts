@@ -64,7 +64,7 @@ for (const reader of ['B18','BM23']) {
     for (const variant of ['original','converted']) {
       const summary = dialog.getByText(variant === 'original' ? /^Source file contents( \(first section\))?$/ : /^Converted columns( \(first section\))?$/)
       await summary.click(); const downloading = page.waitForEvent('download')
-      await dialog.getByRole('link', { name: `Download ${variant} file`, exact: true }).click()
+      await dialog.getByRole('button', { name: `Download ${variant} file`, exact: true }).click()
       const file = info.outputPath(variant+'.dat'); await (await downloading).saveAs(file)
       if (variant === 'original') expect(readFileSync(file)).toEqual(readFileSync(fixture(ref.input)))
       else expect(readFileSync(file,'utf8').split('\n').filter(l => l.trim() && !l.startsWith('#')).map(l => l.trim().split(/\s+/).map(Number))).toEqual(rows)
@@ -78,12 +78,12 @@ for (const reader of ['B18','BM23']) {
     expect(group.energy).toEqual(x); expect(group.processing_error).toBeNull()
     group.mu.forEach((v: number,i: number) => expect(Math.abs(v-y[i])).toBeLessThan(1e-12))
     if (reader === 'B18') expect(group.source.file_plugin.conversion.decimated).toBe(false)
-    for (const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_mag']]) {
+    for (const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
-    const downloading = page.waitForEvent('download'); await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    const downloading = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const prj = info.outputPath('header-reader.prj'); await (await downloading).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

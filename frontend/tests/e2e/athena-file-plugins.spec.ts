@@ -49,13 +49,13 @@ for (const name of ['x10c', 'lytle']) {
     // Inspect the actual files, including all bytes beyond the visible excerpt.
     await dialog.getByText('Source file contents (first section)', { exact: true }).click()
     const originalDownload = page.waitForEvent('download')
-    await dialog.getByRole('link', { name: 'Download original file', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Download original file', exact: true }).click()
     const originalPath = info.outputPath('original.dat'); await (await originalDownload).saveAs(originalPath)
     expect(readFileSync(originalPath)).toEqual(input)
     await dialog.getByText('Source file contents (first section)', { exact: true }).click()
     await dialog.getByText('Converted columns (first section)', { exact: true }).click()
     const convertedDownload = page.waitForEvent('download')
-    await dialog.getByRole('link', { name: 'Download converted file', exact: true }).click()
+    await dialog.getByRole('button', { name: 'Download converted file', exact: true }).click()
     const convertedPath = info.outputPath('converted.dat'); await (await convertedDownload).saveAs(convertedPath)
     const converted = readFileSync(convertedPath, 'utf8').split('\n').filter(l => l.trim() && !l.startsWith('#')).map(l => l.trim().split(/\s+/).map(Number))
     expect(converted.map(r => r[0])).toEqual(x)
@@ -70,13 +70,13 @@ for (const name of ['x10c', 'lytle']) {
     expect(group.mu).toEqual(displayed.y); expect(group.source.file_plugin.id.toLowerCase()).toBe(name)
     await expect(dialog).not.toBeVisible()
     for (const [tab, space, xkey, ykey] of [['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
-      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_mag']]) {
+      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re']]) {
       await page.getByRole('tab', { name: tab, exact: true }).click()
       await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
     const save = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const prj = info.outputPath('roundtrip.prj'); await (await save).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

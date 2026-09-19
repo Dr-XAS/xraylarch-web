@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { useLayoutEffect, type ComponentProps } from 'react'
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, expect, it, vi } from 'vitest'
 import type Plot from 'react-plotly.js'
 import { athenaApi, type AthenaProject } from '@/lib/athena'
@@ -41,6 +41,31 @@ function serve() { api.mockImplementation(async(_path,body)=>preview((body as {o
 async function ready() { await waitFor(()=>expect(remove()).toBeEnabled(),{timeout:2000}) }
 async function inspected() { await screen.findByText('0 points selected at project revision 4.') }
 afterEach(()=>{cleanup();vi.clearAllMocks();api.mockReset()})
+
+it('exposes only granted mutation modes and never previews or commits an unsupported mode',async()=>{
+  serve();const p=props();render(<AthenaPointEdit {...p} allowedActions={{preview:true,deglitch:true,truncate:false,undo:false,redo:false}}/>);await inspected()
+  const operations=screen.getByRole('combobox',{name:'Operation'})
+  expect(within(operations).queryByRole('option',{name:'Truncate before or after'})).not.toBeInTheDocument()
+  fireEvent.change(operations,{target:{value:'truncate'}})
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,400))})
+  expect(api.mock.calls.every(([,body])=>(body as {action:string}).action==='deglitch')).toBe(true)
+  expect(screen.getByRole('button',{name:'Undo last edit'})).toBeDisabled()
+  expect(screen.getByRole('button',{name:'Redo last edit'})).toBeDisabled()
+  fireEvent.click(screen.getByRole('button',{name:'Undo last edit'}))
+  expect(api.mock.calls.every(([,body])=>(body as {action:string}).action!=='undo')).toBe(true)
+})
+
+it('normalizes an unsupported initial mode to the granted mutation mode',async()=>{
+  serve();render(<AthenaPointEdit {...props()} initialMode="truncate" allowedActions={{preview:true,deglitch:true,truncate:false,undo:true,redo:true}}/>);await inspected()
+  expect(screen.getByRole('combobox',{name:'Operation'})).toHaveValue('point')
+  expect(api.mock.calls.every(([,body])=>(body as {action:string}).action==='deglitch')).toBe(true)
+})
+
+it('does not preview when preview authority is absent',async()=>{
+  serve();render(<AthenaPointEdit {...props()} allowedActions={{preview:false,deglitch:true,truncate:false,undo:false,redo:false}}/>);
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,400))})
+  expect(api).not.toHaveBeenCalled()
+})
 
 it('immediately plots calibrated measured rows; initial inspection supplies chi(E) without deleting',async()=>{
   serve();render(<AthenaPointEdit {...props()}/>);

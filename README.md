@@ -32,14 +32,73 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 ## Athena Web branch
 
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
-Open [http://localhost:3004](http://localhost:3004) using the local commands
-below, then import spectra or load the measured copper foil example. The
-earlier single-spectrum interface is at `/classic`.
+For standalone development, open [http://localhost:3004](http://localhost:3004)
+using the local commands below, then import spectra or load the measured copper
+foil example. The earlier single-spectrum interface is at `/classic`. The
+Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
+both the frontend and backend to loopback and relies on Dr.XAS ingress rather
+than exposing either service port directly.
+
+When mounted, this application is half of a two-repository system, and three
+things about the seam are contracts rather than details:
+
+- **Dr.XAS pins this repository's exact revision**, in its role manifests
+  (`xraylarchRevision`) and its backend settings (`sibling_revision`), together
+  with `integration_contract_version` 2. Its topology verification fails closed
+  on a mismatch, so a deploy or rollback here that changes the revision has to
+  be matched on the Dr.XAS side before its next role activation.
+- **`/api/integration/v2/**` is service-only.** Only the Dr.XAS backend calls
+  it, over loopback, with an HMAC-SHA256 signature and a per-project capability
+  header. No browser path reaches it, and the capability never travels to a
+  browser.
+- **The `return` launch parameter must be an app-relative Dr.XAS path.**
+  `parseSafeInternalReturn` rejects anything else, and a rejected value silently
+  removes the "Import into Dr.XAS" and "Return to Dr.XAS" affordances — the
+  scientist is left in Athena with no way back. Dr.XAS sends
+  `/chat/<conversation_id>`.
+
+`frontend/tests/e2e/integration-mounted.spec.ts` covers this application's own
+mounted lifecycle. The *cross-application* acceptance — both frontends, both
+backends and the Dr.XAS public ingress hop as one system — lives in the Dr.XAS
+repository at `frontend/tests/e2e/xraylarch-native-integration.spec.ts` and
+starts its own five processes on ephemeral ports.
+
+The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
+middle parameter panel. Search the bundled AMCSD crystal-structure database in
+a popup, attach the selected CIF directly to the project, select an absorber
+site, and calculate FEFF8L scattering paths using
+Larch/Larixite. Review the generated paths and add the selected ones to the
+model, or import existing FEFF path files. Define Guess/Set/Def parameters
+and fit the current spectrum with Larch's `feffit` core in k or R space. A Cu
+first-shell starter model is included. The right panel shows data/model/residual
+curves, uncertainties, correlations, and the fit report. Use model JSON exports
+to preserve the fit setup; Athena `.prj` exports retain attached CIFs through
+web metadata but do not include fitting models.
+See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
+conventions, supported expressions, and current limitations.
+
+In the spectrum viewer, **All selected** plots the checked data groups;
+**Current spectrum** plots only the highlighted group, independently of its
+checkbox. For an individual **μ(E)** plot, use **Pre-edge line** and
+**Post-edge line** to show either fitted normalization line. **Background**
+separately shows the fitted μ₀(E) background when available.
+Each normalization-line toggle also marks its interval's start and end on
+μ(E). Hover a marker to see its energy and offset from E₀.
+
+Drag the handle below the spectrum to resize its height; double-click it to
+restore the default. **Show legend** toggles the single-column legend on the
+right. The **k-weight** selector above the viewer controls the k, R,
+back-transform, and wavelet views together. **Auto** uses each spectrum’s
+processed weight; choosing 0–4 updates the display without changing saved
+processing parameters.
+
+The **Colormap** selector above the viewer colors multiple spectra and both
+wavelet views together. It defaults to **magma**, with viridis, plasma,
+inferno, cividis, YlGnBu, and rainbow also available.
 
 The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
 processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
-**Auto** uses the processed k-weight, or choose a weight from 0–4. Both views
-share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
+both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
 6 Å without phase correction. The plot refreshes after spectrum processing.
 
 The Athena import dialog shows a live plot while selecting columns. It also
@@ -163,6 +222,15 @@ plot weight, and retain the group's scale and offset. Source data stay
 unchanged. See the [saved-spread reference](docs/athena-merge-plot-reference.md)
 for executed native plotting rules and original project examples.
 
+**Plot → Diagnostic plots…** shows native Quad, two-group Bi-Quad and k/q
+comparisons. Inspect raw/background energy curves, weighted EXAFS and Fourier
+components; change the display weight or each panel's range without changing
+the saved project. Quad entries in **Plot shortcuts…** use the same verified
+curves. See the [diagnostic plot reference](docs/athena-diagnostic-plot-reference.md)
+for original-template comparisons and the corrected Bi-Quad energy-axis rule.
+
+**Plot shortcuts…** also provides normalized/derivative, detector, marked E₀/I₀/edge-step and k/R three-weight comparisons. Calculations follow the saved group settings in the backend. Curve labels wrap on narrow screens, and SVG downloads include complete legends. See the [shortcut reference](docs/athena-shortcut-plot-reference.md) for detector project-exchange rules and native comparisons.
+
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare
 display smoothing, and find the unsmoothed second-derivative zero crossing.
@@ -284,17 +352,19 @@ LabVIEW scans with a numbered column list retain those labels in source order.
 
 ### Check before sharing a local build
 
-Run these commands from the repository root. The browser test starts its own
+Run these commands from the repository root. The browser tests start their own
 backend on `127.0.0.1:18006`, frontend on `127.0.0.1:13004`, and a fresh
-temporary `XRAYLARCH_DATA_ROOT`; it does not use the normal development data
-directory.
+temporary `XRAYLARCH_DATA_ROOT`; they do not use the normal development data
+directory. The mounted lifecycle acceptance uses only a committed test-only
+signing value and exercises the `/advanced-xas/app` build.
 
 ```bash
-backend/.venv/bin/python -m pytest backend/tests -q
-cd frontend && npm test
-cd frontend && npx tsc --noEmit
-cd frontend && npm run build
-cd frontend && npm run test:e2e
+PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests -q
+cd frontend
+npx tsc --noEmit
+npx vitest run
+NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app npm run build
+npm run test:e2e -- integration-mounted.spec.ts
 ```
 
 ### Operating boundary and deferred work
@@ -306,8 +376,8 @@ multi-user service.
 
 XRF and XRD tools, fitting and FEFF work, multi-file alignment or batch flows,
 chat, public deployment, authentication, and sharing remain outside V1. The
-planned Dr.XAS address is [http://drxas.xray.aps.anl.gov:3004](http://drxas.xray.aps.anl.gov:3004);
-this README does not imply that it has been deployed.
+integrated route is `/advanced-xas/app` behind Dr.XAS ingress; this README does
+not imply that it has been deployed.
 
 ### Guarded Dr.XAS release package
 
@@ -320,7 +390,10 @@ the planned `3004`/`8006` listeners. The host scripts are
 [`scripts/deploy-xraylarch-web.sh`](scripts/deploy-xraylarch-web.sh) and
 [`scripts/check-xraylarch-web.sh`](scripts/check-xraylarch-web.sh).
 
-The scripts are a release package, not permission to write to Dr.XAS. A first
+The production frontend and backend listeners are loopback-only at
+`127.0.0.1:3004` and `127.0.0.1:8006`; the frontend is built and served beneath
+`/advanced-xas/app`. The scripts are a release package, not permission to write
+to Dr.XAS. A first
 host install, any GitHub push, and every host deployment require an explicit
 gate after a fresh host preflight. When that gate exists, the future operator
 uses only a full SHA from `master`:
@@ -418,3 +491,18 @@ and analysis and to encourage and facilitate a gentle transition to
 transition from GUI-only analyses to scripted and programmatic
 analysis of larger data sets, and allows Larch to be run as a service,
 interacting with other processes or languages via XML-RPC.
+# Optional Dr.XAS integration configuration
+
+The host deployer reads `/local/apps/xraylarch-web/config/integration.json` only
+in the backend child. Create the parent directory privately and make the JSON
+file owner-only (mode `0600`, owned by the service user); symlinks are refused.
+The accepted fields are `integration_api_enabled`, `browser_consume_enabled`,
+`import_enabled` (JSON booleans), `integration_issuer`, `integration_audience`,
+`integration_hmac_secret` (strings), and optional `draft_ttl_seconds` (positive
+integer, at most 604800). All three gates must be true for editor import. The
+issuer, audience and host-generated secret must match Dr.XAS's private backend
+configuration; the secret must contain at least 32 characters. Never commit or
+print this file. Missing configuration keeps integration off; invalid settings
+block startup. The API remains on `127.0.0.1:8006`. Frontend/build processes do
+not receive the integration secret, and legacy rollback releases start with
+integration off.

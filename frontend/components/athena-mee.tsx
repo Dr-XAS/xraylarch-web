@@ -1,12 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import meeStyles from './athena-mee.module.css'
 
-const Plot = dynamic(() => import('react-plotly.js').then(m => m.default), { ssr: false })
 type Space = 'E' | 'k' | 'R'
 type Options = { method: 'reflection' | 'arctangent'; shift: number; amplitude: number; width: number }
 type Trace = { role: string; label: string; x: number[]; y: number[] }
@@ -34,6 +34,7 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
   project: AthenaProject; activeId: string; selectGroup: (id: string) => void; setBusy: (value: string) => void
   saved: (next: AthenaProject) => void; close: () => void; disabled: boolean
 }) {
+  const athenaApi = useAthenaApi()
   const [draft, setDraft] = useState({ method: 'reflection' as Options['method'], shift: '0', amplitude: '0.01', width: '0.5' })
   const [space, setSpace] = useState<Space>('E'), [picking, setPicking] = useState(false)
   const [preview, setPreview] = useState<{ key: string; value: MEEPreview } | null>(null)

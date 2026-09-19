@@ -71,7 +71,12 @@ def test_health_reports_backend_metadata(tmp_path):
             response = await client.get("/health")
 
         assert response.status_code == 200
-        assert response.json() == {"status": "ok", "version": "0.1.0"}
+        assert response.json() == {
+            "status": "ok",
+            "version": "0.1.0",
+            "git_revision": "unknown",
+            "integration_contract_version": 2,
+        }
 
     asyncio.run(exercise())
 

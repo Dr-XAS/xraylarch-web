@@ -129,13 +129,15 @@ test("column preview, reference, invalid mapping recovery and imported values", 
   expect(referenceRatio[1].y[200]).toBeCloseTo(Math.exp(measured[200][1]), 10)
   await panel.getByLabel("Reference natural log", { exact: true }).check()
   const beforeImport = await curves(panel)
-  await panel.getByRole("button", { name: "Import spectrum", exact: true }).scrollIntoViewIfNeeded()
+  const importButton = panel.getByRole("button", { name: "Import spectrum", exact: true })
+  await panel.locator(".ath-modal-body").evaluate(element => { element.scrollTop = element.scrollHeight })
+  await expect(importButton).toBeInViewport()
   const title = await panel.getByRole("heading", { name: "Import spectra", exact: true }).boundingBox()
   const previewTitle = await panel.getByText("Preview selected columns", { exact: true }).boundingBox()
   expect(previewTitle!.y).toBeGreaterThan(title!.y + title!.height)
   await panel.screenshot({ path: info.outputPath("column-preview-desktop.png") })
   const accepted = page.waitForResponse(r => r.url().endsWith("/import"))
-  await panel.getByRole("button", { name: "Import spectrum", exact: true }).click()
+  await importButton.click()
   const result = await accepted
   expect(result.ok()).toBe(true)
   const project = await result.json()
@@ -149,6 +151,7 @@ test("column preview, reference, invalid mapping recovery and imported values", 
   expect(project.groups[1].marked).toBe(false)
   await page.reload()
   await expect(page.getByRole("heading", { name: "Data groups 2", exact: true })).toBeVisible()
+  await expect(page.getByText("trans", { exact: true })).toHaveCount(2)
   expect(errors).toEqual([])
 })
 
@@ -186,6 +189,7 @@ test("MED range selection, pause/replot, separate channel import and mobile prev
   expect(project.groups[1].label).toContain("detb")
   expect(project.groups[0].mu).toEqual(selected[0].y)
   expect(project.groups[1].mu).toEqual(selected[1].y)
+  await expect(page.getByText("fluo", { exact: true })).toHaveCount(2)
 })
 
 test("native denominator sums and sign/scale controls affect preview and imported data", async ({ page }) => {

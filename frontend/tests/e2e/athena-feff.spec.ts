@@ -64,16 +64,30 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
     await expect(page.getByText(`FEFF μ(E) · ${raw.length} points`, { exact: true })).toBeVisible()
     for (const [name, space, x, y] of [
       ['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
-      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_mag'],
+      ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re'],
     ]) {
       await page.getByRole('tab', { name, exact: true }).click()
       // Applying a zero display offset turns -0 into +0; both represent the
       // same plotted coordinate. All nonzero values must still match exactly.
       await expect.poll(() => firstCurve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[x], y: group.result.arrays[y].map((v: number) => v === 0 ? 0 : v) })
+      if (space === 'q') {
+        const plot = page.getByLabel('q-space spectrum plot', { exact: true }).locator('.js-plotly-plot')
+        await expect.poll(() => plot.evaluate(node => {
+          const traces = (node as HTMLElement & { data: { x: number[]; y: number[] }[] }).data
+          return traces.map(trace => ({ x: [...trace.x], y: [...trace.y] }))
+        })).toEqual([
+          { x: group.result.arrays.q, y: group.result.arrays.chiq_re.map((v: number) => v === 0 ? 0 : v) },
+          { x: group.result.arrays.k, y: group.result.arrays.weighted_chi.map((v: number) => v === 0 ? 0 : v) },
+        ])
+        await expect.poll(() => plot.evaluate(node => {
+          const traces = (node as HTMLElement & { data: { line: { color: string; dash: string } }[] }).data
+          return { sameColor: traces[0].line.color === traces[1].line.color, dash: traces[1].line.dash }
+        })).toEqual({ sameColor: true, dash: 'dash' })
+      }
     }
     const download = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const saved = info.outputPath('feff-roundtrip.prj'); await (await download).saveAs(saved)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(saved)

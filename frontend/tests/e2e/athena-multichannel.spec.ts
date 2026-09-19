@@ -98,7 +98,7 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
     await matches(panel.getByLabel(`Preview of ${expected[0].label}`, { exact: true }), expected[0])
     for (const variant of ['original file','converted project']) {
       const downloading = page.waitForEvent('download')
-      await panel.getByRole('link', { name: `Download ${variant}`, exact: true }).click()
+      await panel.getByRole('button', { name: `Download ${variant}`, exact: true }).click()
       const file = info.outputPath(variant === 'original file' ? 'original.dat' : 'converted.json')
       await (await downloading).saveAs(file)
       if (variant === 'original file') expect(readFileSync(file)).toEqual(readFileSync(fixture(ref.input)))
@@ -123,14 +123,14 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
     await expect(dialog).not.toBeVisible()
     if (reader === 'X23A2MultiChannel') {
       const group = project.groups[2]
-      for (const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_mag']]) {
+      for (const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
         await page.getByRole('tab', { name: tab, exact: true }).click()
         await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
           .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
       }
     }
     const downloading = page.waitForEvent('download')
-    await page.getByRole('link', { name: 'Save project', exact: true }).click()
+    await page.getByRole('button', { name: 'Save project', exact: true }).click()
     const prj = info.outputPath('multichannel.prj'); await (await downloading).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

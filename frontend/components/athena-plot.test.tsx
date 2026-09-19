@@ -1,19 +1,25 @@
 import "@testing-library/jest-dom/vitest"
 import type { ComponentProps } from "react"
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type { AthenaGroup, Parameters } from "@/lib/athena"
 import { AthenaPlot, type Space } from "./athena-plot"
+import { automaticPlotRange } from "./athena-plot-range"
 
-type Trace = { name: string; x: number[]; y: number[]; yaxis?: string }
+type Trace = {
+  name: string; x: number[]; y: number[]; yaxis?: string; line?: { color?: string; dash: string }
+  mode?: string; text?: string[]; customdata?: number[]; showlegend?: boolean
+  marker?: { symbol?: string[]; color?: string; size?: number }
+}
 type Handoff = {
   data: Trace[]
   onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
   layout: {
-    xaxis: { title: { text: string }; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
-    yaxis: { title: { text: string } }
+    xaxis: { title: { text: string }; showgrid?: boolean; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
+    yaxis: { title: { text: string }; showgrid?: boolean }
     yaxis2?: { title: { text: string } }
+    uirevision: string
   }
 }
 
@@ -76,6 +82,59 @@ function handoff(): Handoff {
   if (!call) throw new Error("No Plotly handoff was rendered")
   return call[0]
 }
+
+describe("AthenaPlot display options", () => {
+  it("keeps the current line-and-grid presentation by default", () => {
+    show()
+    expect(handoff().data[0]).toMatchObject({ mode: "lines" })
+    expect(handoff().data[0].marker).toBeUndefined()
+    expect(handoff().layout.xaxis.showgrid).toBe(true)
+    expect(handoff().layout.yaxis.showgrid).toBe(true)
+  })
+
+  it("shows measured data points without adding points to fitted overlays", () => {
+    show({ showGrid: false, showDataPoints: true, plotScope: "current", background: true })
+    const [spectrum, background] = handoff().data
+    expect(spectrum).toMatchObject({ mode: "lines+markers", marker: { color: spectrum.line?.color, size: 4 } })
+    expect(background).toMatchObject({ mode: "lines", name: "Background μ₀(E) · Sample" })
+    expect(background.marker).toBeUndefined()
+    expect(handoff().layout.xaxis.showgrid).toBe(false)
+    expect(handoff().layout.yaxis.showgrid).toBe(false)
+  })
+
+  it("opens checked plot options on right-click and sends the inverse settings", () => {
+    const onShowGridChange = vi.fn()
+    const onShowDataPointsChange = vi.fn()
+    const onOptionsMenuOpen = vi.fn()
+    show({ onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen })
+    const plot = screen.getByTestId("athena-plot")
+    fireEvent.contextMenu(plot, { clientX: 120, clientY: 160 })
+    expect(onOptionsMenuOpen).toHaveBeenCalledOnce()
+    expect(screen.getByRole("menu", { name: "Spectrum plot options" })).toBeVisible()
+    expect(screen.getByRole("menuitemcheckbox", { name: "Show grids" })).toHaveAttribute("aria-checked", "true")
+    const points = screen.getByRole("menuitemcheckbox", { name: "Show data points" })
+    expect(points).toHaveAttribute("aria-checked", "false")
+    fireEvent.click(points)
+    expect(onShowDataPointsChange).toHaveBeenCalledWith(true)
+    expect(plot).toHaveFocus()
+
+    fireEvent.contextMenu(plot, { clientX: 130, clientY: 170 })
+    fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Show grids" }))
+    expect(onShowGridChange).toHaveBeenCalledWith(false)
+  })
+
+  it("opens from the keyboard and restores plot focus on Escape", () => {
+    show()
+    const plot = screen.getByTestId("athena-plot")
+    plot.focus()
+    fireEvent.keyDown(plot, { key: "F10", shiftKey: true })
+    const menu = screen.getByRole("menu", { name: "Spectrum plot options" })
+    expect(menu).toBeVisible()
+    fireEvent.keyDown(menu, { key: "Escape" })
+    expect(screen.queryByRole("menu", { name: "Spectrum plot options" })).not.toBeInTheDocument()
+    expect(plot).toHaveFocus()
+  })
+})
 
 describe("AthenaPlot difference signal labels", () => {
   it.each(["mu", "norm", "flat"])("uses saved form units for an unrenormalized difference in %s", energyMode => {
@@ -193,10 +252,33 @@ describe("AthenaPlot range overrides", () => {
     show({ range: [...range] })
     expect(handoff().layout.xaxis).toMatchObject(axis)
   })
+
+  it("resets Plotly zoom for a new plot scope or individual spectrum while retaining comparison zoom on highlight changes", () => {
+    const first = group("First"), second = group("Second")
+    const comparison = show({ groups: [first, second], active: first })
+    const comparisonRevision = handoff().layout.uirevision
+    comparison.unmount()
+    const highlight = show({ groups: [first, second], active: second })
+    expect(handoff().layout.uirevision).toBe(comparisonRevision)
+    highlight.unmount()
+    const individual = show({ groups: [first], active: first, plotScope: "current" })
+    const individualRevision = handoff().layout.uirevision
+    expect(individualRevision).not.toBe(comparisonRevision)
+    individual.unmount()
+    show({ groups: [second], active: second, plotScope: "current" })
+    expect(handoff().layout.uirevision).not.toBe(individualRevision)
+  })
+
+  it("explains an empty selection when a highlighted spectrum is available", () => {
+    show({ groups: [], active: group(), plotScope: "selected" })
+    expect(screen.getByRole("heading", { name: "No spectra selected" })).toBeInTheDocument()
+    expect(screen.getByText("Check data groups or choose Current spectrum to plot the highlighted group.")).toBeInTheDocument()
+    expect(plotly).not.toHaveBeenCalled()
+  })
 })
 
 describe("AthenaPlot backgrounds and displayed groups", () => {
-  it("gives active background curves the same multiplier, group offset, and stack offset as the signal", () => {
+  it("gives only the active background the same multiplier, group offset, and stack offset as the signal", () => {
     const sample = group("Scaled")
     sample.multiplier = 2
     sample.offset = 3
@@ -205,12 +287,10 @@ describe("AthenaPlot backgrounds and displayed groups", () => {
     show({ groups: [group("First"), sample], active: sample, background: true, offset: 10 })
     const { data } = handoff()
     expect(data.map(trace => trace.name)).toEqual([
-      "First", "Scaled", "Pre-edge line · Scaled", "Post-edge polynomial · Scaled", "Background μ₀(E) · Scaled",
+      "First", "Scaled", "Background μ₀(E) · Scaled",
     ])
     expect(data[1].y).toEqual([15, 17, 19])
-    expect(data[2].y).toEqual([13.2, 13.4, 13.6])
-    expect(data[3].y).toEqual([17, 19, 21])
-    expect(data[4].y).toEqual([14, 15, 16])
+    expect(data[2].y).toEqual([14, 15, 16])
     data.slice(1).forEach(trace => expect(trace.x).toEqual([8960, 8980, 9000]))
     expect(sample).toEqual(before)
     expect(data[1].x).not.toBe(sample.result!.arrays.energy)
@@ -248,7 +328,203 @@ describe("AthenaPlot backgrounds and displayed groups", () => {
   })
 })
 
+describe("AthenaPlot individual pre-edge and post-edge lines", () => {
+  it.each([
+    { preEdge: false, postEdge: false, names: [] },
+    { preEdge: true, postEdge: false, names: ["Pre-edge line · Sample"] },
+    { preEdge: false, postEdge: true, names: ["Post-edge line · Sample"] },
+    { preEdge: true, postEdge: true, names: ["Pre-edge line · Sample", "Post-edge line · Sample"] },
+  ])("independently toggles each line with background disabled: $preEdge/$postEdge", ({ preEdge, postEdge, names }) => {
+    show({ plotScope: "current", preEdge, postEdge })
+    expect(handoff().data.map(trace => trace.name)).toEqual(["Sample", ...names])
+    handoff().data.slice(1).forEach(trace => expect(trace.line?.dash).toBe("dash"))
+  })
+
+  it("keeps the background independent of both line selections", () => {
+    const rendered = show({ plotScope: "current", background: true })
+    expect(handoff().data.map(trace => trace.name)).toEqual(["Sample", "Background μ₀(E) · Sample"])
+    rendered.unmount()
+    show({ plotScope: "current", background: true, preEdge: true, postEdge: true })
+    expect(handoff().data.map(trace => trace.name)).toEqual([
+      "Sample", "Background μ₀(E) · Sample", "Pre-edge line · Sample", "Post-edge line · Sample",
+    ])
+  })
+
+  it("uses the displayed result's shifted energy and display scaling without changing source arrays", () => {
+    const sample = group("Scaled")
+    sample.multiplier = 2
+    sample.offset = 3
+    const staleActive = group("Scaled")
+    staleActive.offset = 100
+    const before = structuredClone(sample)
+    freeze(sample)
+    show({ groups: [group("First"), sample], active: staleActive, plotScope: "current", preEdge: true, postEdge: true, offset: 10 })
+    const { data } = handoff()
+    expect(data.map(trace => trace.name)).toEqual(["First", "Scaled", "Pre-edge line · Scaled", "Post-edge line · Scaled"])
+    expect(data[1].y).toEqual([15, 17, 19])
+    expect(data[2].y).toEqual([13.2, 13.4, 13.6])
+    expect(data[3].y).toEqual([17, 19, 21])
+    data.slice(1).forEach(trace => {
+      expect(trace.x).toEqual([8960, 8980, 9000])
+      expect(trace.x).not.toBe(sample.result!.arrays.energy)
+    })
+    expect(data[2].y).not.toBe(sample.result!.arrays.pre_edge)
+    expect(data[3].y).not.toBe(sample.result!.arrays.post_edge)
+    expect(sample).toEqual(before)
+  })
+
+  it("marks effective automatic bounds and clipped endpoints on already shifted energies", () => {
+    const sample = group()
+    // Outer requested bounds exceed measured support; the fit returned clipped bounds.
+    sample.parameters = { ...sample.parameters, e0: null, pre2: null, norm1: null }
+    sample.result!.effective = { e0: 8980, pre1: -20, pre2: -10, norm1: 10, norm2: 20 }
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    const markers = handoff().data.filter(trace => trace.mode === "markers")
+    expect(markers).toHaveLength(2)
+    expect(markers[0]).toMatchObject({
+      name: "Pre-edge bounds · Sample", x: [8960, 8970], y: [1, 1.5], customdata: [-20, -10],
+      text: ["Pre-edge start", "Pre-edge end"], marker: { symbol: ["circle", "diamond"] }, showlegend: false,
+    })
+    expect(markers[1]).toMatchObject({
+      name: "Post-edge bounds · Sample", x: [8990, 9000], y: [2.5, 3], customdata: [10, 20],
+      text: ["Post-edge start", "Post-edge end"], marker: { symbol: ["circle", "diamond"] }, showlegend: false,
+    })
+    // The saved +4 eV shift is already in both the fitted E0 and plotted energy array.
+    expect(handoff().data[0].x).toEqual([8960, 8980, 9000])
+  })
+
+  it("interpolates bounds on current raw mu and applies multiplier, group offset, and stack offset once", () => {
+    const sample = group("Scaled")
+    sample.multiplier = 2
+    sample.offset = 3
+    sample.result!.arrays.mu = [2, 6, 14]
+    sample.result!.effective = { e0: 8980, pre1: -15, pre2: -5, norm1: 5, norm2: 15 }
+    const staleActive = group("Scaled")
+    staleActive.offset = 100
+    staleActive.result!.effective = { e0: 8970, pre1: -10, pre2: 0, norm1: 10, norm2: 20 }
+    const before = structuredClone(sample)
+    freeze(sample)
+    show({ groups: [group("First"), sample], active: staleActive, plotScope: "current", preEdge: true, postEdge: true, offset: 10 })
+    const markers = handoff().data.filter(trace => trace.mode === "markers")
+    expect(markers.map(trace => ({ x: trace.x, y: trace.y }))).toEqual([
+      { x: [8965, 8975], y: [19, 23] },
+      { x: [8985, 8995], y: [29, 37] },
+    ])
+    expect(sample).toEqual(before)
+  })
+
+  it("omits unsupported bounds, missing metadata, and nonfinite signal values without extrapolating", () => {
+    const sample = group()
+    sample.result!.effective = { e0: 8980, pre1: -21, pre2: -10, norm1: Infinity, norm2: 21 }
+    const rendered = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.filter(trace => trace.mode === "markers")).toMatchObject([
+      { name: "Pre-edge bounds · Sample", x: [8970], y: [1.5], text: ["Pre-edge end"], customdata: [-10] },
+    ])
+    rendered.unmount()
+
+    sample.parameters = { ...sample.parameters, e0: 8980, pre1: -20, pre2: -10, norm1: 10, norm2: 20 }
+    const unfittedMetadata: Array<Record<string, number | null>> = [
+      { e0: null },
+      { e0: 8980, pre1: null, pre2: null, norm1: null, norm2: null },
+    ]
+    for (const effective of unfittedMetadata) {
+      sample.result!.effective = effective
+      const unfitted = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+      expect(handoff().data.filter(trace => trace.mode === "markers")).toHaveLength(0)
+      unfitted.unmount()
+    }
+
+    sample.result!.effective = {}
+    sample.parameters = { ...sample.parameters, e0: null, pre1: null, pre2: null, norm1: null, norm2: null }
+    const missing = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.map(trace => trace.name)).toEqual(["Sample", "Pre-edge line · Sample", "Post-edge line · Sample"])
+    missing.unmount()
+
+    sample.result!.effective = { e0: 8980, pre1: -20, pre2: -10, norm1: 10, norm2: 20 }
+    sample.result!.arrays.mu = [NaN, 2, Infinity]
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.filter(trace => trace.mode === "markers")).toHaveLength(0)
+  })
+
+  it.each<Partial<ComponentProps<typeof AthenaPlot>>>([
+    { plotScope: undefined }, { plotScope: "selected" },
+    ...["k", "R", "q"].map(space => ({ space: space as Space })),
+    ...["norm", "flat", "dmude", "d2mude"].map(energyMode => ({ energyMode })),
+  ])("hides selected lines outside individual raw-mu energy plots: %j", props => {
+    show({ plotScope: "current", preEdge: true, postEdge: true, ...props })
+    expect(handoff().data).toHaveLength(1)
+  })
+
+  it.each<AthenaGroup["data_type"]>(["detector", "chi"])("does not show normalization lines for %s data even with stale arrays", data_type => {
+    const sample = group()
+    sample.data_type = data_type
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data).toHaveLength(1)
+  })
+
+  it.each([true, undefined])("does not show normalization lines for a difference group (flag %s)", flag => {
+    const sample = group()
+    sample.is_difference = flag
+    sample.source.operation = "difference"
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data).toHaveLength(1)
+  })
+
+  it("requires a displayed active signal and processed results", () => {
+    const sample = group()
+    const unplotted = show({ groups: [sample], active: group("Unplotted"), plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data).toHaveLength(1)
+    unplotted.unmount()
+    sample.result = null
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data).toHaveLength(1)
+  })
+
+  it("skips unavailable or mismatched fit arrays independently", () => {
+    const sample = group()
+    sample.result!.arrays.pre_edge = [0.1]
+    const rendered = show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data.map(trace => trace.name)).toEqual(["Sample", "Post-edge line · Sample"])
+    rendered.unmount()
+    delete sample.result!.arrays.post_edge
+    show({ groups: [sample], active: sample, plotScope: "current", preEdge: true, postEdge: true })
+    expect(handoff().data).toHaveLength(1)
+  })
+})
+
 describe("AthenaPlot weight labels and complex components", () => {
+  it.each([0, 1, 3, 4])("uses raw chi for viewer k-weight %s without changing saved arrays", kWeight => {
+    const sample = group("Saved at 2", 2)
+    sample.multiplier = 2
+    sample.offset = 1
+    const before = structuredClone(sample)
+    freeze(sample)
+    show({ groups: [sample], space: "k", kWeight })
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.chi.map((chi, index) => 2 * chi * sample.result!.arrays.k[index] ** kWeight + 1))
+    expect(handoff().layout.yaxis.title.text).toBe(kWeight === 0 ? "χ(k)" : `k<sup>${kWeight}</sup> χ(k)`)
+    expect(sample).toEqual(before)
+  })
+
+  it("restores saved weighting on Auto and keeps unavailable chi from showing the wrong weight", () => {
+    const sample = group()
+    const view = show({ groups: [sample], space: "k", kWeight: 3 })
+    view.rerender(<AthenaPlot groups={[sample]} space="k" energyMode="mu" component="mag" background={false} window={false} offset={0} analysis={null} analysisVisible={false} range={[null, null]} kWeight={null} />)
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.weighted_chi)
+    delete sample.result!.arrays.chi
+    view.rerender(<AthenaPlot groups={[sample]} space="k" energyMode="mu" component="mag" background={false} window={false} offset={0} analysis={null} analysisVisible={false} range={[null, null]} kWeight={3} />)
+    expect(screen.getByText("No data in this plot space")).toBeVisible()
+  })
+
+  it("weights unprocessed chi once and leaves R products untouched by the display prop", () => {
+    const raw = { ...group(), data_type: "chi" as const, result: null, energy: [0, 1, 2], mu: [0.1, 0.2, -0.3] }
+    const view = show({ groups: [raw], space: "k", kWeight: 3 })
+    expect(handoff().data[0].y).toEqual([0, 0.2, -2.4])
+    expect(handoff().data[0].name).toContain("unprocessed χ(k)")
+    const sample = group()
+    view.rerender(<AthenaPlot groups={[sample]} space="R" energyMode="mu" component="mag" background={false} window={false} offset={0} analysis={null} analysisVisible={false} range={[null, null]} kWeight={3} />)
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.chir_mag)
+  })
+
   it("labels the actual displayed effective weight independently of the active group's recipe", () => {
     const displayed = group("Displayed", 1.75)
     displayed.parameters.kweight = 3
@@ -286,10 +562,65 @@ describe("AthenaPlot weight labels and complex components", () => {
       const key = `${space === "R" ? "chir" : "chiq"}_${component}`
       expect(handoff().data[0].x).toEqual(a[space === "R" ? "r" : "q"])
       expect(handoff().data[0].y).toEqual(a[key].map(value => 2 * value + 3))
-      expect(handoff().layout.xaxis.title.text).toBe(space === "R" ? "R (Å)" : "q (Å⁻¹)")
+      expect(handoff().layout.xaxis.title.text).toBe(space === "R" ? "R (Å)" : component === "re" ? "k, q (Å⁻¹)" : "q (Å⁻¹)")
       if (component === "pha") expect(handoff().layout.yaxis.title.text).toContain("(rad)")
     }
     expect(sample).toEqual(before)
+  })
+})
+
+describe("AthenaPlot k and q comparison", () => {
+  it("overlays unwindowed weighted k and real q on their full native grids with identical scaling", () => {
+    const first = group("First", 1.75), second = group("Second", 3)
+    first.multiplier = 2
+    first.offset = 1
+    second.multiplier = 0.5
+    second.offset = -2
+    // Saved weighted arrays describe the transform, even if the recipe changed.
+    first.parameters.kweight = 4
+    const groups = freeze([first, second])
+    show({ groups, active: first, space: "q", component: "re", offset: 5, showDataPoints: true })
+    const traces = handoff().data
+    expect(traces).toHaveLength(4)
+    for (const [index, sample] of groups.entries()) {
+      const [q, k] = traces.slice(index * 2, index * 2 + 2)
+      const a = sample.result!.arrays
+      const scale = (values: number[]) => values.map(v => v * sample.multiplier + sample.offset + index * 5)
+      expect(q.x).toEqual(a.q)
+      expect(q.y).toEqual(scale(a.chiq_re))
+      expect(q.name).toContain("Re[χ(q)]")
+      expect(q.line?.dash).toBe("solid")
+      expect(q.mode).toBe("lines")
+      expect(k.x).toEqual(a.k)
+      expect(k.y).toEqual(scale(a.weighted_chi))
+      expect(k.name).toContain("χ(k)")
+      expect(k.name).toContain(`k-weight ${sample.result!.effective.kweight}`)
+      expect(k.line).toMatchObject({ color: q.line?.color, dash: "dash" })
+      expect(k.mode).toBe("lines+markers")
+      expect(k.yaxis).toBeUndefined()
+    }
+    expect(handoff().layout.xaxis.title.text).toBe("k, q (Å⁻¹)")
+    expect(handoff().layout.yaxis.title.text).toContain("weights in legend")
+    expect(automaticPlotRange(groups, "q", "mu", "re")).toEqual([0, 4])
+    expect(automaticPlotRange(groups, "q", "mu", "im")).toEqual([1, 3])
+  })
+
+  it("uses the k-weight of the returned q transform once for both curves", () => {
+    const sample = group("Weight override", 4)
+    sample.parameters.kweight = 2
+    show({ groups: [sample], active: sample, space: "q", component: "re", kWeight: 4 })
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.chiq_re)
+    expect(handoff().data[1].y).toEqual(sample.result!.arrays.chi.map((v, i) => v * sample.result!.arrays.k[i] ** 4))
+    expect(handoff().layout.yaxis.title.text).toBe("k<sup>4</sup> χ(k), Re[χ(q)]")
+  })
+
+  it("keeps the q curve usable without inventing missing k data", () => {
+    const sample = group()
+    delete sample.result!.arrays.weighted_chi
+    show({ groups: [sample], active: sample, space: "q", component: "re" })
+    expect(handoff().data).toHaveLength(1)
+    expect(handoff().data[0].y).toEqual(sample.result!.arrays.chiq_re)
+    expect(automaticPlotRange([sample], "q", "mu", "re")).toEqual([1, 3])
   })
 })
 

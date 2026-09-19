@@ -41,6 +41,15 @@ command_status=0
 # CI and deployment must execute the same complete installer. Every dependency
 # gate must fail before the immutable release or frontend can be published.
 declare -F install_release_backend >/dev/null || fail_test 'shared release installer is missing'
+
+# Mounted builds must receive their public path at build time. Health qualification
+# must bind the backend response to the exact immutable release and contract.
+build_source=$(declare -f build_release)
+[[ "$build_source" == *'NEXT_PUBLIC_APP_BASE_PATH'* ]] || fail_test 'frontend build must receive the mounted base path'
+health_source=$(declare -f backend_health_ok)
+[[ "$health_source" == *'git_revision'* ]] || fail_test 'backend health must verify the exact release revision'
+[[ "$health_source" == *'integration_contract_version'* ]] || fail_test 'backend health must verify integration contract version 2'
+
 for failure in constraints wheel backend app check freeze collection runtime; do
 (
   XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"

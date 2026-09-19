@@ -1,11 +1,10 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useState } from 'react'
 import type { InspectionResponse } from '@/lib/contracts'
 import styles from './athena-column-selection.module.css'
 
-const Plot = dynamic(() => import('react-plotly.js').then(m => m.default), { ssr: false })
 
 export function AthenaReaderPreview({ value, required, reviewed, onReviewed, disabled }: {
   value: NonNullable<InspectionResponse['reader_preview']>; required: boolean; reviewed: boolean

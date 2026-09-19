@@ -71,7 +71,7 @@ test('ESRF Cu: live pixel columns, fitted calibration, native settings, make, un
   }).toBe(true)
   await panel.screenshot({path:info.outputPath('cu-calibration-desktop.png')})
   await panel.getByText('Pixel source file',{exact:true}).click()
-  const original=page.waitForEvent('download');await panel.getByRole('link',{name:'Download original pixel file',exact:true}).click()
+  const original=page.waitForEvent('download');await panel.getByRole('button',{name:'Download original pixel file',exact:true}).click()
   const originalPath=info.outputPath('cu_08');await (await original).saveAs(originalPath)
   expect(readFileSync(originalPath)).toEqual(readFileSync(source('cu','pixels')))
   const native=page.waitForEvent('download');await panel.getByRole('link',{name:'Export saved athena.dxas',exact:true}).click()
@@ -85,14 +85,14 @@ test('ESRF Cu: live pixel columns, fitted calibration, native settings, make, un
   expect(g.energy).toEqual(fitted.calibrated.x);expect(g.mu).toEqual(y)
   expect(g.source.calibration).toEqual(fitted.coefficients);expect(g.processing_error).toBeNull()
   await panel.getByRole('button',{name:'Close dialog',exact:true}).click()
-  await page.getByLabel('Plot marked',{exact:true}).uncheck()
-  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_mag']]) {
+  await page.getByRole('radio',{name:'Current spectrum',exact:true}).check()
+  for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
     await page.getByRole('tab',{name:tab,exact:true}).click()
     await signal(page.getByLabel(`${space}-space spectrum plot`,{exact:true}),g.result.arrays[xkey],g.result.arrays[ykey])
   }
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 1',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 2',exact:true})).toBeVisible()
-  const projectFile=page.waitForEvent('download');await page.getByRole('link',{name:'Save project',exact:true}).click()
+  const projectFile=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click()
   const projectPath=info.outputPath('calibrated.prj');await (await projectFile).saveAs(projectPath)
   await page.getByRole('button',{name:'Open project',exact:true}).click()
   await page.getByLabel('Open project file',{exact:true}).setInputFiles(projectPath)

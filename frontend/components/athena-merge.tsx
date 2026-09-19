@@ -1,12 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { athenaApi, type AthenaProject } from '@/lib/athena'
+import { type AthenaProject } from '@/lib/athena'
+import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Settings={weightby:'importance'|'step'|'noise';exclude_short_data:boolean;short_data_margin:number;plot:'stddev'|'variance'|'marked';push_metadata:boolean;merge_references:boolean}
 type Options=Settings&{method:'demeter-larch';array:'mu'|'norm'|'chi';weights:Record<string,number>;reference_weights:Record<string,number>;label?:string}
 type Curve={name:string;x:number[];y:number[]}
@@ -45,6 +45,7 @@ function validate(v:MergePreview,p:AthenaProject,ids:string[],options:Options){
 }
 
 export function AthenaMerge({project,initialDraft,rememberDraft,initialArray,disabled=false,setBusy,saved,close}:{project:AthenaProject;initialDraft?:MergeDraft;rememberDraft:(d:MergeDraft)=>void;initialArray?:Options['array'];disabled?:boolean;setBusy:(s:string)=>void;saved:(p:AthenaProject,id:string)=>void;close:()=>void}){
+  const athenaApi=useAthenaApi()
   const marked=project.groups.filter(g=>g.marked),ids=marked.map(g=>g.id)
   const refs=project.groups.filter(g=>marked.some(m=>m.reference_id===g.id))
   const [draft,setDraft]=useState<MergeDraft>(()=>({...factory,array:'mu',short_data_margin:'10',weights:{},reference_weights:{},label:'',...initialDraft,...(initialArray?{array:initialArray}:{})}))

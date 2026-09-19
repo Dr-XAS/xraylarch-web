@@ -1,4 +1,6 @@
-import { decodeApiError } from "./backend-client"
+import type { ArtemisStructureAttachment } from "./artemis-structures"
+import { backendUrl } from "./app-url"
+import { createAthenaTransport, type AthenaSession } from "./athena-transport"
 
 export type Parameters = {
   e0: number | null; step: number | null; pre1: number | null; pre2: number | null
@@ -26,6 +28,12 @@ export interface AthenaGroup {
 export function dataTypeLabel(group: AthenaGroup) {
   if (group.data_type === 'xanes' && group.is_normalized) return 'Normalized XANES'
   return { mu: 'μ(E)', xanes: 'XANES', norm: 'Normalized μ(E)', chi: 'χ(k)', xmudat: 'FEFF μ(E)', detector: 'Detector signal' }[group.data_type]
+}
+export function measurementModeLabel(group: AthenaGroup): "trans" | "fluo" | null {
+  const mapping = group.source.mapping
+  if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return null
+  const mode = (mapping as Record<string, unknown>).mode
+  return mode === "transmission" ? "trans" : mode === "fluorescence" ? "fluo" : null
 }
 export function isDifferenceGroup(group: AthenaGroup) {
   return group.is_difference ?? (group.source.operation === "difference")
@@ -94,8 +102,11 @@ export interface RebinPreview {
   }[]
 }
 export interface AthenaProject {
+  artemis_structures?: ArtemisStructureAttachment[]
   import_preferences_warning?: string
   id: string; name: string; version: number; groups: AthenaGroup[]; journal: string
+  /** Project version in which each group last changed, keyed by group id. */
+  group_versions?: Record<string, number>
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]
   analyses?: Analysis[]
   last_operation?: { action: string; warnings?: string[]; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string> }
@@ -105,20 +116,22 @@ export interface Analysis {
   kind: string; project_version: number; group_ids: string[]; options: Record<string, unknown>
   result: Record<string, unknown>
 }
-export const apiBase = "/api/backend/api/athena"
-export async function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(apiBase + path, {
+export const apiBase = backendUrl("/api/athena")
+export function athenaClient(session: AthenaSession = { mode: "legacy" }) {
+  const transport = createAthenaTransport(session)
+  return <T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> => transport.api<T>(`/api/athena${path}`, {
     signal,
     method: method ?? (body === undefined ? "GET" : "POST"),
     ...(body instanceof FormData ? { body } : body !== undefined ? {
       headers: { "content-type": "application/json" }, body: JSON.stringify(body),
     } : {}),
   })
-  const data = await response.json().catch(() => undefined)
-  if (!response.ok) throw decodeApiError(response.status, data)
-  return data as T
 }
-
+export function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
+  return athenaClient()<T>(path, body, method, signal)
+}
+export function athenaTransport() { return createAthenaTransport({ mode: "legacy" }) }
+export function athenaDownload(path: string, filename?: string) { return athenaTransport().download(`/api/athena${path}`, filename) }
 export const resources = [
   { title: "Athena users’ guide", author: "Bruce Ravel", kind: "Manual", url: "https://bruceravel.github.io/demeter/documents/Athena/index.html", description: "The reference for Athena’s processing, plotting, and analysis tools." },
   { title: "Basic data processing", author: "Bruce Ravel", kind: "Tutorial", url: "https://bruceravel.github.io/demeter/documents/Athena/examples/data.html", description: "Follow an iron-foil example through calibration, alignment, merging, and EXAFS." },

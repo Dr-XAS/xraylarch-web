@@ -1,10 +1,9 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import type { DifferencePreview } from "@/lib/athena"
 import styles from "./athena-difference.module.css"
 
-const Plot = dynamic(() => import("react-plotly.js").then(module => module.default), { ssr: false, loading: () => <p>Loading difference plot…</p> })
 const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47"]
 export type DifferenceView = "E" | "k" | "area"
 
