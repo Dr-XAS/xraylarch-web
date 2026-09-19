@@ -21,6 +21,7 @@ interface Props {
   projectId?: string; version?: number; group?: AthenaGroup; pending?: boolean
   kWeight: number | null
   colormap?: AthenaColormap
+  reverseColormap?: boolean
 }
 
 function validGrid(data: WaveletResult) {
@@ -30,7 +31,7 @@ function validGrid(data: WaveletResult) {
     data.magnitude.every(row => Array.isArray(row) && row.length === data.k.length && row.every(v => Number.isFinite(v) && v >= 0))
 }
 
-function WaveletFigure({ data, mode, colormap }: { data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap }) {
+function WaveletFigure({ data, mode, colormap, reverseColormap }: { data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap; reverseColormap: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
   const [error, setError] = useState(false)
@@ -57,7 +58,7 @@ function WaveletFigure({ data, mode, colormap }: { data: WaveletResult; mode: "2
     {error ? <div className={styles.empty} role="alert">Could not render the wavelet plot.{surface && " Try the 2D heatmap if 3D graphics are unavailable."}</div> : <Plot
       data={[{
         type: surface ? "surface" : "heatmap", x: data.k.slice(), y: data.r.slice(), z: data.magnitude.map(row => row.slice()),
-        colorscale: plotlyColorscale(colormap), ...(surface ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
+        colorscale: plotlyColorscale(colormap, reverseColormap), ...(surface ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
         colorbar: { title: { text: "|WT|", font }, tickfont: font, thickness: 12, len: 0.78, outlinewidth: 0, xpad: 8 },
         hovertemplate: "k = %{x:.2f} Å⁻¹<br>R = %{y:.2f} Å<br>|WT| = %{z:.4g}<extra></extra>",
       }]}
@@ -79,7 +80,7 @@ function WaveletFigure({ data, mode, colormap }: { data: WaveletResult; mode: "2
   </div>
 }
 
-export function AthenaWavelet({ projectId, version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP }: Props) {
+export function AthenaWavelet({ projectId, version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP, reverseColormap = false }: Props) {
   const athenaApi = useAthenaApi()
   const [mode, setMode] = useState<"2d" | "3d">("2d")
   const [retry, setRetry] = useState(0)
@@ -133,7 +134,7 @@ export function AthenaWavelet({ projectId, version, group, pending = false, kWei
       <div id="athena-wavelet-viewer" className={styles.viewport}>
         {reason ? <div className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
           : current?.error ? <div className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>
-          : current?.data ? <WaveletFigure key={`${key}:${mode}`} data={current.data} mode={mode} colormap={colormap} />
+          : current?.data ? <WaveletFigure key={`${key}:${mode}`} data={current.data} mode={mode} colormap={colormap} reverseColormap={reverseColormap} />
           : <div className={styles.empty} role="status">Calculating wavelet transform…</div>}
       </div>
       <footer className={styles.footer}><span>Cauchy wavelet · |WT|{current?.data && ` · k-weight ${current.data.kweight}`}</span><span>R is not phase corrected</span></footer>

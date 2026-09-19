@@ -378,6 +378,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [showDataPoints, setShowDataPoints] = useState(false)
   const [viewerKWeight, setViewerKWeight] = useState<number | null>(null)
   const [viewerColormap, setViewerColormap] = useState<AthenaColormap>(DEFAULT_COLORMAP)
+  const [reverseColormap, setReverseColormap] = useState(false)
   const [offset, setOffset] = useState(0)
   const [range, setRange] = useState<[number | null, number | null]>([null, null])
   const [rangeRelativeToE0, setRangeRelativeToE0] = useState(true)
@@ -421,6 +422,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [freezeTarget, setFreezeTarget] = useState<"current" | "marked" | "all" | "matching">("marked")
   const [standardDrafts, setStandardDrafts] = useState<Record<string, string>>({})
   useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("athena.viewer-colormap") ?? "null") as { colormap?: string; reversed?: boolean } | null
+      if (saved && ATHENA_COLORMAPS.some(option => option.value === saved.colormap)) setViewerColormap(saved.colormap as AthenaColormap)
+      if (saved && typeof saved.reversed === "boolean") setReverseColormap(saved.reversed)
+    } catch { /* Storage is optional; plotting must remain available. */ }
+  }, [])
+  useEffect(() => {
+    try { localStorage.setItem("athena.viewer-colormap", JSON.stringify({ colormap: viewerColormap, reversed: reverseColormap })) }
+    catch { /* Keep the in-memory preference when storage is unavailable. */ }
+  }, [viewerColormap, reverseColormap])
+  useEffect(() => {
     if (menu === "Help") helpInputRef.current?.focus()
   }, [menu])
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
@@ -455,7 +467,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
     : weightedPlot.groups.filter(group => spectrumTraceCoordinates(group, space, plotEnergyMode, component, viewerKWeight))
   const spectrumColors = new Map(displayedSpectrumGroups.map((group, index) =>
-    [group.id, plotColorForTheme(spectrumColor(viewerColormap, index, displayedSpectrumGroups.length), theme)]))
+    [group.id, plotColorForTheme(spectrumColor(viewerColormap, reverseColormap ? displayedSpectrumGroups.length - 1 - index : index, displayedSpectrumGroups.length), theme)]))
   const savedPlotWeight = (group: AthenaGroup) => {
     const effective = group.result?.effective.kweight
     return typeof effective === "number" && Number.isFinite(effective) ? effective : group.parameters.kweight
@@ -1514,6 +1526,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
                 {ATHENA_COLORMAPS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
+            <label className="ath-check" title="Reverse the shared spectrum and wavelet colormap."><input type="checkbox" checked={reverseColormap} disabled={analysisVisible} onChange={event => setReverseColormap(event.target.checked)} />Reverse</label>
             <label className="ath-kweight-control" title="Shared k-weight for k, R, back-transform, and wavelet views. Choosing the saved weight follows each spectrum’s saved settings.">k-weight
               <select aria-label="Viewer k-weight" value={displayedViewerWeight} disabled={!active || !can("plot")} onChange={event => {
                 const value = event.target.value === "" ? null : Number(event.target.value)
@@ -1547,14 +1560,14 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes process automatically.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
           {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
             : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
-            : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }} colormap={viewerColormap} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />}
+            : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }} colormap={viewerColormap} reverseColormap={reverseColormap} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />}
           {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
             {(active?.data_type === "detector" ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${active?.data_type === "detector" ? " disabled" : ""}`} key={option.value}><input type="radio" name="ath-energy-plot" value={option.value} checked={plotEnergyMode === option.value} disabled={active?.data_type === "detector"} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
           </div>}
           <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div>{space === "E" && <label className="ath-check ath-range-relative" title={draftE0 === null ? "E₀ is unavailable for the current spectrum" : `Use the current spectrum’s E₀ (${draftE0} eV) as zero`}><input type="checkbox" checked={relativeRange} disabled={analysisVisible || draftE0 === null} onChange={event => setRangeRelativeToE0(event.target.checked)} />Relative to E₀</label>}<label>Range <PlotRangeInput label="Plot minimum" value={analysisVisible ? null : displayedRange[0]} automatic={displayedAutomaticRange[0]} disabled={analysisVisible || automaticRange[0] === null} onChange={value => setRange([absoluteRangeValue(value), range[1]])} /></label><span>to</span><PlotRangeInput label="Plot maximum" value={analysisVisible ? null : displayedRange[1]} automatic={displayedAutomaticRange[1]} disabled={analysisVisible || automaticRange[1] === null} onChange={value => setRange([range[0], absoluteRangeValue(value)])} />{active && project && can("export") && <button title="Export current group data" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/groups/${active.id}/export?space=${space}`, `${active.label}.csv`) }}><Download size={14} />CSV</button>}</div></div>
         </ResizablePlotCard>
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
-        <AthenaWavelet colormap={viewerColormap} projectId={can("plot") ? project?.id : undefined} version={project?.version} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />
+        <AthenaWavelet colormap={viewerColormap} reverseColormap={reverseColormap} projectId={can("plot") ? project?.id : undefined} version={project?.version} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />
         {analysis && <section className="ath-analysis-result"><header><h3>{toolTitles[analysis.kind]}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><p className="ath-hint">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</p><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
         <div className="ath-center-note"><BookOpen size={15} /><span>Familiar Athena workflows. Scientific calculations by Larch.</span><button onClick={() => openTool("learn")}>Tutorials & reference <ExternalLink size={12} /></button></div>
       </section>}

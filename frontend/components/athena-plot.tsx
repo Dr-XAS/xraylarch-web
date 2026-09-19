@@ -14,7 +14,7 @@ interface Props {
   plotScope?: "selected" | "current"; preEdge?: boolean; postEdge?: boolean; showLegend?: boolean; kWeight?: number | null
   showGrid?: boolean; showDataPoints?: boolean
   onShowGridChange?: (show: boolean) => void; onShowDataPointsChange?: (show: boolean) => void; onOptionsMenuOpen?: () => void
-  colormap?: AthenaColormap
+  colormap?: AthenaColormap; reverseColormap?: boolean
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
   picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
@@ -52,7 +52,7 @@ function signalAtEnergy(energy: number[], mu: number[], target: number) {
   return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colormap = DEFAULT_COLORMAP, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colormap = DEFAULT_COLORMAP, reverseColormap = false, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
   const [optionsMenu, setOptionsMenu] = useState<PlotOptionsMenu | null>(null)
@@ -91,7 +91,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "") + (mixedEnergyForms ? ` (${energyForm(g)})` : "")
     // R/q products already include the forward k-weight. Apply display
     // multiplier/offset only, never another k- or q-dependent weighting.
-    const color = spectrumColor(colormap, colorIndex, displayed.length)
+    const color = spectrumColor(colormap, reverseColormap ? displayed.length - 1 - colorIndex : colorIndex, displayed.length)
     add(x, transform(y), compareK ? `Re[χ(q)] · ${name}` : name, color, "solid", !compareK)
     if (compareK) {
       // Compare with the unwindowed input on its own full k grid, including
