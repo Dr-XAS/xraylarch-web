@@ -1,13 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Display='mu'|'norm'|'derivative'|'smoothed'
 export type AlignmentDraft={standard_id:string;display:Display;fit:'derivative'|'smoothed';use_reference:boolean}
 type Options=AlignmentDraft&{method:'demeter-larch';operation:'inspect'|'manual'|'auto';energy_shift?:number;sg_window?:number;sg_order?:number}

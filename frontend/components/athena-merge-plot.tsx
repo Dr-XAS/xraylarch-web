@@ -1,13 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { hasSavedMerge, savedMergeSpace, type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Options={version:number;view:'stddev'|'variance';flatten:boolean|null;energy_display:'mu'|'norm'|'flat';kweight:number|null}
 export type SavedMergePlot={project_id:string;version:number;options:Options;result:{group_id:string;label:string;merge_space:'mu'|'norm'|'chi';origin:string;
   display:string;kweight:number|null;multiplier:number;offset:number;spread_scale:number|null;points:number;

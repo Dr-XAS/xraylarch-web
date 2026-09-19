@@ -1,13 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Mode='point'|'margins'|'truncate'
 type View='mu'|'chie'
 type Options={mode:Mode|'inspect';point?:number;emin?:number;emax?:number;tolerance?:number;side?:'before'|'after';value?:number;scope:'current'|'marked'}

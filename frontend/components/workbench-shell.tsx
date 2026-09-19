@@ -11,6 +11,7 @@ import { ProcessingInspector } from "@/components/processing-inspector"
 import { RecipeHistory } from "@/components/recipe-history"
 import { SpectrumTray } from "@/components/spectrum-tray"
 import { UploadInspector } from "@/components/upload-inspector"
+import { ThemeToggle } from "@/components/theme-toggle"
 
 const workspaceStorageKey = "xraylarch-web.workspace-id"
 const defaultClient = new BackendClient()
@@ -121,6 +122,7 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
       <header className="workbench-header">
         <div><p className="eyebrow">XAS processing workbench</p><h1>XrayLarch Web</h1></div>
         <p>Server-authoritative processing · explicit recipe revisions</p>
+        <ThemeToggle />
       </header>
       <SpectrumTray inspection={state.inspection} activeRevisionId={state.applied?.id ?? null} status={state.status} />
       <div className="workbench-grid">

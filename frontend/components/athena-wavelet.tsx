@@ -1,6 +1,6 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from "react"
 import { Box, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
@@ -10,10 +10,6 @@ import { ResizablePlotCard } from "./athena-plot-card"
 import styles from "./athena-wavelet.module.css"
 
 export const athenaWaveletHeightKey = "athena.wavelet.height.v1"
-
-const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), {
-  ssr: false, loading: () => <div className={styles.empty}>Loading wavelet plot…</div>,
-})
 
 export interface WaveletResult {
   project_id: string; version: number; group_id: string; label: string; kweight: number

@@ -10,6 +10,9 @@ import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts
 import { ATHENA_COLORMAPS, DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
 import { parameterHelp, additionalParameterHelp } from "@/lib/athena-parameter-help"
 import { ParameterHelp } from "./parameter-help"
+import { ThemeToggle } from "./theme-toggle"
+import { useTheme } from "./theme-provider"
+import { plotColorForTheme } from "@/lib/plot-theme"
 import { AthenaPlot, type Space } from "./athena-plot"
 import { automaticPlotRange, spectrumTraceCoordinates } from "./athena-plot-range"
 import { ResizableAthenaWorkspace } from "./athena-workspace"
@@ -307,6 +310,7 @@ export function AthenaWorkbench({ session = { mode: "legacy" }, onAuthorizationF
 }
 
 function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
+  const { theme } = useTheme()
   const athenaApi = useAthenaApi()
   const transport = useAthenaTransport()
   const integrated = session.mode === "integration"
@@ -451,7 +455,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
     : weightedPlot.groups.filter(group => spectrumTraceCoordinates(group, space, plotEnergyMode, component, viewerKWeight))
   const spectrumColors = new Map(displayedSpectrumGroups.map((group, index) =>
-    [group.id, spectrumColor(viewerColormap, index, displayedSpectrumGroups.length)]))
+    [group.id, plotColorForTheme(spectrumColor(viewerColormap, index, displayedSpectrumGroups.length), theme)]))
   const savedPlotWeight = (group: AthenaGroup) => {
     const effective = group.result?.effective.kweight
     return typeof effective === "number" && Number.isFinite(effective) ? effective : group.parameters.kweight
@@ -1478,7 +1482,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
             <div className="ath-help-results">{!helpTerms.length ? <p className="ath-help-message">Type a keyword to find a menu command.</p> : !helpMatches.length ? <p className="ath-help-message" role="status">No menu commands found.</p> : <><span className="ath-sr-only" role="status">{helpMatches.length} menu command{helpMatches.length === 1 ? "" : "s"} found.</span>{helpMatches.map((command, index) => renderMenuCommand(command, index))}</>}</div>
           </div>}
         </div>
-      </nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><span className="ath-local"><i /> Local workspace</span></header>
+      </nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><ThemeToggle /><span className="ath-local"><i /> Local workspace</span></header>
     <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy || parameterUpdatePending || !canCommand("undo")} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy || parameterUpdatePending || !canCommand("redo")} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
     <section className="ath-edge-policy-bar" aria-label="Import edge policy"><span>Import edge enforcement: <strong>{edgePolicyDescription(edgePolicy)}</strong>. Applies to new raw-file samples. References use their own E₀ and can share the sample’s element.</span>{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}

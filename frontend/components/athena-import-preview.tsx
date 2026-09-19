@@ -1,12 +1,11 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useState } from "react"
 import { useAthenaApi } from "@/lib/athena-context"
 import { columnPayload, columnProblem, type ColumnMapping, type ColumnPreview } from "@/lib/athena-import"
 import styles from "./athena-column-selection.module.css"
 
-const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false })
 const colors = ["#16736b", "#c37b38", "#7470b0", "#467cac", "#c85a65"]
 
 export function AthenaImportPreview({ projectId, version, uploadId, mapping, disabled = false }: {

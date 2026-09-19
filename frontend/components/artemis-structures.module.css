@@ -6,9 +6,9 @@
 .attachedList span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .attachedList strong { font-size: 11px; font-weight: 500; overflow-wrap: anywhere; }
 .attachedList small { font-size: 10px; color: var(--ath-muted, #647669); }
-.dialog { display: none; width: min(940px, calc(100vw - 36px)); max-width: none; max-height: min(90dvh, 920px); padding: 0; margin: auto; border: 1px solid var(--ath-line, #dce5dc); border-radius: 9px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); box-shadow: 0 20px 70px #14241b40; }
+.dialog { display: none; width: min(940px, calc(100vw - 36px)); max-width: none; max-height: min(90dvh, 920px); padding: 0; margin: auto; border: 1px solid var(--ath-line, #dce5dc); border-radius: 9px; background: var(--ath-popover, #fff); color: var(--ath-ink, #24362c); box-shadow: 0 20px 70px #14241b40; }
 .dialog[open] { display: flex; flex-direction: column; }
-.dialog::backdrop { background: #10241b70; }
+.dialog::backdrop { background: var(--ath-backdrop, #10241b70); }
 .dialogHeader { display: flex; flex-shrink: 0; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 18px 22px; border-bottom: 1px solid var(--ath-line, #dce5dc); }
 .dialogHeader h3 { margin: 0; font-size: 17px; font-weight: 600; }
 .dialogHeader p { margin: 6px 0 0; font-size: 12px; color: var(--ath-muted, #647669); }
@@ -21,8 +21,8 @@
 .placeholder { padding: 24px 10px; color: var(--ath-muted, #647669); text-align: center; font-size: 13px; line-height: 1.6; }
 .savedStructures { margin-top: 18px; border-top: 1px solid var(--ath-line, #dce5dc); }
 .savedStructures h4 { font-size: 12px; font-weight: 500; }
-.panel button.attachButton { background: var(--ath-primary, #268553); color: #fff; border-color: var(--ath-primary, #268553); padding: 8px 12px; }
-.panel button.attachButton:not(:disabled):hover { background: #216940; color: #fff; }
+.panel button.attachButton { background: var(--ath-primary, #268553); color: var(--ath-primary-foreground); border-color: var(--ath-primary, #268553); padding: 8px 12px; }
+.panel button.attachButton:not(:disabled):hover { background: var(--ath-attach-hover, #216940); color: var(--ath-primary-foreground); }
 .help, .source, .citation { color: var(--ath-muted, #647669); font-size: 10px; line-height: 1.55; margin: 7px 0; overflow-wrap: anywhere; }
 .source { font-size: 9px; }
 .searchFields, .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 9px; margin: 10px 0; }
@@ -49,8 +49,8 @@
 .sites small, .paths small { font-size: 9px; color: var(--ath-muted, #647669); overflow-wrap: anywhere; }
 .status, .warning, .error { display: flex; flex-direction: column; gap: 4px; padding: 9px; border-radius: 4px; margin: 10px 0; background: var(--ath-canvas, #f5f8f5); color: var(--ath-muted, #647669); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .status strong { font-weight: 500; color: var(--ath-ink, #24362c); }
-.warning { background: #fff7df; color: #805c10; }
-.error { background: #fff1ec; color: #9c3425; }
+.warning { background: var(--ath-warning-bg, #fff7df); color: var(--ath-warning-ink, #805c10); }
+.error { background: var(--ath-error-bg, #fff1ec); color: var(--ath-error-ink, #9c3425); }
 .paths { max-height: 260px; overflow-y: auto; margin-bottom: 8px; }
 .paths label + label { border-top: 1px solid var(--ath-line, #dce5dc); }
 .job { border-top: 1px solid var(--ath-line, #dce5dc); margin-top: 14px; }

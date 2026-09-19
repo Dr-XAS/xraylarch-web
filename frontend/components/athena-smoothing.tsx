@@ -1,6 +1,6 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
@@ -8,7 +8,6 @@ import { SmoothingDefaults, useSmoothingPreferences } from './athena-smoothing-d
 import styles from './athena-difference.module.css'
 import smoothingStyles from './athena-smoothing.module.css'
 
-const Plot = dynamic(() => import('react-plotly.js').then(m => m.default), { ssr: false })
 type Space = 'E' | 'k' | 'R'
 type Method = 'boxcar' | 'gaussian' | 'savitzky_golay' | 'three_point'
 type Options = { method: Method; window?: number; sigma?: number; order?: number; repetitions?: number }

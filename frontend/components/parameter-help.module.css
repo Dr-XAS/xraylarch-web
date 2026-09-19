@@ -2,7 +2,7 @@
 .trigger :global(.ath-context-label) > span {
   cursor: help;
   text-decoration: underline dotted;
-  text-decoration-color: #b8adca;
+  text-decoration-color: var(--ath-tooltip-accent, #b8adca);
   text-underline-offset: 3px;
 }
 .tooltip {
@@ -12,14 +12,14 @@
   max-width: calc(100vw - 16px);
   box-sizing: border-box;
   padding: 12px 14px;
-  border: 1px solid #ded5ed;
+  border: 1px solid var(--ath-tooltip-line, #ded5ed);
   border-radius: 8px;
-  background: #fff;
-  color: #3d3549;
+  background: var(--ath-popover);
+  color: var(--ath-tooltip-ink, #3d3549);
   box-shadow: 0 6px 24px rgb(45 29 67 / 14%);
   font-family: var(--font-sans, sans-serif);
   font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
-.tooltip strong { display: block; margin-bottom: 4px; color: #6d28d9; font-weight: 600; }
+.tooltip strong { display: block; margin-bottom: 4px; color: var(--ath-tooltip-accent, #6d28d9); font-weight: 600; }

@@ -1,13 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import controls from './athena-smoothing.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Settings={weightby:'importance'|'step'|'noise';exclude_short_data:boolean;short_data_margin:number;plot:'stddev'|'variance'|'marked';push_metadata:boolean;merge_references:boolean}
 type Options=Settings&{method:'demeter-larch';array:'mu'|'norm'|'chi';weights:Record<string,number>;reference_weights:Record<string,number>;label?:string}
 type Curve={name:string;x:number[];y:number[]}

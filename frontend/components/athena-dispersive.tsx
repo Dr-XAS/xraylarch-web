@@ -1,6 +1,6 @@
 "use client"
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from 'react'
 import { apiBase, isDifferenceGroup, type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
@@ -8,7 +8,6 @@ import type { InspectionResponse } from '@/lib/contracts'
 import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-dispersive.module.css'
 
-const Plot=dynamic(()=>import('react-plotly.js').then(m=>m.default),{ssr:false})
 type Coefficients={offset:number;linear:number;quadratic:number}
 type Columns={pixel_column:string;numerator:string[];denominator:string[];logarithm:boolean;invert:boolean;reverse_signal:boolean;sort:boolean}
 type Defaults={version:number;coefficients:Coefficients|null}

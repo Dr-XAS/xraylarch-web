@@ -1,13 +1,12 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 import { DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
 import { AthenaContextMenu } from "./athena-context-menu"
 import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
-const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div> })
 export type Space = PlotSpace
 interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string

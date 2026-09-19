@@ -27,7 +27,10 @@ describe("Athena transport", () => {
   })
 
   it("downloads bytes with a safe server filename and revokes its object URL", async () => {
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    let filename = ""
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      filename = this.download
+    })
     const create = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test")
     const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
     const fetcher = vi.fn().mockResolvedValue(new Response(new Uint8Array([1, 2]), {
@@ -35,7 +38,11 @@ describe("Athena transport", () => {
     }))
     await createAthenaTransport(integrated(), fetcher).download("/api/athena/projects/p1/export", "fallback.dat")
     expect(click).toHaveBeenCalledOnce()
-    expect(create).toHaveBeenCalledWith(expect.any(Blob))
+    expect(filename).toBe("Fe foil.csv")
+    expect(create).toHaveBeenCalledOnce()
+    // Response.blob() uses Node's Blob, which is a different realm from jsdom's.
+    const downloaded = create.mock.calls[0][0] as Blob
+    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(new Uint8Array([1, 2]))
     expect(revoke).toHaveBeenCalledWith("blob:test")
   })
 

@@ -6,7 +6,7 @@ import type { AthenaGroup, Parameters } from "@/lib/athena"
 import { artemisApi, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import { ArtemisFittingPanel, ArtemisFitResultViewer } from "./artemis-fitting"
 
-type PlotProps = { data: { x: number[]; y: number[]; name: string; customdata: number[][]; hovertemplate: string; line: { color: string } }[]; layout: { xaxis: { title: { text: string } }; yaxis: { title: { text: string } }; shapes: { x0: number; x1: number }[]; uirevision: string }; onError: () => void }
+type PlotProps = { data: { x: number[]; y: number[]; name: string; visible?: boolean | "legendonly"; customdata: number[][]; hovertemplate: string; line: { color: string } }[]; layout: { xaxis: { title: { text: string } }; yaxis: { title: { text: string } }; shapes: { x0: number; x1: number }[]; uirevision: string }; onError: () => void }
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="fit-plot" />))
 vi.mock("next/dynamic", () => ({ default: () => plot }))
 // Structure persistence and its modal lifecycle are covered in artemis-structures.test.tsx.
@@ -399,6 +399,7 @@ describe("ArtemisFitResultViewer", () => {
   it("shows complex residual magnitude, switches real/k views, and does not mutate cached data", () => {
     const result = fitResult()
     render(<ArtemisFitResultViewer result={result} group={group()} />)
+    expect(plot.mock.calls.at(-1)?.[0].data[2]).toMatchObject({ name: "Residual", visible: "legendonly" })
     expect(plot.mock.calls.at(-1)?.[0].data[2].y).toEqual(result.r.residual_mag)
     expect(screen.getByText(/Residual is \|FT\(data − model\)\|/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Real" }))

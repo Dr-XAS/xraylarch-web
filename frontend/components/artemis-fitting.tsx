@@ -1,6 +1,6 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from "react"
 import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 import type { AthenaGroup, AthenaProject } from "@/lib/athena"
@@ -14,10 +14,6 @@ import { ArtemisStructures } from "./artemis-structures"
 import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
-
-const Plot = dynamic(() => import("react-plotly.js").then(module => module.default), {
-  ssr: false, loading: () => <p className={styles.empty}>Loading fit plot…</p>,
-})
 
 type ParameterDraft = Omit<ArtemisParameter, "value" | "min" | "max"> & { value: string; min: string; max: string; id: string }
 type TransformDraft = Omit<ArtemisTransform, "kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr"> &
@@ -402,6 +398,7 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
   const traces = series ? curves.map(curve => {
     const offset = offsetPlot ? -curve.tier * spacing : 0
     return { type: "scatter", mode: "lines", name: curve.name, x: series.x.slice(), y: curve.y.map(value => value + offset),
+      visible: curve.name === "Residual" ? "legendonly" : true,
       customdata: curve.y.map(value => [value, offset]),
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }

@@ -12,7 +12,7 @@
 .families th { width: 25%; font-weight: 500; }
 .families td:last-child { width: 82px; }
 .families td button { max-width: 100%; }
-.valid { color: #386447; }
+.valid { color: var(--ath-success-ink, #386447); }
 @media (max-width: 500px) { .families td:last-child { width: 67px; } .families td button { padding: 6px 3px; font-size: 11px; } }
 .history { margin: 16px 0; padding: 14px; border: 1px solid var(--ath-line); border-radius: 5px; }
 .history h3 { margin-top: 0; }

@@ -10,7 +10,7 @@
   padding: 5px;
   border: 1px solid var(--ath-line);
   border-radius: 7px;
-  background: var(--ath-surface);
+  background: var(--ath-popover);
   color: var(--ath-ink);
   box-shadow: 0 7px 24px hsl(240 10% 3.9% / 0.15);
   font-family: var(--font-sans);
@@ -48,6 +48,6 @@
   cursor: default;
 }
 
-.danger:not(:disabled) { color: #a33928; }
+.danger:not(:disabled) { color: var(--ath-error-ink, #a33928); }
 .check { flex: 0 0 16px; width: 16px; color: var(--ath-primary); text-align: center; }
 .separator { height: 1px; margin: 5px 6px; background: var(--ath-line); }

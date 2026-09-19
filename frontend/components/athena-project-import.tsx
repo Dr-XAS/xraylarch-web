@@ -1,6 +1,6 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from "react"
 import { FolderOpen } from "lucide-react"
 import { type AthenaProject } from "@/lib/athena"
@@ -10,7 +10,6 @@ import { AthenaPluginConfiguration } from "./athena-plugin-configuration"
 import { AthenaDownloadButton } from "./athena-download-button"
 import styles from "./athena-project-import.module.css"
 
-const Plot = dynamic(() => import("react-plotly.js").then(m => m.default), { ssr: false })
 type PreviewMode = "mu" | "norm" | "flat" | "dmude" | "chi"
 interface PreviewGroup {
   id: string; label: string; data_type: string; points: number

@@ -1,13 +1,12 @@
 'use client'
 
-import dynamic from 'next/dynamic'
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-difference.module.css'
 import meeStyles from './athena-mee.module.css'
 
-const Plot = dynamic(() => import('react-plotly.js').then(m => m.default), { ssr: false })
 type Space = 'E' | 'k' | 'R'
 type Options = { method: 'reflection' | 'arctangent'; shift: number; amplitude: number; width: number }
 type Trace = { role: string; label: string; x: number[]; y: number[] }

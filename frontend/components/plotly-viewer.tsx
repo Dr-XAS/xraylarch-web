@@ -1,13 +1,8 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 
 import type { PlotTrace } from "@/lib/contracts"
-
-const Plot = dynamic(
-  () => import("react-plotly.js").then((module) => module.default),
-  { ssr: false, loading: () => <p className="plot-loading">Loading scientific plot…</p> },
-)
 
 interface PlotlyViewerProps {
   trace: PlotTrace[]

@@ -1,13 +1,14 @@
 "use client"
 
-import dynamic from "next/dynamic"
+import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
 import { AthenaDiagnosticPlot } from "./athena-diagnostic-plot"
+import { useTheme } from "./theme-provider"
+import { plotColorForTheme, plotDataForTheme } from "@/lib/plot-theme"
 import styles from "./athena-special-plot.module.css"
 
-const Plot = dynamic(() => import("react-plotly.js").then(module => module.default), { ssr: false, loading: () => <p>Loading plot…</p> })
 const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47"]
 
 export type AthenaSpecialPlotKind = "i0sig" | "normderiv" | "k123" | "r123" | "quad" | "i0" | "e00" | "normscaled" | "biquad"
@@ -31,6 +32,7 @@ export type ShortcutPlot = { project_id: string; version: number; options: Optio
 
 export function AthenaSpecialPlot({ kind, groups, active, projectId, version, energyMode = "norm", component = "mag", offset = 0, selectGroup }: Props) {
   const athenaApi = useAthenaApi()
+  const { theme } = useTheme()
   const marked = ["i0", "e00", "normscaled", "biquad"].includes(kind)
   const selected = marked ? groups.filter(g => g.marked) : active ? [active] : []
   const ids = selected.map(g => g.id), quad = kind === 'quad' || kind === 'biquad'
@@ -86,7 +88,7 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
         return { x: c.x, y: c.y, name, type: 'scatter', mode: 'lines', line: { color: colors[current.result.curves.indexOf(c) % colors.length], width: 1.8 } }
       })
       const height = Math.max(700, 100 + traces.reduce((total, t) => total + t.name.split('<br>').length * 18 + 12, 0))
-      const url = await Plotly.toImage({ data: traces, layout: { ...graph.layout, autosize: false, width: 1400, height,
+      const url = await Plotly.toImage({ data: plotDataForTheme(traces, theme), layout: { ...graph.layout, autosize: false, width: 1400, height,
         margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v', font: { size: 11 } } } }, { format: 'svg', width: 1400, height })
       if (currentKey.current !== requestedKey) return
       const link = document.createElement('a'); link.href = url; link.download = `athena-${kind}.svg`
@@ -114,7 +116,7 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
       useResizeHandler style={{ width: '100%', height: '100%' }} /></div>}
     {!!r?.curves.length && <ul className={styles.legend} aria-label="Shortcut curve legend">{r.curves.map((c, i) => <li key={i}>
       <button type="button" aria-pressed={!hidden.includes(i)} onClick={() => setHidden(previous => previous.includes(i) ? previous.filter(n => n !== i) : [...previous, i])}>
-        <span aria-hidden="true" style={{ background: colors[i % colors.length] }} /><span>{c.name}</span>
+        <span aria-hidden="true" style={{ background: plotColorForTheme(colors[i % colors.length], theme) }} /><span>{c.name}</span>
       </button>
     </li>)}</ul>}
     {r?.notes.map((note, i) => <p className={styles.note} key={i}>{note}</p>)}
