@@ -15,6 +15,8 @@ _SIGNATURE = "1-D Scan File created by LabVIEW Control Panel"
 _LEGEND = "Here is a readable list of column headings:"
 _HEADINGS = "Column Headings:"
 _NUMBER = re.compile(r"(?<!\S)([-+]?\d+)\)\s*")
+_FIXED_NUMBER = re.compile(r" *([-+]?\d+)\) ")
+_LABEL_WIDTH = 21
 
 
 def _comment(line: str) -> str | None:
@@ -29,6 +31,29 @@ def _malformed() -> WebInputError:
         ("file",),
         "Restore the original LabVIEW header and consecutive column numbers; do not move observations into the header.",
     )
+
+
+def _fixed_width_legend(contents: list[str], heading: str) -> list[tuple[str, str]] | None:
+    """Recognize the export with 21-character labels and no cell separator.
+
+    A full-width label can touch the next index, including when the label ends
+    in a digit. Read whole cells, then require agreement with the flattened
+    heading so other, whitespace-separated legend variants keep their parser.
+    """
+    entries: list[tuple[str, str]] = []
+    for content in contents:
+        offset = 0
+        while content[offset:].strip():
+            match = _FIXED_NUMBER.match(content, offset)
+            if match is None:
+                return None
+            end = match.end() + _LABEL_WIDTH
+            entries.append((match[1], content[match.end():end].strip()))
+            offset = end
+    flattened = "".join(
+        label.ljust(_LABEL_WIDTH) for _, label in sorted(entries, key=lambda entry: int(entry[0]))
+    ).strip()
+    return entries if entries and flattened == heading else None
 
 
 def labview_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
@@ -53,30 +78,32 @@ def labview_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ..
     if any(_comment(line) is None for line in lines[:boundary + 1]):
         raise _malformed()
 
-    numbered: dict[int, str] = {}
-    for line in lines[legend + 1:boundary]:
-        content = _comment(line)
-        if not content:
-            continue
-        matches = list(_NUMBER.finditer(content))
-        if not matches or content[:matches[0].start()].strip():
-            raise _malformed()
-        for i, match in enumerate(matches):
-            token = match[1]
-            number = int(token)
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
-            label = content[match.end():end].strip()
-            if number < 1 or token != str(number) or number in numbered or not label:
+    if boundary + 1 >= len(lines) or not (heading := _comment(lines[boundary + 1])):
+        raise _malformed()
+    contents = [_comment(line) for line in lines[legend + 1:boundary]]
+    contents = [content for content in contents if content]
+    entries = _fixed_width_legend(contents, heading)
+    if entries is None:
+        entries = []
+        for content in contents:
+            matches = list(_NUMBER.finditer(content))
+            if not matches or content[:matches[0].start()].strip():
                 raise _malformed()
-            numbered[number] = label
+            for i, match in enumerate(matches):
+                end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
+                entries.append((match[1], content[match.end():end].strip()))
+    numbered: dict[int, str] = {}
+    for token, label in entries:
+        number = int(token)
+        if number < 1 or token != str(number) or number in numbered or not label:
+            raise _malformed()
+        numbered[number] = label
     if not numbered or sorted(numbered) != list(range(1, len(numbered) + 1)):
         raise _malformed()
 
     # The format has one commented, flattened heading line after this marker.
     # Do not seek the first numeric line: that could discard a damaged first
     # observation. Every subsequent nonblank line is validated as data.
-    if boundary + 1 >= len(lines) or not _comment(lines[boundary + 1]):
-        raise _malformed()
     rows = tuple(tuple(line.split()) for line in lines[boundary + 2:])
     if not rows:
         raise WebInputError(
