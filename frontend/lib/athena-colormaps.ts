@@ -1,16 +1,35 @@
-export type AthenaColormap = "magma" | "viridis" | "plasma" | "inferno" | "cividis" | "ylgnbu" | "rainbow"
+export type AthenaColormap =
+  | "magma"
+  | "viridis"
+  | "plasma"
+  | "inferno"
+  | "cividis"
+  | "coolwarm"
+  | "ylgnbu"
+  | "turbo"
+  | "hot"
+  | "greys"
+  | "rainbow"
 
 export const DEFAULT_COLORMAP: AthenaColormap = "magma"
 
 export const ATHENA_COLORMAPS: readonly { value: AthenaColormap; label: string }[] = [
-  { value: "magma", label: "Magma" },
-  { value: "viridis", label: "Viridis" },
-  { value: "plasma", label: "Plasma" },
-  { value: "inferno", label: "Inferno" },
-  { value: "cividis", label: "Cividis" },
-  { value: "ylgnbu", label: "YlGnBu" },
-  { value: "rainbow", label: "Rainbow" },
+  { value: "magma", label: "Magma · black–purple–yellow" },
+  { value: "viridis", label: "Viridis · purple–green–yellow" },
+  { value: "plasma", label: "Plasma · purple–orange–yellow" },
+  { value: "inferno", label: "Inferno · black–red–yellow" },
+  { value: "cividis", label: "Cividis · blue–gold" },
+  { value: "coolwarm", label: "Coolwarm · blue–red" },
+  { value: "ylgnbu", label: "YlGnBu · yellow–green–blue" },
+  { value: "turbo", label: "Turbo · blue–green–red" },
+  { value: "hot", label: "Hot · black–red–white" },
+  { value: "greys", label: "Greys · white–black" },
+  { value: "rainbow", label: "Rainbow · violet–red" },
 ]
+
+export function isAthenaColormap(value: unknown): value is AthenaColormap {
+  return typeof value === "string" && ATHENA_COLORMAPS.some(option => option.value === value)
+}
 
 // Canonical Matplotlib colormaps: continuous maps sampled at LUT
 // indices 0, 16, ..., 240, 255, plus the nine ColorBrewer YlGnBu anchors.
@@ -51,10 +70,30 @@ const COLOR_STOPS: Record<AthenaColormap, readonly [number, string][]> = {
     [192 / 255, "#bcae6c"], [208 / 255, "#cdbb63"], [224 / 255, "#dec958"], [240 / 255, "#f0d846"],
     [1, "#fee838"],
   ],
+  coolwarm: [
+    [0, "#3b4cc0"], [1 / 8, "#6282ea"], [2 / 8, "#8db0fe"], [3 / 8, "#b9d0f9"],
+    [4 / 8, "#dddcdc"], [5 / 8, "#f5c4ac"], [6 / 8, "#f4987a"], [7 / 8, "#dd5f4b"],
+    [1, "#b40426"],
+  ],
   ylgnbu: [
     [0, "#ffffd9"], [1 / 8, "#edf8b1"], [2 / 8, "#c7e9b4"], [3 / 8, "#7fcdbb"],
     [4 / 8, "#41b6c4"], [5 / 8, "#1d91c0"], [6 / 8, "#225ea8"], [7 / 8, "#253494"],
     [1, "#081d58"],
+  ],
+  turbo: [
+    [0, "#30123b"], [1 / 8, "#466be3"], [2 / 8, "#28bceb"], [3 / 8, "#32f298"],
+    [4 / 8, "#a4fc3c"], [5 / 8, "#eecf3a"], [6 / 8, "#fb7e21"], [7 / 8, "#d02f05"],
+    [1, "#7a0403"],
+  ],
+  hot: [
+    [0, "#0b0000"], [1 / 8, "#5f0000"], [2 / 8, "#b30000"], [3 / 8, "#ff0800"],
+    [4 / 8, "#ff5c00"], [5 / 8, "#ffb000"], [6 / 8, "#ffff07"], [7 / 8, "#ffff85"],
+    [1, "#ffffff"],
+  ],
+  greys: [
+    [0, "#ffffff"], [1 / 8, "#f0f0f0"], [2 / 8, "#d9d9d9"], [3 / 8, "#bdbdbd"],
+    [4 / 8, "#959595"], [5 / 8, "#727272"], [6 / 8, "#515151"], [7 / 8, "#242424"],
+    [1, "#000000"],
   ],
   rainbow: [
     [0, "#8000ff"], [16 / 255, "#6032fe"], [32 / 255, "#4062fa"], [48 / 255, "#208ef4"],
@@ -73,13 +112,20 @@ const SPECTRUM_RANGES: Record<AthenaColormap, readonly [number, number]> = {
   plasma: [0.06, 0.64],
   inferno: [0.12, 0.67],
   cividis: [0.06, 0.62],
+  coolwarm: [0, 1],
   ylgnbu: [0.58, 0.95],
+  turbo: [0, 1],
+  hot: [0.08, 0.72],
+  greys: [0.35, 1],
   rainbow: [0, 1],
 }
 
-export function plotlyColorscale(colormap: AthenaColormap): [number, string][] {
+export function plotlyColorscale(colormap: AthenaColormap, reversed = false): [number, string][] {
   // Plotly may mutate its inputs; do not expose the shared source arrays.
-  return COLOR_STOPS[colormap].map(([position, color]) => [position, color])
+  const stops = COLOR_STOPS[colormap]
+  return reversed
+    ? stops.map(([position, color]) => [1 - position, color] as [number, string]).reverse()
+    : stops.map(([position, color]) => [position, color])
 }
 
 export function spectrumColor(colormap: AthenaColormap, index: number, count: number): string {

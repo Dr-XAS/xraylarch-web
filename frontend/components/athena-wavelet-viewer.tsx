@@ -72,8 +72,8 @@ function MeasuredPlot({ label, className, main = false, plotKey, ...props }: Com
   </div>
 }
 
-export function WaveletFigure({ data, version = data.version, dataVersion = version, mode, colormap, group }: {
-  data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap; group: AthenaGroup
+export function WaveletFigure({ data, version = data.version, dataVersion = version, mode, colormap, reverseColormap = false, group }: {
+  data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap; reverseColormap?: boolean; group: AthenaGroup
   version?: number; dataVersion?: number
 }) {
   const athenaApi = useAthenaApi()
@@ -144,7 +144,7 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
 
   const trace = {
     type: surface ? "surface" : "heatmap", x: data.k.slice(), y: data.r.slice(), z: data.magnitude.map(row => row.slice()),
-    colorscale: plotlyColorscale(colormap), ...(surface ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
+    colorscale: plotlyColorscale(colormap, reverseColormap), ...(surface ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
     showscale: surface,
     colorbar: { title: { text: "|WT|", font: titleFont }, tickfont: font, thickness: 12, len: 0.6, outlinewidth: 0, xpad: 8 },
     hovertemplate: "k = %{x:.2f} Å⁻¹<br>R = %{y:.2f} Å<br>|WT| = %{z:.4g}<extra></extra>",

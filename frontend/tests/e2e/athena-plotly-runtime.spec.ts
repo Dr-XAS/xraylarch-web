@@ -50,7 +50,7 @@ async function expectCompanions(panel: Locator, response: PlotWeightResult, min:
   })
 }
 
-test("real wavelet plots retain their grid through range drags, independent spectrum palettes, surface rendering, resize and PNG export", async ({ page }, info) => {
+test("real wavelet plots retain their grid through range drags, independent color controls, surface rendering, resize and PNG export", async ({ page }, info) => {
   test.setTimeout(180000)
   await page.setViewportSize({ width: 1500, height: 1100 })
   const errors: string[] = []
@@ -112,6 +112,21 @@ test("real wavelet plots retain their grid through range drags, independent spec
   await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
     (element as HTMLElement & { data: { colorscale: [number, string][] }[] }).data[0].colorscale,
   )).toEqual(plotlyColorscale("magma"))
+
+  const waveletPalette = panel.getByLabel("Wavelet color legend", { exact: true })
+  await expect(waveletPalette).toHaveValue("magma")
+  await expect(waveletPalette.locator("option")).toHaveCount(11)
+  await waveletPalette.selectOption("turbo")
+  await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { data: { colorscale: [number, string][] }[] }).data[0].colorscale,
+  )).toEqual(plotlyColorscale("turbo"))
+  await panel.getByRole("checkbox", { name: "Reverse", exact: true }).check()
+  await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { data: { colorscale: [number, string][] }[] }).data[0].colorscale,
+  )).toEqual(plotlyColorscale("turbo", true))
+  expect(await grid(heatmap)).toEqual(retained)
+  expect(waveletRequests).toHaveLength(waveletRequestCount)
+
   await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click()
   await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
     (element as HTMLElement & { layout: { paper_bgcolor: string } }).layout.paper_bgcolor,
@@ -128,7 +143,7 @@ test("real wavelet plots retain their grid through range drags, independent spec
   expect(await grid(surface)).toEqual(retained)
   await expect.poll(() => surface.locator(".js-plotly-plot").evaluate(element =>
     (element as HTMLElement & { data: { colorscale: [number, string][] }[] }).data[0].colorscale,
-  )).toEqual(plotlyColorscale("magma"))
+  )).toEqual(plotlyColorscale("turbo", true))
   const grip = panel.getByRole("separator", { name: "Resize wavelet plot height", exact: true })
   const previousHeight = Number(await grip.getAttribute("aria-valuenow"))
   await grip.press("Shift+ArrowDown")

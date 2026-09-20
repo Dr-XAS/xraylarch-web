@@ -36,6 +36,70 @@ async function curves(panel: Locator) {
   return plot.evaluate(node => (node as HTMLElement & { data: { x: number[]; y: number[]; name: string }[] }).data.map(t => ({ x: [...t.x], y: [...t.y], name: t.name })))
 }
 
+test('shared batch shows one progress bar until every file is imported', async ({ page }, info) => {
+  test.setTimeout(90000)
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Import data', exact: true }).click()
+  await page.getByLabel('Choose data files', { exact: true }).setInputFiles(
+    [1, 2, 3].map(index => ({ name: `progress-${index}.dat`, mimeType: 'text/plain', buffer: content })))
+  const panel = page.getByRole('dialog', { name: 'Import spectra', exact: true })
+  await expect(panel.getByRole('combobox', { name: 'Measurement', exact: true })).toBeVisible()
+  if (await panel.getByRole('button', { name: 'Use suggested columns' }).count()) {
+    await panel.getByRole('button', { name: 'Use suggested columns' }).click()
+  }
+  await panel.getByRole('combobox', { name: 'Energy units', exact: true }).selectOption('keV')
+  await panel.getByRole('combobox', { name: 'Measurement', exact: true }).selectOption('transmission')
+  await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
+  await panel.getByLabel('Numerator i0', { exact: true }).check()
+  await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
+  await panel.getByLabel('Denominator it', { exact: true }).check()
+  await panel.getByRole('radio', { name: 'Yes, use the same parameters', exact: true }).check()
+
+  // Gate real import requests to inspect the UI at each file boundary without
+  // timing assumptions or replacing the backend's scientific processing.
+  const releases: (() => void)[] = []
+  const gates = [1, 2, 3].map(() => new Promise<void>(resolve => releases.push(resolve)))
+  let requests = 0
+  await page.route('**/api/athena/projects/*/import', async route => {
+    const index = requests++
+    await gates[index]
+    await route.continue()
+  })
+  try {
+    await panel.getByRole('button', { name: 'Import 3 files', exact: true }).click()
+    for (let index = 0; index < 3; index++) {
+      await expect.poll(() => requests).toBe(index + 1)
+      const bar = panel.getByRole('progressbar', { name: 'Batch import progress' })
+      await expect(bar).toHaveAttribute('max', '3')
+      await expect(bar).toHaveAttribute('value', String(index))
+      await expect(panel.getByText(`${index} of 3 files imported`, { exact: true })).toBeVisible()
+      await expect(panel.getByText(`progress-${index + 1}.dat`, { exact: true })).toBeVisible()
+      await expect(panel.getByRole('combobox', { name: 'Measurement', exact: true })).toHaveCount(0)
+      await expect(panel.getByLabel('Column selection preview', { exact: true })).toHaveCount(0)
+      // Accepted data are published together, avoiding intermediate plot changes.
+      await expect(page.getByRole('heading', { name: /^Data groups 0\b/ })).toBeVisible()
+      if (index === 1) {
+        await panel.screenshot({ path: info.outputPath('batch-progress-desktop.png') })
+        await page.setViewportSize({ width: 390, height: 844 })
+        await expect(bar).toBeVisible()
+        expect(await panel.evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true)
+        await panel.screenshot({ path: info.outputPath('batch-progress-mobile.png') })
+        await page.setViewportSize({ width: 1400, height: 1000 })
+      }
+      releases[index]()
+    }
+    await expect(panel).not.toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Data groups 3\b/ })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: /^Data groups 3\b/ })).toBeVisible()
+    expect(errors).toEqual([])
+  } finally {
+    releases.forEach(release => release())
+  }
+})
+
 test('official MRCAT quick scan compares original and rebinned data and imports a matching batch', async ({ page }, info) => {
   test.setTimeout(90000)
   const data = readFileSync(fileURLToPath(new URL('../../../backend/tests/fixtures/demeter-uhup.101', import.meta.url)))

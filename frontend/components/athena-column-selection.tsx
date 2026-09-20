@@ -13,17 +13,18 @@ import { AthenaBeamlineMetadata } from './athena-beamline-metadata'
 import styles from "./athena-column-selection.module.css"
 
 export function AthenaColumnSelection({ projectId, version, inspection, mapping, setMapping, busy, remaining, reuseMapping, groups = [],
-  setReuseMapping, chooseAnother, importCurrent, rebinDefaults, batchNotice }: {
+  setReuseMapping, chooseAnother, importCurrent, rebinDefaults, batchNotice, initialReaderReviewed = false }: {
   projectId: string; version: number; inspection: InspectionResponse; mapping: ColumnMapping
   setMapping: Dispatch<SetStateAction<ColumnMapping>>; busy: boolean; remaining: number
   groups?: AthenaGroup[]
   rebinDefaults?: ReactNode
   reuseMapping: boolean | null; setReuseMapping: (value: boolean) => void; chooseAnother: () => void; importCurrent: (readerReviewed: boolean) => void
   batchNotice?: string
+  initialReaderReviewed?: boolean
 }) {
   const [range, setRange] = useState("")
   const [rangeError, setRangeError] = useState("")
-  const [reviewed, setReviewed] = useState(false)
+  const [reviewed, setReviewed] = useState(initialReaderReviewed)
   function selectRange() {
     try {
       const indices = numeratorRange(range, inspection.columns.length)
