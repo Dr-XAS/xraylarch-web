@@ -1,54 +1,59 @@
-# Design QA: Wavelet color legend controls
+# Design QA: clickable spectrum colorbar
 
 ## Visual truth and capture conditions
 
-- Source visual truth: `/var/folders/pc/t6fzh36n1rx2d5m1wlmxq8gr0000gq/T/codex-clipboard-1ce7b796-8ccb-48ac-b9b6-8af1ead10b41.png` (1518 x 122 px, treated as a 2x UI capture and normalized to 759 x 61 CSS px).
+- Source visual truth: `/var/folders/pc/t6fzh36n1rx2d5m1wlmxq8gr0000gq/T/codex-clipboard-b61364ce-18a4-471d-b890-90d1c855a4a1.png` (1370 x 94 px, treated as a 2x UI capture and normalized to 685 x 47 CSS px).
+- Requested deltas from that source: remove the visible `Color legend` selector and palette name, make the color ramp itself the palette selector, and add a small dropdown arrow.
 - Implementation route: `http://127.0.0.1:3004/` in the Codex in-app Browser.
-- Browser-rendered implementation screenshot: inline Codex in-app Browser capture; the browser integration did not expose a filesystem path (610 x 773 px at a 610 x 773 CSS viewport, device scale 1).
-- Responsive capture: inline Codex in-app Browser capture at 390 x 844 CSS px, device scale 1; the viewport override was reset after verification.
-- State for the matched comparison: light theme, `Coolwarm · blue–red`, Reverse unchecked, 2D heatmap, and the saved copper foil example.
-- Combined comparison: the source image and live implementation capture were emitted together in one comparison input. The source was interpreted at 2x density before comparing typography and control dimensions.
+- Browser-rendered implementation screenshot: inline Codex in-app Browser capture; the browser integration did not expose a filesystem path.
+- Combined comparison: a temporary local QA route rendered the normalized source and the real `AthenaColorLegend` component together in one 1280 x 720 browser capture. The temporary route was removed after review.
+- Focused implementation dimensions: 584 x 49 CSS px for the control row; the clickable ramp and arrow have a 172 x 28 CSS px target at the inspected desktop viewport.
+- Responsive capture: 390 x 844 CSS px, device scale 1. `documentElement.clientWidth` and `scrollWidth` were both 390 px.
+- State: light theme, Classic categorical palette, Reverse unchecked, spectrum workspace.
 
 ## Findings
 
 - No remaining P0, P1, or P2 findings.
-- The implementation reproduces the reference hierarchy: `Color legend`, descriptive select, endpoint labels, continuous ramp, and `Reverse`, on one desktop row.
-- `Low` / `High` intentionally replaces `First` / `Last` because the Wavelet ramp maps scalar `|WT|` magnitude rather than an ordered list of spectra.
-- The control remains independent from the spectrum-line color legend, which preserves the existing product behavior while giving Wavelet its own persistent display preference.
+- The updated row removes the left selector and visible palette name exactly as requested.
+- `First`, the categorical ramp, a compact downward chevron, `Last`, and `Reverse` remain on one clear row at desktop and at 390 px.
+- The 28 px picker target is larger than the visible 9 px ramp, so the compact visual remains easy to click.
+- Palette names remain available only inside the native select menu and to assistive technology; the collapsed control is visual-only.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: the implementation uses the existing Athena label/body tokens, muted label color, regular control weight, and line-height. After normalizing the 2x reference, text size and hierarchy match the surrounding application UI.
-- Spacing and layout rhythm: desktop order, select width, ramp proportions, checkbox alignment, padding, and border treatment match the reference pattern. At 390 px the select occupies the first line and the ramp plus Reverse wrap cleanly to a second line.
-- Colors and visual tokens: the matched Coolwarm preview runs blue to neutral to red and uses the existing Athena surface, divider, muted-text, and checkbox tokens. Reverse mirrors both color values and stop positions exactly.
-- Image quality and asset fidelity: the target contains no photographic, illustrative, logo, or icon asset. The color ramp is a functional live visualization generated from the exact Plotly scale, so its preview remains synchronized with palette and Reverse state.
-- Copy and content: palette labels include both the canonical map name and a short color-direction description. The Wavelet-specific endpoint copy is `Low` / `High` and the checkbox copy remains `Reverse`.
+- Fonts and typography: the existing Figtree label and caption tokens are unchanged. `First`, `Last`, and `Reverse` retain the source weight, size, color, and line height.
+- Spacing and layout rhythm: removing the roughly 230 CSS px visible selector makes the row substantially more compact without changing its padding, divider, endpoint spacing, or checkbox alignment. The ramp and chevron share one 28 px interaction target.
+- Colors and visual tokens: the Classic categorical ramp uses the same seven colors and hard segment boundaries as the source. Hover and focus use existing Athena canvas and primary tokens.
+- Image quality and asset fidelity: the control contains no photographic or illustrative asset. The ramp remains a live CSS visualization synchronized with plot colors, and the affordance is the existing Lucide `ChevronDown` icon rather than a text glyph or handmade asset.
+- Copy and content: visible `Color legend` and `Classic · categorical` text are removed. Visible endpoint and checkbox copy remains `First`, `Last`, and `Reverse`. Palette names remain in the opened native menu for identification and accessibility.
 
 ## Interaction and responsive evidence
 
-- Eleven continuous maps are available: Magma, Viridis, Plasma, Inferno, Cividis, Coolwarm, YlGnBu, Turbo, Hot, Greys, and Rainbow.
-- Switching Magma to Turbo and toggling Reverse updated the existing 2D heatmap without another Wavelet calculation; unit coverage also asserts that the scientific grid is unchanged.
-- Switching to 3D retained the selected and reversed scale and rendered the matching Plotly colorbar.
-- The setting persists under `athena.wavelet-colors.v1` and restores after remount; the earlier shared preference key is accepted as a migration fallback.
-- At 390 x 844, `documentElement.clientWidth` and `scrollWidth` were both 390 px, so the control introduced no horizontal overflow.
-- Browser console warnings/errors during the verified interactions: none.
+- Clicking the ramp expanded the native palette selector in the in-app Browser; the same target received a visible 2 px focus ring.
+- The native select keeps mouse, touch, keyboard, and screen-reader behavior and exposes all six named palettes.
+- Focused component tests verified palette changes and local-storage persistence; the existing workbench integration test verified the plotted color update.
+- The in-app Browser's synthetic native-option selection did not dispatch React's change event reliably, so the actual change path was verified with the focused component and integration tests rather than claimed from that browser action.
+- The disabled state keeps both palette and Reverse controls unavailable.
+- At 390 px the full row stayed on one line and introduced no horizontal overflow.
+- Browser console warnings/errors during the desktop and 390 px checks: none.
 
 ## Full-view and focused comparison evidence
 
-- Full-view evidence: the live Wavelet card shows the new row between current-spectrum/export controls and the existing range/plot area, without changing the surrounding viewer hierarchy.
-- Focused evidence: the source crop and the live Coolwarm/unreversed implementation were opened together. Label order, dropdown treatment, color direction, checkbox state, background, and divider placement visibly agree after density normalization.
-- A focused comparison was required because the reference is a narrow control-row crop rather than a full application screen.
+- Full-view evidence: the live spectrum workspace shows the compact colorbar row between the plot controls and energy-mode controls, with the surrounding hierarchy unchanged.
+- Focused evidence: the normalized source and real component were rendered together in one comparison capture. The retained typography, ramp colors, endpoint labels, checkbox, background, and divider match; the missing left selector and new chevron are intentional requested changes.
+- A focused comparison was required because the source is a narrow control-row crop rather than a full application screen.
 
 ## Comparison history
 
-- Pass 1: no actionable P0, P1, or P2 visual difference was found. The Low/High wording and responsive wrap are intentional semantic adaptations, not fidelity defects.
+- Pass 1: no actionable P0, P1, or P2 visual difference was found. The reduced row width, hidden palette name, and chevron are the requested intentional deviations from the source.
 
 ## Regression checks
 
-- Full frontend Vitest suite: 62 files and 1,144 tests passed. Existing React `act(...)` warnings remain in unrelated suites.
-- Next.js route generation and TypeScript: passed.
+- Full frontend Vitest suite: 64 files and 1,168 tests passed.
+- `components/athena-color-legend.test.tsx`: 2 tests passed.
+- Focused workbench palette integration: 2 tests passed; 270 unrelated tests skipped by the name filter.
+- TypeScript / Next route generation: passed.
 - Next.js production build: passed.
-- Focused Playwright source was updated, but its local runner could not launch because the managed Chromium executable is not installed. The same interactions were completed in the Codex in-app Browser instead.
 - `git diff --check`: passed.
 
 final result: passed
