@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { athenaApi, type AthenaGroup, type Parameters } from "@/lib/athena"
 import { athenaPlotHeightKey } from "./athena-plot-card"
 import { AthenaWavelet, athenaWaveletHeightKey, type WaveletResult } from "./athena-wavelet"
+import type { PlotWeightResult } from "./athena-plot-weight"
 
 type Trace = {
   type: string; x: number[]; y: number[]; z: number[][]; colorscale: [number, string][]
@@ -271,6 +272,79 @@ describe("AthenaWavelet", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Calculating")
     await calculate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 5, kweight: 3, rmax: 6 })
+  })
+
+  it("retains the wavelet, Fourier companions and selected range through confirmed metadata-only revisions", async () => {
+    serve()
+    backendApi.mockImplementation(async (path, body, ...args) => {
+      if (path.endsWith("/wavelet")) return api(path, body, ...args)
+      const { version, kweight, kmin, kmax } = body as { version: number; kweight: number; kmin: number; kmax: number }
+      return {
+        project_id: "p", group_id: "Copper", version, kweight,
+        arrays: { k: [0, 1, 2, 3], weighted_chi: [0, 2, -1, 1], kwin: [0, 1, 1, 0], r: [0, 1, 2], chir_mag: [0, 7, 5] },
+        effective: { kweight, kmin, kmax }, warnings: [],
+      } satisfies PlotWeightResult
+    })
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} dataVersion={4} group={group()} />)
+    await calculate()
+    await calculate()
+    fireEvent.change(screen.getByRole("slider", { name: "k minimum" }), { target: { value: "1" } })
+    await calculate()
+    const heatmap = screen.getByLabelText("2D wavelet heatmap")
+    const companions = screen.getByLabelText("Fourier magnitude |χ(R)|")
+    const calls = backendApi.mock.calls.length
+
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} dataVersion={4} group={{ ...group(), marked: true }} />)
+    await calculate()
+    expect(backendApi).toHaveBeenCalledTimes(calls)
+    expect(screen.getByLabelText("2D wavelet heatmap")).toBe(heatmap)
+    expect(screen.getByLabelText("Fourier magnitude |χ(R)|")).toBe(companions)
+    expect(screen.getByRole("slider", { name: "k minimum" })).toHaveValue("1")
+    expect(screen.getByRole("button", { name: "Export CSV" })).toBeEnabled()
+
+    fireEvent.change(screen.getByRole("slider", { name: "k minimum" }), { target: { value: "1.5" } })
+    await calculate()
+    expect(backendApi.mock.calls.at(-1)?.[1]).toEqual({ version: 5, kweight: 3, kmin: 1.5, kmax: 3 })
+    expect(screen.getByLabelText("Fourier magnitude |χ(R)|")).toBeVisible()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("restarts an unfinished wavelet at the latest actual revision despite a stable data revision", async () => {
+    const previous = deferred(), next = deferred()
+    api.mockReturnValueOnce(previous.promise).mockReturnValueOnce(next.promise)
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} dataVersion={4} group={group()} />)
+    await calculate()
+    const signal = api.mock.calls[0][3]!
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} dataVersion={4} group={{ ...group(), marked: true }} />)
+    expect(signal.aborted).toBe(true)
+    await calculate()
+    expect(api.mock.calls[1][1]).toEqual({ version: 5, kweight: 3, rmax: 6 })
+    await act(async () => { previous.resolve(result()) })
+    expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
+    await act(async () => { next.resolve(result({ version: 5 })) })
+    expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
+  })
+
+  it.each(["data revision", "pending", "processing error"] as const)("invalidates a retained wavelet when %s changes", async change => {
+    serve()
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} dataVersion={4} group={group()} />)
+    await calculate()
+    // First reuse the completed result, exercising cleanup from the cache branch.
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} dataVersion={4} group={group()} />)
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(1)
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={6} dataVersion={change === "data revision" ? 6 : 4}
+      group={{ ...group(), processing_error: change === "processing error" ? "Invalid processing" : null }} pending={change === "pending"} />)
+    expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
+    if (change !== "data revision") {
+      await calculate()
+      expect(api).toHaveBeenCalledTimes(1)
+      view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={6} dataVersion={4} group={group()} />)
+      expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
+    }
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 6, kweight: 3, rmax: 6 })
   })
 
   it("cancels an in-flight request while spectrum processing is pending and calculates the completed revision", async () => {

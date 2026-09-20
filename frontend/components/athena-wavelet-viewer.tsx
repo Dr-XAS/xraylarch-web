@@ -31,9 +31,9 @@ function finiteArray(value: unknown): value is number[] {
   return Array.isArray(value) && value.every(item => typeof item === "number" && Number.isFinite(item))
 }
 
-function validPreview(preview: PlotWeightResult, data: WaveletResult, range: Range) {
+function validPreview(preview: PlotWeightResult, data: WaveletResult, range: Range, version: number) {
   if (!preview || preview.project_id !== data.project_id || preview.group_id !== data.group_id ||
-    preview.version !== data.version || preview.kweight !== data.kweight || !preview.arrays ||
+    preview.version !== version || preview.kweight !== data.kweight || !preview.arrays ||
     preview.effective?.kweight !== data.kweight) return false
   const { k, weighted_chi, kwin, r, chir_mag } = preview.arrays
   if (!finiteArray(k) || k.length < 2 || !finiteArray(weighted_chi) || weighted_chi.length !== k.length ||
@@ -72,12 +72,13 @@ function MeasuredPlot({ label, className, main = false, plotKey, ...props }: Com
   </div>
 }
 
-export function WaveletFigure({ data, mode, colormap, group }: {
+export function WaveletFigure({ data, version = data.version, dataVersion = version, mode, colormap, group }: {
   data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap; group: AthenaGroup
+  version?: number; dataVersion?: number
 }) {
   const athenaApi = useAthenaApi()
   const sliderId = useId()
-  const context = `${data.project_id}:${data.group_id}:${data.version}:${data.kweight}`
+  const context = `${data.project_id}:${data.group_id}:${dataVersion}:${data.kweight}`
   const domainMin = data.k[0]
   const domainMax = data.k[data.k.length - 1]
   const effective = group.result?.effective
@@ -92,30 +93,36 @@ export function WaveletFigure({ data, mode, colormap, group }: {
   const [shapeRevision, setShapeRevision] = useState(0)
   const [attempt, setAttempt] = useState(0)
   const [response, setResponse] = useState<{
-    key: string; signal: AbortSignal; data?: PlotWeightResult; error?: string
+    key: string; abort: AbortController; data?: PlotWeightResult; error?: string
   } | null>(null)
   const previewKey = JSON.stringify([context, range.min, range.max, attempt])
-  const current = response?.key === previewKey && !response.signal.aborted ? response : null
+  const latest = useRef({ key: previewKey, version })
+  latest.current = { key: previewKey, version }
+  const current = response?.key === previewKey && !response.abort.signal.aborted ? response : null
   const maximum = useMemo(() => data.magnitude.reduce((max, row) => row.reduce((m, value) => Math.max(m, value), max), 0) || 1, [data])
   const surface = mode === "3d"
 
   useEffect(() => {
     if (surface) return
+    if (current?.data) return () => { if (latest.current.key !== previewKey) current.abort.abort() }
     const abort = new AbortController()
+    let completed = false
     const timer = window.setTimeout(async () => {
       try {
         const preview = await athenaApi<PlotWeightResult>(`/projects/${data.project_id}/groups/${data.group_id}/plot-transform`, {
-          version: data.version, kweight: data.kweight, kmin: range.min, kmax: range.max,
+          version, kweight: data.kweight, kmin: range.min, kmax: range.max,
         }, "POST", abort.signal)
-        if (!validPreview(preview, data, range)) throw new Error("The Fourier preview does not match this spectrum and k range. Try again.")
-        if (!abort.signal.aborted) setResponse({ key: previewKey, signal: abort.signal, data: preview })
+        if (abort.signal.aborted || latest.current.key !== previewKey || latest.current.version !== version) return
+        if (!validPreview(preview, data, range, version)) throw new Error("The Fourier preview does not match this spectrum and k range. Try again.")
+        completed = true
+        setResponse({ key: previewKey, abort, data: preview })
       } catch (error) {
-        if (!abort.signal.aborted) setResponse({ key: previewKey, signal: abort.signal,
+        if (!abort.signal.aborted && latest.current.key === previewKey && latest.current.version === version) setResponse({ key: previewKey, abort,
           error: error instanceof Error ? error.message : "Could not calculate the selected k-range transform." })
       }
     }, 150)
-    return () => { window.clearTimeout(timer); abort.abort() }
-  }, [previewKey, surface, data.project_id, data.group_id, data.version, data.kweight, range.min, range.max])
+    return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== previewKey) abort.abort() }
+  }, [previewKey, surface, data.project_id, data.group_id, version, data.kweight, range.min, range.max])
 
   function updateRange(min: number, max: number) {
     const next = fitRange(min, max, domainMin, domainMax, gap)

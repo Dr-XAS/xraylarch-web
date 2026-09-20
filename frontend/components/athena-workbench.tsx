@@ -1,9 +1,10 @@
 "use client"
 
-import { Fragment, useEffect, useId, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Activity, BookOpen, ChevronDown, Copy, Download, ExternalLink, FileText, FolderOpen, GripVertical, Layers, LockKeyhole, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
 import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, type AthenaGroup, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
+import { isSelectionCommand, mergeSelectionUpdate, type AthenaSelectionUpdate } from "@/lib/athena-selection"
 import { AthenaProvider, useAthenaApi, useAthenaTransport } from "@/lib/athena-context"
 import { clearIntegrationReturnSelection, saveReturnSelection } from "@/lib/integration-session"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
@@ -330,6 +331,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [batchEdgePolicy, setBatchEdgePolicy] = useState<EdgePolicy | null>(null)
   const inspectionReuseRef = useRef<SharedImport | undefined>(undefined)
   const [project, setProject] = useState<AthenaProject | null>(null)
+  // Advance for full project responses, retain only for acknowledged flag-only updates.
+  const [plotDataVersion, setPlotDataVersion] = useState<number>()
   const projectRef = useRef<AthenaProject | null>(null)
   const skippedCount = useRef(0)
   const preferenceWarnings = useRef<string[]>([])
@@ -425,7 +428,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (menu === "Help") helpInputRef.current?.focus()
   }, [menu])
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
-  const marked = project?.groups.filter(g => g.marked) ?? []
+  const marked = useMemo(() => project?.groups.filter(g => g.marked) ?? [], [project?.groups])
   const visibleGroups = project?.groups.filter(group => group.label.toLowerCase().includes(search.toLowerCase())) ?? []
   const plotEnergyMode = active?.data_type === "detector" ? "mu" : energyMode
   const parameters = active && (drafts[active.id] ?? active.parameters)
@@ -450,7 +453,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   useEffect(() => () => {
     if (groupDragScrollFrameRef.current !== null) cancelAnimationFrame(groupDragScrollFrameRef.current)
   }, [])
-  const selectedGroups = plotScope === "selected" ? marked : active ? [active] : []
+  const selectedGroups = useMemo(() => plotScope === "selected" ? marked : active ? [active] : [], [plotScope, marked, active])
   const weightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, groups: selectedGroups,
     kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
   const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
@@ -714,7 +717,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     })
   }
 
-  function accept(p: AthenaProject) {
+  function accept(p: AthenaProject, preservePlotData = false) {
+    if (!preservePlotData) setPlotDataVersion(p.version)
     if (p.import_preferences_warning && !preferenceWarnings.current.includes(p.import_preferences_warning)) preferenceWarnings.current.push(p.import_preferences_warning)
     const previous = projectRef.current
     if (previous?.id !== p.id || previous.groups.length !== p.groups.length) {
@@ -776,11 +780,18 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const p = projectRef.current
     if (!p) throw new Error("Open a project first.")
     if (!canCommand(action)) throw new Error("This operation is unavailable in this integration session.")
-    const next = await athenaApi<AthenaProject>(`/projects/${p.id}/command`, { version: p.version, action, group_ids, options: commandOptions })
+    const compact = isSelectionCommand(action, commandOptions)
+    const response = await athenaApi<AthenaProject | AthenaSelectionUpdate>(`/projects/${p.id}/command`, {
+      version: p.version, action, group_ids, options: commandOptions,
+      ...(compact ? { response_mode: "selection" } : {}),
+    })
     if (projectRef.current?.id !== p.id || projectRef.current.version !== p.version) throw new Error("The active project changed while this operation was running. Its response was not loaded.")
+    const selectionUpdate = "kind" in response && response.kind === "selection"
+    if (selectionUpdate && !compact) throw new Error("Unexpected selection response. Reload the project before editing.")
+    const next = selectionUpdate ? mergeSelectionUpdate(p, response) : response as AthenaProject
     skippedCount.current = next.last_operation?.action === action ? next.last_operation.skipped_group_ids.length : 0
     if (next.last_operation?.action === action && next.last_operation.warnings) preferenceWarnings.current.push(...next.last_operation.warnings)
-    accept(next)
+    accept(next, selectionUpdate)
     return next
   }
   function act(action: string, ids = active ? [active.id] : [], opts: Record<string, unknown> = {}) {
@@ -1573,7 +1584,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           <div className="ath-plot-bottom"><span>{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span><div>{space === "E" && <label className="ath-check ath-range-relative" title={draftE0 === null ? "E₀ is unavailable for the current spectrum" : `Use the current spectrum’s E₀ (${draftE0} eV) as zero`}><input type="checkbox" checked={relativeRange} disabled={analysisVisible || draftE0 === null} onChange={event => setRangeRelativeToE0(event.target.checked)} />Relative to E₀</label>}<label>Range <PlotRangeInput label="Plot minimum" value={analysisVisible ? null : displayedRange[0]} automatic={displayedAutomaticRange[0]} disabled={analysisVisible || automaticRange[0] === null} onChange={value => setRange([absoluteRangeValue(value), range[1]])} /></label><span>to</span><PlotRangeInput label="Plot maximum" value={analysisVisible ? null : displayedRange[1]} automatic={displayedAutomaticRange[1]} disabled={analysisVisible || automaticRange[1] === null} onChange={value => setRange([range[0], absoluteRangeValue(value)])} />{active && project && can("export") && <button title="Export current group data" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/groups/${active.id}/export?space=${space}`, `${active.label}.csv`) }}><Download size={14} />CSV</button>}</div></div>
         </ResizablePlotCard>
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
-        <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />
+        <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} />
         {analysis && <section className="ath-analysis-result"><header><h3>{toolTitles[analysis.kind]}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><p className="ath-hint">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</p><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
         <div className="ath-center-note"><BookOpen size={15} /><span>Familiar Athena workflows. Scientific calculations by Larch.</span><button onClick={() => openTool("learn")}>Tutorials & reference <ExternalLink size={12} /></button></div>
       </section>}

@@ -703,6 +703,34 @@ class Command(BaseModel):
     action: str
     group_ids: list[str] = Field(default_factory=list, max_length=100)
     options: dict[str, Any] = Field(default_factory=dict)
+    response_mode: Literal["project", "selection"] = "project"
+
+    @model_validator(mode="after")
+    def selection_response_requires_selection_only(self):
+        if self.response_mode == "selection" and not (
+            self.action == "selection"
+            or (self.action == "metadata" and self.options
+                and set(self.options) <= {"marked", "frozen"})
+        ):
+            raise ValueError("A selection response requires only mark or freeze changes.")
+        return self
+
+
+def _command_response(project: dict, request: Command) -> dict:
+    """Omit unchanged spectra only after persistence and integration accounting."""
+    if request.response_mode == "project":
+        return project
+    return {
+        "kind": "selection", "base_version": request.version,
+        # Integration renames and saved analyses can change without advancing
+        # the project revision, so refresh them even for a flag-only command.
+        **{key: project[key] for key in (
+            "id", "name", "analyses", "version", "updated", "undo", "redo", "history",
+            "group_versions", "last_operation",
+        )},
+        "groups": [{key: group[key] for key in ("id", "marked", "frozen")}
+                   for group in project["groups"]],
+    }
 
 
 class SetE0Options(BaseModel):
@@ -3913,7 +3941,7 @@ def build_athena_router(
     ):
         project = store.load(ident)
         if project.get("integration") is not True:
-            return guarded(lambda: store.command(ident, request))
+            return _command_response(guarded(lambda: store.command(ident, request)), request)
         capability = project_capability or capability
         if integration_service is None or not capability:
             raise HTTPException(status_code=404, detail="Project was not found.")
@@ -3923,13 +3951,14 @@ def build_athena_router(
                 ident, capability, request.action, group_ids=request.group_ids
             )
             try:
-                return integration_service.mutate_v2_project(
+                saved = integration_service.mutate_v2_project(
                     ident,
                     capability,
                     request.action,
                     lambda: guarded(lambda: store.command(ident, request)),
                     now=datetime.now(timezone.utc),
                 )
+                return _command_response(saved, request)
             except Exception as exc:
                 from .integration_storage import IntegrationConflictError
                 if isinstance(exc, IntegrationConflictError):
@@ -3946,7 +3975,7 @@ def build_athena_router(
                 request.group_ids,
                 datetime.now(timezone.utc),
             ):
-                return guarded(lambda: store.command(ident, request))
+                return _command_response(guarded(lambda: store.command(ident, request)), request)
         except HTTPException:
             raise
         except Exception as exc:

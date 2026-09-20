@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Box, Download, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
@@ -19,6 +19,8 @@ export interface WaveletResult {
 
 interface Props {
   projectId?: string; version?: number; group?: AthenaGroup; pending?: boolean
+  /** May stay stable only when a confirmed project update leaves scientific data unchanged. */
+  dataVersion?: number
   kWeight: number | null
   colormap?: AthenaColormap
 }
@@ -47,11 +49,11 @@ function exportWavelet(data: WaveletResult) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function AthenaWavelet({ projectId, version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP }: Props) {
+export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP }: Props) {
   const athenaApi = useAthenaApi()
   const [mode, setMode] = useState<"2d" | "3d">("2d")
   const [retry, setRetry] = useState(0)
-  const [response, setResponse] = useState<{ key: string; data?: WaveletResult; error?: string } | null>(null)
+  const [response, setResponse] = useState<{ key: string; abort: AbortController; data?: WaveletResult; error?: string } | null>(null)
   const arrays = group?.result?.arrays
   const effectiveWeight = group?.result?.effective.kweight
   const defaultWeight = typeof effectiveWeight === "number" ? effectiveWeight : group?.parameters.kweight ?? 2
@@ -61,27 +63,34 @@ export function AthenaWavelet({ projectId, version, group, pending = false, kWei
     : group.processing_error ? "Resolve this spectrum’s processing error to view its wavelet transform."
     : !arrays?.k?.length || arrays.k.length !== arrays.chi?.length ? "Wavelets require processed EXAFS χ(k). Select an EXAFS spectrum to begin."
     : ""
-  const key = JSON.stringify([projectId, version, group?.id, selectedWeight, retry, reason])
-  const current = response?.key === key && !reason ? response : null
+  const key = JSON.stringify([projectId, dataVersion, group?.id, selectedWeight, retry, reason])
+  const latest = useRef({ key, version })
+  latest.current = { key, version }
+  const current = response?.key === key && !response.abort.signal.aborted && !reason ? response : null
   const groupId = group?.id
 
   useEffect(() => {
     if (reason || !projectId || !groupId || version === undefined) return
+    // Keep completed scientific results through confirmed metadata-only updates.
+    // Unfinished requests restart below with the current concurrency version.
+    if (current?.data) return () => { if (latest.current.key !== key) current.abort.abort() }
     const abort = new AbortController()
+    let completed = false
     const timer = window.setTimeout(async () => {
       try {
         const data = await athenaApi<WaveletResult>(`/projects/${projectId}/groups/${groupId}/wavelet`, {
           version, kweight: selectedWeight, rmax: 6,
         }, "POST", abort.signal)
-        if (abort.signal.aborted) return
+        if (abort.signal.aborted || latest.current.key !== key || latest.current.version !== version) return
         if (!data || data.project_id !== projectId || data.version !== version || data.group_id !== groupId ||
           data.kweight !== selectedWeight || !validGrid(data)) throw new Error("The wavelet data does not match this spectrum. Try again.")
-        setResponse({ key, data })
+        completed = true
+        setResponse({ key, abort, data })
       } catch (error) {
-        if (!abort.signal.aborted) setResponse({ key, error: error instanceof Error ? error.message : "Could not calculate the wavelet transform." })
+        if (!abort.signal.aborted && latest.current.key === key && latest.current.version === version) setResponse({ key, abort, error: error instanceof Error ? error.message : "Could not calculate the wavelet transform." })
       }
     }, 150)
-    return () => { window.clearTimeout(timer); abort.abort() }
+    return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== key) abort.abort() }
   }, [key, projectId, version, groupId, selectedWeight, reason])
 
   return <section aria-labelledby="ath-wavelet-title">
@@ -102,7 +111,7 @@ export function AthenaWavelet({ projectId, version, group, pending = false, kWei
       <div id="athena-wavelet-viewer" className={styles.viewport}>
         {reason ? <div data-wavelet-placeholder className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
           : current?.error ? <div data-wavelet-placeholder className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>
-          : current?.data ? <WaveletFigure key={key} data={current.data} group={group!} mode={mode} colormap={colormap} />
+          : current?.data ? <WaveletFigure key={key} data={current.data} version={version} dataVersion={dataVersion} group={group!} mode={mode} colormap={colormap} />
           : <div data-wavelet-placeholder className={styles.empty} role="status">Calculating wavelet transform…</div>}
       </div>
       <footer className={styles.footer}><span>Cauchy wavelet · |WT|{current?.data && ` · k-weight ${current.data.kweight}`}</span><span>R is not phase corrected</span></footer>

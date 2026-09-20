@@ -1,7 +1,7 @@
 "use client"
 
 import dynamic from "next/dynamic"
-import type { ComponentProps } from "react"
+import { useMemo, type ComponentProps } from "react"
 import type Plotly from "react-plotly.js"
 import { useTheme } from "./theme-provider"
 import { plotDataForTheme, plotLayoutForTheme } from "@/lib/plot-theme"
@@ -21,8 +21,8 @@ const Plot = dynamic(async () => {
 // Keep all interaction props, view revisions and scientific arrays unchanged.
 export function ThemedPlot({ data, layout, config, ...props }: ComponentProps<typeof Plotly>) {
   const { theme } = useTheme()
-  return <Plot {...props}
-    config={{ doubleClickDelay: 300, ...config, showSendToCloud: false }}
-    data={plotDataForTheme(plotDataWithTypography(data), theme)}
-    layout={plotLayoutForTheme(plotLayoutWithTypography(layout), theme)} />
+  const plotConfig = useMemo(() => ({ doubleClickDelay: 300, ...config, showSendToCloud: false }), [config])
+  const plotData = useMemo(() => plotDataForTheme(plotDataWithTypography(data), theme), [data, theme])
+  const plotLayout = useMemo(() => plotLayoutForTheme(plotLayoutWithTypography(layout), theme), [layout, theme])
+  return <Plot {...props} config={plotConfig} data={plotData} layout={plotLayout} />
 }

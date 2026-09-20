@@ -5,6 +5,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 
 import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Parameters, type E0Method } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
+import type { AthenaSelectionUpdate } from "@/lib/athena-selection"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./athena-plot"
 import { AthenaWavelet } from "./athena-wavelet"
@@ -2215,6 +2216,63 @@ describe("AthenaWorkbench background science controls", () => {
 })
 
 describe("AthenaWorkbench bulk marking and freezing", () => {
+  function selectionUpdate(project: AthenaProject, marked: boolean): AthenaSelectionUpdate {
+    return { kind: "selection", id: project.id, base_version: project.version, version: project.version + 1,
+      name: project.name, analyses: project.analyses ?? [],
+      updated: project.updated, groups: project.groups.map(g => ({ id: g.id, marked, frozen: g.frozen })),
+      undo: ["undo-7.json"], redo: [], history: [{ time: project.updated, message: "metadata" }],
+      group_versions: Object.fromEntries(project.groups.map(g => [g.id, project.version + 1])),
+      last_operation: { action: "metadata", skipped_group_ids: [] } }
+  }
+
+  it("merges a compact mark-all response, preserves scientific data and wavelet cache, then sends the latest revision", async () => {
+    const project = await openSaved()
+    const original = plotProps().active!
+    const wavelet = vi.mocked(AthenaWavelet)
+    expect(wavelet.mock.calls.at(-1)?.[0].dataVersion).toBe(project.version)
+    const update = selectionUpdate(project, true)
+    // These can be updated by another client without changing the source revision.
+    update.name = "Renamed from Dr.XAS"
+    update.analyses = [{ kind: "pca", project_version: project.version, group_ids: ["foil"], options: {}, result: { explained_variance_ratio: [1] } }]
+    api.mockResolvedValueOnce(update)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark all groups" }))
+    await waitFor(() => expect(screen.getByRole("checkbox", { name: "Mark all groups" })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "metadata", group_ids: project.groups.map(g => g.id),
+      options: { marked: true }, response_mode: "selection",
+    })
+    expect(screen.getByRole("checkbox", { name: "Mark all groups" })).toBeChecked()
+    expect(screen.getByRole("button", { name: "Renamed from Dr.XAS" })).toBeInTheDocument()
+    expect(screen.getByText(/Explained variance:/)).toBeInTheDocument()
+    expect(plotProps().groups).toHaveLength(project.groups.length)
+    expect(plotProps().active!.result).toBe(original.result)
+    expect(plotProps().active!.parameters).toBe(original.parameters)
+    expect(wavelet.mock.calls.at(-1)?.[0]).toMatchObject({ version: project.version + 1, dataVersion: project.version })
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled()
+    api.mockResolvedValueOnce({ ...project, version: project.version + 2, redo: ["redo-8.json"] })
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    await waitFor(() => expect(screen.getByRole("button", { name: "Redo" })).toBeEnabled())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version + 1, action: "undo", group_ids: [], options: {},
+    })
+    expect(wavelet.mock.calls.at(-1)?.[0].dataVersion).toBe(project.version + 2)
+    expect(screen.getByRole("checkbox", { name: "Mark all groups" })).not.toBeChecked()
+  })
+
+  it.each(["stale", "missing group", "wrong order", "invalid flag"])("rejects a %s compact response without replacing current data", async kind => {
+    const project = await openSaved()
+    const update = selectionUpdate(project, true)
+    if (kind === "stale") update.base_version -= 1
+    if (kind === "missing group") update.groups.pop()
+    if (kind === "wrong order") update.groups.reverse()
+    if (kind === "invalid flag") update.groups[0].marked = "true" as unknown as boolean
+    api.mockResolvedValueOnce(update)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Mark all groups" }))
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("selection response does not match"))
+    expect(plotProps().groups.map(g => g.id)).toEqual(["sample", "oxide"])
+    expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0]).toMatchObject({ version: project.version, dataVersion: project.version })
+  })
+
   it.each(["Mark all", "Mark none", "Invert marks"])("%s uses all IDs in list order, including frozen and search-hidden groups", async label => {
     const project = projectFixture()
     project.groups[2].frozen = true
@@ -2231,6 +2289,7 @@ describe("AthenaWorkbench bulk marking and freezing", () => {
       version: applied.version, action: label === "Invert marks" ? "selection" : "metadata",
       group_ids: ["foil", "sample", "oxide", "unused"],
       options: label === "Invert marks" ? { field: "marked", mode: "invert" } : { marked: label === "Mark all" },
+      response_mode: "selection",
     })
     expect(plotProps().active!.id).toBe("foil")
     expect(plotProps().active!.result).toEqual(project.groups[0].result)
@@ -2261,12 +2320,14 @@ describe("AthenaWorkbench bulk marking and freezing", () => {
     await waitFor(() => expect(mark).toBeEnabled())
     expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
       version: 7, action: "metadata", group_ids: ["foil", "unused"], options: { marked: true },
+      response_mode: "selection",
     })
     api.mockResolvedValueOnce(nextProject(accepted, { foil: { marked: false }, unused: { marked: false } }))
     fireEvent.click(view.getByRole("button", { name: "Unmark matching" }))
     await waitFor(() => expect(mark).toBeEnabled())
     expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
       version: 8, action: "metadata", group_ids: ["foil", "unused"], options: { marked: false },
+      response_mode: "selection",
     })
     expect(plotProps().active!.id).toBe("foil")
     expect(plotProps().groups.map(g => g.id)).toEqual(["sample", "oxide"])
@@ -2290,6 +2351,7 @@ describe("AthenaWorkbench bulk marking and freezing", () => {
       await waitFor(() => expect(view.getByRole("button", { name: label })).toBeEnabled())
       expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
         version: before.version, action: "metadata", group_ids: ids, options: { frozen },
+        response_mode: "selection",
       })
       expect(plotProps().active!.id).toBe("foil")
       expect(plotProps().active!.parameters).toEqual(project.groups[0].parameters)
@@ -3329,6 +3391,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
 
     expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
       version: project.version, action: "metadata", group_ids: ["sample"], options: { marked: false },
+      response_mode: "selection",
     })
     expect(plotProps().active?.id).toBe("foil")
     expect(plotProps().groups.map(g => g.id)).toEqual(["oxide"])

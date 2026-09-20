@@ -60,8 +60,8 @@ function transformed(overrides: Partial<PlotWeightResult> = {}): PlotWeightResul
 }
 function serve() {
   api.mockImplementation(async (_path, body) => {
-    const { kweight, kmin, kmax } = body as { kweight: number; kmin: number; kmax: number }
-    return transformed({ effective: { kweight, kmin, kmax } })
+    const { version, kweight, kmin, kmax } = body as { version: number; kweight: number; kmin: number; kmax: number }
+    return transformed({ version, effective: { kweight, kmin, kmax } })
   })
 }
 function deferred() {
@@ -168,6 +168,78 @@ describe("WaveletFigure", () => {
     expect(lineTraces()).toEqual(expect.arrayContaining([expect.objectContaining({ y: [0, 17, 15] })]))
     expect(lineTraces()).not.toEqual(expect.arrayContaining([expect.objectContaining({ y: [0, 7, 5] })]))
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("keeps completed companions across metadata revisions and uses the latest revision for a new range", async () => {
+    serve()
+    const data = freeze(wavelet()), spectrum = group()
+    const view = render(<WaveletFigure data={data} version={4} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    await calculate()
+    fireEvent.change(slider("k minimum"), { target: { value: "1.5" } })
+    await calculate()
+    const companions = screen.getByLabelText("Fourier magnitude |χ(R)|")
+    view.rerender(<WaveletFigure data={data} version={5} dataVersion={4} group={{ ...spectrum, marked: true }} mode="2d" colormap="magma" />)
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(screen.getByLabelText("Fourier magnitude |χ(R)|")).toBe(companions)
+    expect(slider("k minimum")).toHaveValue("1.5")
+    expect(lineTraces()).toHaveLength(2)
+    expect(data.version).toBe(4)
+    fireEvent.change(slider("k maximum"), { target: { value: "4" } })
+    await calculate()
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 5, kweight: 3, kmin: 1.5, kmax: 4 })
+    expect(lineTraces()).toHaveLength(2)
+  })
+
+  it("restarts an unfinished preview at the latest actual revision and ignores its old response", async () => {
+    const previous = deferred(), next = deferred()
+    api.mockReturnValueOnce(previous.promise).mockReturnValueOnce(next.promise)
+    const data = wavelet(), spectrum = group()
+    const view = render(<WaveletFigure data={data} version={4} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    await calculate()
+    const signal = api.mock.calls[0][3]!
+    view.rerender(<WaveletFigure data={data} version={5} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    expect(signal.aborted).toBe(true)
+    await calculate()
+    expect(api.mock.calls[1][1]).toEqual({ version: 5, kweight: 3, kmin: 3, kmax: 5 })
+    await act(async () => { previous.resolve(transformed()) })
+    expect(lineTraces()).toHaveLength(0)
+    await act(async () => { next.resolve(transformed({ version: 5 })) })
+    expect(lineTraces()).toHaveLength(2)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("validates new previews against the current request revision, not the retained wavelet revision", async () => {
+    serve()
+    const data = wavelet(), spectrum = group()
+    const view = render(<WaveletFigure data={data} version={4} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    await calculate()
+    view.rerender(<WaveletFigure data={data} version={5} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    api.mockResolvedValueOnce(transformed({ effective: { kweight: 3, kmin: 1.5, kmax: 5 } }))
+    fireEvent.change(slider("k minimum"), { target: { value: "1.5" } })
+    await calculate()
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 5, kweight: 3, kmin: 1.5, kmax: 5 })
+    expect(screen.getByRole("alert")).toHaveTextContent("does not match this spectrum")
+    expect(lineTraces()).toHaveLength(0)
+    expect(mainPlot().data[0].z).toEqual(data.magnitude)
+  })
+
+  it("invalidates cached companions and resets the range when scientific data changes", async () => {
+    serve()
+    const data = wavelet(), spectrum = group()
+    const view = render(<WaveletFigure data={data} version={4} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    await calculate()
+    fireEvent.change(slider("k minimum"), { target: { value: "1.5" } })
+    await calculate()
+    view.rerender(<WaveletFigure data={data} version={5} dataVersion={4} group={spectrum} mode="2d" colormap="magma" />)
+    await calculate()
+    view.rerender(<WaveletFigure data={{ ...data, version: 6 }} version={6} dataVersion={6} group={spectrum} mode="2d" colormap="magma" />)
+    expect(lineTraces()).toHaveLength(0)
+    expect(slider("k minimum")).toHaveValue("3")
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(3)
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 6, kweight: 3, kmin: 3, kmax: 5 })
+    expect(lineTraces()).toHaveLength(2)
   })
 
   it("keeps the heatmap available on transform failure and retries the same selected range", async () => {
