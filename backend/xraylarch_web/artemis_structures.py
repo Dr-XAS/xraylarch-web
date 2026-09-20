@@ -276,11 +276,13 @@ def _lock_slot(stream):
 
 class FeffJobs:
     """Small disk-backed job store; every subprocess gets its own cwd."""
-    def __init__(self, root: Path, store=None):
+    def __init__(self, root: Path, store=None, *, slot_root: Path | None = None):
         self.store = store
         self.root = Path(root) / "artemis-feff"
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self.root, 0o700)
+        self.slot_root = Path(slot_root) if slot_root is not None else self.root
+        self.slot_root.mkdir(mode=0o700, parents=True, exist_ok=True)
         self.lock = threading.RLock()
         self.running: set[str] = set()
         self._prune()
@@ -299,7 +301,7 @@ class FeffJobs:
         # The shared data-root locks enforce the two-job limit across workers,
         # and the OS releases a crashed worker's slot automatically.
         for index in range(2):
-            path = self.root / f".slot-{index}.lock"
+            path = self.slot_root / f".slot-{index}.lock"
             stream = path.open("a+b")
             os.chmod(path, 0o600)
             try:
@@ -506,7 +508,21 @@ class FeffJobs:
 
 def build_structures_router(store):
     router = APIRouter(tags=["Artemis structures"])
-    jobs = FeffJobs(store.settings.data_root, store=store)
+    from .sessions import RequestScopedStore
+
+    if isinstance(store, RequestScopedStore):
+        # Capture the concrete session store before FEFF starts its own thread.
+        # Job files remain private while the two-job cap is global to the app.
+        jobs = RequestScopedStore(
+            store.base_settings,
+            lambda scoped: FeffJobs(
+                scoped.data_root,
+                store=store.resolve(),
+                slot_root=store.base_settings.data_root / ".feff-slots",
+            ),
+        )
+    else:
+        jobs = FeffJobs(store.settings.data_root, store=store)
 
     @router.get("/structures")
     def search(q: str = Query(default="", max_length=120), element: str = Query(default="", max_length=2),

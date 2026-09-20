@@ -69,7 +69,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
 
   function project() {
     const current = getProject()
-    if (!current) throw new Error("Open a local workspace before importing a project.")
+    if (!current) throw new Error("Open a workspace before importing a project.")
     return current
   }
   function acceptPreview(next: ProjectPreview) {

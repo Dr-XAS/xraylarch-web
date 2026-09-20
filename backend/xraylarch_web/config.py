@@ -52,6 +52,8 @@ class Settings:
     integration_issuer: str | None = None
     integration_audience: str | None = None
     integration_hmac_secret: str | None = None
+    public_mode: bool = False
+    session_cookie_secure: bool = True
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "data_root", Path(self.data_root).expanduser())
@@ -59,6 +61,8 @@ class Settings:
             ("integration_api_enabled", self.integration_api_enabled),
             ("browser_consume_enabled", self.browser_consume_enabled),
             ("import_enabled", self.import_enabled),
+            ("public_mode", self.public_mode),
+            ("session_cookie_secure", self.session_cookie_secure),
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be a boolean.")
@@ -103,6 +107,8 @@ class Settings:
             raise ValueError(
                 "Browser consume and import require the integration API to be enabled."
             )
+        if self.public_mode and self.integration_api_enabled:
+            raise ValueError("Public browser mode cannot enable the integration API.")
         if self.integration_api_enabled:
             if not self.integration_issuer or not self.integration_issuer.strip():
                 raise ValueError("Integration issuer must be configured.")
@@ -133,10 +139,10 @@ class Settings:
             except ValueError as exc:
                 raise ValueError(f"{name} must be an integer.") from exc
 
-        def boolean_setting(name: str) -> bool:
+        def boolean_setting(name: str, default: bool = False) -> bool:
             configured = os.environ.get(name)
             if configured is None:
-                return False
+                return default
             normalized = configured.strip().lower()
             if normalized == "true":
                 return True
@@ -202,4 +208,6 @@ class Settings:
             integration_hmac_secret=os.environ.get(
                 "XRAYLARCH_INTEGRATION_HMAC_SECRET"
             ),
+            public_mode=boolean_setting("XRAYLARCH_PUBLIC_MODE", False),
+            session_cookie_secure=boolean_setting("XRAYLARCH_SESSION_COOKIE_SECURE", True),
         )

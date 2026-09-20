@@ -93,3 +93,66 @@ class SmoothingPreferences:
                 self._applied = values
             self._version += 1
             return self._view()
+
+
+class PublicSmoothingState(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    session_id: str = Field(min_length=1, max_length=128)
+    version: int = Field(default=0, strict=True, ge=0)
+    saved: SGValues = Field(default_factory=SGValues)
+    applied: SGValues | None = None
+
+
+class PersistentSmoothingPreferences(SmoothingPreferences):
+    """Preserve browser Apply/Save state across request-local instances."""
+
+    def _sync(self):
+        try:
+            state = PublicSmoothingState.model_validate(
+                self.storage.read_json(self.ident, "smoothing-session.json")
+            )
+        except FileNotFoundError:
+            state = PublicSmoothingState(session_id=self.session_id)
+            self.storage.write_json(
+                self.ident, "smoothing-session.json", state.model_dump()
+            )
+        self.session_id = state.session_id
+        self._version = state.version
+        self._saved = state.saved.model_dump()
+        self._applied = (
+            None if state.applied is None else state.applied.model_dump()
+        )
+
+    def apply(self, request: SGPreferenceRequest):
+        with self._lock, self.storage.lock(self.ident):
+            self._sync()
+            if (
+                request.version != self._version
+                or request.session_id != self.session_id
+            ):
+                raise WebInputError(
+                    "stale_revision",
+                    "Smoothing preferences changed in another window.",
+                    recovery=(
+                        "Reload preferences, review the values and apply again."
+                    ),
+                )
+            state = PublicSmoothingState(
+                session_id=self.session_id,
+                version=self._version + 1,
+                saved=(
+                    request.values
+                    if request.save
+                    else SGValues.model_validate(self._saved)
+                ),
+                applied=None if request.save else request.values,
+            )
+            self.storage.write_json(
+                self.ident, "smoothing-session.json", state.model_dump()
+            )
+            self._version = state.version
+            self._saved = state.saved.model_dump()
+            self._applied = (
+                None if state.applied is None else state.applied.model_dump()
+            )
+            return self._view()

@@ -27,6 +27,59 @@ describe("backend proxy", () => {
     expect(response.status).toBe(409)
     expect(await response.json()).toEqual(error)
   })
+
+  it.each([
+    ["POST", ["api", "artemis", "paths", "inspect"]],
+    ["GET", ["api", "artemis", "examples", "copper"]],
+    ["GET", ["api", "artemis", "structures"]],
+    ["GET", ["api", "artemis", "structures", "13088"]],
+    ["POST", ["api", "artemis", "feff", "jobs"]],
+    ["GET", ["api", "artemis", "feff", "jobs", "0123456789abcdef0123456789abcdef"]],
+    ["GET", ["api", "artemis", "projects", "project-cu", "structures"]],
+    ["POST", ["api", "artemis", "projects", "project-cu", "structures"]],
+    ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "fit"]],
+  ])("forwards the current Artemis %s %j route", async (method, path) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}", {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, {
+      method,
+      ...(method === "POST" ? { body: "{}", headers: { "content-type": "application/json" } } : {}),
+    })
+    const handler = method === "POST" ? POST : GET
+
+    const response = await handler(request, { params: Promise.resolve({ path }) })
+
+    expect(response.status).toBe(200)
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(fetcher.mock.calls[0][0].pathname).toBe(`/${path.join("/")}`)
+  })
+
+  it.each([
+    ["GET", ["api", "artemis"]],
+    ["GET", ["api", "artemis", "admin"]],
+    ["GET", ["api", "artemis", "future", "status"]],
+    ["POST", ["api", "artemis", "structures"]],
+    ["DELETE", ["api", "artemis", "structures", "13088"]],
+    ["PUT", ["api", "artemis", "feff", "jobs"]],
+    ["PATCH", ["api", "artemis", "projects", "project-cu", "structures"]],
+    ["GET", ["api", "artemis", "paths", "inspect"]],
+    ["POST", ["api", "artemis", "examples", "copper"]],
+    ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "fit", "admin"]],
+  ])("blocks unknown or unsupported Artemis %s %j before fetching", async (method, path) => {
+    const fetcher = vi.fn()
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, { method })
+    const handler = method === "POST" ? POST : method === "PUT" ? PUT : method === "PATCH" ? PATCH : method === "DELETE" ? DELETE : GET
+
+    const response = await handler(request, { params: Promise.resolve({ path }) })
+
+    expect(response.status).toBe(404)
+    expect(await response.json()).toEqual({ error: "Not found" })
+    expect(fetcher).not.toHaveBeenCalled()
+  })
+
   it("preserves the Athena export revision with attachment bytes", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("# saved data\n8970 1", {
       headers: { "content-type": "text/plain", "content-disposition": 'attachment; filename="Cu.xmu"', "x-athena-project-version": "17" },
@@ -38,6 +91,20 @@ describe("backend proxy", () => {
     expect(response.headers.get("content-disposition")).toBe('attachment; filename="Cu.xmu"')
     expect(await response.text()).toBe("# saved data\n8970 1")
   })
+  it("forwards only the anonymous app cookie and returns its renewed cookie privately", async () => {
+    const upstream = new Response("{}")
+    upstream.headers.append("set-cookie", "unrelated=secret; Path=/")
+    upstream.headers.append("set-cookie", "xraylarch_session=renewed; Path=/; Secure; HttpOnly; SameSite=Lax")
+    const fetcher = vi.fn().mockResolvedValue(upstream)
+    vi.stubGlobal("fetch", fetcher)
+    const response = await GET(new Request("https://frontend.test/api/backend/api/athena/projects", {
+      headers: { cookie: "unrelated=secret; xraylarch_session=signed; another=private" },
+    }), { params: Promise.resolve({ path: ["api", "athena", "projects"] }) })
+    expect(fetcher.mock.calls[0][1].headers.get("cookie")).toBe("xraylarch_session=signed")
+    expect(response.headers.getSetCookie()).toEqual(["xraylarch_session=renewed; Path=/; Secure; HttpOnly; SameSite=Lax"])
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+  })
+
   it("forwards normalized preview mode and repeated encoded IDs without mutating the request or route parameters", async () => {
     vi.stubEnv("BACKEND_URL", "http://backend.test:8010/")
     const nativeId = "Fe/foil ?# μ+"

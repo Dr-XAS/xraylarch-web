@@ -336,7 +336,7 @@ async function openSaved(project = projectFixture()) {
 }
 
 async function waitForWorkbenchIdle() {
-  await waitFor(() => expect(screen.getByText("Saved locally", { exact: true })).toBeVisible())
+  await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeVisible())
 }
 
 async function waitForCommand(projectId: string, body: Record<string, unknown>) {
@@ -1448,19 +1448,21 @@ describe("AthenaWorkbench import edge policy", () => {
   it("starts off without a catalog request, enables without mutating the project, and cancels edits", async () => {
     const project = await openSaved()
     editNumber(/^Rbkg/, 2.7)
+    const applied = await finishParameterDrafts(project, [{ groupId: "foil", options: { rbkg: 2.7 } }])
     expect(policyBar()).toHaveTextContent("Off")
-    expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
+    expect(api).toHaveBeenCalledTimes(2)
     await enableCopperPolicy()
-    expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/edges?element=Cu"]])
+    expect(api.mock.calls.at(-1)).toEqual(["/edges?element=Cu"])
+    expect(api).toHaveBeenCalledTimes(3)
     expect(JSON.parse(sessionStorage.getItem(edgePolicyStorageKey)!)).toEqual(copperPolicy)
-    expect(plotProps().active).toBe(project.groups[0])
+    expect(plotProps().active).toBe(applied.groups[0])
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.7)
     const dialog = await openEdgePolicyDialog()
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Element symbol" }), { target: { value: "Fe" } })
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
     expect(policyBar()).toHaveTextContent("Cu K · fraction 0.5")
     expect(JSON.parse(sessionStorage.getItem(edgePolicyStorageKey)!)).toEqual(copperPolicy)
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).toHaveBeenCalledTimes(3)
   })
 
   it.each(["empty", "frozen"] as const)("can enable and stop enforcement with %s groups and no marks", async kind => {
@@ -2885,6 +2887,60 @@ describe("AthenaWorkbench project loading", () => {
     expect(relative()).toBeChecked()
     expect(minimum()).toHaveValue(-19)
     expect(maximum()).toHaveValue(21)
+  })
+
+  it("replaces an unavailable saved project with a new project", async () => {
+    const replacement = projectFixture({ id: "new-session-project", groups: [] })
+    localStorage.setItem(storageKey, "expired-project")
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "workspace_not_found", message: "Project was not found.", fields: [], recovery: "Create a new project.",
+    }, 404))
+    api.mockResolvedValueOnce(replacement)
+    render(<StrictMode><AthenaWorkbench /></StrictMode>)
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Import data$/i })).toBeEnabled())
+    expect(api.mock.calls).toEqual([["/projects/expired-project"], ["/projects", {}]])
+    expect(localStorage.getItem(storageKey)).toBe(replacement.id)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(plotProps().groups).toEqual([])
+  })
+
+  it.each([
+    [503, "api_request_failed"],
+    [404, "api_request_failed"],
+    [503, "workspace_not_found"],
+  ])("preserves the saved project for HTTP %i with error %s", async (status, code) => {
+    localStorage.setItem(storageKey, "saved-project")
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code, message: "The project request failed.", fields: [], recovery: "Retry the request.",
+    }, status))
+    render(<AthenaWorkbench />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The project request failed.")
+    expect(api).toHaveBeenCalledExactlyOnceWith("/projects/saved-project")
+    expect(localStorage.getItem(storageKey)).toBe("saved-project")
+  })
+
+  it("keeps the saved ID when replacement creation fails and recovers on reload", async () => {
+    const missing = new ApiRequestError({
+      code: "workspace_not_found", message: "Project was not found.", fields: [], recovery: "Create a new project.",
+    }, 404)
+    const replacement = projectFixture({ id: "new-session-project", groups: [] })
+    localStorage.setItem(storageKey, "expired-project")
+    api.mockRejectedValueOnce(missing).mockRejectedValueOnce(new Error("Creation temporarily failed"))
+    api.mockRejectedValueOnce(missing).mockResolvedValueOnce(replacement)
+    render(<AthenaWorkbench />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Creation temporarily failed")
+    expect(localStorage.getItem(storageKey)).toBe("expired-project")
+    fireEvent.click(screen.getByRole("button", { name: /reload workspace/i }))
+
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument())
+    expect(api.mock.calls).toEqual([
+      ["/projects/expired-project"], ["/projects", {}],
+      ["/projects/expired-project"], ["/projects", {}],
+    ])
+    expect(localStorage.getItem(storageKey)).toBe(replacement.id)
   })
 
   it("retries the saved project after a load failure instead of creating a new workspace", async () => {

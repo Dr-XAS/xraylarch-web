@@ -747,8 +747,14 @@ _PARAMETER_SECTIONS = {
 
 class AthenaStore:
     def __init__(self, settings: Settings):
-        self.plugin_configurations = PluginConfigurations(settings)
-        self.smoothing_preferences = SmoothingPreferences(settings)
+        if settings.public_mode:
+            from .athena_plugin_config import PersistentPluginConfigurations
+            from .athena_smoothing_preferences import PersistentSmoothingPreferences
+            self.plugin_configurations = PersistentPluginConfigurations(settings)
+            self.smoothing_preferences = PersistentSmoothingPreferences(settings)
+        else:
+            self.plugin_configurations = PluginConfigurations(settings)
+            self.smoothing_preferences = SmoothingPreferences(settings)
         from .athena_preferences import AthenaPreferences
         self.preferences = AthenaPreferences(settings)
         self.settings = settings
@@ -3540,8 +3546,11 @@ def build_athena_router(
     store: AthenaStore | None = None,
     integration_service: "IntegrationService | None" = None,
 ):
-    store = store or AthenaStore(settings)
-    preferences = AthenaPreferences(settings)
+    from .sessions import RequestScopedStore
+    store = store or (RequestScopedStore(settings, AthenaStore)
+                      if settings.public_mode else AthenaStore(settings))
+    preferences = (RequestScopedStore(settings, AthenaPreferences)
+                   if settings.public_mode else AthenaPreferences(settings))
 
     IntegrationOperation: TypeAlias = Literal[
         "read_project", "upload", "import", "preview", "read_upload", "command",
@@ -3858,23 +3867,23 @@ def build_athena_router(
 
     @router.get('/preferences/dispersive')
     def dispersive_defaults():
-        return guarded(lambda: AthenaPreferences(settings).read_dispersive())
+        return guarded(lambda: preferences.read_dispersive())
 
     @router.put('/preferences/dispersive')
     def save_dispersive_defaults(request: DispersiveDefaults):
-        return guarded(lambda: AthenaPreferences(settings).save_dispersive(request))
+        return guarded(lambda: preferences.save_dispersive(request))
 
     @router.get('/preferences/dispersive/file')
     def dispersive_file():
         from .athena_dispersive import encode_calibration
-        content=guarded(lambda: encode_calibration(AthenaPreferences(settings).read_dispersive()['coefficients']))
+        content=guarded(lambda: encode_calibration(preferences.read_dispersive()['coefficients']))
         return Response(content,media_type='application/x-yaml',headers={'Content-Disposition':'attachment; filename="athena.dxas"'})
 
     @router.post('/preferences/dispersive/import')
     async def import_dispersive_defaults(version: int=Query(...,ge=0),file: UploadFile=File(...)):
         from .athena_dispersive import decode_calibration
         data=await _read_bounded_upload(file,4096)
-        return guarded(lambda: AthenaPreferences(settings).save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
+        return guarded(lambda: preferences.save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
 
     @router.post("/projects/{ident}/import")
     def import_data(ident: str, request: ImportRequest, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):

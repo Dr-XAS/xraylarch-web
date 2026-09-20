@@ -12,6 +12,7 @@ from .config import Settings
 from .contracts import ErrorEnvelope
 from .errors import WebInputError
 from .routes import build_api_router
+from .sessions import AnonymousSessionMiddleware, RequestScopedStore
 from .upload_limit import UploadBodyLimitMiddleware
 from .workspace import WorkspaceStore
 
@@ -33,11 +34,22 @@ def _domain_status(error: WebInputError) -> int:
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_environment()
     app = FastAPI(title="XrayLarch Web", version=__version__)
-    store = WorkspaceStore(active_settings.data_root, max_nfft=active_settings.max_nfft)
+    store = (
+        RequestScopedStore(
+            active_settings,
+            lambda scoped: WorkspaceStore(
+                scoped.data_root, max_nfft=scoped.max_nfft
+            ),
+        )
+        if active_settings.public_mode
+        else WorkspaceStore(active_settings.data_root, max_nfft=active_settings.max_nfft)
+    )
     app.add_middleware(
         UploadBodyLimitMiddleware,
         max_body_bytes=active_settings.max_upload_bytes,
     )
+    if active_settings.public_mode:
+        app.add_middleware(AnonymousSessionMiddleware, settings=active_settings)
 
     @app.exception_handler(WebInputError)
     async def handle_web_input_error(_: Request, error: WebInputError) -> JSONResponse:
@@ -76,10 +88,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "integration_contract_version": 2,
         }
 
+    @app.get("/api/session")
+    def session() -> dict[str, bool]:
+        """Initialize a browser cookie before issuing concurrent API requests."""
+        return {"isolated": active_settings.public_mode}
+
     app.include_router(build_api_router(store, active_settings))
     from .athena import AthenaStore, build_athena_router
 
-    athena_store = AthenaStore(active_settings)
+    athena_store = (
+        RequestScopedStore(active_settings, AthenaStore)
+        if active_settings.public_mode
+        else AthenaStore(active_settings)
+    )
     integration_service = None
     if active_settings.integration_api_enabled:
         from .integration_routes import build_integration_router

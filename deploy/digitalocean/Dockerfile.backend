@@ -1,0 +1,53 @@
+# syntax=docker/dockerfile:1
+FROM python:3.12-slim-bookworm
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MPLBACKEND=Agg \
+    MPLCONFIGDIR=/tmp/matplotlib \
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1 \
+    XRAYLARCH_DATA_ROOT=/data
+
+# Scientific Linux wheels and bundled FEFF executables need these runtimes.
+# No desktop/GUI extras are installed.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgomp1 libgfortran5 libstdc++6 \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 larch \
+    && useradd --uid 10001 --gid 10001 --create-home larch \
+    && mkdir /data \
+    && chown larch:larch /data
+
+WORKDIR /app
+COPY pyproject.toml setup.py MANIFEST.in README.md LICENSE INSTALL ./
+COPY larch ./larch
+COPY deploy/python-release-constraints.txt ./deploy/python-release-constraints.txt
+COPY backend/requirements.txt ./backend/requirements.txt
+
+# The Docker context intentionally omits .git; setuptools-scm still needs a version.
+ARG LARCH_VERSION=2026.3.1
+WORKDIR /app/backend
+RUN SETUPTOOLS_SCM_PRETEND_VERSION="${LARCH_VERSION}" \
+    python -m pip install --prefer-binary \
+      --constraint /app/deploy/python-release-constraints.txt \
+      --requirement requirements.txt \
+    && python -m pip check
+
+COPY backend/xraylarch_web ./xraylarch_web
+COPY examples/xafsdata /app/examples/xafsdata
+
+ARG XRAYLARCH_GIT_REVISION=unknown
+LABEL org.opencontainers.image.revision="${XRAYLARCH_GIT_REVISION}" \
+    org.opencontainers.image.description="XrayLarch web with anonymous visitor isolation"
+USER larch
+EXPOSE 8006
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=5 \
+    CMD python -c "import json, urllib.request; assert json.load(urllib.request.urlopen('http://127.0.0.1:8006/health', timeout=3))['status'] == 'ok'"
+
+# Plugin state currently lives in one process. Do not increase --workers.
+CMD ["python", "-m", "uvicorn", "xraylarch_web.main:app", "--host", "0.0.0.0", "--port", "8006", "--workers", "1", "--no-proxy-headers", "--timeout-graceful-shutdown", "60"]

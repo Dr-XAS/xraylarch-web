@@ -183,6 +183,71 @@ async function clickReadyPreview() {
 describe("WorkbenchShell", () => {
   beforeEach(() => localStorage.clear())
 
+  it("replaces an unavailable saved workspace and remembers its new ID", async () => {
+    localStorage.setItem("xraylarch-web.workspace-id", "expired-workspace")
+    const client = fakeClient({
+      getWorkspace: vi.fn().mockRejectedValue(new ApiRequestError({
+        code: "workspace_not_found", message: "Workspace was not found.", fields: [], recovery: "Create a new workspace.",
+      }, 404)),
+    })
+    render(<WorkbenchShell client={client} />)
+
+    const upload = await screen.findByLabelText(/upload spectrum/i)
+    await waitFor(() => expect(upload).toBeEnabled())
+    expect(client.getWorkspace).toHaveBeenCalledExactlyOnceWith("expired-workspace")
+    expect(client.createWorkspace).toHaveBeenCalledExactlyOnceWith()
+    expect(localStorage.getItem("xraylarch-web.workspace-id")).toBe(emptySnapshot.workspace_id)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    fireEvent.change(upload, { target: { files: [new File(["8970 0.1"], "test.xmu")] } })
+    await waitFor(() => expect(client.inspectUpload).toHaveBeenCalledWith(emptySnapshot.workspace_id, expect.any(File)))
+  })
+
+  it.each([
+    [503, "api_request_failed"],
+    [404, "api_request_failed"],
+    [503, "workspace_not_found"],
+  ])("preserves the saved workspace for HTTP %i with error %s", async (status, code) => {
+    localStorage.setItem("xraylarch-web.workspace-id", "saved-workspace")
+    const client = fakeClient({
+      getWorkspace: vi.fn().mockRejectedValue(new ApiRequestError({
+        code, message: "The workspace request failed.", fields: [], recovery: "Retry the request.",
+      }, status)),
+    })
+    render(<WorkbenchShell client={client} />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The workspace request failed.")
+    expect(client.createWorkspace).not.toHaveBeenCalled()
+    expect(localStorage.getItem("xraylarch-web.workspace-id")).toBe("saved-workspace")
+    expect(screen.getByLabelText(/upload spectrum/i)).toBeDisabled()
+  })
+
+  it("preserves the saved workspace after a network failure", async () => {
+    localStorage.setItem("xraylarch-web.workspace-id", "saved-workspace")
+    const client = fakeClient({ getWorkspace: vi.fn().mockRejectedValue(new TypeError("Failed to fetch")) })
+    render(<WorkbenchShell client={client} />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The request could not be completed.")
+    expect(client.createWorkspace).not.toHaveBeenCalled()
+    expect(localStorage.getItem("xraylarch-web.workspace-id")).toBe("saved-workspace")
+  })
+
+  it("keeps the saved workspace ID when replacement creation fails", async () => {
+    localStorage.setItem("xraylarch-web.workspace-id", "expired-workspace")
+    const client = fakeClient({
+      getWorkspace: vi.fn().mockRejectedValue(new ApiRequestError({
+        code: "workspace_not_found", message: "Workspace was not found.", fields: [], recovery: "Create a new workspace.",
+      }, 404)),
+      createWorkspace: vi.fn().mockRejectedValue(new ApiRequestError({
+        code: "api_request_failed", message: "Creation temporarily failed.", fields: [], recovery: "Retry the request.",
+      }, 503)),
+    })
+    render(<WorkbenchShell client={client} />)
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Creation temporarily failed.")
+    expect(client.createWorkspace).toHaveBeenCalledExactlyOnceWith()
+    expect(localStorage.getItem("xraylarch-web.workspace-id")).toBe("expired-workspace")
+  })
+
   it("accepts files with arbitrary extensions", async () => {
     const client = fakeClient()
     render(<WorkbenchShell client={client} />)

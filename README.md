@@ -384,15 +384,25 @@ npm run test:e2e -- integration-mounted.spec.ts
 
 ### Operating boundary and deferred work
 
-V1 is for a trusted network and one user. It has no Dr.XAS authentication, no
-user accounts, and no access to Dr.XAS shared data, databases, secrets, or
-provider credentials. Do not expose it to the public internet or treat it as a
-multi-user service.
+The default local mode is for a trusted network and one user. It has no Dr.XAS
+authentication, user accounts, or access to Dr.XAS shared data or credentials.
+Do not expose that default mode to the public internet.
+
+For a small public beta, use the separate
+[DigitalOcean deployment package](deploy/digitalocean/README.md). It enables
+`XRAYLARCH_PUBLIC_MODE=true` on both services, establishes an HttpOnly signed
+browser cookie before loading the workbench, and isolates projects, uploads,
+and preferences per anonymous browser session. HTTPS and a persistent data
+volume (including the session signing key) are required. Clearing browser
+cookies removes access to that browser's saved projects; export projects for
+long-term storage. This mode has no account recovery, public sharing, or
+automatic disk cleanup. The existing Dr.XAS host scripts still use trusted
+local mode.
 
 XRF and XRD tools, fitting and FEFF work, multi-file alignment or batch flows,
-chat, public deployment, authentication, and sharing remain outside V1. The
-integrated route is `/advanced-xas/app` behind Dr.XAS ingress; this README does
-not imply that it has been deployed.
+chat, account authentication, and sharing remain outside V1. The integrated
+route is `/advanced-xas/app` behind Dr.XAS ingress; this README does not imply
+that it has been deployed.
 
 ### Guarded Dr.XAS release package
 

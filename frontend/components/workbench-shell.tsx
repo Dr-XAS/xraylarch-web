@@ -34,12 +34,17 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
     async function initialise() {
       try {
         const storedWorkspace = window.localStorage.getItem(workspaceStorageKey)
+        let restored = Boolean(storedWorkspace)
         const snapshot = storedWorkspace
-          ? await client.getWorkspace(storedWorkspace)
+          ? await client.getWorkspace(storedWorkspace).catch(error => {
+            if (!current || !(error instanceof ApiRequestError && error.status === 404 && error.code === "workspace_not_found")) throw error
+            restored = false
+            return client.createWorkspace()
+          })
           : await client.createWorkspace()
         if (!current) return
         window.localStorage.setItem(workspaceStorageKey, snapshot.workspace_id)
-        dispatch({ type: storedWorkspace ? "workspace/hydrated" : "workspace/created", snapshot })
+        dispatch({ type: restored ? "workspace/hydrated" : "workspace/created", snapshot })
       } catch (error) {
         if (current) dispatch({ type: "error/received", error: asApiError(error) })
       }

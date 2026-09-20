@@ -1,0 +1,85 @@
+name: xraylarch-beta
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  backend:
+    image: xraylarch-beta-backend:${LARCH_RELEASE_TAG:-manual}
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: deploy/digitalocean/Dockerfile.backend
+      args:
+        XRAYLARCH_GIT_REVISION: ${XRAYLARCH_GIT_REVISION:-unknown}
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 70s
+    environment:
+      XRAYLARCH_PUBLIC_MODE: "true"
+      XRAYLARCH_GIT_REVISION: ${XRAYLARCH_GIT_REVISION:-unknown}
+      XRAYLARCH_DATA_ROOT: /data
+      XRAYLARCH_MAX_UPLOAD_BYTES: ${XRAYLARCH_MAX_UPLOAD_BYTES:-50000000}
+      XRAYLARCH_MAX_POINTS: ${XRAYLARCH_MAX_POINTS:-250000}
+      XRAYLARCH_MAX_COLUMNS: ${XRAYLARCH_MAX_COLUMNS:-256}
+      XRAYLARCH_MAX_NFFT: ${XRAYLARCH_MAX_NFFT:-262144}
+    volumes:
+      - app_data:/data
+    expose:
+      - "8006"
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  frontend:
+    image: xraylarch-beta-frontend:${LARCH_RELEASE_TAG:-manual}
+    platform: linux/amd64
+    build:
+      context: ../..
+      dockerfile: deploy/digitalocean/Dockerfile.frontend
+      args:
+        XRAYLARCH_GIT_REVISION: ${XRAYLARCH_GIT_REVISION:-unknown}
+    restart: unless-stopped
+    init: true
+    environment:
+      BACKEND_URL: http://backend:8006
+      XRAYLARCH_PUBLIC_MODE: "true"
+    depends_on:
+      backend:
+        condition: service_healthy
+    expose:
+      - "3000"
+    security_opt:
+      - no-new-privileges:true
+    logging: *logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in deploy/digitalocean/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      frontend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+
+volumes:
+  app_data:
+  caddy_data:
+  caddy_config:

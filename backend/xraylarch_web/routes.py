@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 from io import StringIO
 
-from fastapi import APIRouter, File, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse, Response
 
 from .config import Settings
@@ -19,6 +19,7 @@ from .contracts import (
 from .errors import WebInputError
 from .parsing import parse_upload
 from .workspace import WorkspaceStore
+from .sessions import request_settings
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
 async def _read_bounded_upload(file: UploadFile, max_bytes: int) -> bytes:
@@ -63,15 +64,21 @@ def _csv_result(result: ProcessingResult) -> str:
 def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
     router = APIRouter(prefix="/api")
 
+    def current_store(request: Request) -> WorkspaceStore:
+        if not settings.public_mode:
+            return store
+        scoped = request_settings(request, settings)
+        return WorkspaceStore(scoped.data_root, max_nfft=scoped.max_nfft)
+
     @router.post("/workspaces", response_model=WorkspaceSnapshot)
-    def create_workspace() -> WorkspaceSnapshot:
+    def create_workspace(store: WorkspaceStore = Depends(current_store)) -> WorkspaceSnapshot:
         return store.create()
 
     @router.post(
         "/workspaces/{workspace_id}/uploads/inspect",
         response_model=InspectionResponse,
     )
-    async def inspect_upload(workspace_id: str, file: UploadFile = File(...)) -> InspectionResponse:
+    async def inspect_upload(workspace_id: str, file: UploadFile = File(...), store: WorkspaceStore = Depends(current_store)) -> InspectionResponse:
         source_bytes = await _read_bounded_upload(file, settings.max_upload_bytes)
         parsed = parse_upload(
             source_bytes,
@@ -84,7 +91,7 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         return InspectionResponse(upload_id=upload_id, **parsed.inspection().model_dump())
 
     @router.post("/workspaces/{workspace_id}/mapping", response_model=WorkspaceSnapshot)
-    def confirm_mapping(workspace_id: str, request: MappingRequest) -> WorkspaceSnapshot:
+    def confirm_mapping(workspace_id: str, request: MappingRequest, store: WorkspaceStore = Depends(current_store)) -> WorkspaceSnapshot:
         store.confirm_mapping(
             workspace_id,
             request.upload_id,
@@ -94,15 +101,15 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         return store.load(workspace_id)
 
     @router.get("/workspaces/{workspace_id}", response_model=WorkspaceSnapshot)
-    def get_workspace(workspace_id: str) -> WorkspaceSnapshot:
+    def get_workspace(workspace_id: str, store: WorkspaceStore = Depends(current_store)) -> WorkspaceSnapshot:
         return store.load(workspace_id)
 
     @router.post("/workspaces/{workspace_id}/preview", response_model=ProcessingResult)
-    def preview(workspace_id: str, request: PreviewRequest) -> ProcessingResult:
+    def preview(workspace_id: str, request: PreviewRequest, store: WorkspaceStore = Depends(current_store)) -> ProcessingResult:
         return store.preview(workspace_id, request.source_revision_id, request.recipe)
 
     @router.post("/workspaces/{workspace_id}/apply", response_model=WorkspaceSnapshot)
-    def apply(workspace_id: str, request: ApplyRequest) -> WorkspaceSnapshot:
+    def apply(workspace_id: str, request: ApplyRequest, store: WorkspaceStore = Depends(current_store)) -> WorkspaceSnapshot:
         store.apply_revision(
             workspace_id,
             request.source_revision_id,
@@ -112,7 +119,7 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         return store.load(workspace_id)
 
     @router.post("/workspaces/{workspace_id}/restore", response_model=WorkspaceSnapshot)
-    def restore(workspace_id: str, request: RestoreRequest) -> WorkspaceSnapshot:
+    def restore(workspace_id: str, request: RestoreRequest, store: WorkspaceStore = Depends(current_store)) -> WorkspaceSnapshot:
         store.restore_revision(
             workspace_id,
             request.revision_id,
@@ -121,7 +128,7 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         return store.load(workspace_id)
 
     @router.get("/workspaces/{workspace_id}/revisions/{revision_id}/data.csv")
-    def download_data(workspace_id: str, revision_id: int) -> Response:
+    def download_data(workspace_id: str, revision_id: int, store: WorkspaceStore = Depends(current_store)) -> Response:
         return Response(
             _csv_result(store.revision_result(workspace_id, revision_id)),
             media_type="text/csv",
@@ -131,7 +138,7 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         )
 
     @router.get("/workspaces/{workspace_id}/revisions/{revision_id}/recipe.json")
-    def download_recipe(workspace_id: str, revision_id: int) -> JSONResponse:
+    def download_recipe(workspace_id: str, revision_id: int, store: WorkspaceStore = Depends(current_store)) -> JSONResponse:
         return JSONResponse(
             store.revision_provenance(workspace_id, revision_id),
             headers={

@@ -1,0 +1,42 @@
+# Build contexts must never include local experiment data or credentials.
+.git
+.github
+.agents
+.codex
+**/.env
+**/.env.*
+!deploy/digitalocean/env.example
+**/*credentials*
+**/*.pem
+**/*.key
+backend/data
+deploy/digitalocean/backups
+
+# Host dependencies and generated output are rebuilt for Linux.
+**/.venv
+**/venv
+env
+**/node_modules
+**/.next
+**/.next-*
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.cache
+**/*.tsbuildinfo
+**/playwright-report
+**/test-results
+**/.DS_Store
+.eggs
+build
+dist
+tmp
+doc/_build
+
+# Runtime images only need the Linux scientific binaries.
+larch/bin/darwin64
+larch/bin/win64

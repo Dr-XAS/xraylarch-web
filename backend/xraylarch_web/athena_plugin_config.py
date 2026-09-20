@@ -199,3 +199,57 @@ applied reader setting, including earlier session-only edits to other readers.
                 self._applied[reader] = values
             self._version += 1
             return self._view(reader)
+
+
+class SessionConfigurations(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    schema_version: Literal[1] = 1
+    session_id: str = Field(min_length=1, max_length=128)
+    version: int = Field(default=0, ge=0, strict=True)
+    saved: dict = Field(default_factory=dict, max_length=64)
+    applied: dict = Field(default_factory=dict, max_length=64)
+
+
+class PersistentPluginConfigurations(PluginConfigurations):
+    """Public browser state survives request-scoped stores and service restarts.
+
+    Applied values remain distinct from saved defaults. One atomic file stores
+    both so concurrent requests cannot lose an Apply or partially save a change.
+    The enclosing preferences directory belongs to a verified browser session.
+    """
+
+    def _sync(self):
+        try:
+            state = SessionConfigurations.model_validate(
+                self.storage.read_json(self.ident, 'plugin-session.json'))
+        except FileNotFoundError:
+            state = SessionConfigurations(session_id=self.session_id)
+            self.storage.write_json(self.ident, 'plugin-session.json', state.model_dump())
+        saved = {name: parameter_model(name).model_validate(value).model_dump()
+                 for name, value in state.saved.items()}
+        applied = {name: parameter_model(name).model_validate(value).model_dump()
+                   for name, value in state.applied.items()}
+        self.session_id = state.session_id
+        self._version = state.version
+        self._saved = saved
+        self._applied = applied
+
+    def apply(self, reader, request: ConfigurationRequest):
+        values = parameter_model(reader).model_validate(request.values).model_dump()
+        with self._lock, self.storage.lock(self.ident):
+            self._sync()
+            if request.session_id != self.session_id or request.version != self._version:
+                raise WebInputError('stale_revision', 'Reader configuration changed in another window.',
+                                    recovery='Reload configuration, review the values and apply again.')
+            saved, applied = copy.deepcopy(self._saved), copy.deepcopy(self._applied)
+            if request.save:
+                saved = {name: copy.deepcopy(self._values(name)) for name in MODELS}
+                saved[reader] = values
+                applied = {}
+            else:
+                applied[reader] = values
+            state = SessionConfigurations(session_id=self.session_id, version=self._version + 1,
+                                          saved=saved, applied=applied)
+            self.storage.write_json(self.ident, 'plugin-session.json', state.model_dump())
+            self._saved, self._applied, self._version = saved, applied, state.version
+            return self._view(reader)

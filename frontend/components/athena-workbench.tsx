@@ -6,6 +6,7 @@ import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurement
 import type { AthenaSession } from "@/lib/athena-transport"
 import { AthenaProvider, useAthenaApi, useAthenaTransport } from "@/lib/athena-context"
 import { clearIntegrationReturnSelection, saveReturnSelection } from "@/lib/integration-session"
+import { ApiRequestError } from "@/lib/backend-client"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { defaultPlotColors, spectrumColors as plotSpectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { parameterHelp, additionalParameterHelp } from "@/lib/athena-parameter-help"
@@ -759,6 +760,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       return false
     } finally { setBusy("") }
   }
+  async function loadStoredProject(id: string | null) {
+    if (id) {
+      try {
+        accept(await athenaApi<AthenaProject>(`/projects/${id}`))
+        return
+      } catch (error) {
+        if (!(error instanceof ApiRequestError && error.status === 404 && error.code === "workspace_not_found")) throw error
+      }
+    }
+    accept(await athenaApi<AthenaProject>("/projects", {}))
+  }
   useEffect(() => {
     if (init.current) return
     init.current = true
@@ -767,9 +779,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         accept(await athenaApi<AthenaProject>(`/projects/${session.projectId}`))
         return
       }
-      const saved = localStorage.getItem("athena.project")
-      if (saved) accept(await athenaApi<AthenaProject>(`/projects/${saved}`))
-      else accept(await athenaApi<AthenaProject>("/projects", {}))
+      await loadStoredProject(localStorage.getItem("athena.project"))
     })
   }, [])
   async function command(action: string, group_ids: string[] = [], commandOptions: Record<string, unknown> = {}) {
@@ -1505,11 +1515,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
             <div className="ath-help-results">{!helpTerms.length ? <p className="ath-help-message">Type a keyword to find a menu command.</p> : !helpMatches.length ? <p className="ath-help-message" role="status">No menu commands found.</p> : <><span className="ath-sr-only" role="status">{helpMatches.length} menu command{helpMatches.length === 1 ? "" : "s"} found.</span>{helpMatches.map((command, index) => renderMenuCommand(command, index))}</>}</div>
           </div>}
         </div>
-      </nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><ThemeToggle /><span className="ath-local"><i /> Local workspace</span></header>
-    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy || parameterUpdatePending || !canCommand("undo")} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy || parameterUpdatePending || !canCommand("redo")} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
+      </nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><ThemeToggle /><span className="ath-local"><i /> Workspace</span></header>
+    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : "Saved" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy || parameterUpdatePending || !canCommand("undo")} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy || parameterUpdatePending || !canCommand("redo")} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
     <section className="ath-edge-policy-bar" aria-label="Import edge policy"><span>Import edge enforcement: <strong>{edgePolicyDescription(edgePolicy)}</strong>. Applies to new raw-file samples. References use their own E₀ and can share the sample’s element.</span>{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}
-    {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => { const id = projectRef.current?.id ?? (integrated ? session.projectId : localStorage.getItem("athena.project")); if (id) accept(await athenaApi(`/projects/${id}`)); else accept(await athenaApi("/projects", {})) }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
+    {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => {
+      if (session.mode === "integration") {
+        accept(await athenaApi(`/projects/${projectRef.current?.id ?? session.projectId}`))
+        return
+      }
+      await loadStoredProject(projectRef.current?.id ?? localStorage.getItem("athena.project"))
+    }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
     <ResizableAthenaWorkspace
       groups={<aside id="athena-data-groups" className="ath-groups"><div className="ath-panel-heading"><h2><ContextLabel label="current group" open={event => showContext(event, { kind: "group" })}>Data groups <span>{project?.groups.length ?? 0}</span></ContextLabel></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div>
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>

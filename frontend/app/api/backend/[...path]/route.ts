@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server"
+import { copySessionCookies, sessionRequestHeaders } from "@/lib/session-headers"
 
 const ordinaryHeaders = ["content-type", "accept", "content-length"] as const
 const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version"] as const
-
-const anyMethod: ReadonlySet<string> = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
 
 const athenaRoutes: readonly [string, RegExp][] = [
   ["GET", /^api\/athena\/(?:edges|projects)$/], ["POST", /^api\/athena\/projects$/],
@@ -14,15 +13,24 @@ const athenaRoutes: readonly [string, RegExp][] = [
   ["POST", /^api\/athena\/projects\/[^/]+\/(?:inspect|import|preview-columns|command|context-report|context-plot|analyze|difference\/preview|rebin\/preview|mee\/preview|point-edit\/preview|merge\/preview|plots\/(?:special|shortcut)|alignment\/preview|calibration\/(?:preview|zero)|convolve\/preview|smooth\/preview|restore|preview-project|restore-upload|parameter-report(?:\/preview)?|export-data(?:\/preview)?|dispersive\/(?:inspect|make|[^/]+)|groups\/[^/]+\/(?:xdi\/validate|merge\/plot|wavelet|plot-transform))$/],
 ]
 
+const artemisRoutes: readonly [string, RegExp][] = [
+  ["POST", /^api\/artemis\/paths\/inspect$/],
+  ["GET", /^api\/artemis\/examples\/copper$/],
+  ["GET", /^api\/artemis\/structures(?:\/[^/]+)?$/],
+  ["POST", /^api\/artemis\/feff\/jobs$/],
+  ["GET", /^api\/artemis\/feff\/jobs\/[^/]+$/],
+  ["GET", /^api\/artemis\/projects\/[^/]+\/structures$/],
+  ["POST", /^api\/artemis\/projects\/[^/]+\/structures$/],
+  ["POST", /^api\/artemis\/projects\/[^/]+\/groups\/[^/]+\/fit$/],
+]
+
 function allowedMethods(path: string[]): ReadonlySet<string> | null {
   if (path.some(segment => !segment || segment === "." || segment === "..")) return null
   const joined = path.join("/")
   if (joined === "health") return new Set(["GET"])
   if (joined === "api/integration/v2/browser/consume") return new Set(["POST"])
-  // Artemis (added on master in 99f05038f) has no method-aware route table yet, and
-  // master gates it by prefix alone. Keep exactly that rather than guess its routes and
-  // break the fitting workflow; narrowing it is a follow-up, not part of this merge.
-  if (path[0] === "api" && path[1] === "artemis") return anyMethod
+  const artemisMethods = artemisRoutes.filter(([, pattern]) => pattern.test(joined)).map(([method]) => method)
+  if (artemisMethods.length) return new Set(artemisMethods)
   const workspaceRoutes: readonly [string, RegExp][] = [
     ["GET", /^api\/workspaces$/], ["POST", /^api\/workspaces$/],
     ["GET", /^api\/workspaces\/[^/]+$/],
@@ -49,7 +57,7 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
   const path = `/${routePath.map(encodeURIComponent).join("/")}`
   const upstream = new URL(path, upstreamBase.endsWith("/") ? upstreamBase : `${upstreamBase}/`)
   upstream.search = new URL(request.url).search
-  const headers = new Headers()
+  const headers = sessionRequestHeaders(request.headers)
   for (const header of ordinaryHeaders) {
     const value = request.headers.get(header)
     if (value) headers.set(header, value)
@@ -80,6 +88,8 @@ async function proxy(request: Request, { params }: { params: Promise<{ path: str
     const value = backendResponse.headers.get(header)
     if (value) outputHeaders.set(header, value)
   }
+  outputHeaders.set("cache-control", "private, no-store")
+  copySessionCookies(backendResponse.headers, outputHeaders)
   return new Response(backendResponse.body, { status: backendResponse.status, headers: outputHeaders })
 }
 

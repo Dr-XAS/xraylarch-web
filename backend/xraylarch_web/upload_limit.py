@@ -16,7 +16,7 @@ class _UploadBodyTooLarge(MultiPartException):
 
 
 class UploadBodyLimitMiddleware:
-    """Cap inspect-upload bodies before Starlette parses multipart data."""
+    """Cap upload bodies before Starlette parses or spools multipart data."""
 
     def __init__(self, app: ASGIApp, *, max_body_bytes: int) -> None:
         self.app = app
@@ -25,13 +25,20 @@ class UploadBodyLimitMiddleware:
     @staticmethod
     def _is_inspect_upload(scope: Scope) -> bool:
         parts = scope["path"].split("/")
+        if scope["method"] != "POST":
+            return False
         return (
-            scope["method"] == "POST"
-            and len(parts) == 6
+            (len(parts) == 6
+             and parts[1:4] == ["api", "athena", "projects"]
+             and parts[5] in {"inspect", "restore", "preview-project"})
+            or scope["path"] == "/api/athena/preferences/plugins/import"
+            or (
+            len(parts) == 6
             and parts[1] == "api"
             and parts[2] == "workspaces"
             and parts[4] == "uploads"
             and parts[5] == "inspect"
+            )
         )
 
     @staticmethod
