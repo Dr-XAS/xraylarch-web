@@ -29,6 +29,33 @@ def make_scan(width=72, count=3):
     return header, rows, labels, data
 
 
+def make_fixed_width_scan(detector_label="XMAP8:1:Total"):
+    """Match the 9 BM legend layout, using entirely artificial observations."""
+    _, rows, _, data = make_scan(width=27)
+    labels = [
+        "Mono Energy *", "Scaler preset time *", "SIS scaler time preset",
+        "SIS Scaler Integration time", "I0", "IT", "IRef", "IF",
+        "XMAP8:DT Corr I0", "XMAP8:SnKa_Sum", "XMAP8:Total_Sum",
+        detector_label,
+        *(f"XMAP8:{i}:Total" for i in range(2, 9)),
+        *(f"XMAP8:{i}:SnKa" for i in range(8)),
+    ]
+    # LabVIEW truncates/pads each label to 21 characters without inserting a
+    # separator before the next cell. Long labels therefore touch 13) and 14).
+    labels = [label[:21] for label in labels]
+    legend = [
+        "# " + "".join(f"{i + 1:2d}) {labels[i]:21}" for i in range(row, 27, 10))
+        for row in range(10)
+    ]
+    header = "\n".join([
+        "# 1-D Scan File created by LabVIEW Control Panel  synthetic scan",
+        "# Beamline 9 BM", "# Here is a readable list of column headings:",
+        *legend, "#", "# Column Headings:",
+        "#" + "".join(f"{label:21}" for label in labels),
+    ]) + "\n"
+    return header, rows, labels, data
+
+
 def source(header, rows):
     return (header + "\n".join(rows) + "\n").encode()
 
@@ -62,10 +89,52 @@ def test_labview_table_recognizes_numbering_without_confusing_label_parentheses(
     assert table == (tuple(labels), tuple(tuple(row.split()) for row in rows))
 
 
+@pytest.mark.parametrize("line_ending", [b"\n", b"\r\n"])
+def test_fixed_width_legend_preserves_labels_every_column_and_source_bytes(line_ending):
+    header, rows, labels, expected = make_fixed_width_scan()
+    assert "SIS scaler time prese13)" in header
+    assert "SIS Scaler Integratio14)" in header
+    payload = source(header, rows).replace(b"\n", line_ending)
+    parsed = parse_upload(payload, "synthetic.0001")
+    assert parsed.source_bytes == payload
+    assert parsed.row_count == len(expected)
+    assert [column.name for column in parsed.columns] == labels
+    assert [column.index for column in parsed.columns] == list(range(27))
+    actual = np.column_stack([parsed.arrays[column.column_id] for column in parsed.columns])
+    np.testing.assert_array_equal(actual, expected)
+    assert parsed.columns[2].name == "SIS scaler time prese"
+    assert parsed.columns[3].name == "SIS Scaler Integratio"
+    assert parsed.columns[12].name == "XMAP8:2:Total"
+    assert parsed.columns[13].name == "XMAP8:3:Total"
+
+
+@pytest.mark.parametrize("label", [
+    "Detector (13) counts", "XMAP8:(14):Total", "Detector counts set 1",
+])
+def test_fixed_width_numbers_inside_labels_are_not_column_markers(label):
+    header, rows, labels, _ = make_fixed_width_scan(detector_label=label)
+    table = labview_table(source(header, rows).decode())
+    assert table == (tuple(labels), tuple(tuple(row.split()) for row in rows))
+
+
+@pytest.mark.parametrize("damage", ["missing", "duplicate", "empty_label"])
+def test_fixed_width_incomplete_or_duplicate_legend_is_rejected(damage):
+    header, rows, _, _ = make_fixed_width_scan()
+    cell = f"13) {'XMAP8:2:Total':21}"
+    replacement = {
+        "missing": "",
+        "duplicate": f"12) {'XMAP8:2:Total':21}",
+        "empty_label": f"13) {'':21}",
+    }[damage]
+    assert cell in header
+    assert_error(source(header.replace(cell, replacement), rows))
+
+
+@pytest.mark.parametrize("scan_factory", [make_scan, make_fixed_width_scan])
 @pytest.mark.parametrize("index", [0, 1, 2])
 @pytest.mark.parametrize("damage", ["text", "short", "extra", "comment"])
-def test_first_middle_and_last_damaged_observations_cannot_be_skipped(index, damage):
-    header, rows, _, _ = make_scan()
+def test_first_middle_and_last_damaged_observations_cannot_be_skipped(index, damage, scan_factory):
+    header, rows, _, _ = scan_factory()
     fields = rows[index].split()
     rows[index] = {
         "text": "bad observation",
