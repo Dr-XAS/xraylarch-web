@@ -58,7 +58,7 @@ it('immediately shows calibrated raw data, then boxcar comparison and E/k/R with
   expect(handoff().data[1].y).toEqual(result.results[0].smoothed_mu)
   fireEvent.click(screen.getByRole('button', {name: 'Plot in k'}))
   expect(handoff().data[1].y).toEqual(result.results[0].traces.k[1].y)
-  expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({title: {text: 'k^2 χ(k)'}}))
+  expect(handoff().layout?.yaxis).toMatchObject({title: {text: 'k^2 χ(k)'}})
   fireEvent.click(screen.getByRole('button', {name: 'Plot in R'})); expect(handoff().data[1].y).toEqual(result.results[0].traces.R[1].y)
   expect(api).toHaveBeenCalledTimes(1)
   const next = savedProject(result); api.mockResolvedValueOnce(next); fireEvent.click(saveButton())

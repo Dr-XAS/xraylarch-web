@@ -22,7 +22,7 @@ function DiagnosticPanel({ panel, context, groupIds }: { panel: Panel; context: 
     <div className={styles.figure} aria-label={`${panel.title} diagnostic figure`}>
       <Plot data={panel.curves.map((c, i) => ({ name: c.name, x: c.x, y: c.y, type: 'scatter', mode: 'lines',
         line: { width: 1.8, color: colors[groupIds.length === 2 ? groupIds.indexOf(c.group_id) : i] } }))}
-        layout={{ autosize: true, margin: { l: 65, r: 12, t: 90, b: 55 }, font: { size: 11 },
+        layout={{ autosize: true, margin: { l: 65, r: 12, t: 90, b: 55 },
           legend: { orientation: 'h', y: 1.05, yanchor: 'bottom' },
           xaxis: { title: { text: panel.x_label }, ...(valid && (min !== null || max !== null) ? { range: [min, max] } : {}) },
           yaxis: { title: { text: panel.y_label } }, uirevision: `${context}:${panel.id}:${min}:${max}` }}

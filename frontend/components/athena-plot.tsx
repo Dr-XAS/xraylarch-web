@@ -239,7 +239,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
   }} layout={{
     autosize: true, margin: { l: 72, r: 25, t: 24, b: 60 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
-    font: { family: "Arial, sans-serif", color: "#586661", size: 12 },
+    font: { color: "#586661" },
     hoverlabel: { namelength: -1 },
     xaxis: { title: { text: xTitle, standoff: 16 }, showgrid: showGrid, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...xRange },
     yaxis: { title: { text: yTitle, standoff: 15 }, showgrid: showGrid, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", automargin: true },

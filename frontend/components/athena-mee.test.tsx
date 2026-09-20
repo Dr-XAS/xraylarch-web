@@ -35,7 +35,7 @@ it('shows the original immediately, previews normalized corrections and switches
   expect(api.mock.calls[0][1]).toEqual({version:4,action:'multi_electron',group_ids:['g'],options:{method:'reflection',shift:122,amplitude:.01,width:.5}})
   expect(handoff().data).toHaveLength(2)
   fireEvent.click(screen.getByRole('button',{name:'Plot in k'}))
-  expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({title:{text:'k^2 χ(k)'},automargin:true}))
+  expect(handoff().layout?.yaxis).toMatchObject({title:{text:'k^2 χ(k)'},automargin:true})
   fireEvent.click(screen.getByRole('button',{name:'Plot in R'}))
   expect(screen.getByRole('button',{name:'Pick energy shift'})).toBeDisabled();expect(api).toHaveBeenCalledTimes(1)
   api.mockResolvedValueOnce({...project,version:5});fireEvent.click(saveButton())

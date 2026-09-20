@@ -1,0 +1,23 @@
+.logo {
+  display: block;
+  flex: 0 0 44px;
+  width: 44px;
+}
+
+.logo img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.logo .dark {
+  display: none;
+}
+
+:global(html[data-theme="dark"]) .logo .light {
+  display: none;
+}
+
+:global(html[data-theme="dark"]) .logo .dark {
+  display: block;
+}

@@ -29,7 +29,7 @@ describe("Athena Difference Plotly preview", () => {
     expect(layout?.shapes).toEqual([
       expect.objectContaining({ x0: 8959, x1: 8959 }), expect.objectContaining({ x0: 9009, x1: 9009 }),
     ])
-    expect(layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "Difference signal" } }))
+    expect(layout?.yaxis).toMatchObject({ title: { text: "Difference signal" } })
     ;(data[0].x as number[]).push(10000)
     ;(data[2].y as number[])[0] = 999
     expect(preview).toEqual(before)
@@ -54,11 +54,11 @@ describe("Athena Difference Plotly preview", () => {
     const { rerender } = render(<AthenaDifferencePlot {...props} view="k" />)
     expect(handoff().data).toHaveLength(1)
     expect(handoff().data[0]).toEqual(expect.objectContaining({ x: [1, 2, 3], y: [0.2, -0.4, 0.3] }))
-    expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "k^2 χ(k)" } }))
+    expect(handoff().layout?.yaxis).toMatchObject({ title: { text: "k^2 χ(k)" } })
     preview.results[1].k_error = null; preview.results[1].kweight = 3
     rerender(<AthenaDifferencePlot {...props} view="k" />)
     expect(handoff().data.map(trace => trace.name)).toEqual([expect.stringContaining("k-weight 2"), expect.stringContaining("k-weight 3")])
-    expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "Weighted χ(k) · weights in legend" } }))
+    expect(handoff().layout?.yaxis).toMatchObject({ title: { text: "Weighted χ(k) · weights in legend" } })
   })
 
   it("forwards only finite numeric coordinates while armed on a single E spectrum", () => {
@@ -92,13 +92,13 @@ describe("Athena Difference Plotly preview", () => {
     expect(handoff().data.map(trace => trace.name)).toEqual([
       expect.stringContaining("derived difference · k-weight 2"), "DATA foil · original DATA · k-weight 1", "STANDARD foil · original STANDARD · k-weight 3",
     ])
-    expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "Weighted χ(k) · weights in legend" } }))
+    expect(handoff().layout?.yaxis).toMatchObject({ title: { text: "Weighted χ(k) · weights in legend" } })
     ;(handoff().data[1].x as number[]).push(99)
     ;(handoff().data[2].y as number[])[0] = 100
     expect(preview).toEqual(before)
     rerender(<AthenaDifferencePlot {...props} preview={{ ...preview, options: { ...preview.options, plot_inputs: false } }} view="k" />)
     expect(handoff().data).toHaveLength(1)
-    expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "k^2 χ(k)" } }))
+    expect(handoff().layout?.yaxis).toMatchObject({ title: { text: "k^2 χ(k)" } })
   })
 
   it("computes the k-axis weight from successful nonempty input curves when the derived preview fails", () => {
@@ -110,10 +110,10 @@ describe("Athena Difference Plotly preview", () => {
     const { rerender } = render(<AthenaDifferencePlot {...props} view="k" />)
     expect(handoff().data).toHaveLength(1)
     expect(handoff().data[0].name).toBe("DATA foil · original DATA · k-weight 1")
-    expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "k^1 χ(k)" } }))
+    expect(handoff().layout?.yaxis).toMatchObject({ title: { text: "k^1 χ(k)" } })
     preview.results[0].input_k[0].kweight = null
     rerender(<AthenaDifferencePlot {...props} view="k" />)
-    expect(handoff().layout?.yaxis).toEqual(expect.objectContaining({ title: { text: "Weighted χ(k) · weights in legend" } }))
+    expect(handoff().layout?.yaxis).toMatchObject({ title: { text: "Weighted χ(k) · weights in legend" } })
     preview.results[0].input_k[0].k = []; preview.results[0].input_k[0].weighted_chi = []
     rerender(<AthenaDifferencePlot {...props} view="k" />)
     expect(screen.getByText(/No k-space preview is available/)).toBeVisible()

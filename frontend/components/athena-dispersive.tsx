@@ -20,7 +20,7 @@ function Figure({label,traces,xlabel,ylabel,range}: {label:string;traces:Trace[]
   return <div className={styles.plot} aria-label={label}>{traces.length ? <Plot
     data={traces.map((t,i)=>({x:t.x,y:t.y,name:t.label,type:'scatter',mode:'lines',line:{color:i?'#b76d37':'#16736b',width:1.6}}))}
     layout={{autosize:true,margin:{l:60,r:15,t:traces.length>1?48:20,b:45},xaxis:{title:{text:xlabel},range},yaxis:{title:{text:ylabel}},
-      font:{size:11},legend:{orientation:'h',y:1.05,yanchor:'bottom',font:{size:10}},uirevision:label}}
+      legend:{orientation:'h',y:1.05,yanchor:'bottom'},uirevision:label}}
     config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'athena-dispersive'}}}
     style={{width:'100%',height:'100%'}} useResizeHandler /> : <p>Choose a file and review its detector columns.</p>}</div>
 }

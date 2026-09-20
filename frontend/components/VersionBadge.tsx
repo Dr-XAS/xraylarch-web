@@ -88,7 +88,7 @@ export function VersionBadge() {
           color: color-mix(in srgb, var(--ath-muted) 70%, transparent);
           font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
             "Liberation Mono", "Courier New", monospace;
-          font-size: 10px;
+          font-size: var(--text-caption);
           font-variant-numeric: tabular-nums;
           line-height: 1rem;
           white-space: nowrap;
@@ -102,7 +102,7 @@ export function VersionBadge() {
 
         @media (min-width: 621px) {
           .ath-app .ath-status {
-            padding-right: 11.5rem;
+            padding-right: 15rem;
           }
         }
 
@@ -114,7 +114,6 @@ export function VersionBadge() {
 
           .portable-version-badge {
             position: absolute;
-            font-size: 9px;
           }
         }
       `}</style>

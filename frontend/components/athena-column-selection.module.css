@@ -11,7 +11,7 @@
 .readerPreviews > section + section { margin-top: 18px; }
 .previewPanel { min-width: 0; }
 .previewTools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.previewTools > strong { flex-basis: 100%; font-size: 13px; }
+.previewTools > strong { flex-basis: 100%; font-size: var(--text-section); }
 .previewTools label { margin: 0 !important; }
 .previewTools button { border: 1px solid var(--ath-line); padding: 5px 9px; }
 .plot { height: 310px; border: 1px solid var(--ath-line); border-radius: 5px; overflow: hidden; background: var(--ath-surface); }

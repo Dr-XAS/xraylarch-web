@@ -5,6 +5,7 @@ import type { ComponentProps } from "react"
 import type Plotly from "react-plotly.js"
 import { useTheme } from "./theme-provider"
 import { plotDataForTheme, plotLayoutForTheme } from "@/lib/plot-theme"
+import { plotDataWithTypography, plotLayoutWithTypography } from "@/lib/plot-typography"
 
 const Plot = dynamic(() => import("react-plotly.js").then(module => module.default), {
   ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div>,
@@ -14,5 +15,7 @@ const Plot = dynamic(() => import("react-plotly.js").then(module => module.defau
 // Keep all interaction props, view revisions and scientific arrays unchanged.
 export function ThemedPlot({ data, layout, ...props }: ComponentProps<typeof Plotly>) {
   const { theme } = useTheme()
-  return <Plot {...props} data={plotDataForTheme(data, theme)} layout={plotLayoutForTheme(layout, theme)} />
+  return <Plot {...props}
+    data={plotDataForTheme(plotDataWithTypography(data), theme)}
+    layout={plotLayoutForTheme(plotLayoutWithTypography(layout), theme)} />
 }

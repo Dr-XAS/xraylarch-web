@@ -112,7 +112,7 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
         <div className={styles.plot} aria-label={`${space}-space MEE preview`}>{traces.length ? <Plot
           data={traces.map(t => ({ x: t.x.slice(), y: t.y.slice(), name: `${t.role === 'original' ? 'Original' : 'MEE corrected'} · ${t.label}`, type: 'scatter', mode: 'lines', line: { color: t.role === 'original' ? '#16736b' : '#bb6542', width: 1.8 } }))}
           onClick={event => pluck(event.points?.[0]?.x)}
-          layout={{ autosize: true, margin: { l: 65, r: 18, t: 75, b: 55 }, hovermode: 'closest', font: { size: 11 },
+          layout={{ autosize: true, margin: { l: 65, r: 18, t: 75, b: 55 }, hovermode: 'closest',
             legend: { orientation: 'h', x: 0, y: 1.04, yanchor: 'bottom' },
             xaxis: { title: { text: space === 'E' ? 'Energy (eV)' : space === 'k' ? 'k (Å⁻¹)' : 'R (Å)' } },
             yaxis: { title: { text: space === 'E' ? 'Normalized μ(E)' : space === 'k' ? `k^${group?.parameters.kweight} χ(k)` : '|χ(R)|' }, automargin: true },

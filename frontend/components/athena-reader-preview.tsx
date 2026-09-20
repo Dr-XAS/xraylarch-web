@@ -24,7 +24,7 @@ export function AthenaReaderPreview({ value, required, reviewed, onReviewed, dis
       layout={{ autosize: true, margin: { l: 65, r: 15, t: 80, b: 55 }, showlegend: true,
         legend: { orientation: 'h', x: 0, y: 1.05, yanchor: 'bottom' },
         xaxis: { title: { text: 'Energy (eV)' }, zeroline: false }, yaxis: { title: { text: 'I0 signal' }, zeroline: false },
-        paper_bgcolor: 'white', plot_bgcolor: 'white', font: { family: 'Arial, sans-serif', size: 11 },
+        paper_bgcolor: 'white', plot_bgcolor: 'white',
         shapes: [...[value.pre_range, value.post_range].map(([x0, x1]) => ({ type: 'rect', xref: 'x', yref: 'paper',
           x0, x1, y0: 0, y1: 1, fillcolor: '#d9e7df', opacity: .35, line: { width: 0 }, layer: 'below' })),
           { type: 'line', xref: 'x', yref: 'paper', x0: value.edge_energy, x1: value.edge_energy,

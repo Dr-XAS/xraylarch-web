@@ -18,7 +18,7 @@ export function AthenaArchiveSelection({ archive, projectId, busy, onContinue, o
   return <section className={styles.archive} aria-label="ZIP file selection">
     <h3>Files in {archive.display_name}</h3>
     <p>{archive.members.length} files · {archive.file_plugin.expanded_bytes.toLocaleString()} bytes expanded.
-      Choose data files, then review each file’s columns and curve or project groups before importing.</p>
+      Choose data files, then choose shared import parameters or review each file separately. Athena projects open with a group selection.</p>
     <fieldset disabled={busy}>
       <div className="ath-modal-actions">
         <button type="button" onClick={() => setSelected(archive.members.map(m => m.index))}>Select all files</button>

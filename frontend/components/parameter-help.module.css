@@ -18,8 +18,8 @@
   color: var(--ath-tooltip-ink, #3d3549);
   box-shadow: 0 6px 24px rgb(45 29 67 / 14%);
   font-family: var(--font-sans, sans-serif);
-  font-size: 12px;
-  line-height: 1.55;
+  font-size: var(--text-caption);
+  line-height: var(--leading-body);
   overflow-wrap: anywhere;
 }
 .tooltip strong { display: block; margin-bottom: 4px; color: var(--ath-tooltip-accent, #6d28d9); font-weight: 600; }

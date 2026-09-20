@@ -55,7 +55,7 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
         line: { color: trace.role === "reference" ? "#b96342" : colors[index % colors.length], dash: trace.stage === 'original' ? 'dot' : trace.role === "reference" ? "dash" : "solid", width: 1.8 },
         yaxis: trace.role === "reference" ? "y2" : "y", hovertemplate: "%{x:.4f}, %{y:.6g}<extra>%{fullData.name}</extra>" }))}
         layout={{ autosize: true, margin: { l: 60, r: plottedReference ? 60 : 25, t: traces.length > 1 ? 65 : 15, b: 60 },
-          paper_bgcolor: "white", plot_bgcolor: "white", font: { family: "Arial, sans-serif", size: 11, color: "#43513d" },
+          paper_bgcolor: "white", plot_bgcolor: "white", font: { color: "#43513d" },
           xaxis: { title: { text: value.x_label }, zeroline: false }, yaxis: { title: { text: value.y_label }, zeroline: false },
           yaxis2: { title: { text: "Reference" }, overlaying: "y", side: "right", showgrid: false, zeroline: false },
           showlegend: traces.length > 1, legend: { orientation: "h", x: 0, y: 1.12, xanchor: "left", yanchor: "bottom" },

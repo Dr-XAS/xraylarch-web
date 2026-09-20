@@ -120,7 +120,7 @@ export function AthenaConvolution({ project, activeId, selectGroup, setBusy, sav
         <div className={styles.views}>{(['E', 'k', 'R'] as const).map(view => <button key={view} disabled={disabled} aria-pressed={space === view} onClick={() => setSpace(view)}>{view === 'E' ? 'Plot in energy' : `Plot in ${view}`}</button>)}</div>
         <div className={styles.plot} aria-label={`${space}-space convolution preview`}>{traces.length ? <Plot
           data={traces.map(t => ({ x: t.x.slice(), y: t.y.slice(), name: t.role === 'original' ? 'Original' : 'Modified', type: 'scatter', mode: 'lines', line: { color: t.role === 'original' ? '#16736b' : '#bb6542', width: 1.8 } }))}
-          layout={{ autosize: true, margin: { l: 65, r: 18, t: 50, b: 55 }, hovermode: 'closest', font: { size: 11 },
+          layout={{ autosize: true, margin: { l: 65, r: 18, t: 50, b: 55 }, hovermode: 'closest',
             legend: { orientation: 'h', x: 0, y: 1.04, yanchor: 'bottom' },
             xaxis: { title: { text: space === 'E' ? 'Energy (eV)' : space === 'k' ? 'k (Å⁻¹)' : 'R (Å)' } },
             yaxis: { title: { text: space === 'E' ? group?.data_type === 'detector' ? 'Counts' : group?.is_normalized ? 'Normalized μ(E)' : 'μ(E)' : space === 'k' ? `k^${group?.parameters.kweight} χ(k)` : '|χ(R)|' }, automargin: true },

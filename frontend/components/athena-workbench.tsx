@@ -11,6 +11,7 @@ import { defaultPlotColors, spectrumColors as plotSpectrumColors, type PlotColor
 import { parameterHelp, additionalParameterHelp } from "@/lib/athena-parameter-help"
 import { ParameterHelp } from "./parameter-help"
 import { ThemeToggle } from "./theme-toggle"
+import { DrXasLogo } from "./drxas-logo"
 import { useTheme } from "./theme-provider"
 import { plotColorForTheme } from "@/lib/plot-theme"
 import { AthenaPlot, type Space } from "./athena-plot"
@@ -1472,7 +1473,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }
 
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
-    <header className="ath-header"><div className="ath-brand"><span className="ath-logo"><Activity size={25} /></span><div><h1>Larch-Web</h1><p>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</p></div></div>
+    <header className="ath-header"><div className="ath-brand"><DrXasLogo /><div><h1>Larch-Web</h1><p>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</p></div></div>
       <nav aria-label="Main menu">
         {mainMenuNames.map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => toggleTopMenu(label)}>{label}<ChevronDown size={12} /></button>{menu === label && <div className="ath-menu" onKeyDown={event => { if (event.key === "Escape") setMenu("") }}>{renderMainMenuCommands(label)}</div>}</div>)}
         <div className="ath-menu-wrap ath-help-menu-wrap"><button ref={helpTriggerRef} aria-haspopup="dialog" aria-controls="ath-menu-command-search" aria-expanded={menu === "Help"} onClick={() => toggleTopMenu("Help")}>Help<ChevronDown size={12} /></button>

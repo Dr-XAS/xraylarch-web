@@ -7,6 +7,7 @@ import { useAthenaApi } from "@/lib/athena-context"
 import { AthenaDiagnosticPlot } from "./athena-diagnostic-plot"
 import { useTheme } from "./theme-provider"
 import { plotColorForTheme, plotDataForTheme } from "@/lib/plot-theme"
+import { plotLayoutWithTypography } from "@/lib/plot-typography"
 import styles from "./athena-special-plot.module.css"
 
 const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47"]
@@ -88,8 +89,8 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
         return { x: c.x, y: c.y, name, type: 'scatter', mode: 'lines', line: { color: colors[current.result.curves.indexOf(c) % colors.length], width: 1.8 } }
       })
       const height = Math.max(700, 100 + traces.reduce((total, t) => total + t.name.split('<br>').length * 18 + 12, 0))
-      const url = await Plotly.toImage({ data: plotDataForTheme(traces, theme), layout: { ...graph.layout, autosize: false, width: 1400, height,
-        margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v', font: { size: 11 } } } }, { format: 'svg', width: 1400, height })
+      const url = await Plotly.toImage({ data: plotDataForTheme(traces, theme), layout: plotLayoutWithTypography({ ...graph.layout, autosize: false, width: 1400, height,
+        margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v' } }) }, { format: 'svg', width: 1400, height })
       if (currentKey.current !== requestedKey) return
       const link = document.createElement('a'); link.href = url; link.download = `athena-${kind}.svg`
       document.body.appendChild(link); link.click(); link.remove()
@@ -109,7 +110,7 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
     {!!r?.curves.length && <button disabled={exporting || hidden.length === r.curves.length} onClick={() => { void download() }}>{exporting ? 'Exporting plot…' : 'Download shortcut SVG'}</button>}
     {error && <p role="alert" className="ath-error">{error}</p>}
     {r && r.curves.length > 0 && <div ref={figure} className={styles.plot} aria-label="Athena shortcut figure"><Plot data={r.curves.map((c, i) => ({ x: c.x, y: c.y, name: c.name, visible: !hidden.includes(i), type: 'scatter', mode: 'lines', line: { color: colors[i % colors.length], width: 1.8 } }))}
-      layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: 60 }, font: { family: 'Arial, sans-serif', color: '#586661', size: 12 },
+      layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: 60 }, font: { color: '#586661' },
         xaxis: { title: { text: r.x_label }, automargin: true, ...(r.x_range ? { range: r.x_range } : {}) }, yaxis: { title: { text: r.y_label }, automargin: true },
         paper_bgcolor: '#fff', plot_bgcolor: '#fff', showlegend: false, hovermode: 'closest', uirevision: key }}
       config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['toImage', 'lasso2d', 'select2d'] }}

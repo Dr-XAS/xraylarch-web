@@ -274,7 +274,7 @@ describe('Detector project preview', () => {
     await waitFor(() => expect(plot).toHaveBeenCalled())
     const props = plot.mock.calls.at(-1)![0]
     expect(props.data[0].y).toEqual(data.groups[0].y)
-    expect(props.layout.yaxis).toEqual({ title: { text: 'Detector signal' }, automargin: true })
+    expect(props.layout.yaxis).toMatchObject({ title: { text: 'Detector signal' }, automargin: true })
     expect(api).toHaveBeenCalledTimes(1)
   })
 })

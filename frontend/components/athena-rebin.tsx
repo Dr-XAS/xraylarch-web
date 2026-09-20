@@ -103,7 +103,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
         {value && traces.length ? <Plot data={traces} layout={{ autosize: true, margin: { l: 60, r: 20, t: 20, b: 135 },
           xaxis: { title: { text: space === 'E' ? 'Energy (eV)' : 'k (Å⁻¹)' }, automargin: true },
           yaxis: { title: { text: space === 'E' ? 'μ(E)' : 'Weighted χ(k)' }, automargin: true },
-          legend: { orientation: 'h', y: -.4, yanchor: 'top' }, font: { size: 11 }, uirevision: key,
+          legend: { orientation: 'h', y: -.4, yanchor: 'top' }, uirevision: key,
           shapes: space === 'E' && value.results.length === 1 ? [value.results[0].details.emin, value.results[0].details.emax].map(offset => ({
             type: 'line', x0: value.results[0].details.e0 + offset, x1: value.results[0].details.e0 + offset,
             y0: 0, y1: 1, yref: 'paper', line: { dash: 'dot', color: '#a2aaa0', width: 1 },

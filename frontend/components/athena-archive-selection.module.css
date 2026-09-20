@@ -5,6 +5,6 @@
 .archive label { display: flex; align-items: flex-start; gap: 10px; }
 .archive input { margin-top: 4px; flex-shrink: 0; }
 .archive span, .archive a, .archive h3 { overflow-wrap: anywhere; }
-.archive small { display: block; opacity: .7; margin-top: 4px; }
-.archive li a { display: inline-block; margin: 6px 0 0 24px; font-size: 12px; }
+.archive small { display: block; opacity: .7; margin-top: 4px; font-size: var(--text-caption); }
+.archive li a { display: inline-block; margin: 6px 0 0 24px; font-size: var(--text-label); }
 .archive :global(.ath-modal-actions) { flex-wrap: wrap; }

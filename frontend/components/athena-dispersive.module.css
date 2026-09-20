@@ -5,8 +5,8 @@
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
 .actions button { white-space: normal; }
 .table { max-height: 230px; overflow: auto; }
-.table table { width: 100%; font-size: 12px; }
+.table table { width: 100%; font-size: var(--text-label); }
 .table th, .table td { text-align: left; padding: 6px; }
 .previews pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 250px; overflow: auto; }
-.controls h3 { font-size: 14px; overflow-wrap: anywhere; }
+.controls h3 { font-size: var(--text-section); overflow-wrap: anywhere; line-height: var(--leading-heading); }
 @media (max-width: 750px) { .layout { grid-template-columns: minmax(0,1fr); } .previews { position: static; max-height: none; overflow: visible; } .plot { height: 300px; } }
