@@ -6,17 +6,18 @@ reader's default font size. Pixel equivalents below assume a 16px root.
 
 | Token | Size | Role |
 | --- | --- | --- |
-| `--text-caption` | 12px | Help, units, metadata, status, count badges |
-| `--text-label` | 13px | Field labels, compact tabs, tables, code reports |
-| `--text-body` | 14px | Body text, buttons, inputs, menus, spectrum names |
-| `--text-section` | 16px | Pane, card and section headings |
-| `--text-title` | 20px | App name, viewer and dialog headings |
-| `--text-display` | 24px | Welcome / introduction text |
+| `--text-caption` | 11px | Help, units, metadata, status, count badges |
+| `--text-label` | 12px | Field labels, tables, code reports |
+| `--text-body` | 13px | Body text, buttons, menus, spectrum names |
+| `--text-input` | 12px | Inputs, selects and textareas |
+| `--text-section` | 14px | Pane, card and section headings |
+| `--text-title` | 18px | App name, viewer and dialog headings |
+| `--text-display` | 22px | Welcome / introduction text |
 
 Use the role, rather than the component's location, to choose a size. Data
 groups, processing, EXAFS fitting, dialogs and the classic workbench share
 these values. Avoid pane-specific additions, mobile font reductions, and
-new hardcoded sizes. Keep ordinary text at least 12px at the default root.
+new hardcoded sizes. Keep ordinary text at least 11px at the default root.
 Scientific subscripts and superscripts retain their normal relative sizing;
 the decorative empty-plot letter uses `--text-illustration` (64px).
 
@@ -29,7 +30,7 @@ wrap on narrow screens, and align plot-picker buttons with their inputs.
 
 Plotly needs concrete values for SVG and WebGL text. The shared helpers in
 `frontend/lib/plot-typography.ts`, applied by `ThemedPlot`, use the same Figtree
-stack with 13px ticks, legends, hover labels and annotations; 14px axis and
-colorbar titles; and 16px chart titles. Special-plot SVG export uses the same
+stack with 12px ticks, legends, hover labels and annotations; 13px axis and
+colorbar titles; and 14px chart titles. Special-plot SVG export uses the same
 helpers. Keep presentation changes out of scientific arrays, ranges and view
 revisions. Update these constants together with the UI scale when revising it.

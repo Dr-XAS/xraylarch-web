@@ -3,10 +3,10 @@ type PlotObject = Record<string, unknown>
 // Match the application typeface with concrete values for SVG and WebGL text.
 export const PLOT_FONT = {
   family: 'Figtree, "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif',
-  size: 13,
+  size: 12,
 }
-export const PLOT_AXIS_TITLE_FONT = { ...PLOT_FONT, size: 14 }
-const PLOT_TITLE_FONT = { ...PLOT_FONT, size: 16 }
+export const PLOT_AXIS_TITLE_FONT = { ...PLOT_FONT, size: 13 }
+const PLOT_TITLE_FONT = { ...PLOT_FONT, size: 14 }
 
 function object(value: unknown): PlotObject {
   return value && typeof value === "object" && !Array.isArray(value) ? value as PlotObject : {}
