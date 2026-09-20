@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
+import { CifViewer } from "./cif-viewer"
 import type { AthenaProject } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import {
@@ -27,6 +28,7 @@ const amcsdLabel = (id: number) => `AMCSD ${String(id).padStart(7, "0")}`
 export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
+  const viewerAnchor = useRef<HTMLDivElement>(null)
   const opener = useRef<HTMLElement | null>(null)
   const titleId = useId()
   const [attachments, setAttachments] = useState<ArtemisStructureAttachment[]>([])
@@ -99,6 +101,9 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     return () => { document.body.style.overflow = overflow }
   }, [open])
   useEffect(() => { setAttachments([]) }, [projectId])
+  useEffect(() => {
+    if (open && attachmentId) viewerAnchor.current?.scrollIntoView?.({ block: "start" })
+  }, [open, attachmentId])
 
   useEffect(() => {
     if (!projectId) { setAttachments([]); return }
@@ -331,6 +336,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
       {structure && <div className={styles.structure}>
         <h4>{structure.mineral} <span>{amcsdLabel(structure.id)}</span></h4>
+        {open && attachmentId && <div ref={viewerAnchor}><CifViewer key={attachmentId} structure={structure} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
         {structure.title && <p className={styles.citation}>{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</p>}
         <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button></div>
