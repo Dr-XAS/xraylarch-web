@@ -3,7 +3,7 @@
 import { useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import type { InspectionResponse } from "@/lib/contracts"
 import { type AthenaGroup } from "@/lib/athena"
-import { numeratorRange, denominatorColumns, columnExpression, columnProblem, changeInputType, initialColumnMapping, setDualMode, defaultPreprocessing, type ColumnMapping } from "@/lib/athena-import"
+import { numeratorRange, denominatorColumns, columnExpression, columnProblem, changeInputType, flipSignalColumns, initialColumnMapping, setDualMode, defaultPreprocessing, type ColumnMapping } from "@/lib/athena-import"
 import { AthenaImportPreview } from "./athena-import-preview"
 import { AthenaDownloadButton } from "./athena-download-button"
 import { AthenaImportPreprocessing } from "./athena-import-preprocessing"
@@ -13,7 +13,7 @@ import { AthenaBeamlineMetadata } from './athena-beamline-metadata'
 import styles from "./athena-column-selection.module.css"
 
 export function AthenaColumnSelection({ projectId, version, inspection, mapping, setMapping, busy, remaining, reuseMapping, groups = [],
-  setReuseMapping, chooseAnother, importCurrent, rebinDefaults, batchNotice, initialReaderReviewed = false }: {
+  setReuseMapping, chooseAnother, importCurrent, rebinDefaults, batchNotice, initialReaderReviewed = false, replacement = false }: {
   projectId: string; version: number; inspection: InspectionResponse; mapping: ColumnMapping
   setMapping: Dispatch<SetStateAction<ColumnMapping>>; busy: boolean; remaining: number
   groups?: AthenaGroup[]
@@ -21,6 +21,7 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
   reuseMapping: boolean | null; setReuseMapping: (value: boolean) => void; chooseAnother: () => void; importCurrent: (readerReviewed: boolean) => void
   batchNotice?: string
   initialReaderReviewed?: boolean
+  replacement?: boolean
 }) {
   const [range, setRange] = useState("")
   const [rangeError, setRangeError] = useState("")
@@ -40,7 +41,7 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
   return <>
     <div className={styles.importHeader}>
       <p className={styles.fileSummary}><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{remaining > 1 ? ` · ${remaining} files remaining` : ""}</span></p>
-      <div className={`ath-modal-actions ${styles.importActions}`} role="group" aria-label="Import actions"><button type="button" disabled={busy} onClick={chooseAnother}>Choose another file</button><button type="button" className="ath-primary" disabled={busy || !!problem || (remaining > 1 && reuseMapping === null) || (!!inspection.file_plugin?.review_required && !reviewed)} onClick={() => importCurrent(reviewed)}>{busy ? "Importing…" : remaining > 1 && reuseMapping ? `Import ${remaining} files` : dualMode ? "Import both modes" : "Import spectrum"}</button></div>
+      <div className={`ath-modal-actions ${styles.importActions}`} role="group" aria-label={replacement ? "Column change actions" : "Import actions"}><button type="button" disabled={busy} onClick={chooseAnother}>{replacement ? "Cancel" : "Choose another file"}</button><button type="button" className="ath-primary" disabled={busy || !!problem || (remaining > 1 && reuseMapping === null) || (!!inspection.file_plugin?.review_required && !reviewed)} onClick={() => importCurrent(reviewed)}>{replacement ? busy ? "Applying…" : "Apply column changes" : busy ? "Importing…" : remaining > 1 && reuseMapping ? `Import ${remaining} files` : dualMode ? "Import both modes" : "Import spectrum"}</button></div>
     </div>
     {remaining > 1 && <fieldset className={styles.batchChoice} disabled={busy}>
       <legend>Use the same import parameters for all files?</legend>
@@ -55,13 +56,13 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
     <div className={styles.layout}>
       <div className={styles.controls}>
         <fieldset disabled={busy} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
-          {inspection.remembered_columns && <section aria-label="Remembered import choices">
+          {!replacement && inspection.remembered_columns && <section aria-label="Remembered import choices">
             <p className="ath-hint">{inspection.remembered_columns.matching_columns
               ? 'Matching column labels: started with the previous successful import choices. Check the expression and preview before importing.'
               : 'Different column labels: suggested detector columns, with references and rebinning off. The previous grid and preprocessing choices are available.'}</p>
             {inspection.remembered_columns.warnings.map(w => <p key={w} className="ath-warning">{w}</p>)}
             <button type="button" onClick={() => setMapping(m => initialColumnMapping(inspection, { ...m,
-              preprocessing: { ...defaultPreprocessing }, ...(m.rebin ? { rebin: { ...m.rebin, enabled: false, e0: null } } : {}) }, false))}>Use suggested columns</button>
+              preprocessing: { ...defaultPreprocessing }, ...(m.rebin ? { rebin: { ...m.rebin, enabled: false, e0: null } } : {}) }, false, false))}>Use suggested columns</button>
           </section>}
           <div className="ath-fields">
             <label className="ath-field"><span>Data type</span><select value={mapping.data_type} onChange={e => setMapping(m => changeInputType(m, e.target.value as ColumnMapping["data_type"]))}><option value="mu">μ(E) · absorption</option><option value="xanes">XANES · short energy range</option><option value="norm">Normalized μ(E)</option><option value="chi">χ(k) · extracted EXAFS</option><option value="xmudat">FEFF xmu.dat · normalized μ(E)</option></select></label>
@@ -74,10 +75,11 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
                 } : {}),
                 mode: mode as ColumnMapping["mode"], ...(mode === "mu" ? { denominator: "" } : {}),
               })
-            }}><option value="mu">Direct signal</option><option value="transmission">Transmission · ln(I₀ / It)</option><option value="fluorescence">Fluorescence / yield · signal / I₀</option><option value="both">Transmission + fluorescence</option></select></label>
+            }}><option value="mu">Direct signal</option><option value="transmission">Transmission · ln(I₀ / It)</option><option value="fluorescence">Fluorescence / yield · signal / I₀</option>{!replacement && <option value="both">Transmission + fluorescence</option>}</select></label>
             <label className="ath-field"><span>{mapping.data_type === "chi" ? "k column" : "Energy column"}</span><select value={mapping.energy_column} onChange={e => setMapping(m => ({ ...m, energy_column: e.target.value, units: m.data_type === "chi" ? "eV" : inspection.column_units?.[e.target.value] ?? m.units }))}>{inspection.columns.map(c => <option value={c.column_id} key={c.column_id}>{c.name} · column {c.index + 1}</option>)}</select></label>
             <label className="ath-field"><span>Energy units</span><select value={mapping.units} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, units: e.target.value as ColumnMapping["units"] }))}><option>eV</option><option>keV</option></select></label>
           </div>
+          {!replacement && <label className="ath-check"><input type="checkbox" checked={mapping.is_reference ?? false} onChange={e => setMapping(m => ({ ...m, is_reference: e.target.checked }))} />This is reference</label>}
           {inspection.plugin_suggestions && mapping.data_type !== 'chi' && <div aria-label="Reader column suggestions">
             <p className="ath-hint">Apply this reader’s suggested detector columns, then check the preview.</p>
             {(['transmission', 'fluorescence'] as const).map(mode => {
@@ -112,19 +114,20 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
           <p className="ath-formula">{columnExpression(mapping, inspection.columns)}</p>
           <div className="ath-fields">
             <label className="ath-check"><input type="checkbox" checked={mapping.mode === "transmission"} disabled={mapping.data_type === "chi" || dualMode} onChange={e => setMapping(m => ({ ...m, mode: e.target.checked ? "transmission" : "fluorescence", ...(m.mode === "mu" ? { denominator: "" } : {}) }))} />Natural log</label>
-            <label className="ath-check"><input type="checkbox" checked={mapping.invert ?? false} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, invert: e.target.checked }))} />Invert signal</label>
+            <button type="button" disabled={mapping.data_type === "chi" || mapping.mode === "mu"} onClick={() => setMapping(m => flipSignalColumns(m))}>Flip numerator and denominator</button>
             <label className="ath-field"><span>Multiplicative constant</span><input type="number" step="any" value={mapping.signal_multiplier ?? 1} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, signal_multiplier: e.target.value === "" ? "" : Number(e.target.value) }))} /></label>
           </div>
           <p className="ath-hint">{mapping.data_type === 'chi' ? 'χ(k) is read directly from the numerator columns. Absorption measurement controls are inactive.'
-            : `${dualMode ? 'Choose the incident intensity (I₀) as numerator and transmitted intensity (It) as denominator.' : 'Unselected numerator or denominator uses 1.'} Multiple checked columns are added together. Invert changes the sign; the constant scales the imported signal.`}</p>
-          <label className="ath-check"><input type="checkbox" checked={mapping.individual_channels ?? false} onChange={e => setMapping(m => ({ ...m, individual_channels: e.target.checked }))} />Save each channel as its own group</label>
+            : `${dualMode ? 'Choose the incident intensity (I₀) as numerator and transmitted intensity (It) as denominator.' : 'Unselected numerator or denominator uses 1.'} Multiple checked columns are added together. Flip swaps all numerator and denominator selections; the constant scales the imported signal.`}</p>
+          {!replacement && <label className="ath-check"><input type="checkbox" checked={mapping.individual_channels ?? false} onChange={e => setMapping(m => ({ ...m, individual_channels: e.target.checked }))} />Save each channel as its own group</label>}
           {mapping.additional_fluorescence && <FluorescenceColumns inspection={inspection} mapping={mapping} setMapping={setMapping} />}
           {problem && <p role="alert" className="ath-error">{problem}</p>}
           <AthenaImportRebin value={mapping.rebin} chi={mapping.data_type === 'chi'} onChange={rebin => setMapping(m => ({ ...m, rebin }))} />
           {rebinDefaults}
-          <AthenaImportPreprocessing value={mapping.preprocessing} groups={groups} chi={mapping.data_type === 'chi'}
-            onChange={preprocessing => setMapping(m => ({ ...m, preprocessing }))} />
-          <details><summary>Reference channel & ordering</summary>
+          {!replacement && <AthenaImportPreprocessing value={mapping.preprocessing} groups={groups} chi={mapping.data_type === 'chi'}
+            onChange={preprocessing => setMapping(m => ({ ...m, preprocessing }))} />}
+          <details><summary>{replacement ? 'Ordering' : 'Reference channel & ordering'}</summary>
+            {!replacement && <>
             <p className="ath-hint">The reference uses the same energy column and units. Its energy shift stays linked to the sample after import.</p>
             <div className="ath-fields">{(["reference_numerator", "reference_denominator"] as const).map(key => <label key={key} className="ath-field"><span>{key.replaceAll("_", " ")}</span><select value={mapping[key]} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, [key]: e.target.value }))}><option value="">None · constant 1 when reference enabled</option><option value="1">Constant 1</option>{inspection.columns.map(c => <option value={c.column_id} key={c.column_id}>{c.name} · column {c.index + 1}</option>)}</select></label>)}</div>
             <label className="ath-check"><input type="checkbox" disabled={!hasReference} checked={mapping.reference_log ?? true} onChange={e => setMapping(m => ({ ...m, reference_log: e.target.checked }))} />Reference natural log</label>
@@ -132,6 +135,7 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
             {hasReference && mapping.reference_same_element !== false && <p className="ath-hint">Use the sample’s element and edge. If the reference E₀ differs by more than 25 eV, use that element’s tabulated edge.</p>}
             {hasReference && <p className="ath-formula">Reference = {(mapping.reference_log ?? true) ? "ln(|" : ""}{inspection.columns.find(c => c.column_id === mapping.reference_numerator)?.name ?? "1"} / {inspection.columns.find(c => c.column_id === mapping.reference_denominator)?.name ?? "1"}{(mapping.reference_log ?? true) ? "|)" : ""}</p>}
             {hasReference && mapping.reference_same_element === false && <p className="ath-hint">The reference finds its own edge independently of sample edge enforcement.</p>}
+            </>}
             <label className="ath-check"><input type="checkbox" checked={mapping.sort} onChange={e => setMapping(m => ({ ...m, sort: e.target.checked }))} />Sort ascending by energy (duplicate energies still require repair)</label>
           </details>
         </fieldset>
@@ -162,6 +166,10 @@ function FluorescenceColumns({ inspection, mapping, setMapping }: {
   function update(value: Partial<NonNullable<ColumnMapping['additional_fluorescence']>>) {
     setMapping(m => m.additional_fluorescence ? { ...m, additional_fluorescence: { ...m.additional_fluorescence, ...value } } : m)
   }
+  function flip() {
+    setMapping(m => m.additional_fluorescence ? { ...m,
+      additional_fluorescence: flipSignalColumns(m.additional_fluorescence) } : m)
+  }
   return <fieldset className={styles.fluorescence} aria-label="Fluorescence columns">
     <legend>Fluorescence</legend>
     <p className="ath-hint">Choose the fluorescence detector signal and incident intensity (I₀). Multiple selected columns are summed.</p>
@@ -178,7 +186,7 @@ function FluorescenceColumns({ inspection, mapping, setMapping }: {
     </tr>)}</tbody></table></div>
     <p className="ath-formula">{columnExpression(signalMapping, inspection.columns)}</p>
     <div className="ath-fields">
-      <label className="ath-check"><input type="checkbox" checked={fluorescence.invert ?? false} onChange={e => update({ invert: e.target.checked })} />Invert fluorescence signal</label>
+      <button type="button" onClick={flip}>Flip fluorescence numerator and denominator</button>
       <label className="ath-field"><span>Fluorescence multiplicative constant</span><input type="number" step="any" value={fluorescence.signal_multiplier ?? 1}
         onChange={e => update({ signal_multiplier: e.target.value === '' ? '' : Number(e.target.value) })} /></label>
     </div>

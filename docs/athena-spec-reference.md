@@ -50,9 +50,9 @@ There are two source/sample discrepancies:
 - Native code suggests `ln(column 8 / column 10)`, while the module's usage
   notes specify the opposite ratio. With the measured Ion1/Ion2 channels the
   code's ratio has a negative absorption step. The preview shows that actual
-  signal. Explicit **Invert signal** produces a positive edge step for both
-  scans and permits normalization and EXAFS processing. No sign is changed
-  implicitly. The six optional fluorescence channels in this acquisition are
+  signal. Explicit **Flip numerator and denominator** produces a positive edge
+  step for both scans and permits normalization and EXAFS processing. No
+  operand is changed implicitly. The six optional fluorescence channels in this acquisition are
   zero, so it does not establish a usable fluorescence processing result.
 
 Selecting the constant column shows a vertical preview with the actual
@@ -84,11 +84,11 @@ sequential: a failure on scan 2 retains accepted scan 1, and retry resumes
 scan 2 without duplication. Queued native PRJ and raw files continue after
 the selected scans.
 
-[Native column memory](athena-column-memory-reference.md) retains sign and
-multiplier on a changed layout. After using inversion for SPEC, a subsequent
-Cu μ(E) file therefore previews its remembered negative sign. **Use suggested
-columns** explicitly clears that inversion. The mixed-queue browser test
-checks both curves before accepting the positive Cu spectrum.
+[Native column memory](athena-column-memory-reference.md) retains operand
+orientation and multiplier on a matching layout. A changed layout starts from
+fresh detector suggestions; **Use suggested columns** explicitly restores the
+reader's numerator and denominator. The mixed-queue browser test checks the
+preview before accepting the Cu spectrum.
 
 Original downloads are byte-identical. Converted downloads are per scan.
 Scan metadata, conversion hashes, all converted columns, chosen mappings and

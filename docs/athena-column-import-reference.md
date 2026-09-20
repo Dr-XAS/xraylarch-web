@@ -75,6 +75,29 @@ rather than inventing an out-of-range E0.
 
 ## Evidence and limits
 
+### Reselecting a stored group's columns
+
+The data-list context menu includes **Reselect import columns…** for groups
+with retained import columns. This action targets the right-clicked row, loads
+its saved column choices on demand, and reuses the existing live preview.
+**Apply column changes** replaces that group's spectrum in one undoable
+revision, retaining its ID, name, list position, notes, marks, plot styling,
+and reference links. Processing parameters are initialized again for the new
+signal; linked energy shifts remain tied. Cancel and preview do not change the
+project.
+
+Replacement creates one spectrum, so batch import, separate detector groups,
+dual measurement import, and new reference creation remain in the ordinary
+import workflow. Frozen groups and groups without retained source columns
+cannot use this action. The server prefers the original staged upload and can
+reconstruct missing uploads from retained columns, including the original
+table for import-time rebinning. If point removal has destroyed the complete
+original table and its upload is missing, import the source file again.
+
+There is no new background calculation or extra copy of source columns in
+normal project responses. Inspection and preview run only while the dialog is
+used; applying recalculates the replacement and affected background dependents.
+
 - `backend/tests/test_athena_columns.py`: direct/ratio/log arithmetic, summed
   and individual channels, reverse-order keV, raw chi axes, reference formulas,
   native reference type/identity/E0 behavior, separate reference pairs, undo,
@@ -114,15 +137,16 @@ signal. The UI now provides the native combinations:
   entire input before any group is saved. The earlier tests that rejected
   negative ratios were corrected against the pinned source and replaced with
   independent absolute-log oracles plus zero-ratio rejection cases.
-- Invert applies -1 and the multiplicative constant scales the imported mu.
-  Native selected signal arrays receive the same factor; i0 and original
-  uploaded columns remain unchanged. Retained mu standard deviations receive
-  its absolute value. Reference data use their own expression without the
-  sample's scale or inversion. The group plot multiplier stays 1.
+- Flip exchanges the complete numerator and denominator selections, and the
+  multiplicative constant scales the imported mu. The column-table checkboxes,
+  live expression and preview all update from the exchanged operands. Legacy
+  saved sign inversion is folded into a negative constant so reopening older
+  mappings preserves their signal. Reference data use their own expression
+  without the sample's scale. The group plot multiplier stays 1.
 - Reference selections may use a single column or constant 1 for either
   operand. Both empty selections disable reference import; choosing the
   explicit Constant 1 option permits a constant-only reference.
-- Switching to chi(k) disables/reset units, division, natural log, inversion,
+- Switching to chi(k) disables/resets units, division, natural log, flipping,
   scale and reference controls while retaining the numerator. The backend also
   ignores inactive absorption transforms for chi and canonicalizes its saved
   mapping, matching the native direct chi-column path.
@@ -160,7 +184,7 @@ validation, source-column preservation, and JSON/PRJ round trips. It also
 covers detector aliases, unit-heuristic boundaries and single-column files.
 Additional frontend tests cover emitted expressions/payloads, invalid scalar
 editing, resets and batch reuse; real Chromium checks suggestions, denominator
-sums, scaling/inversion and type switching. The validation log records actual
+  sums, scaling/flipping and type switching. The validation log records actual
 run counts, not native wx execution.
 
 A deliberate numerical difference from the native text widget: zero is a

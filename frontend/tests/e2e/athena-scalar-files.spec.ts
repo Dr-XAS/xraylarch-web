@@ -36,6 +36,10 @@ for (const name of ['cmc', 'hxma', 'lnls']) {
       const ratio = num.reduce((sum, i) => sum + row[i], 0) / row[den]
       return choice.ln ? Math.log(Math.abs(ratio)) : ratio
     })
+    const flipped = rows.map(row => {
+      const ratio = row[den] / num.reduce((sum, i) => sum + row[i], 0)
+      return choice.ln ? Math.log(Math.abs(ratio)) : ratio
+    })
     const errors: string[] = []; page.on('pageerror', error => errors.push(error.message))
     await page.goto('/')
     await page.getByRole('button', { name: 'File', exact: true }).click()
@@ -89,9 +93,9 @@ for (const name of ['cmc', 'hxma', 'lnls']) {
       await dialog.getByRole('button', { name: 'Use fluorescence columns', exact: true }).click()
     }
     await signal(preview, x, y)
-    await dialog.getByLabel('Invert signal', { exact: true }).check()
-    await signal(preview, x, y.map(v => -v))
-    await dialog.getByLabel('Invert signal', { exact: true }).uncheck()
+    await dialog.getByRole('button', { name: 'Flip numerator and denominator', exact: true }).click()
+    await signal(preview, x, flipped)
+    await dialog.getByRole('button', { name: 'Flip numerator and denominator', exact: true }).click()
     await signal(preview, x, y)
     const originalSummary = dialog.getByText(/^Source file contents( \(first section\))?$/)
     await originalSummary.click()

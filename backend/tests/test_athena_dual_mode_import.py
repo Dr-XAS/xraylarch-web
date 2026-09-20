@@ -33,6 +33,7 @@ def staged(tmp_path, xas_arrays, *, reverse=False):
 def test_dual_import_keeps_actual_modes_independent_arithmetic_and_one_undo(tmp_path, xas_arrays, dtype):
     store, p, info, req, ids = staged(tmp_path, xas_arrays, reverse=True)
     req.data_type = dtype
+    req.is_reference = True
     req.signal_multiplier = 2
     req.additional_fluorescence.signal_multiplier = -3
     req.additional_fluorescence.invert = True
@@ -51,6 +52,7 @@ def test_dual_import_keeps_actual_modes_independent_arithmetic_and_one_undo(tmp_
         assert group['mu'] == trace['y']
         mapping = group['source']['mapping']
         assert mapping['mode'] == mode and mapping['numerator'] == numerator and mapping['denominator'] == denominator
+        assert mapping['is_reference'] is True
         assert 'additional_fluorescence' not in mapping and group['data_type'] == dtype
     undone = store.command(p['id'], Command(version=imported['version'], action='undo'))
     assert undone['groups'] == []

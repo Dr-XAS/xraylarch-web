@@ -24,6 +24,7 @@ export interface AthenaGroup {
   is_difference?: boolean
   is_normalized?: boolean
   processing_error: string | null; source: Record<string, unknown>
+  can_reimport_columns?: boolean
 }
 export function dataTypeLabel(group: AthenaGroup) {
   if (group.data_type === 'xanes' && group.is_normalized) return 'Normalized XANES'
@@ -34,6 +35,11 @@ export function measurementModeLabel(group: AthenaGroup): "trans" | "fluo" | nul
   if (!mapping || typeof mapping !== "object" || Array.isArray(mapping)) return null
   const mode = (mapping as Record<string, unknown>).mode
   return mode === "transmission" ? "trans" : mode === "fluorescence" ? "fluo" : null
+}
+export function importedAsReference(group: AthenaGroup): boolean {
+  const mapping = group.source.mapping
+  return !!mapping && typeof mapping === "object" && !Array.isArray(mapping)
+    && (mapping as Record<string, unknown>).is_reference === true
 }
 export function isDifferenceGroup(group: AthenaGroup) {
   return group.is_difference ?? (group.source.operation === "difference")

@@ -66,7 +66,23 @@ def test_reference_preview_natural_log_and_saved_order_and_links(store, xas_arra
     np.testing.assert_allclose(preview["traces"][1]["y"], expected, atol=1e-14)
     assert preview["traces"][1]["y"] == reference["mu"]
     assert reference["source"]["mapping"]["mode"] == ("transmission" if log else "fluorescence")
+    assert reference["source"]["mapping"]["is_reference"] is True
     np.testing.assert_allclose(reference["source"]["raw_arrays"]["i0"], np.exp(mu) if log else 1)
+
+
+def test_explicit_reference_marker_persists_but_is_not_remembered_for_the_next_file(store, xas_arrays):
+    x, mu = xas_arrays
+    p = store.create()
+    inspected, ids = upload(store, p, x, sample=mu)
+    request = ImportRequest(version=0, upload_id=inspected["upload_id"], energy_column=ids["energy"],
+        numerator=[ids["sample"]], is_reference=True)
+
+    imported = store.import_data(p["id"], request)
+
+    assert imported["groups"][0]["source"]["mapping"]["is_reference"] is True
+    assert store.load(p["id"])["groups"][0]["source"]["mapping"]["is_reference"] is True
+    next_inspection, _ = upload(store, imported, x, sample=mu)
+    assert "is_reference" not in next_inspection["remembered_columns"]["mapping"]
 
 
 def test_chi_preview_keeps_k_units_and_unweighted_data(store):

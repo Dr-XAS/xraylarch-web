@@ -38,6 +38,14 @@ describe("live column preview", () => {
     expect(handoff().layout.xaxis.title.text).toBe("Energy (eV)")
     expect(screen.getByText(/3 source points/)).toHaveTextContent("all points displayed")
   })
+  it("does not recompute the scientific preview when only the reference tag changes", async () => {
+    const view = render(<AthenaImportPreview {...props()} />)
+    await tick()
+    view.rerender(<AthenaImportPreview {...props({ is_reference: true })} />)
+    await tick(500)
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(api.mock.calls[0][1]).not.toHaveProperty("is_reference")
+  })
   it.each(["resolve", "reject"] as const)("ignores an old request that %s after a newer selection", async completion => {
     const old = deferred<ColumnPreview>(), current = deferred<ColumnPreview>()
     api.mockReturnValueOnce(old.promise).mockReturnValueOnce(current.promise)
@@ -151,12 +159,12 @@ describe("live column preview", () => {
   })
 })
 
-it("invalidates scaled previews and sends denominator sums, inversion and zero constants", async () => {
+it("invalidates scaled previews and sends denominator sums, legacy sign normalization and zero constants", async () => {
   const view = render(<AthenaImportPreview {...props()} />)
   await tick()
   view.rerender(<AthenaImportPreview {...props({ denominator: ["c2", "c3"], invert: true, signal_multiplier: 2.5 })} />)
   await tick()
-  expect(api.mock.calls[1][1]).toMatchObject({ denominator: ["c2", "c3"], invert: true, signal_multiplier: 2.5 })
+  expect(api.mock.calls[1][1]).toMatchObject({ denominator: ["c2", "c3"], invert: false, signal_multiplier: -2.5 })
   view.rerender(<AthenaImportPreview {...props({ signal_multiplier: "" })} />)
   await tick()
   expect(api).toHaveBeenCalledTimes(2)

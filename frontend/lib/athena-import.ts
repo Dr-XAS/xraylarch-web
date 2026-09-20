@@ -21,6 +21,7 @@ export interface ColumnMapping {
   energy_column: string; numerator: string[]; denominator: string | string[]
   mode: "mu" | "transmission" | "fluorescence"
   units: "eV" | "keV"; data_type: "mu" | "xanes" | "norm" | "chi" | "xmudat"
+  is_reference?: boolean
   reference_numerator: string; reference_denominator: string; sort: boolean
   reference_log?: boolean; reference_same_element?: boolean; individual_channels?: boolean
   signal_multiplier?: number | ""; invert?: boolean
@@ -36,10 +37,11 @@ export interface ColumnPreview {
 }
 
 export function columnPayload(mapping: ColumnMapping) {
+  mapping = normalizeImportInversion(mapping)
   const denominator = denominatorColumns(mapping)
   const fluorescenceDenominator = mapping.additional_fluorescence && denominatorColumns(mapping.additional_fluorescence)
   const { enabled, ...rebin } = mapping.rebin ?? defaultRebin
-  return { ...mapping, preprocessing: mapping.preprocessing ?? defaultPreprocessing,
+  const payload = { ...mapping, preprocessing: mapping.preprocessing ?? defaultPreprocessing,
     ...(mapping.additional_fluorescence ? { additional_fluorescence: { ...mapping.additional_fluorescence,
       denominator: fluorescenceDenominator!.length > 1 ? fluorescenceDenominator : fluorescenceDenominator![0] || null } } : {}),
     ...(mapping.rebin ? { rebin: enabled ? rebin : null } : {}),
@@ -48,10 +50,34 @@ export function columnPayload(mapping: ColumnMapping) {
     } : {}),
     denominator: denominator.length > 1 ? denominator : denominator[0] || null,
     reference_numerator: mapping.reference_numerator || null, reference_denominator: mapping.reference_denominator || null }
+  if (!payload.is_reference) delete payload.is_reference
+  return payload
 }
 
 export function denominatorColumns(mapping: Pick<ColumnMapping, 'denominator'>): string[] {
   return Array.isArray(mapping.denominator) ? mapping.denominator : mapping.denominator ? [mapping.denominator] : []
+}
+
+type SignalMapping = {
+  numerator: string[]; denominator: string | string[]
+  signal_multiplier?: number | ""; invert?: boolean
+}
+
+function normalizeSignalInversion<T extends SignalMapping>(mapping: T): T {
+  if (!mapping.invert) return mapping
+  const multiplier = mapping.signal_multiplier ?? 1
+  return { ...mapping, signal_multiplier: multiplier === "" ? "" : -multiplier, invert: false }
+}
+
+export function normalizeImportInversion(mapping: ColumnMapping): ColumnMapping {
+  const normalized = normalizeSignalInversion(mapping)
+  return normalized.additional_fluorescence ? { ...normalized,
+    additional_fluorescence: normalizeSignalInversion(normalized.additional_fluorescence) } : normalized
+}
+
+export function flipSignalColumns<T extends SignalMapping>(mapping: T): T {
+  const normalized = normalizeSignalInversion(mapping)
+  return { ...normalized, numerator: [...denominatorColumns(normalized)], denominator: [...normalized.numerator] }
 }
 
 export function columnProblem(mapping: ColumnMapping): string | null {
@@ -115,7 +141,7 @@ export function setDualMode(mapping: ColumnMapping, inspection: InspectionRespon
   } : {}), additional_fluorescence: additional }
 }
 
-export function initialColumnMapping(inspection: InspectionResponse, previous: ColumnMapping, remembered = true): ColumnMapping {
+export function initialColumnMapping(inspection: InspectionResponse, previous: ColumnMapping, remembered = true, resetReference = true): ColumnMapping {
   const cols = inspection.columns, suggested = inspection.athena_suggestion
   const { additional_fluorescence: _fluorescence, ...singlePrevious } = previous
   const mapping: ColumnMapping = suggested ? { ...singlePrevious, ...suggested, denominator: suggested.denominator ?? "", reference_numerator: "",
@@ -125,7 +151,8 @@ export function initialColumnMapping(inspection: InspectionResponse, previous: C
       denominator: cols.find(c => c.role_hint === "i0")?.column_id ?? cols[2]?.column_id ?? "",
       reference_numerator: "", reference_denominator: "" }
   const restored = remembered && inspection.remembered_columns
-  const selected = restored ? { ...mapping, ...restored.mapping } : mapping
+  const is_reference = resetReference ? false : previous.is_reference ?? false
+  const selected = normalizeImportInversion(restored ? { ...mapping, ...restored.mapping, is_reference } : { ...mapping, is_reference })
   if (selected.rebin && !restored) selected.rebin = { ...selected.rebin, enabled: false }
   return selected.data_type === 'chi' ? changeInputType(selected, 'chi') : selected
 }
