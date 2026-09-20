@@ -10,6 +10,23 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
+  it.each([['GET', 'columns'], ['POST', 'reimport']])('forwards %s group %s with project authorization and preserves the response', async (method, action) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response('{"version":8}', { headers: { 'content-type': 'application/json' } }))
+    vi.stubGlobal('fetch', fetcher)
+    const path = ['api', 'athena', 'projects', 'cu', 'groups', 'foil', action]
+    const request = new Request(`http://localhost/api/backend/${path.join('/')}`, {
+      method, headers: { 'x-xraylarch-project-capability': 'project-token' },
+      ...(method === 'POST' ? { body: '{"version":7}' } : {}),
+    })
+    const response = await (method === 'GET' ? GET : POST)(request, { params: Promise.resolve({ path }) })
+    expect(fetcher.mock.calls[0][0].pathname).toBe(`/${path.join('/')}`)
+    expect(fetcher.mock.calls[0][1].headers.get('x-xraylarch-project-capability')).toBe('project-token')
+    expect(await response.json()).toEqual({ version: 8 })
+    fetcher.mockClear()
+    const rejected = await (method === 'GET' ? POST : GET)(new Request(request.url, { method: method === 'GET' ? 'POST' : 'GET' }), { params: Promise.resolve({ path }) })
+    expect(rejected.status).toBe(404)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
   it("forwards Artemis fitting requests and preserves stale revision errors", async () => {
     const body = JSON.stringify({ version: 4, paths: [], parameters: [] })
     const error = { error: { code: "stale_revision", message: "Reload the project." } }

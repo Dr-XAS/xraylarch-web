@@ -11,7 +11,7 @@ reads `athena.column_selection` before opening the column dialog. Its
 restoration block and persistence write at lines 561–610 provide the contract:
 
 - Identical ordered column labels and count restore energy and signal
-  operands, logarithm, inversion, multiplier, energy units, data type, individual
+  operands, logarithm, operand orientation, multiplier, energy units, data type, individual
   MED selection, and reference operands/log/same-element choices.
 - A changed layout gets fresh detector suggestions and disables references,
   individual MED import and rebin activation. Sign, multiplier and preprocessing

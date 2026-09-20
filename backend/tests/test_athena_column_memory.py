@@ -184,7 +184,7 @@ def test_memory_contains_choices_only_and_concurrent_imports_serialize(store, xa
     assert all(len(p['groups']) == 1 for p in out)
     memory = AthenaPreferences(store.settings).read_columns().model_dump()
     assert memory['version'] == 2
-    assert not {'version', 'upload_id', 'edge_policy'} & memory['mapping'].keys()
+    assert not {'version', 'upload_id', 'edge_policy', 'is_reference'} & memory['mapping'].keys()
     assert all(set(c) == {'column_id', 'name'} for c in memory['columns'])
 
 

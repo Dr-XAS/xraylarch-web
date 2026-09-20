@@ -31,8 +31,8 @@ async function curve(plot: Locator) {
     return {x:[...t.x],y:[...t.y]}
   })
 }
-async function signal(plot: Locator,index: number,invert=false) {
-  const data=rows(index),x=data.map(r=>r[0]),y=data.map(r=>(invert?-1:1)*Math.log(Math.abs(r[1]/r[2])))
+async function signal(plot: Locator,index: number,flipped=false) {
+  const data=rows(index),x=data.map(r=>r[0]),y=data.map(r=>(flipped?-1:1)*Math.log(Math.abs(r[1]/r[2])))
   await expect.poll(async()=>(await curve(plot)).x).toEqual(x)
   await expect.poll(async()=>{
     const actual=(await curve(plot)).y
@@ -64,8 +64,8 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   const plot=dialog.getByLabel('Imported signal preview plot',{exact:true})
   await signal(plot,0)
   await dialog.getByRole('radio',{name:'No, review each file',exact:true}).check()
-  await dialog.getByRole('checkbox',{name:'Invert signal',exact:true}).check();await signal(plot,0,true)
-  await dialog.getByRole('checkbox',{name:'Invert signal',exact:true}).uncheck();await signal(plot,0)
+  await dialog.getByRole('button',{name:'Flip numerator and denominator',exact:true}).click();await signal(plot,0,true)
+  await dialog.getByRole('button',{name:'Flip numerator and denominator',exact:true}).click();await signal(plot,0)
   await plot.scrollIntoViewIfNeeded();await dialog.screenshot({path:info.outputPath('zip-columns.png')})
   const importing=page.waitForResponse(r=>r.url().endsWith('/import'))
   await dialog.getByRole('button',{name:'Import spectrum',exact:true}).click();expect((await importing).ok()).toBe(true)

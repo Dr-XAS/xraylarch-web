@@ -199,7 +199,6 @@ test('batch choice shares parameters across renamed columns, resets, and permits
   await panel.getByLabel('Numerator i0', { exact: true }).check()
   await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
   await panel.getByLabel('Denominator it', { exact: true }).check()
-  await panel.getByLabel('Invert signal', { exact: true }).uncheck()
   await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('1.5')
   const imports: Promise<Record<string, any>>[] = []
   page.on('response', response => { if (response.url().endsWith('/import')) imports.push(response.json()) })
@@ -269,24 +268,30 @@ test('imports transmission and fluorescence together across a shared real-Cu bat
   await panel.getByLabel('Numerator i0', { exact: true }).check()
   await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
   await panel.getByLabel('Denominator it', { exact: true }).check()
-  await panel.getByLabel('Invert signal', { exact: true }).uncheck()
   await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('1.25')
   await panel.getByRole('button', { name: 'Clear fluorescence numerator', exact: true }).click()
   await panel.getByLabel('Fluorescence numerator deta', { exact: true }).check()
   await panel.getByLabel('Fluorescence numerator detb', { exact: true }).check()
   await panel.getByRole('button', { name: 'Clear fluorescence denominator', exact: true }).click()
   await panel.getByLabel('Fluorescence denominator i0', { exact: true }).check()
-  await panel.getByLabel('Invert fluorescence signal', { exact: true }).uncheck()
+  await panel.getByRole('button', { name: 'Flip fluorescence numerator and denominator', exact: true }).click()
+  await expect(panel.getByLabel('Fluorescence numerator i0', { exact: true })).toBeChecked()
+  await expect(panel.getByLabel('Fluorescence numerator deta', { exact: true })).not.toBeChecked()
+  await expect(panel.getByLabel('Fluorescence numerator detb', { exact: true })).not.toBeChecked()
+  await expect(panel.getByLabel('Fluorescence denominator i0', { exact: true })).not.toBeChecked()
+  await expect(panel.getByLabel('Fluorescence denominator deta', { exact: true })).toBeChecked()
+  await expect(panel.getByLabel('Fluorescence denominator detb', { exact: true })).toBeChecked()
   await panel.getByRole('spinbutton', { name: 'Fluorescence multiplicative constant', exact: true }).fill('.5')
   await expect.poll(async () => (await curves(panel)).length).toBe(2)
   const preview = await curves(panel)
   expect(preview.map(trace => trace.name)).toEqual(['Transmission · Sample', 'Fluorescence · Sample'])
-  // Transmission is 1.25 * ln(i0/it); fluorescence is .5 * (detA+detB)/i0.
-  for (const [modeIndex, scale] of [[0, 1.25], [1, .75]]) {
+  // Transmission is 1.25 * ln(i0/it); flipped fluorescence is .5 * i0/(detA+detB).
+  for (const modeIndex of [0, 1]) {
     expect(preview[modeIndex].x).toHaveLength(measured.length)
     for (const index of [0, 200, 400, measured.length - 1]) {
       expect(preview[modeIndex].x[index]).toBeCloseTo(measured[index][0], 9)
-      expect(preview[modeIndex].y[index]).toBeCloseTo(scale * measured[index][1], 12)
+      const expected = modeIndex === 0 ? 1.25 * measured[index][1] : 1 / (3 * measured[index][1])
+      expect(preview[modeIndex].y[index]).toBeCloseTo(expected, 12)
     }
   }
   await panel.screenshot({ path: info.outputPath('dual-mode-desktop.png') })
@@ -306,7 +311,8 @@ test('imports transmission and fluorescence together across a shared real-Cu bat
   for (const body of requests) {
     expect(body).toMatchObject({ mode: 'transmission', signal_multiplier: 1.25,
       additional_fluorescence: { signal_multiplier: .5 } })
-    expect(body.additional_fluorescence.numerator).toHaveLength(2)
+    expect(body.additional_fluorescence.numerator).toHaveLength(1)
+    expect(body.additional_fluorescence.denominator).toHaveLength(2)
   }
   const projects = await Promise.all(accepted)
   expect(projects).toHaveLength(2)
@@ -318,6 +324,11 @@ test('imports transmission and fluorescence together across a shared real-Cu bat
   ])
   for (const [index, group] of project.groups.entries()) {
     expect(group.source.mapping.mode).toBe(index % 2 ? 'fluorescence' : 'transmission')
+    if (index % 2) {
+      expect(group.source.mapping.numerator).toHaveLength(1)
+      expect(group.source.mapping.denominator).toHaveLength(2)
+      expect(group.source.mapping.invert).toBe(false)
+    }
     expect(group.processing_error).toBeNull()
     expect(group.energy).toEqual(preview[index % 2].x)
     expect(group.mu).toEqual(preview[index % 2].y)
@@ -418,14 +429,20 @@ test("MED range selection, pause/replot, separate channel import and mobile prev
   await expect(page.getByText("fluo", { exact: true })).toHaveCount(2)
 })
 
-test("native denominator sums and sign/scale controls affect preview and imported data", async ({ page }) => {
+test("Flip swaps numerator and denominator checks while scale affects preview and imported data", async ({ page }) => {
   const panel = await openColumns(page)
   await panel.getByRole("button", { name: "Clear numerator", exact: true }).click()
   await panel.getByLabel("Numerator it", { exact: true }).check()
   await panel.getByRole("button", { name: "Clear denominator", exact: true }).click()
   await panel.getByLabel("Denominator i0", { exact: true }).check()
   await panel.getByLabel("Denominator ref", { exact: true }).check()
-  await panel.getByLabel("Invert signal", { exact: true }).check()
+  await panel.getByRole("button", { name: "Flip numerator and denominator", exact: true }).click()
+  await expect(panel.getByLabel("Numerator i0", { exact: true })).toBeChecked()
+  await expect(panel.getByLabel("Numerator ref", { exact: true })).toBeChecked()
+  await expect(panel.getByLabel("Numerator it", { exact: true })).not.toBeChecked()
+  await expect(panel.getByLabel("Denominator it", { exact: true })).toBeChecked()
+  await expect(panel.getByLabel("Denominator i0", { exact: true })).not.toBeChecked()
+  await expect(panel.getByLabel("Denominator ref", { exact: true })).not.toBeChecked()
   await panel.getByRole("spinbutton", { name: "Multiplicative constant", exact: true }).fill("2")
   const scaled = await curves(panel)
   for (const i of [0, 200, 400, measured.length - 1]) {
@@ -436,21 +453,21 @@ test("native denominator sums and sign/scale controls affect preview and importe
   const result = await accepted; expect(result.ok()).toBe(true)
   const g = (await result.json()).groups[0]
   expect(g.mu).toEqual(scaled[0].y)
-  expect(g.source.mapping.denominator).toHaveLength(2)
+  expect(g.source.mapping.numerator).toEqual(["column_0002", "column_0006"])
+  expect(g.source.mapping.denominator).toBe("column_0003")
   expect(g.source.mapping.signal_multiplier).toBe(2)
-  expect(g.source.mapping.invert).toBe(true)
+  expect(g.source.mapping.invert).toBe(false)
   expect(g.multiplier).toBe(1)
   expect(g.processing_error).toBeNull()
 })
 
 test("switching to chi clears absorption transforms and keeps raw k values", async ({ page }) => {
   const panel = await openColumns(page)
-  await panel.getByLabel("Invert signal", { exact: true }).check()
   await panel.getByRole("spinbutton", { name: "Multiplicative constant", exact: true }).fill("3")
   await panel.getByRole("combobox", { name: "Data type", exact: true }).selectOption("chi")
   await expect(panel.getByRole("combobox", { name: "Measurement", exact: true })).toHaveValue("mu")
   await expect(panel.getByRole("combobox", { name: "Measurement", exact: true })).toBeDisabled()
-  await expect(panel.getByLabel("Invert signal", { exact: true })).not.toBeChecked()
+  await expect(panel.getByRole("button", { name: "Flip numerator and denominator", exact: true })).toBeDisabled()
   await expect(panel.getByRole("spinbutton", { name: "Multiplicative constant", exact: true })).toHaveValue("1")
   await expect(panel.getByRole("spinbutton", { name: "Multiplicative constant", exact: true })).toBeDisabled()
   const raw = await curves(panel)

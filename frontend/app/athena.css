@@ -88,6 +88,8 @@
 .ath-group strong { font-size: var(--text-body); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
 .ath-group small { font-size: var(--text-caption); color: var(--ath-muted); font-weight: 400; white-space: normal; }
 .ath-measurement-tag { flex: 0 0 auto; align-self: center; border: 1px solid var(--ath-primary-line); border-radius: 999px; background: var(--ath-primary-soft); color: var(--ath-primary); padding: 2px 6px; font-size: var(--text-caption); font-weight: 600; line-height: 1.2; letter-spacing: .02em; text-transform: lowercase; }
+.ath-measurement-tag[data-tag="fluo"] { border-color: crimson; background: crimson; color: white; }
+.ath-measurement-tag[data-tag="ref"] { border-color: navy; background: navy; color: white; }
 .ath-swatch { height: 14px; width: 3px; flex-shrink: 0; border-radius: 1px; background: #16736b; }
 .ath-swatch.color-1 { background: #c37b38; }.ath-swatch.color-2 { background: #7470b0; }.ath-swatch.color-3 { background: #c85a65; }.ath-swatch.color-4 { background: #467cac; }.ath-swatch.color-5 { background: #8e9c47; }
 .ath-dirty-dot { background: #c6913d; border-radius: 50%; height: 5px; width: 5px; }

@@ -18,7 +18,9 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
   const [state, setState] = useState<{ key: string; value?: ColumnPreview; error?: string } | null>(null)
   const problem = columnProblem(mapping)
   const [showOriginal, setShowOriginal] = useState(true)
-  const key = JSON.stringify({ projectId, version, uploadId, mapping: columnPayload(mapping) })
+  const previewPayload = columnPayload(mapping)
+  delete previewPayload.is_reference
+  const key = JSON.stringify({ projectId, version, uploadId, mapping: previewPayload })
   const [manualKey, setManualKey] = useState("")
   useEffect(() => {
     if (disabled || (paused && manualKey !== key) || problem) return
@@ -26,7 +28,7 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
     let current = true
     const timeout = setTimeout(() => {
       void athenaApi<ColumnPreview>(`/projects/${projectId}/preview-columns`,
-        { version, upload_id: uploadId, ...columnPayload(mapping) }, "POST", controller.signal)
+        { version, upload_id: uploadId, ...previewPayload }, "POST", controller.signal)
         .then(value => { if (current) setState({ key, value }) })
         .catch(error => { if (current) setState({ key, error: error instanceof Error ? error.message : "Column preview failed." }) })
     }, 180)

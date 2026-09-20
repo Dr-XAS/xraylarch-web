@@ -480,14 +480,14 @@ function chooseBothModesMapping(dialog: HTMLElement) {
   fireEvent.click(view.getByRole('checkbox', { name: 'Fluorescence numerator If2' }))
   fireEvent.click(view.getByRole('button', { name: 'Clear fluorescence denominator' }))
   fireEvent.click(view.getByRole('checkbox', { name: 'Fluorescence denominator I0' }))
-  fireEvent.click(view.getByRole('checkbox', { name: 'Invert fluorescence signal' }))
+  fireEvent.click(view.getByRole('button', { name: 'Flip fluorescence numerator and denominator' }))
   fireEvent.change(view.getByRole('spinbutton', { name: 'Fluorescence multiplicative constant' }), { target: { value: '.75' } })
 }
 
 const bothModesMapping = {
   mode: 'transmission', energy_column: 'col_0', units: 'keV',
   numerator: ['col_2'], denominator: 'col_1', signal_multiplier: 1.25,
-  additional_fluorescence: { numerator: ['col_3', 'col_4'], denominator: 'col_2', signal_multiplier: .75, invert: true },
+  additional_fluorescence: { numerator: ['col_2'], denominator: ['col_3', 'col_4'], signal_multiplier: .75, invert: false },
 }
 
 const fluorescenceMapping = {
@@ -720,20 +720,27 @@ describe("AthenaWorkbench menu command search", () => {
 })
 
 describe("AthenaWorkbench measurement mode tags", () => {
-  it("labels imported transmission and fluorescence groups without guessing direct signals", async () => {
+  it("labels imported measurement modes and references without guessing direct signals", async () => {
     const transmission = group("transmission", "Transmission scan")
     transmission.source = { mapping: { mode: "transmission" } }
     const fluorescence = group("fluorescence", "Fluorescence scan")
-    fluorescence.source = { mapping: { mode: "fluorescence" } }
+    fluorescence.source = { mapping: { mode: "fluorescence", is_reference: true } }
+    const linkedReference = group("linked-reference", "Linked reference")
+    linkedReference.source = { mapping: { mode: "transmission" } }
+    transmission.reference_id = linkedReference.id
     const direct = group("direct", "Direct signal")
     direct.source = { mapping: { mode: "mu" } }
-    await openSaved(projectFixture({ groups: [transmission, fluorescence, direct] }))
+    await openSaved(projectFixture({ groups: [transmission, fluorescence, linkedReference, direct] }))
 
     const transRow = screen.getByRole("button", { name: /^Transmission scan/ })
     expect(within(transRow).getByText("trans")).toHaveAttribute("title", "Transmission")
     const fluoRow = screen.getByRole("button", { name: /^Fluorescence scan/ })
     expect(within(fluoRow).getByText("fluo")).toHaveAttribute("title", "Fluorescence")
-    expect(within(screen.getByRole("button", { name: /^Direct signal/ })).queryByText(/^(trans|fluo)$/)).toBeNull()
+    expect(within(fluoRow).getByText("fluo")).toHaveAttribute("data-tag", "fluo")
+    expect(within(fluoRow).getByText("ref")).toHaveAttribute("title", "Reference")
+    expect(within(fluoRow).getByText("ref")).toHaveAttribute("data-tag", "ref")
+    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref")).toHaveAttribute("title", "Reference")
+    expect(within(screen.getByRole("button", { name: /^Direct signal/ })).queryByText(/^(trans|fluo|ref)$/)).toBeNull()
   })
 })
 
@@ -880,6 +887,49 @@ describe("AthenaWorkbench native context actions", () => {
     expect(screen.queryByRole('menu')).toBeNull()
     expect(plotProps().active?.id).toBe('sample')
     expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(1.2)
+  })
+
+  it('reselects columns for the right-clicked row and updates that group without adding a duplicate', async () => {
+    const initial = projectFixture()
+    initial.groups[1].can_reimport_columns = true
+    const project = await openSaved(initial)
+    const inspected = { ...inspectionFixture('sample.dat'), version: project.version, reimport_group_id: 'sample', current_mapping: {
+      energy_column: 'col_0', numerator: ['col_2'], denominator: 'col_1', mode: 'transmission', units: 'eV', data_type: 'mu',
+      reference_numerator: '', reference_denominator: '', sort: false, signal_multiplier: 1, invert: false,
+    } }
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Sample scan/ }))
+    expect(api).toHaveBeenCalledOnce()
+    api.mockResolvedValueOnce(inspected)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reselect import columns for Sample scan…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Reselect import columns' })
+    await within(dialog).findByRole('button', { name: 'Apply column changes' })
+    expect(api.mock.calls.at(-1)?.[0]).toBe(`/projects/${project.id}/groups/sample/columns`)
+    expect(within(dialog).getByRole('checkbox', { name: 'Numerator I0' })).toBeChecked()
+    expect(plotProps().active?.id).toBe('foil')
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Measurement' }), { target: { value: 'fluorescence' } })
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Numerator I0' }))
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Numerator If1' }))
+    const updated = { ...nextProject(project, { sample: { mu: [0.2, 0.9, 1.3] } }), undo: ['Reselect import columns'] }
+    api.mockResolvedValueOnce(updated)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Apply column changes' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/groups/sample/reimport`, expect.objectContaining({
+      version: project.version, upload_id: inspected.upload_id, mode: 'fluorescence', numerator: ['col_3'],
+    }))
+    expect(plotProps().active?.id).toBe('sample')
+    expect(plotProps().active?.mu).toEqual([0.2, 0.9, 1.3])
+    expect(screen.getAllByRole('listitem')).toHaveLength(project.groups.length)
+    expect(screen.getByRole('button', { name: 'Undo' })).toBeEnabled()
+  })
+
+  it.each(['missing columns', 'frozen'])('disables column reselection for a group with %s without requesting source data', async reason => {
+    const project = projectFixture()
+    project.groups[0].can_reimport_columns = reason === 'frozen'
+    project.groups[0].frozen = reason === 'frozen'
+    await openSaved(project)
+    fireEvent.contextMenu(screen.getByRole('button', { name: /^Foil scan/ }))
+    expect(screen.getByRole('menuitem', { name: 'Reselect import columns…' })).toBeDisabled()
+    expect(api).toHaveBeenCalledOnce()
   })
 
   it.each(['visible', 'Shift+F10', 'ContextMenu'])('opens group actions with %s without changing the saved selection or defaults', async method => {
@@ -1610,16 +1660,36 @@ describe("AthenaWorkbench import edge policy", () => {
     expect(importCalls()).toHaveLength(2)
   })
 
+  it('resets reference intent when retrying the next file in a review-each batch', async () => {
+    const project = await openSaved()
+    const first = inspectionFixture('first-reference.dat'), second = inspectionFixture('second-sample.dat')
+    const { dialog } = await chooseImportFiles([first, second], false)
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'This is reference' }))
+    const afterFirst = importedProject(project, first.display_name)
+    api.mockResolvedValueOnce(afterFirst).mockRejectedValueOnce(new Error('Inspection unavailable'))
+
+    submitImport(dialog)
+
+    await within(dialog).findByRole('alert')
+    api.mockResolvedValueOnce(second)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Retry file inspection' }))
+    await within(dialog).findByText(second.display_name)
+    expect(within(dialog).getByRole('checkbox', { name: 'This is reference' })).not.toBeChecked()
+    expect(importCalls()[0][1]).toEqual(expect.objectContaining({ is_reference: true }))
+  })
+
   it('reinspects the original file with current reader settings while retaining the batch policy and tail', async () => {
     sessionStorage.setItem(edgePolicyStorageKey, JSON.stringify(copperPolicy))
     const project = await openSaved()
     const first = inspectionFixture('first.dat'), tail = inspectionFixture('tail.dat')
     const { dialog, files } = await chooseImportFiles([first, tail])
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'This is reference' }))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Stop enforcing element and edge' }))
     const next = { ...first, upload_id: 'reinspected-upload' }
     api.mockResolvedValueOnce(next)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reinspect selected file' }))
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import 2 files' })).toBeEnabled())
+    expect(within(dialog).getByRole('checkbox', { name: 'This is reference' })).toBeChecked()
     const call = api.mock.calls.at(-1)!
     expect(call[0]).toBe(`/projects/${project.id}/inspect`)
     expect((call[1] as FormData).get('file')).toBe(files[0])
@@ -1629,6 +1699,7 @@ describe("AthenaWorkbench import edge policy", () => {
     submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)).toEqual([next.upload_id, tail.upload_id])
+    expect(importCalls().map(([, body]) => (body as { is_reference?: boolean }).is_reference)).toEqual([true, true])
     expect(importCalls().map(([, body]) => (body as { edge_policy: unknown }).edge_policy)).toEqual([copperPolicy, copperPolicy])
   })
 
@@ -1636,6 +1707,7 @@ describe("AthenaWorkbench import edge policy", () => {
     await openSaved()
     const inspected = inspectionFixture('retry.dat')
     const { dialog, files } = await chooseImportFiles([inspected])
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'This is reference' }))
     api.mockRejectedValueOnce(new Error('Reader configuration needs correction'))
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reinspect selected file' }))
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('configuration needs correction')
@@ -1643,6 +1715,7 @@ describe("AthenaWorkbench import edge policy", () => {
     api.mockResolvedValueOnce({ ...inspected, upload_id: 'retry-upload' })
     fireEvent.click(within(dialog).getByRole('button', { name: 'Retry file inspection' }))
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import spectrum' })).toBeEnabled())
+    expect(within(dialog).getByRole('checkbox', { name: 'This is reference' })).toBeChecked()
     expect((api.mock.calls.at(-1)![1] as FormData).get('file')).toBe(files[0])
     expect(importCalls()).toHaveLength(0)
   })
@@ -2423,19 +2496,19 @@ describe('AthenaWorkbench multi-scan files', () => {
     expect(importCalls()[0][1]).toMatchObject({ upload_id: value.scans[1].upload_id, version: p.version })
     expect(api.mock.calls.filter(([path]) => path.endsWith('/inspect'))).toHaveLength(1)
   })
-  it('reuses explicit detector choices for compatible staged scans with fresh project versions', async () => {
+  it('reuses flipped detector choices for compatible staged scans with fresh project versions', async () => {
     const p = await openSaved(); const value = collection(); const dialog = await openCollection(value)
     api.mockResolvedValueOnce(value.scans[0]); fireEvent.click(within(dialog).getByRole('button', { name: 'Review selected scans' }))
     fireEvent.click(await within(dialog).findByRole('radio', { name: 'Yes, use the same parameters' }))
     await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import 2 files' })).toBeEnabled())
-    fireEvent.click(within(dialog).getByLabelText('Invert signal'))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Flip numerator and denominator' }))
     const first = importedProject(p, 'first'); const second = importedProject(first, 'second')
     api.mockResolvedValueOnce(first).mockResolvedValueOnce(value.scans[1]).mockResolvedValueOnce(second)
     submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(importCalls().map(([, body]) => body)).toMatchObject([
-      { upload_id: value.scans[0].upload_id, version: p.version, invert: true },
-      { upload_id: value.scans[1].upload_id, version: first.version, invert: true } ])
+      { upload_id: value.scans[0].upload_id, version: p.version, numerator: ['col_1'], denominator: 'col_2', invert: false },
+      { upload_id: value.scans[1].upload_id, version: first.version, numerator: ['col_1'], denominator: 'col_2', invert: false } ])
   })
   it('can retry a staged inspection failure without importing the first scan again', async () => {
     const p = await openSaved(); const value = collection(); const dialog = await openCollection(value)
@@ -2622,6 +2695,27 @@ describe("AthenaWorkbench batch import", () => {
     expect(importCalls()).toHaveLength(1)
   })
 
+  it('imports an explicitly marked reference, shows its ref tag, and resets the choice for a new batch', async () => {
+    const project = await openSaved()
+    const inspected = inspectionFixture('reference.dat')
+    const { dialog } = await chooseImportFiles([inspected])
+    const referenceChoice = within(dialog).getByRole('checkbox', { name: 'This is reference' })
+    expect(referenceChoice).not.toBeChecked()
+    fireEvent.click(referenceChoice)
+    const accepted = importedProject(project, inspected.display_name)
+    accepted.groups.at(-1)!.source = { mapping: { mode: 'transmission', is_reference: true } }
+    api.mockResolvedValueOnce(accepted)
+
+    submitImport(dialog)
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls()).toEqual([[`/projects/${project.id}/import`, expect.objectContaining({ is_reference: true })]])
+    expect(within(screen.getByRole('button', { name: /^reference.dat/ })).getByText('ref')).toHaveAttribute('title', 'Reference')
+
+    const next = await chooseImportFiles([inspectionFixture('sample.dat')])
+    expect(within(next.dialog).getByRole('checkbox', { name: 'This is reference' })).not.toBeChecked()
+  })
+
   it('imports both modes in one request and shows both accepted groups', async () => {
     const project = await openSaved()
     const inspected = inspectionFixture('both-modes.dat')
@@ -2679,8 +2773,11 @@ describe("AthenaWorkbench batch import", () => {
     expect(importCalls()).toHaveLength(2)
     expect(plotProps().groups).toEqual(first.groups.filter(g => g.marked))
     expect(within(dialog).getByRole('combobox', { name: 'Measurement' })).toHaveValue('both')
-    expect(within(dialog).getByRole('checkbox', { name: 'Fluorescence numerator If2' })).toBeChecked()
-    expect(within(dialog).getByRole('checkbox', { name: 'Invert fluorescence signal' })).toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: 'Fluorescence numerator I0' })).toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: 'Fluorescence numerator If2' })).not.toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: 'Fluorescence denominator I0' })).not.toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: 'Fluorescence denominator If1' })).toBeChecked()
+    expect(within(dialog).getByRole('checkbox', { name: 'Fluorescence denominator If2' })).toBeChecked()
     expect(within(dialog).getByRole('spinbutton', { name: 'Fluorescence multiplicative constant' })).toHaveValue(.75)
     api.mockResolvedValueOnce(second).mockResolvedValueOnce(inspections[2]).mockResolvedValueOnce(third)
     submitImport(dialog)
@@ -2704,7 +2801,7 @@ describe("AthenaWorkbench batch import", () => {
       energy_column: 'col_0', numerator: ['col_3', 'col_4'], denominator: ['col_1', 'col_2'],
       mode: 'fluorescence', units: 'keV', data_type: 'xanes', reference_numerator: 'col_1', reference_denominator: 'col_5',
       reference_log: false, reference_same_element: false, sort: true, individual_channels: true,
-      signal_multiplier: 2, invert: true, preprocessing: { mark: true, standard_id: null, copy_parameters: false, align: false },
+      signal_multiplier: 2, invert: false, preprocessing: { mark: true, standard_id: null, copy_parameters: false, align: false },
       rebin: { enabled: true, e0: null, emin: -20, emax: 60, pre: 7, xanes: .2, exafs: .1, width: 4 },
     } }
     const { dialog } = await chooseImportFiles([inspected])
@@ -2723,7 +2820,7 @@ describe("AthenaWorkbench batch import", () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(importCalls()).toHaveLength(1)
     expect(importCalls()[0][1]).toMatchObject({ version: project.version, numerator: ['col_3', 'col_4'],
-      denominator: ['col_1', 'col_2'], rebin: { pre: 7, e0: null }, rebin_grid: { pre: 7 }, preprocessing: { mark: true } })
+      denominator: ['col_1', 'col_2'], invert: false, rebin: { pre: 7, e0: null }, rebin_grid: { pre: 7 }, preprocessing: { mark: true } })
     expect(screen.getByRole('status')).toHaveTextContent('Spectra imported, but column choices could not be remembered')
     expect(plotProps().active?.label).toBe('remembered.dat')
   })
@@ -2740,7 +2837,9 @@ describe("AthenaWorkbench batch import", () => {
     } }
     const { dialog } = await chooseImportFiles([inspected]); const view = within(dialog)
     expect(view.getByText('Previous standard unavailable.')).toBeInTheDocument()
+    fireEvent.click(view.getByRole('checkbox', { name: 'This is reference' }))
     fireEvent.click(view.getByRole('button', { name: 'Use suggested columns' }))
+    expect(view.getByRole('checkbox', { name: 'This is reference' })).toBeChecked()
     expect(view.getByRole('combobox', { name: 'Measurement' })).toHaveValue('transmission')
     expect(view.getByLabelText('Numerator I0')).toBeChecked()
     fireEvent.click(view.getByText('Rebin quick scans', { exact: true }))

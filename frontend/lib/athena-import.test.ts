@@ -1,15 +1,17 @@
 import type { AthenaGroup } from "./athena"
 import { expect, it } from "vitest"
 import type { InspectionResponse } from "./contracts"
-import { columnPayload, columnProblem, defaultRebin, initialColumnMapping, reuseColumnMapping, setDualMode, changeInputType, lastImportedSample, type ColumnMapping } from "./athena-import"
+import { columnPayload, columnProblem, defaultRebin, flipSignalColumns, initialColumnMapping, reuseColumnMapping, setDualMode, changeInputType, lastImportedSample, type ColumnMapping } from "./athena-import"
 const previous: ColumnMapping = { energy_column: "old", numerator: ["old"], denominator: ["d1", "d2"], mode: "fluorescence",
   units: "eV", data_type: "xanes", reference_numerator: "r1", reference_denominator: "r2", signal_multiplier: 9, invert: true, sort: false }
 const inspection: InspectionResponse = { upload_id: "u", display_name: "file.dat", row_count: 5, warnings: [], issues: [],
   columns: ["e", "i0", "it"].map((name, index) => ({ column_id: `c${index}`, name, index, preview: [8, 9, 10, 11, 12], role_hint: null, unit: null, numeric: true })),
   athena_suggestion: { energy_column: "c0", numerator: ["c1"], denominator: "c2", mode: "transmission", units: "keV", data_type: "mu" } }
 it("initializes a new file from backend suggestions and clears previous transforms and references", () => {
-  expect(initialColumnMapping(inspection, previous)).toEqual({ ...previous, ...inspection.athena_suggestion,
+  expect(initialColumnMapping(inspection, { ...previous, is_reference: true })).toEqual({ ...previous, ...inspection.athena_suggestion,
+    is_reference: false,
     reference_numerator: "", reference_denominator: "", signal_multiplier: 1, invert: false, individual_channels: false })
+  expect(initialColumnMapping(inspection, { ...previous, is_reference: true }, true, false).is_reference).toBe(true)
 })
 it("initializes extracted chi and constant-1 detector suggestions", () => {
   const chi = initialColumnMapping({ ...inspection, athena_suggestion: { ...inspection.athena_suggestion!, data_type: "chi", mode: "mu", denominator: null, numerator: ["c1"], units: "eV" } }, previous)
@@ -19,6 +21,22 @@ it("initializes extracted chi and constant-1 detector suggestions", () => {
 })
 it.each([[[], null], [["one"], "one"], [["one", "two"], ["one", "two"]]])("keeps old single-column payloads compatible while supporting denominator %j", (denominator, expected) => {
   expect(columnPayload({ ...previous, denominator: denominator as string[] }).denominator).toEqual(expected)
+})
+it("flips complete numerator and denominator selections without reusing either array", () => {
+  const mapping = { ...previous, numerator: ["n1", "n2"], denominator: ["d1", "d2"] }
+  const flipped = flipSignalColumns(mapping)
+  expect(flipped).toMatchObject({ numerator: ["d1", "d2"], denominator: ["n1", "n2"], invert: false, signal_multiplier: -9 })
+  expect(flipped.numerator).not.toBe(mapping.denominator)
+  expect(flipped.denominator).not.toBe(mapping.numerator)
+  expect(flipSignalColumns(flipped)).toMatchObject({ numerator: ["n1", "n2"], denominator: ["d1", "d2"] })
+})
+it("preserves legacy sign inversion as a negative scale instead of sending invert", () => {
+  expect(columnPayload(previous)).toMatchObject({ signal_multiplier: -9, invert: false })
+  expect(columnPayload({ ...previous, signal_multiplier: -2 })).toMatchObject({ signal_multiplier: 2, invert: false })
+})
+it("sends the reference marker only when selected", () => {
+  expect(columnPayload({ ...previous, is_reference: true }).is_reference).toBe(true)
+  expect(columnPayload({ ...previous, is_reference: false })).not.toHaveProperty("is_reference")
 })
 
 it("retains batch preprocessing across column changes and clears energy operations for chi", () => {
@@ -56,7 +74,7 @@ it('restores accepted choices over guesses and keeps the recorded activation and
     rebin: { ...defaultRebin, enabled: true, pre: 7 } }
   const input = { ...inspection, remembered_columns: { version: 8, matching_columns: true, mapping: remembered, warnings: [] } }
   const selected = initialColumnMapping(input, previous)
-  expect(selected).toMatchObject(remembered)
+  expect(selected).toMatchObject({ ...remembered, signal_multiplier: -9, invert: false })
   expect(columnPayload(selected)).toMatchObject({ rebin: { pre: 7 }, rebin_grid: { pre: 7 }, preprocessing: remembered.preprocessing })
   expect(initialColumnMapping(input, previous, false)).toEqual(initialColumnMapping(inspection, previous))
   expect(remembered.rebin.enabled).toBe(true)
@@ -73,7 +91,7 @@ it('stores a disabled valid grid separately without sending file-specific E0, bu
 it('shares every parameter by column position across renamed headers and upload IDs', () => {
   const mapping: ColumnMapping = { ...previous, energy_column: 'c0', numerator: ['c1', 'c2'], denominator: ['c2'],
     reference_numerator: '1', reference_denominator: 'c1', reference_log: false, reference_same_element: false,
-    individual_channels: true, preprocessing: { mark: true, standard_id: 'std', align: true, copy_parameters: true },
+    individual_channels: true, is_reference: true, preprocessing: { mark: true, standard_id: 'std', align: true, copy_parameters: true },
     rebin: { ...defaultRebin, enabled: true, e0: 8000 } }
   const target = { ...inspection, columns: inspection.columns.map(c => ({ ...c, name: `renamed ${c.name}`, column_id: `next-${c.index}` })) }
   expect(reuseColumnMapping(inspection, target, mapping)).toEqual({ ...mapping, energy_column: 'next-0',

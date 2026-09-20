@@ -43,9 +43,9 @@ async function stage(page: Page, files = [fixture]) {
   return { collection, panel }
 }
 
-async function expectSignal(plot: Locator, index: number, invert = false) {
+async function expectSignal(plot: Locator, index: number, flipped = false) {
   const data = references.scans[index].columns
-  const x = data.map(row => row[15] * 1000), y = data.map(row => (invert ? -1 : 1) * Math.log(row[7] / row[9]))
+  const x = data.map(row => row[15] * 1000), y = data.map(row => (flipped ? -1 : 1) * Math.log(row[7] / row[9]))
   await expect.poll(async () => (await curve(plot)).x).toEqual(x)
   await expect.poll(async () => Math.max(...(await curve(plot)).y.map((v, i) => Math.abs(v - y[i])))).toBeLessThan(1e-12)
   return { x, y }
@@ -61,7 +61,9 @@ async function review(page: Page, panel: Locator, shareParameters = true) {
   }
   await expect(dialog.getByLabel('Energy column')).toHaveValue('column_0016')
   await expect(dialog.getByLabel('Energy units')).toHaveValue('keV')
-  await dialog.getByLabel('Invert signal', { exact: true }).check()
+  await dialog.getByRole('button', { name: 'Flip numerator and denominator', exact: true }).click()
+  await expect(dialog.getByLabel('Numerator Ion2', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('Denominator Ion1', { exact: true })).toBeChecked()
   return dialog
 }
 
@@ -107,6 +109,9 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
     expect(group.source.file_plugin.scan.number).toBe(String(index + 1))
     expect(group.energy).toEqual(references.scans[index].columns.map(row => row[15] * 1000))
     group.mu.forEach((value: number, i: number) => expect(Math.abs(value + Math.log(references.scans[index].columns[i][7] / references.scans[index].columns[i][9]))).toBeLessThan(1e-12))
+    expect(group.source.mapping.numerator).toEqual(['column_0010'])
+    expect(group.source.mapping.denominator).toBe('column_0008')
+    expect(group.source.mapping.invert).toBe(false)
   }
   await expect(dialog).not.toBeVisible()
   const active = project.groups[1]
@@ -154,7 +159,8 @@ test('SPEC second-scan inspection retry preserves the first scan and continues i
   expect(imports).toEqual([collection.scans[0].upload_id])
   await dialog.getByRole('button', { name: 'Retry file inspection', exact: true }).click()
   await expect(dialog.getByRole('button', { name: 'Import spectrum', exact: true })).toBeEnabled()
-  await expect(dialog.getByLabel('Invert signal')).toBeChecked()
+  await expect(dialog.getByLabel('Numerator Ion2', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('Denominator Ion1', { exact: true })).toBeChecked()
   await expectSignal(dialog.getByLabel('Imported signal preview plot', { exact: true }), 1, true)
   await dialog.getByRole('button', { name: 'Import spectrum', exact: true }).click()
   const projectPanel = page.getByRole('dialog', { name: 'Open a project', exact: true })
@@ -163,15 +169,13 @@ test('SPEC second-scan inspection retry preserves the first scan and continues i
   await projectPanel.getByRole('button', { name: 'Import all groups', exact: true }).click()
   await expect(dialog.getByText('cu_10k.xmu', { exact: true })).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Import spectrum', exact: true })).toBeEnabled()
-  // Native column memory retains sign even when detector labels change.
-  // Review the actual preview before explicitly recovering the Cu suggestions.
+  // A flip is a concrete operand edit. A different column layout starts from
+  // its own suggestion rather than carrying an unrelated sign transform.
   const rawData = readFileSync(raw, 'utf8').split(/\r?\n/).filter(line => line.trim() && !line.trim().startsWith('#'))
     .map(line => line.trim().split(/\s+/).map(Number))
   const rawPlot = dialog.getByLabel('Imported signal preview plot', { exact: true })
-  await expect(dialog.getByLabel('Invert signal', { exact: true })).toBeChecked()
-  await expect.poll(() => curve(rawPlot)).toEqual({ x: rawData.map(row => row[0]), y: rawData.map(row => -row[1]) })
+  await expect.poll(() => curve(rawPlot)).toEqual({ x: rawData.map(row => row[0]), y: rawData.map(row => row[1]) })
   await dialog.getByRole('button', { name: 'Use suggested columns', exact: true }).click()
-  await expect(dialog.getByLabel('Invert signal', { exact: true })).not.toBeChecked()
   await expect.poll(() => curve(rawPlot)).toEqual({ x: rawData.map(row => row[0]), y: rawData.map(row => row[1]) })
   const complete = page.waitForResponse(r => r.url().endsWith('/import'))
   await dialog.getByRole('button', { name: 'Import spectrum', exact: true }).click()

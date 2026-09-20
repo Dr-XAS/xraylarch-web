@@ -6,6 +6,8 @@ const responseHeaders = ["content-type", "content-length", "content-disposition"
 const anyMethod: ReadonlySet<string> = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
 
 const athenaRoutes: readonly [string, RegExp][] = [
+  ["GET", /^api\/athena\/projects\/[^/]+\/groups\/[^/]+\/columns$/],
+  ["POST", /^api\/athena\/projects\/[^/]+\/groups\/[^/]+\/reimport$/],
   ["GET", /^api\/athena\/(?:edges|projects)$/], ["POST", /^api\/athena\/projects$/],
   ["GET", /^api\/athena\/preferences\/(?:rebin|smoothing|plugins|beamline|dispersive|merge)(?:\/[^/]+\/configuration|\/export|\/file)?$/],
   ["PUT", /^api\/athena\/preferences\/(?:rebin|smoothing|plugins|beamline|dispersive|merge)(?:\/[^/]+\/configuration)?$/],

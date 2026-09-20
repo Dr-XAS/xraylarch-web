@@ -62,6 +62,21 @@ def fail(message: str, code: str = "athena_invalid"):
     raise WebInputError(code, message, recovery="Review the selected groups and values, then retry.")
 
 
+def _can_reimport_columns(group):
+    """Cheap availability hint; validate actual retained data only on demand."""
+    source = group.get('source') or {}
+    if not isinstance(source, dict) or not isinstance(source.get('mapping'), dict):
+        return False
+    if 'rebin_original' in source and not isinstance(source['rebin_original'], dict):
+        return False
+    retained = source.get('rebin_original') or source
+    if not isinstance(retained, dict) or not isinstance(source.get('columns'), (list, tuple)):
+        return False
+    arrays = retained.get('column_arrays')
+    return bool(not source.get('operation') and source['mapping'] and source['columns']
+                and ((isinstance(arrays, dict) and arrays) or source['mapping'].get('upload_id')))
+
+
 def _project_literal(value, *, legacy_strings=False):
     from .athena_literals import project_literal
     try:
@@ -665,6 +680,7 @@ class ImportRequest(BaseModel):
     mode: Literal["mu", "transmission", "fluorescence"] = "mu"
     units: Literal["eV", "keV"] = "eV"
     data_type: Literal["mu", "xanes", "norm", "chi", "xmudat"] = "mu"
+    is_reference: bool = Field(default=False, strict=True)
     reference_numerator: str | None = None
     reference_denominator: str | None = None
     reference_log: bool = Field(default=True, strict=True)
@@ -804,6 +820,7 @@ class AthenaStore:
             defaults = AthenaParameters().model_dump()
             for group in project["groups"]:
                 group.setdefault("background_standard_id", None)
+                group['can_reimport_columns'] = _can_reimport_columns(group)
                 group["is_difference"] = _is_difference(group)
                 effective = (group.get("result") or {}).get("effective", {})
                 for key, default in defaults.items():
@@ -855,6 +872,8 @@ class AthenaStore:
     def save(self, p: dict, old: dict, message: str) -> dict:
         if len(p["groups"]) > 100:
             fail("A project can contain at most 100 groups.")
+        for group in p['groups']:
+            group['can_reimport_columns'] = _can_reimport_columns(group)
         snapshot = f"undo-{old['version']}.json"
         self.storage.write_json(p["id"], snapshot, old)
         p["undo"] = (old["undo"] + [snapshot])[-30:]
@@ -1102,6 +1121,7 @@ class AthenaStore:
              "source": copy.deepcopy(source or {}), "result": None, "processing_error": None}
         if not isinstance(g["source"], dict):
             fail("Source metadata must be an object.")
+        g['can_reimport_columns'] = _can_reimport_columns(g)
         from .athena_plot_shortcuts import capture_detector_scales
         capture_detector_scales(g)
         g["is_difference"] = _is_difference(g if is_difference is None else dict(g, is_difference=is_difference))
@@ -1503,6 +1523,90 @@ class AthenaStore:
             fail('Choose files from the ZIP before inspecting columns.')
         return self._remembered_inspection(inspection | {'upload_id': upload_id}, project)
 
+    def inspect_group_columns(self, ident, group_id):
+        """Stage the original table for the existing column-preview workflow."""
+        with self.storage.lock(ident):
+            project = self.load(ident)
+            group = self.group(project, group_id)
+            if not _can_reimport_columns(group):
+                fail('Original import columns are unavailable for this group. Import the source file again.')
+            if group['frozen']:
+                fail('Unfreeze this group before changing its import columns.')
+            # Reopening/canceling the same dialog must not duplicate every
+            # detector column on disk. Each group revision owns one staging
+            # table, with a direct lookup that never scans the upload cache.
+            upload = 'reimport-' + hashlib.sha256(f"{group_id}:{project['version']}".encode()).hexdigest()[:24]
+            try:
+                cached = self.storage.read_json(ident, f'upload-{upload}.json')
+            except FileNotFoundError:
+                cached = None
+            if (isinstance(cached, dict) and cached.get('reimport_group_id') == group_id
+                    and cached.get('reimport_version') == project['version']
+                    and isinstance(cached.get('current_mapping'), dict)
+                    and self.storage.path(ident, f'upload-{upload}.npz').is_file()):
+                return cached | {'upload_id': upload, 'version': project['version']}
+            source = group['source']
+            mapping = copy.deepcopy(source['mapping'])
+            original_upload = mapping.get('upload_id')
+            metadata, arrays = None, None
+            if original_upload:
+                self.storage._validate_id(original_upload)
+                try:
+                    arrays = self.storage.read_arrays(ident, f'upload-{original_upload}.npz')
+                    metadata = self.storage.read_json(ident, f'upload-{original_upload}.json')
+                    metadata.setdefault('reimport_source_upload_id', original_upload)
+                except FileNotFoundError:
+                    arrays, metadata = None, None
+            if arrays is None:
+                retained = source.get('rebin_original') or source
+                if source.get('point_edits') and retained is source:
+                    fail('The original table is unavailable after point removal. Import the source file again.')
+                arrays = retained.get('column_arrays')
+                if not isinstance(arrays, dict) or not arrays:
+                    fail('Original import columns are unavailable. Import the source file again.')
+                arrays = {key: np.asarray(value, dtype=float) for key, value in arrays.items()}
+                # Retained columns follow the group row order. Recover file order
+                # before applying the saved sort choice again.
+                if retained.get('row_order') is not None:
+                    inverse = np.argsort(retained['row_order'])
+                    arrays = {key: value[inverse] for key, value in arrays.items()}
+                metadata = dict(display_name=source.get('filename', group['label']),
+                    original_filename=source.get('original_filename', source.get('filename', group['label'])),
+                    raw_sha256=source.get('source_sha256'), parser_identity=source.get('parser_identity'),
+                    parse_metadata=copy.deepcopy(source.get('parse_metadata', {})),
+                    columns=copy.deepcopy(source['columns']), warnings=[], issues=[])
+                for key in ('file_plugin', 'beamline_metadata', 'xdi_metadata'):
+                    if source.get(key):
+                        metadata[key] = copy.deepcopy(source[key])
+            lengths = {len(value) for value in arrays.values()}
+            if len(lengths) != 1 or not 8 <= next(iter(lengths)) <= self.settings.max_points:
+                fail('The retained columns are incomplete. Import the source file again.')
+            if any(np.asarray(value).ndim != 1 or not np.isfinite(value).all() for value in arrays.values()):
+                fail('The retained columns contain invalid values. Import the source file again.')
+            from .athena_columns import suggest_columns
+            suggestion, units = suggest_columns(metadata['columns'], metadata['display_name'])
+            mapping = {key: value for key, value in mapping.items() if key in ImportRequest.model_fields}
+            mapping.update(reference_numerator=None, reference_denominator=None, individual_channels=False,
+                           additional_fluorescence=None, reader_reviewed=True)
+            # Import-time policies belong to this spectrum, not whichever file
+            # was most recently inspected in another tab.
+            if source.get('edge_policy'):
+                mapping['edge_policy'] = copy.deepcopy(source['edge_policy'])
+            request = ImportRequest.model_validate(mapping | {'version': project['version'], 'upload_id': upload})
+            current = request.model_dump(exclude={'version', 'upload_id'})
+            for key in ('denominator', 'reference_numerator', 'reference_denominator'):
+                if current[key] is None:
+                    current[key] = ''
+            metadata.update(row_count=next(iter(lengths)), athena_suggestion=suggestion, column_units=units,
+                            current_mapping=current, reimport_group_id=group_id, reimport_version=project['version'])
+            self.storage.write_arrays(ident, f'upload-{upload}.npz', arrays)
+            try:
+                self.storage.write_json(ident, f'upload-{upload}.json', metadata)
+            except BaseException:
+                self.storage.path(ident, f'upload-{upload}.npz').unlink(missing_ok=True)
+                raise
+            return metadata | {'upload_id': upload, 'version': project['version']}
+
     def archive_member(self, ident, upload_id, member_index):
         self.load(ident)
         self.storage._validate_id(upload_id)
@@ -1525,7 +1629,8 @@ class AthenaStore:
             fail('Choose the original or converted source file.')
         try:
             metadata = self.storage.read_json(ident, f'upload-{upload_id}.json')
-            source_id = metadata.get('source_upload_id', upload_id) if variant == 'source' else upload_id
+            table_id = metadata.get('reimport_source_upload_id', upload_id)
+            source_id = metadata.get('source_upload_id', table_id) if variant == 'source' else table_id
             self.storage._validate_id(source_id)
             content = self.storage.path(ident, f'upload-{source_id}.{variant}').read_bytes()
         except FileNotFoundError:
@@ -1610,15 +1715,32 @@ class AthenaStore:
         source = _exchange_source(source, len(plan.energy), self.settings)
         return source, plan.energy, plan.apply(y)
 
-    def import_data(self, ident, request: ImportRequest):
+    def import_data(self, ident, request: ImportRequest, *, replace_group_id=None):
         with self.storage.lock(ident):
             old = self.load(ident)
             self.check(old, request.version)
             p = copy.deepcopy(old)
+            target = self.group(p, replace_group_id) if replace_group_id is not None else None
+            if target is not None:
+                if not _can_reimport_columns(target):
+                    fail('Original import columns are unavailable for this group.')
+                if self._frozen_background_dependents(p, [target['id']]):
+                    fail('Unfreeze this group and groups using it as a background standard before changing its import columns.')
+                if request.additional_fluorescence is not None or request.individual_channels or request.reference_numerator or request.reference_denominator:
+                    fail('Reimport replaces one group. Turn off additional measurements, individual channels and reference creation.')
+                if request.data_type == 'chi' and (len(self.reference_family(p, target['id'])) > 1 or
+                        target.get('background_standard_id') or len(self.background_dependents(p, [target['id']])) > 1):
+                    fail('Untie references and background standards before changing this group to chi(k).')
             standard = self.import_standard(p, request)
             self.storage._validate_id(request.upload_id)
             arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
             metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
+            if target is not None:
+                if metadata.get('reimport_group_id') != target['id']:
+                    fail('Reopen this group\'s import columns before applying changes.')
+                self.check(old, metadata.get('reimport_version'))
+            elif metadata.get('reimport_group_id'):
+                fail('Use the group reimport action to apply these column choices.')
             if metadata.get('file_plugin', {}).get('review_required') and not request.reader_reviewed:
                 raise WebInputError('reader_review_required', 'Review the I0 correction plot before importing.',
                                     recovery='Inspect the fit and corrected I0, then confirm the review for this file.')
@@ -1630,7 +1752,9 @@ class AthenaStore:
                 measurements.append((mode_request, mapped))
             nnew = sum(len(mapped["samples"]) * (2 if mapped["reference"] is not None else 1)
                        for _, mapped in measurements)
-            if len(p["groups"]) + nnew > 100:
+            if target is not None and nnew != 1:
+                fail('Reimport must produce exactly one replacement spectrum.')
+            if len(p["groups"]) + nnew - (1 if target is not None else 0) > 100:
                 fail("A project can contain at most 100 groups.")
             def column(key):
                 if key not in arrays:
@@ -1685,7 +1809,8 @@ class AthenaStore:
                     if len(stddev_columns) == 1:
                         source["raw_arrays"]["stddev"] = aligned(abs(mapped['scale']) * column(stddev_columns[0]))
                     source = _exchange_source(source, len(x), self.settings)
-                    _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
+                    _exchange_budget([*(g for g in p['groups'] if target is None or g['id'] != target['id']),
+                                      {"energy": x, "mu": y, "source": source}], self.settings)
                     label = metadata["display_name"]
                     if request.additional_fluorescence is not None:
                         label += " · " + mode_request.mode.capitalize()
@@ -1709,7 +1834,8 @@ class AthenaStore:
                             denominator=mode_request.reference_denominator, reference_numerator=None, reference_denominator=None,
                             individual_channels=False, signal_multiplier=1., invert=False,
                             preprocessing=ImportPreprocessing().model_dump() if mode_request.preprocessing is not None else None,
-                            data_type=g["data_type"], mode="transmission" if mode_request.reference_log else "fluorescence")
+                            data_type=g["data_type"], mode="transmission" if mode_request.reference_log else "fluorescence",
+                            is_reference=True)
                         reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
                         reference = self.make_reference_group(g, ref_x, ref_y,
                             source=reference_source, same_element=mode_request.reference_same_element)
@@ -1720,8 +1846,29 @@ class AthenaStore:
                         p["groups"].append(reference)
                     shared_alignment = self.align_import(p, g, reference, standard,
                                                          mode_request.preprocessing, shared_alignment)
+            if target is not None:
+                replacement = p['groups'].pop()
+                temporary_id = replacement['id']
+                for key in ('id', 'label', 'marked', 'frozen', 'notes', 'multiplier', 'offset', 'reference_id', 'background_standard_id'):
+                    replacement[key] = copy.deepcopy(target[key])
+                family = self.reference_family(p, target['id'])
+                if len(family) > 1:
+                    previous_shift = replacement['parameters']['energy_shift']
+                    tied_shift = target['parameters']['energy_shift']
+                    if request.preprocessing and request.preprocessing.align and previous_shift != tied_shift:
+                        fail('Untie the reference before applying a different import-time alignment.')
+                    replacement['parameters']['energy_shift'] = tied_shift
+                    if replacement['parameters']['e0'] is not None:
+                        replacement['parameters']['e0'] += tied_shift - previous_shift
+                e0_selection = replacement['source'].get('e0_selection')
+                if e0_selection and e0_selection.get('group_id') == temporary_id:
+                    e0_selection.update(group_id=target['id'], energy_shift=replacement['parameters']['energy_shift'])
+                p['groups'][p['groups'].index(target)] = replacement
+                self._process_groups(p, [target['id']], tolerate_errors=True)
             _exchange_budget(p["groups"], self.settings)
-            saved = self.save(p, old, f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
+            message = (f"Reimported columns for {target['label']} ({len(x)} points)" if target is not None else
+                       f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
+            saved = self.save(p, old, message)
             try:
                 AthenaPreferences(self.settings).remember_columns(metadata, request, old)
             except (ValueError, OSError, KeyError, TypeError):
@@ -2427,6 +2574,7 @@ class AthenaStore:
                 restore = self.storage.read_json(ident, stack[-1])
                 for group in restore["groups"]:
                     group["is_difference"] = _is_difference(group)
+                    group['can_reimport_columns'] = _can_reimport_columns(group)
                     _ensure_edge_identity(group)
                 inverse = "redo" if action == "undo" else "undo"
                 name = f"{inverse}-{old['version']}.json"
@@ -3588,6 +3736,8 @@ def build_athena_router(
         ("POST", "/api/athena/projects/{ident}/dispersive/make"): "import",
         ("POST", "/api/athena/projects/{ident}/dispersive/{action}"): "preview",
         ("POST", "/api/athena/projects/{ident}/import"): "import",
+        ("GET", "/api/athena/projects/{ident}/groups/{group_id}/columns"): "upload",
+        ("POST", "/api/athena/projects/{ident}/groups/{group_id}/reimport"): "import",
         ("GET", "/api/athena/projects/{ident}/uploads/{upload_id}/inspection"): "read_upload",
         ("GET", "/api/athena/projects/{ident}/uploads/{upload_id}/file"): "read_upload",
         ("POST", "/api/athena/projects/{ident}/preview-columns"): "preview",
@@ -3915,6 +4065,18 @@ def build_athena_router(
     @router.get('/projects/{ident}/uploads/{upload_id}/inspection')
     def inspected_columns(ident: str, upload_id: str):
         return guarded(lambda: store.inspected_columns(ident, upload_id))
+
+    @router.get('/projects/{ident}/groups/{group_id}/columns')
+    def inspect_group_columns(ident: str, group_id: str, capability: str | None = Header(default=None, alias='X-XrayLarch-Draft-Capability')):
+        authority = integration_draft(ident, capability, 'upload', group_ids=[group_id])
+        return integrated_mutation(ident, capability, 'upload', authority,
+            lambda: guarded(lambda: store.inspect_group_columns(ident, group_id)))
+
+    @router.post('/projects/{ident}/groups/{group_id}/reimport')
+    def reimport_group(ident: str, group_id: str, request: ImportRequest, capability: str | None = Header(default=None, alias='X-XrayLarch-Draft-Capability')):
+        authority = integration_draft(ident, capability, 'import', group_ids=[group_id])
+        return integrated_mutation(ident, capability, 'import', authority,
+            lambda: guarded(lambda: store.import_data(ident, request, replace_group_id=group_id)))
 
     @router.get('/projects/{ident}/uploads/{upload_id}/file')
     def inspected_file(ident: str, upload_id: str, variant: Literal['source', 'converted'] = 'source'):
