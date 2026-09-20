@@ -33,6 +33,8 @@ jobs:
           set -Eeuo pipefail
           python -m venv "$GITHUB_WORKSPACE/backend/.venv"
           XRAYLARCH_WEB_TEST_MODE=1 source scripts/deploy-xraylarch-web.sh
+          REQUESTED_SHA="$(git rev-parse HEAD)"
+          validate_sha "$REQUESTED_SHA"
           SAFE_PATH="$(dirname "$(command -v python)"):/usr/local/bin:/usr/bin:/bin"
           DATA_ROOT="$RUNNER_TEMP/xraylarch-release-data"
           CANDIDATE_DATA="$RUNNER_TEMP/xraylarch-release-candidate"

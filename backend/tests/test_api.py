@@ -65,7 +65,32 @@ async def _asgi_request(app, *, headers, body_chunks):
     return status, body, received
 
 
-def test_health_reports_backend_metadata(tmp_path):
+@pytest.mark.parametrize(
+    ("configured_revision", "expected_revision"),
+    [
+        pytest.param(None, "unknown", id="unset"),
+        pytest.param("unknown", "unknown", id="explicit-unknown"),
+        pytest.param(
+            "0123456789abcdef0123456789abcdef01234567",
+            "0123456789abcdef0123456789abcdef01234567",
+            id="release-sha",
+        ),
+        pytest.param("", "invalid", id="empty"),
+        pytest.param("0123456", "invalid", id="short-sha"),
+        pytest.param("A" * 40, "invalid", id="uppercase-sha"),
+        pytest.param("not-a-revision", "invalid", id="malformed"),
+    ],
+)
+def test_health_reports_backend_metadata(
+    tmp_path, monkeypatch, configured_revision, expected_revision
+):
+    # Release verification runs with XRAYLARCH_GIT_REVISION already set.
+    # Control it here so every health contract is checked in any environment.
+    if configured_revision is None:
+        monkeypatch.delenv("XRAYLARCH_GIT_REVISION", raising=False)
+    else:
+        monkeypatch.setenv("XRAYLARCH_GIT_REVISION", configured_revision)
+
     async def exercise() -> None:
         async with _client(_app(tmp_path)) as client:
             response = await client.get("/health")
@@ -74,7 +99,7 @@ def test_health_reports_backend_metadata(tmp_path):
         assert response.json() == {
             "status": "ok",
             "version": "0.1.0",
-            "git_revision": "unknown",
+            "git_revision": expected_revision,
             "integration_contract_version": 2,
         }
 
