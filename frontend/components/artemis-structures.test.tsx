@@ -9,6 +9,9 @@ import type { AthenaProject } from "@/lib/athena"
 import { ArtemisStructures } from "./artemis-structures"
 
 vi.mock("@/lib/artemis", () => ({ artemisApi: vi.fn() }))
+vi.mock("./cif-viewer", () => ({
+  CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} />,
+}))
 const api = vi.mocked(artemisApi)
 const request: ArtemisFeffRequest = { project_id: "p", attachment_id: "cif1", version: 2, absorber: "Cu", edge: "K", site_index: 3, cluster_radius: 5, path_radius: 4, max_legs: 4, max_paths: 60 }
 let savedAttachments: ArtemisStructureAttachment[] = []
@@ -97,12 +100,15 @@ describe("ArtemisStructures", () => {
     await click("Search / attach CIF")
     await findAndSelect(false)
     fireEvent.click(screen.getByRole("radio", { name: "Absorber site 3" }))
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Generate FEFF paths" })).toBeDisabled()
     expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
     expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, amcsd_id: 13088 }, expect.any(AbortSignal))
     expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "p", version: 2, artemis_structures: [attachment()] }))
     expect(screen.getByRole("dialog")).toBeVisible()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", attachment().structure.cif)
     expect(screen.getByRole("radio", { name: "Absorber site 3" })).toBeChecked()
     await click("Generate FEFF paths")
     expect(api.mock.calls.at(-1)?.[1]).toEqual(request)
@@ -137,24 +143,46 @@ describe("ArtemisStructures", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("Project changed")
     expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
     expect(screen.getByText(/Copper structure/)).toBeVisible()
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     await click("Attach to project")
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
   it("reopens an attached snapshot without AMCSD lookup and refreshes the compact project list", async () => {
     savedAttachments = [{ ...attachment(), structure: { ...structure(), cif: "data_saved_snapshot" } }]
     await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />) })
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     await click("Open attached Copper CIF")
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", "data_saved_snapshot")
     fireEvent.click(screen.getByText("View CIF"))
     expect(screen.getByText("data_saved_snapshot")).toBeVisible()
     expect(api.mock.calls.some(([url]) => url.startsWith("/structures/"))).toBe(false)
     await click("Close")
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     savedAttachments = []
     await click("Search / attach CIF")
     expect(screen.queryByRole("button", { name: "Open attached Copper CIF" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+  })
+
+  it("shows a saved CIF from the attached picker and unmounts the viewer when the spectrum changes", async () => {
+    savedAttachments = [{ ...attachment(), structure: structure({ cif: "data_attached_picker_snapshot" }) }]
+    const onAddPaths = addPathsMock()
+    const view = render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={onAddPaths} />)
+    await click("Search / attach CIF")
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    await click("Use attached Copper CIF")
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", "data_attached_picker_snapshot")
+    expect(api.mock.calls.some(([url]) => url.startsWith("/structures/"))).toBe(false)
+    view.rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} />)
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 
   it("searches only on request and supports an element filter with literal URL encoding", async () => {
