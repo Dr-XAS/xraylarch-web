@@ -53,7 +53,7 @@ for (const example of examples) {
       expect(reread.groups[example.count + i].result.arrays).toEqual(original.groups[i].result.arrays)
     }
     await page.reload()
-    await expect(page.getByRole("heading", { name: `Data groups ${example.count * 2}`, exact: true })).toBeVisible()
+    await expect(page.getByRole("heading", { name: new RegExp(`^Data groups ${example.count * 2}\\b`) })).toBeVisible()
   })
 }
 
@@ -65,6 +65,7 @@ test("mixed raw/project/raw batch keeps order through both import panels", async
     path.join(root, "examples/xafsdata/cu_10k.xmu"), examples[0].file,
     path.join(root, "examples/xafsdata/cu_50k.xmu"),
   ])
+  await page.getByRole("radio", { name: "No, review each file", exact: true }).check()
   await page.getByRole("button", { name: "Import spectrum", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Open a project" })
   await expect(dialog.getByRole("button", { name: "Import all groups", exact: true })).toBeEnabled()
@@ -76,5 +77,5 @@ test("mixed raw/project/raw batch keeps order through both import panels", async
   expect(project.groups.map((g: { label: string }) => g.label)).toEqual([
     "cu_10k.xmu", "cu010k.dat", "cu050k.dat", "cu150k.dat", "cu_50k.xmu",
   ])
-  await expect(page.getByRole("heading", { name: "Data groups 5", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /^Data groups 5\b/ })).toBeVisible()
 })

@@ -17,11 +17,12 @@ const columns = ["energy", "i0", "it", "detA", "detB", "ref"].map((name, index) 
   numeric: true, unit: null, role_hint: null, preview: [1, 2, 3] }))
 const initial: ColumnMapping = { energy_column: "c0", numerator: ["c1"], denominator: "c2", mode: "transmission", units: "eV",
   data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false }
-function Harness({ busy = false, columnUnits, inspection = {} }: { busy?: boolean; columnUnits?: Record<string, "eV" | "keV" | null>; inspection?: Partial<InspectionResponse> }) {
-  const [mapping, setMapping] = useState(initial)
+function Harness({ busy = false, columnUnits, inspection = {}, remaining = 1, initialMapping = initial }: { busy?: boolean; columnUnits?: Record<string, "eV" | "keV" | null>; inspection?: Partial<InspectionResponse>; remaining?: number; initialMapping?: ColumnMapping }) {
+  const [mapping, setMapping] = useState(initialMapping)
+  const [reuseMapping, setReuseMapping] = useState<boolean | null>(null)
   return <><AthenaColumnSelection projectId="p" version={0} inspection={{ display_name: "columns.dat", upload_id: "u", row_count: 3,
     columns, column_units: columnUnits, warnings: [], issues: [], source_preview: "# Original beamline headers", source_preview_truncated: true, ...inspection }}
-    mapping={mapping} setMapping={setMapping} busy={busy} remaining={1} reuseMapping setReuseMapping={() => {}}
+    mapping={mapping} setMapping={setMapping} busy={busy} remaining={remaining} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping}
     chooseAnother={() => {}} importCurrent={() => {}} /><output data-testid="mapping">{JSON.stringify(mapping)}</output></>
 }
 function accepted() { return JSON.parse(screen.getByTestId("mapping").textContent!) }
@@ -29,6 +30,122 @@ const readerSuggestions: InspectionResponse['plugin_suggestions'] = {
   transmission: { energy_column: 'c0', numerator: ['c1'], denominator: 'c2', mode: 'transmission', units: 'eV', data_type: 'mu' },
   fluorescence: { energy_column: 'c0', numerator: ['c3'], denominator: 'c1', mode: 'fluorescence', units: 'eV', data_type: 'mu' },
 }
+it('imports both modes with independent detector columns and signal transforms', () => {
+  render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  expect(screen.getByRole('heading', { name: 'Transmission' })).toBeInTheDocument()
+  expect(screen.getByRole('group', { name: 'Fluorescence columns' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Import both modes' })).toBeEnabled()
+  expect(screen.getByLabelText('Natural log')).toBeChecked()
+  expect(screen.getByLabelText('Natural log')).toBeDisabled()
+  fireEvent.click(screen.getByLabelText('Fluorescence numerator detB'))
+  fireEvent.click(screen.getByLabelText('Invert fluorescence signal'))
+  fireEvent.change(screen.getByLabelText('Fluorescence multiplicative constant'), { target: { value: '0.5' } })
+  expect(accepted()).toMatchObject({ mode: 'transmission', numerator: ['c1'], denominator: 'c2',
+    additional_fluorescence: { numerator: ['c3', 'c4'], denominator: 'c1', invert: true, signal_multiplier: 0.5 } })
+  expect(screen.getByText('μ(E) = ln(|(i0) / (it)|)')).toBeInTheDocument()
+  expect(screen.getByText('μ(E) = −1 × 0.5 × (detA + detB) / (i0)')).toBeInTheDocument()
+  fireEvent.click(screen.getByLabelText('Save each fluorescence channel as its own group'))
+  expect(accepted().additional_fluorescence.individual_channels).toBe(true)
+  expect(accepted().individual_channels).toBeFalsy()
+})
+it('requires explicit fluorescence columns when no detector suggestion is available', () => {
+  render(<Harness />)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  expect(accepted().additional_fluorescence.numerator).toEqual([])
+  expect(screen.getByRole('button', { name: 'Import both modes' })).toBeDisabled()
+  fireEvent.click(screen.getByLabelText('Fluorescence numerator detA'))
+  fireEvent.click(screen.getByRole('button', { name: 'Clear fluorescence denominator' }))
+  expect(screen.getByRole('button', { name: 'Import both modes' })).toBeDisabled()
+  fireEvent.click(screen.getByLabelText('Fluorescence denominator i0'))
+  expect(screen.getByRole('button', { name: 'Import both modes' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('button', { name: 'Clear fluorescence numerator' }))
+  expect(screen.getByRole('button', { name: 'Import both modes' })).toBeDisabled()
+  expect(accepted().numerator).toEqual(['c1'])
+  expect(accepted().denominator).toBe('c2')
+})
+it('keeps default fluorescence transforms independent from transmission for restored mappings', () => {
+  render(<Harness initialMapping={{ ...initial, invert: true, signal_multiplier: 2, individual_channels: true,
+    additional_fluorescence: { numerator: ['c3', 'c4'], denominator: 'c1' } }} />)
+  expect(screen.getByText('μ(E) = (detA + detB) / (i0)')).toBeInTheDocument()
+  expect(screen.getByLabelText('Invert fluorescence signal')).not.toBeChecked()
+  expect(screen.getByLabelText('Fluorescence multiplicative constant')).toHaveValue(1)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'fluorescence' } })
+  expect(accepted()).toMatchObject({ mode: 'fluorescence', numerator: ['c3', 'c4'], invert: false,
+    signal_multiplier: 1, individual_channels: false })
+  expect(accepted().additional_fluorescence).toBeFalsy()
+})
+it('keeps dual-mode reader suggestions separate and retains fluorescence choices when selecting one mode', () => {
+  render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  fireEvent.click(screen.getByLabelText('Fluorescence numerator detB'))
+  fireEvent.click(screen.getByRole('button', { name: 'Use transmission columns' }))
+  expect(accepted().additional_fluorescence.numerator).toEqual(['c3', 'c4'])
+  fireEvent.click(screen.getByRole('button', { name: 'Use fluorescence columns' }))
+  expect(accepted()).toMatchObject({ mode: 'transmission', numerator: ['c1'], denominator: 'c2',
+    additional_fluorescence: { numerator: ['c3'], denominator: 'c1' } })
+  expect(screen.getByLabelText('Measurement')).toHaveValue('both')
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'fluorescence' } })
+  expect(accepted()).toMatchObject({ mode: 'fluorescence', numerator: ['c3'], denominator: 'c1' })
+  expect(accepted().additional_fluorescence).toBeFalsy()
+  expect(screen.queryByRole('group', { name: 'Fluorescence columns' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeEnabled()
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'transmission' } })
+  expect(accepted()).toMatchObject({ mode: 'transmission', numerator: ['c1'], denominator: 'c2' })
+  expect(accepted().additional_fluorescence).toBeFalsy()
+})
+it('clears dual-mode importing for extracted chi and does not restore it implicitly', () => {
+  render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'chi' } })
+  expect(accepted()).toMatchObject({ data_type: 'chi', mode: 'mu' })
+  expect(accepted().additional_fluorescence).toBeFalsy()
+  expect(screen.getByLabelText('Measurement')).toBeDisabled()
+  expect(screen.queryByRole('group', { name: 'Fluorescence columns' })).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'mu' } })
+  expect(screen.getByLabelText('Measurement')).toBeEnabled()
+  expect(screen.getByLabelText('Measurement')).toHaveValue('mu')
+})
+it('freezes all additional fluorescence controls during import', () => {
+  const { rerender } = render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  rerender(<Harness busy inspection={{ plugin_suggestions: readerSuggestions }} />)
+  for (const label of ['Fluorescence numerator detA', 'Fluorescence denominator i0', 'Invert fluorescence signal',
+    'Fluorescence multiplicative constant', 'Save each fluorescence channel as its own group']) {
+    expect(screen.getByLabelText(label)).toBeDisabled()
+  }
+  expect(screen.getByRole('button', { name: 'Clear fluorescence numerator' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Importing…' })).toBeDisabled()
+})
+it('applies both modes to a shared batch while preserving the batch import action', () => {
+  render(<Harness remaining={3} inspection={{ plugin_suggestions: readerSuggestions }} />)
+  fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
+  expect(screen.getByRole('button', { name: 'Import both modes' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('radio', { name: 'Yes, use the same parameters' }))
+  expect(screen.getByRole('button', { name: 'Import 3 files' })).toBeEnabled()
+  fireEvent.change(screen.getByLabelText('Fluorescence multiplicative constant'), { target: { value: '' } })
+  expect(screen.getByRole('button', { name: 'Import 3 files' })).toBeDisabled()
+  expect(screen.getByRole('alert')).toHaveTextContent(/fluorescence.*multiplicative constant/i)
+})
+it('asks once at the top of a batch whether to share parameters and makes the import scope explicit', () => {
+  render(<Harness remaining={3} />)
+  const question = screen.getByRole('group', { name: 'Use the same import parameters for all files?' })
+  expect(question.compareDocumentPosition(screen.getByLabelText('Data type')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('radio', { name: 'Yes, use the same parameters' }))
+  expect(screen.getByRole('button', { name: 'Import 3 files' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('radio', { name: 'No, review each file' }))
+  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeEnabled()
+})
+it('leaves single-file importing unchanged and locks the batch choice during an import', () => {
+  const { rerender } = render(<Harness />)
+  expect(screen.queryByRole('radio', { name: 'Yes, use the same parameters' })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeEnabled()
+  rerender(<Harness remaining={3} busy />)
+  expect(screen.getByRole('radio', { name: 'Yes, use the same parameters' })).toBeDisabled()
+  expect(screen.getByRole('radio', { name: 'No, review each file' })).toBeDisabled()
+})
 it('places the file and import actions above the column controls', () => {
   render(<Harness />)
   const actions = screen.getByRole('group', { name: 'Import actions' })

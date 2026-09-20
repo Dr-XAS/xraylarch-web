@@ -28,7 +28,7 @@ function plotted() { return plot.mock.calls.at(-1)![0] }
 it('requires a rendered I0 plot and per-file review while column edits remain available', () => {
   const view = render(<Harness />)
   const review = screen.getByLabelText('I reviewed the I0 correction for this file')
-  expect(review).toBeDisabled(); expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeDisabled()
+  expect(review).toBeDisabled(); expect(screen.getByRole('button', { name: 'Import 2 files' })).toBeDisabled()
   expect(plotted().data.map((t: { name: string }) => t.name)).toEqual(['original', 'pre', 'post', 'corrected'])
   expect(plotted().data[0].x).toEqual(preview.traces[0].x)
   expect(plotted().data[0].x).not.toBe(preview.traces[0].x)
@@ -38,23 +38,23 @@ it('requires a rendered I0 plot and per-file review while column edits remain av
   fireEvent.click(review)
   expect(screen.queryByLabelText('I0 correction plot')).not.toBeInTheDocument()
   expect(screen.getByText('Selected detector preview')).toBeVisible()
-  fireEvent.click(screen.getByRole('button', { name: 'Import spectrum' })); expect(imported).toHaveBeenCalledWith(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Import 2 files' })); expect(imported).toHaveBeenCalledWith(true)
   view.rerender(<Harness upload="next" />)
   expect(screen.getByLabelText('I reviewed the I0 correction for this file')).not.toBeChecked()
-  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Import 2 files' })).toBeDisabled()
 })
 
 it('optional plots do not block imports, and failed mandatory plots cannot be approved', () => {
   const view = render(<Harness required={false} />)
   expect(screen.queryByLabelText('I0 correction plot')).not.toBeInTheDocument()
-  fireEvent.click(screen.getByRole('button', { name: 'Import spectrum' })); expect(imported).toHaveBeenCalledWith(false)
+  fireEvent.click(screen.getByRole('button', { name: 'Import 2 files' })); expect(imported).toHaveBeenCalledWith(false)
   fireEvent.click(screen.getByRole('button', { name: 'Show I0 correction' }))
   expect(screen.getByLabelText('I0 correction plot')).toBeVisible()
   view.rerender(<Harness upload="mandatory" />)
   act(() => { plotted().onInitialized(); plotted().onError(new Error('Plot failed')) })
   expect(screen.getByRole('alert')).toHaveTextContent('Could not display')
   expect(screen.getByLabelText('I reviewed the I0 correction for this file')).toBeDisabled()
-  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Import 2 files' })).toBeDisabled()
 })
 
 it('holds review changes while an import is running', () => {

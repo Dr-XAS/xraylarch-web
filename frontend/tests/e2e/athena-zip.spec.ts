@@ -63,7 +63,7 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   await page.setViewportSize({width:1280,height:900})
   const plot=dialog.getByLabel('Imported signal preview plot',{exact:true})
   await signal(plot,0)
-  await dialog.getByRole('checkbox',{name:'Reuse this mapping for remaining files with matching column labels',exact:true}).uncheck()
+  await dialog.getByRole('radio',{name:'No, review each file',exact:true}).check()
   await dialog.getByRole('checkbox',{name:'Invert signal',exact:true}).check();await signal(plot,0,true)
   await dialog.getByRole('checkbox',{name:'Invert signal',exact:true}).uncheck();await signal(plot,0)
   await plot.scrollIntoViewIfNeeded();await dialog.screenshot({path:info.outputPath('zip-columns.png')})
@@ -76,6 +76,7 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   const project=await response.json();expect(project.groups.map((g:{label:string})=>g.label)).toEqual(['fe.060','fe.062'])
   expect(project.groups.every((g:{processing_error:unknown})=>g.processing_error===null)).toBe(true)
   const group=project.groups[1]
+  await page.getByRole('radio',{name:'Current spectrum',exact:true}).check()
   for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
     await page.getByRole('tab',{name:tab,exact:true}).click()
     await expect.poll(()=>curve(page.getByLabel(`${space}-space spectrum plot`,{exact:true})))
@@ -89,7 +90,7 @@ test('official ZIP subset has native bytes, live column edits, E/k/R/q and saved
   await page.getByRole('button',{name:'Import all groups',exact:true}).click()
   const result=await (await restored).json();expect(result.groups).toHaveLength(4)
   expect(result.groups[3].source).toEqual(group.source);expect(result.groups[3].result.arrays).toEqual(group.result.arrays)
-  await page.reload();await expect(page.getByRole('heading',{name:'Data groups 4',exact:true})).toBeVisible()
+  await page.reload();await expect(page.getByRole('heading',{name:/^Data groups 4\b/})).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -113,6 +114,7 @@ test('ZIP from Open project preserves mixed project, scan and nested-archive ord
   await dialog.getByRole('checkbox',{name:'Include Scan 7 · entry 1',exact:true}).uncheck()
   await dialog.getByRole('button',{name:'Review selected scans',exact:true}).click()
   await expect(dialog.getByLabel('Imported signal preview plot').locator('.js-line').first()).toBeAttached()
+  await dialog.getByRole('radio',{name:'No, review each file',exact:true}).check()
   await dialog.getByRole('button',{name:'Import spectrum',exact:true}).click()
   await expect(dialog.getByRole('region',{name:'ZIP file selection',exact:true})).toContainText('nested.zip')
   await dialog.getByRole('button',{name:'Select no files',exact:true}).click()

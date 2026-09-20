@@ -18,6 +18,26 @@ the pinned Git tree; SHA-256 hashes are in [the source manifest](athena-primary-
 
 ## Implemented flow
 
+Multi-file batches ask whether to use the same import parameters before the
+first import. Choosing Yes applies the reviewed column positions, units,
+signal/reference settings, rebinning, and preprocessing to the remaining files
+without another confirmation. Renamed headers are accepted; missing selected
+columns, known labels moving to different positions, and mandatory reader
+reviews pause the batch for that file. Choosing No retains individual review.
+Each new file selection asks again, including ZIP or SPEC selections expanded
+into multiple entries. Failed imports retain the pending file and accepted
+earlier imports, so retry resumes without duplicating successful files.
+
+The Measurement choice **Transmission + fluorescence** imports both signals
+from the same file. Transmission and fluorescence have independent detector
+selections, channel grouping, sign, and scale. Energy, units, reference,
+rebinning, and preprocessing settings are shared. Both curves are labeled in
+the preview, and imported groups include their measurement mode in the name.
+Both modes are validated and saved together as one project revision and undo
+step; an invalid second signal does not leave the first one partly imported.
+Shared-parameter batches reuse both sets of detector columns. This option
+requires energy data and is cleared when switching to extracted chi(k).
+
 `AthenaColumnSelection` displays the original file header and initial rows,
 column numbers, the selected expression, and a live Plotly figure. Each change
 requests `/preview-columns` after a 180 ms debounce. Cancelled or superseded

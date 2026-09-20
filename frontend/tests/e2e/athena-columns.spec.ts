@@ -85,7 +85,8 @@ test('official MRCAT quick scan compares original and rebinned data and imports 
   await page.setViewportSize({ width: 1400, height: 1000 })
   const accepted: Promise<any>[] = []
   page.on('response', r => { if (r.url().endsWith('/import')) accepted.push(r.json()) })
-  await panel.getByRole('button', { name: 'Import spectrum', exact: true }).click()
+  await panel.getByRole('radio', { name: 'Yes, use the same parameters', exact: true }).check()
+  await panel.getByRole('button', { name: 'Import 2 files', exact: true }).click()
   await expect(panel).not.toBeVisible()
   const projects = await Promise.all(accepted)
   expect(projects).toHaveLength(2)
@@ -98,7 +99,168 @@ test('official MRCAT quick scan compares original and rebinned data and imports 
     expect(group.source.rebin_original.column_arrays.column_0002).toEqual(raw.map(row => row[1]))
   }
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Data groups 2', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
+})
+
+test('batch choice shares parameters across renamed columns, resets, and permits individual review', async ({ page }, info) => {
+  test.setTimeout(90000)
+  const errors: string[] = []; page.on('pageerror', error => errors.push(error.message))
+  const renamed = Buffer.from(content.toString().replace('energy i0 it detA detB ref zero', 'axis monitor transmitted channelA channelB reference empty'))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Import data', exact: true }).click()
+  await page.getByLabel('Choose data files', { exact: true }).setInputFiles([
+    { name: 'shared-first.dat', mimeType: 'text/plain', buffer: content },
+    { name: 'shared-renamed.dat', mimeType: 'text/plain', buffer: renamed },
+  ])
+  const panel = page.getByRole('dialog', { name: 'Import spectra', exact: true })
+  const same = panel.getByRole('radio', { name: 'Yes, use the same parameters', exact: true })
+  const separate = panel.getByRole('radio', { name: 'No, review each file', exact: true })
+  await expect(panel.getByText('Use the same import parameters for all files?', { exact: true })).toBeVisible()
+  await expect(same).not.toBeChecked()
+  await expect(separate).not.toBeChecked()
+  await expect(panel.getByRole('button', { name: 'Import spectrum', exact: true })).toBeDisabled()
+  await panel.screenshot({ path: info.outputPath('batch-choice-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(same).toBeVisible()
+  await expect(separate).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await panel.screenshot({ path: info.outputPath('batch-choice-mobile.png') })
+  await page.setViewportSize({ width: 1400, height: 1000 })
+  if (await panel.getByRole('button', { name: 'Use suggested columns', exact: true }).count()) {
+    await panel.getByRole('button', { name: 'Use suggested columns', exact: true }).click()
+  }
+  await panel.getByRole('combobox', { name: 'Energy units', exact: true }).selectOption('keV')
+  await panel.getByRole('combobox', { name: 'Measurement', exact: true }).selectOption('transmission')
+  await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
+  await panel.getByLabel('Numerator i0', { exact: true }).check()
+  await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
+  await panel.getByLabel('Denominator it', { exact: true }).check()
+  await panel.getByLabel('Invert signal', { exact: true }).uncheck()
+  await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('1.5')
+  const imports: Promise<Record<string, any>>[] = []
+  page.on('response', response => { if (response.url().endsWith('/import')) imports.push(response.json()) })
+  await same.check()
+  await panel.getByRole('button', { name: 'Import 2 files', exact: true }).click()
+  // Completing both requests without another click catches a renamed header
+  // incorrectly reopening the import dialog instead of reusing the positions.
+  await expect(panel).not.toBeVisible()
+  expect(imports).toHaveLength(2)
+  const shared = await imports[1]
+  expect(shared.groups.map((g: { label: string }) => g.label)).toEqual(['shared-first.dat', 'shared-renamed.dat'])
+  for (const group of shared.groups) {
+    expect(group.source.mapping.signal_multiplier).toBe(1.5)
+    expect(group.source.mapping.units).toBe('keV')
+    expect(group.processing_error).toBeNull()
+    for (const index of [0, 200, 400, measured.length - 1]) {
+      expect(group.energy[index]).toBeCloseTo(measured[index][0], 9)
+      expect(group.mu[index]).toBeCloseTo(1.5 * measured[index][1], 12)
+    }
+  }
+  await page.getByRole('button', { name: 'Import data', exact: true }).click()
+  await page.getByLabel('Choose data files', { exact: true }).setInputFiles([
+    { name: 'individual-first.dat', mimeType: 'text/plain', buffer: content },
+    { name: 'individual-second.dat', mimeType: 'text/plain', buffer: content },
+  ])
+  await expect(same).not.toBeChecked()
+  await expect(separate).not.toBeChecked()
+  await expect(panel.getByRole('button', { name: 'Import spectrum', exact: true })).toBeDisabled()
+  await separate.check()
+  await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('1')
+  await panel.getByRole('button', { name: 'Import spectrum', exact: true }).click()
+  await expect(panel.getByText('individual-second.dat', { exact: true })).toBeVisible()
+  expect(imports).toHaveLength(3)
+  expect((await imports[2]).groups).toHaveLength(3)
+  await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('2')
+  await panel.getByRole('button', { name: 'Import spectrum', exact: true }).click()
+  await expect(panel).not.toBeVisible()
+  expect(imports).toHaveLength(4)
+  const individual = await imports[3]
+  expect(individual.groups).toHaveLength(4)
+  expect(individual.groups[2].mu[200]).toBeCloseTo(measured[200][1], 12)
+  expect(individual.groups[3].mu[200]).toBeCloseTo(2 * measured[200][1], 12)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /^Data groups 4\b/ })).toBeVisible()
+  expect(errors).toEqual([])
+})
+
+test('imports transmission and fluorescence together across a shared real-Cu batch', async ({ page }, info) => {
+  test.setTimeout(90000)
+  const errors: string[] = []
+  page.on('pageerror', error => errors.push(error.message))
+  const renamed = Buffer.from(content.toString().replace('energy i0 it detA detB ref zero', 'axis monitor transmitted channelA channelB reference empty'))
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Import data', exact: true }).click()
+  await page.getByLabel('Choose data files', { exact: true }).setInputFiles([
+    { name: 'dual-first.dat', mimeType: 'text/plain', buffer: content },
+    { name: 'dual-renamed.dat', mimeType: 'text/plain', buffer: renamed },
+  ])
+  const panel = page.getByRole('dialog', { name: 'Import spectra', exact: true })
+  await expect(panel.getByRole('combobox', { name: 'Measurement', exact: true })).toBeVisible()
+  if (await panel.getByRole('button', { name: 'Use suggested columns', exact: true }).count()) {
+    await panel.getByRole('button', { name: 'Use suggested columns', exact: true }).click()
+  }
+  await panel.getByRole('combobox', { name: 'Measurement', exact: true }).selectOption('both')
+  await panel.getByRole('combobox', { name: 'Energy units', exact: true }).selectOption('keV')
+  await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
+  await panel.getByLabel('Numerator i0', { exact: true }).check()
+  await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
+  await panel.getByLabel('Denominator it', { exact: true }).check()
+  await panel.getByLabel('Invert signal', { exact: true }).uncheck()
+  await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('1.25')
+  await panel.getByRole('button', { name: 'Clear fluorescence numerator', exact: true }).click()
+  await panel.getByLabel('Fluorescence numerator deta', { exact: true }).check()
+  await panel.getByLabel('Fluorescence numerator detb', { exact: true }).check()
+  await panel.getByRole('button', { name: 'Clear fluorescence denominator', exact: true }).click()
+  await panel.getByLabel('Fluorescence denominator i0', { exact: true }).check()
+  await panel.getByLabel('Invert fluorescence signal', { exact: true }).uncheck()
+  await panel.getByRole('spinbutton', { name: 'Fluorescence multiplicative constant', exact: true }).fill('.5')
+  await expect.poll(async () => (await curves(panel)).length).toBe(2)
+  const preview = await curves(panel)
+  expect(preview.map(trace => trace.name)).toEqual(['Transmission · Sample', 'Fluorescence · Sample'])
+  // Transmission is 1.25 * ln(i0/it); fluorescence is .5 * (detA+detB)/i0.
+  for (const [modeIndex, scale] of [[0, 1.25], [1, .75]]) {
+    expect(preview[modeIndex].x).toHaveLength(measured.length)
+    for (const index of [0, 200, 400, measured.length - 1]) {
+      expect(preview[modeIndex].x[index]).toBeCloseTo(measured[index][0], 9)
+      expect(preview[modeIndex].y[index]).toBeCloseTo(scale * measured[index][1], 12)
+    }
+  }
+  await panel.screenshot({ path: info.outputPath('dual-mode-desktop.png') })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await panel.getByRole('group', { name: 'Fluorescence columns', exact: true }).scrollIntoViewIfNeeded()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await panel.screenshot({ path: info.outputPath('dual-mode-mobile.png') })
+  await page.setViewportSize({ width: 1400, height: 1000 })
+  const requests: Record<string, any>[] = []
+  const accepted: Promise<Record<string, any>>[] = []
+  page.on('request', request => { if (request.url().endsWith('/import')) requests.push(request.postDataJSON()) })
+  page.on('response', response => { if (response.url().endsWith('/import')) accepted.push(response.json()) })
+  await panel.getByRole('radio', { name: 'Yes, use the same parameters', exact: true }).check()
+  await panel.getByRole('button', { name: 'Import 2 files', exact: true }).click()
+  await expect(panel).not.toBeVisible()
+  expect(requests).toHaveLength(2)
+  for (const body of requests) {
+    expect(body).toMatchObject({ mode: 'transmission', signal_multiplier: 1.25,
+      additional_fluorescence: { signal_multiplier: .5 } })
+    expect(body.additional_fluorescence.numerator).toHaveLength(2)
+  }
+  const projects = await Promise.all(accepted)
+  expect(projects).toHaveLength(2)
+  expect(projects[0].groups).toHaveLength(2)
+  const project = projects[1]
+  expect(project.groups.map((group: { label: string }) => group.label)).toEqual([
+    'dual-first.dat · Transmission', 'dual-first.dat · Fluorescence',
+    'dual-renamed.dat · Transmission', 'dual-renamed.dat · Fluorescence',
+  ])
+  for (const [index, group] of project.groups.entries()) {
+    expect(group.source.mapping.mode).toBe(index % 2 ? 'fluorescence' : 'transmission')
+    expect(group.processing_error).toBeNull()
+    expect(group.energy).toEqual(preview[index % 2].x)
+    expect(group.mu).toEqual(preview[index % 2].y)
+  }
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /^Data groups 4\b/ })).toBeVisible()
+  expect(errors).toEqual([])
 })
 
 test("column preview, reference, invalid mapping recovery and imported values", async ({ page }, info) => {
@@ -150,7 +312,7 @@ test("column preview, reference, invalid mapping recovery and imported values", 
   expect(project.groups[0].reference_id).toBe(project.groups[1].id)
   expect(project.groups[1].marked).toBe(false)
   await page.reload()
-  await expect(page.getByRole("heading", { name: "Data groups 2", exact: true })).toBeVisible()
+  await expect(page.getByRole("heading", { name: /^Data groups 2\b/ })).toBeVisible()
   await expect(page.getByText("trans", { exact: true })).toHaveCount(2)
   expect(errors).toEqual([])
 })
@@ -268,7 +430,8 @@ test("imports a batch with standard parameters, reference alignment and sample-o
   await batch.screenshot({ path: info.outputPath('import-preprocessing.png') })
   const imports: Promise<Record<string, any>>[] = []
   page.on('response', response => { if (response.url().endsWith('/import')) imports.push(response.json()) })
-  await batch.getByRole('button', { name: 'Import spectrum', exact: true }).click()
+  await batch.getByRole('radio', { name: 'Yes, use the same parameters', exact: true }).check()
+  await batch.getByRole('button', { name: 'Import 2 files', exact: true }).click()
   await expect(batch).not.toBeVisible()
   expect(imports).toHaveLength(2)
   const finished = await imports[1]
@@ -286,7 +449,7 @@ test("imports a batch with standard parameters, reference alignment and sample-o
     expect(sample.reference_id).toBe(ref.id)
   }
   await page.reload()
-  await expect(page.getByRole('heading', { name: 'Data groups 6', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /^Data groups 6\b/ })).toBeVisible()
   await page.getByRole('button', { name: 'Import data', exact: true }).click()
   await page.getByLabel('Choose data files', { exact: true }).setInputFiles({ name: 'new-choice.dat', mimeType: 'text/plain', buffer: content })
   await page.getByText('Preprocess imported groups', { exact: true }).click()

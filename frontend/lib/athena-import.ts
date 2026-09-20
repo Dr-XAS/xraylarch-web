@@ -12,6 +12,11 @@ export interface ImportRebinOptions {
 }
 export const defaultRebin: ImportRebinOptions = { enabled: false, e0: null, emin: -30, emax: 50, pre: 10, xanes: .5, exafs: .05, width: 3 }
 
+export interface FluorescenceMapping {
+  numerator: string[]; denominator: string | string[]
+  individual_channels?: boolean; signal_multiplier?: number | ""; invert?: boolean
+}
+
 export interface ColumnMapping {
   energy_column: string; numerator: string[]; denominator: string | string[]
   mode: "mu" | "transmission" | "fluorescence"
@@ -21,6 +26,7 @@ export interface ColumnMapping {
   signal_multiplier?: number | ""; invert?: boolean
   preprocessing?: ImportPreprocessing
   rebin?: ImportRebinOptions
+  additional_fluorescence?: FluorescenceMapping | null
 }
 
 export interface ColumnPreview {
@@ -31,8 +37,11 @@ export interface ColumnPreview {
 
 export function columnPayload(mapping: ColumnMapping) {
   const denominator = denominatorColumns(mapping)
+  const fluorescenceDenominator = mapping.additional_fluorescence && denominatorColumns(mapping.additional_fluorescence)
   const { enabled, ...rebin } = mapping.rebin ?? defaultRebin
   return { ...mapping, preprocessing: mapping.preprocessing ?? defaultPreprocessing,
+    ...(mapping.additional_fluorescence ? { additional_fluorescence: { ...mapping.additional_fluorescence,
+      denominator: fluorescenceDenominator!.length > 1 ? fluorescenceDenominator : fluorescenceDenominator![0] || null } } : {}),
     ...(mapping.rebin ? { rebin: enabled ? rebin : null } : {}),
     ...(mapping.rebin && !rebinProblem({ ...mapping.rebin, enabled: true, e0: null }) ? {
       rebin_grid: Object.fromEntries((['emin', 'emax', 'pre', 'xanes', 'exafs', 'width'] as const).map(key => [key, mapping.rebin![key]])),
@@ -41,12 +50,19 @@ export function columnPayload(mapping: ColumnMapping) {
     reference_numerator: mapping.reference_numerator || null, reference_denominator: mapping.reference_denominator || null }
 }
 
-export function denominatorColumns(mapping: ColumnMapping): string[] {
+export function denominatorColumns(mapping: Pick<ColumnMapping, 'denominator'>): string[] {
   return Array.isArray(mapping.denominator) ? mapping.denominator : mapping.denominator ? [mapping.denominator] : []
 }
 
 export function columnProblem(mapping: ColumnMapping): string | null {
   if (mapping.signal_multiplier === "" || !Number.isFinite(mapping.signal_multiplier ?? 1)) return "Enter a finite multiplicative constant."
+  const fluorescence = mapping.additional_fluorescence
+  if (fluorescence) {
+    if (mapping.mode !== 'transmission' || mapping.data_type === 'chi') return "Both modes require transmission and fluorescence energy data."
+    if (!mapping.numerator.length || !denominatorColumns(mapping).length) return "Choose the transmission numerator (I₀) and denominator (It) columns."
+    if (!fluorescence.numerator.length || !denominatorColumns(fluorescence).length) return "Choose the fluorescence signal and I₀ columns."
+    if (fluorescence.signal_multiplier === '' || !Number.isFinite(fluorescence.signal_multiplier ?? 1)) return "Enter a finite fluorescence multiplicative constant."
+  }
   const p = mapping.preprocessing
   if (p && (p.align || p.copy_parameters) && !p.standard_id) return "Choose a preprocessing standard."
   return rebinProblem(mapping.rebin)
@@ -68,15 +84,43 @@ export function rebinProblem(r?: ImportRebinOptions): string | null {
 export function changeInputType(mapping: ColumnMapping, data_type: ColumnMapping["data_type"]): ColumnMapping {
   return { ...mapping, data_type, ...(data_type === "chi" ? { mode: "mu" as const, units: "eV" as const,
     denominator: "", invert: false, signal_multiplier: 1, reference_numerator: "", reference_denominator: "",
+    ...(mapping.additional_fluorescence ? { additional_fluorescence: null } : {}),
     ...(mapping.rebin ? { rebin: { ...mapping.rebin, enabled: false } } : {}),
     ...(mapping.preprocessing ? { preprocessing: { ...mapping.preprocessing, standard_id: null, copy_parameters: false, align: false } } : {}) } : {}) }
 }
 
+export function setDualMode(mapping: ColumnMapping, inspection: InspectionResponse, enabled: boolean): ColumnMapping {
+  if (!enabled) {
+    const { additional_fluorescence: _fluorescence, ...single } = mapping
+    return single
+  }
+  if (mapping.data_type === 'chi' || mapping.additional_fluorescence) return mapping
+  const suggested = (mode: 'transmission' | 'fluorescence') => inspection.plugin_suggestions?.[mode]
+    ?? (inspection.athena_suggestion?.mode === mode ? inspection.athena_suggestion : undefined)
+  const named = (role: string, pattern: RegExp) => inspection.columns.find(c => c.role_hint === role)?.column_id
+    ?? inspection.columns.find(c => pattern.test(c.name.replace(/[^a-z0-9]/gi, '')))?.column_id
+  const i0 = named('i0', /^(?:i0|io)$/i)
+  const it = named('it', /^(?:it|i1|itrans|transmission)$/i)
+  const fluorescence = named('ifluor', /^(?:if\d*|ifluor\d*|fluorescence\d*|iy)$/i)
+  const transmissionSuggestion = suggested('transmission')
+  const fluorescenceSuggestion = suggested('fluorescence')
+  const additional: FluorescenceMapping = mapping.mode === 'fluorescence'
+    ? { numerator: [...mapping.numerator], denominator: denominatorColumns(mapping), individual_channels: mapping.individual_channels,
+      signal_multiplier: mapping.signal_multiplier, invert: mapping.invert }
+    : { numerator: fluorescenceSuggestion?.numerator ?? (fluorescence ? [fluorescence] : []),
+      denominator: fluorescenceSuggestion?.denominator ?? i0 ?? '', individual_channels: false, signal_multiplier: 1, invert: false }
+  return { ...mapping, mode: 'transmission', ...(mapping.mode !== 'transmission' ? {
+    numerator: transmissionSuggestion?.numerator ?? (i0 ? [i0] : []), denominator: transmissionSuggestion?.denominator ?? it ?? '',
+    individual_channels: false, signal_multiplier: 1, invert: false,
+  } : {}), additional_fluorescence: additional }
+}
+
 export function initialColumnMapping(inspection: InspectionResponse, previous: ColumnMapping, remembered = true): ColumnMapping {
   const cols = inspection.columns, suggested = inspection.athena_suggestion
-  const mapping = suggested ? { ...previous, ...suggested, denominator: suggested.denominator ?? "", reference_numerator: "",
+  const { additional_fluorescence: _fluorescence, ...singlePrevious } = previous
+  const mapping: ColumnMapping = suggested ? { ...singlePrevious, ...suggested, denominator: suggested.denominator ?? "", reference_numerator: "",
     reference_denominator: "", invert: false, signal_multiplier: 1, individual_channels: false }
-    : { ...previous, energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "",
+    : { ...singlePrevious, energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "",
       numerator: [cols.find(c => c.role_hint === "mu")?.column_id ?? cols[1]?.column_id ?? ""],
       denominator: cols.find(c => c.role_hint === "i0")?.column_id ?? cols[2]?.column_id ?? "",
       reference_numerator: "", reference_denominator: "" }
@@ -84,6 +128,41 @@ export function initialColumnMapping(inspection: InspectionResponse, previous: C
   const selected = restored ? { ...mapping, ...restored.mapping } : mapping
   if (selected.rebin && !restored) selected.rebin = { ...selected.rebin, enabled: false }
   return selected.data_type === 'chi' ? changeInputType(selected, 'chi') : selected
+}
+
+// A shared batch uses the column positions the user selected, even when files
+// label those columns differently. Resolve IDs for each upload independently.
+export function reuseColumnMapping(source: InspectionResponse, target: InspectionResponse, mapping: ColumnMapping): ColumnMapping | null {
+  const column = (id: string): string | undefined => {
+    const original = source.columns.find(c => c.column_id === id)
+    if (!original) return undefined
+    // Renamed headers are common across scans; a known label moving to another
+    // position is evidence of a different layout and needs an explicit review.
+    const named = target.columns.filter(c => c.name === original.name)
+    if (source.columns.filter(c => c.name === original.name).length === 1
+      && named.length === 1 && named[0].index !== original.index) return undefined
+    return target.columns.find(c => c.index === original.index && c.numeric)?.column_id
+  }
+  const reference = (id: string) => !id || id === '1' ? id : column(id)
+  const energy_column = column(mapping.energy_column)
+  const numerator = mapping.numerator.map(column)
+  const denominator = denominatorColumns(mapping).map(column)
+  const reference_numerator = reference(mapping.reference_numerator)
+  const reference_denominator = reference(mapping.reference_denominator)
+  let additional_fluorescence = mapping.additional_fluorescence
+  if (additional_fluorescence) {
+    const numerator = additional_fluorescence.numerator.map(column)
+    const denominator = denominatorColumns(additional_fluorescence).map(column)
+    if (numerator.some(id => id === undefined) || denominator.some(id => id === undefined)) return null
+    additional_fluorescence = { ...additional_fluorescence, numerator: numerator as string[],
+      denominator: Array.isArray(additional_fluorescence.denominator) ? denominator as string[] : denominator[0] ?? '' }
+  }
+  if (!energy_column || numerator.some(id => id === undefined) || denominator.some(id => id === undefined)
+    || reference_numerator === undefined || reference_denominator === undefined) return null
+  return { ...mapping, energy_column, numerator: numerator as string[],
+    ...(additional_fluorescence ? { additional_fluorescence } : {}),
+    denominator: Array.isArray(mapping.denominator) ? denominator as string[] : denominator[0] ?? '',
+    reference_numerator, reference_denominator }
 }
 
 export function lastImportedSample(groups: AthenaGroup[]): AthenaGroup | undefined {

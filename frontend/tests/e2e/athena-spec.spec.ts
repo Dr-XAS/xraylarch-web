@@ -51,10 +51,11 @@ async function expectSignal(plot: Locator, index: number, invert = false) {
   return { x, y }
 }
 
-async function review(page: Page, panel: Locator) {
+async function review(page: Page, panel: Locator, shareParameters = true) {
   await panel.getByRole('button', { name: 'Review selected scans' }).click()
   const dialog = page.getByRole('dialog', { name: 'Import spectra' })
-  await expect(dialog.getByRole('button', { name: 'Import spectrum', exact: true })).toBeEnabled()
+  await expect(dialog.getByRole('button', { name: 'Import spectrum', exact: true })).toBeDisabled()
+  await dialog.getByRole('radio', { name: shareParameters ? 'Yes, use the same parameters' : 'No, review each file', exact: true }).check()
   if (await dialog.getByRole('button', { name: 'Use suggested columns', exact: true }).count()) {
     await dialog.getByRole('button', { name: 'Use suggested columns', exact: true }).click()
   }
@@ -97,7 +98,7 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
   await dialog.screenshot({ path: info.outputPath('spec-columns.png') })
   const first = page.waitForResponse(r => r.url().endsWith('/import') && r.request().postDataJSON()?.upload_id === collection.scans[0].upload_id)
   const second = page.waitForResponse(r => r.url().endsWith('/import') && r.request().postDataJSON()?.upload_id === collection.scans[1].upload_id)
-  await dialog.getByRole('button', { name: 'Import spectrum', exact: true }).click()
+  await dialog.getByRole('button', { name: 'Import 2 files', exact: true }).click()
   expect((await first).ok()).toBe(true)
   const response = await second; expect(response.ok()).toBe(true); const project = await response.json()
   expect(project.version).toBe(2); expect(project.groups).toHaveLength(2)
@@ -109,6 +110,7 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
   }
   await expect(dialog).not.toBeVisible()
   const active = project.groups[1]
+  await page.getByRole('radio', { name: 'Current spectrum', exact: true }).check()
   for (const [tab, space, xkey, ykey] of [['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
     ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re']]) {
     await page.getByRole('tab', { name: tab, exact: true }).click()
@@ -126,7 +128,7 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
     expect(result.groups[i+2].source).toEqual(project.groups[i].source)
     expect(result.groups[i+2].result.arrays).toEqual(project.groups[i].result.arrays)
   }
-  await page.reload(); await expect(page.getByRole('heading', { name: 'Data groups 4', exact: true })).toBeVisible()
+  await page.reload(); await expect(page.getByRole('heading', { name: /^Data groups 4\b/ })).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -144,7 +146,7 @@ test('SPEC second-scan inspection retry preserves the first scan and continues i
       await route.fulfill({ status: 503, json: { error: { code: 'test_retry', message: 'Temporary scan inspection failure', fields: [], recovery: 'Retry inspection.' } } })
     } else await route.continue()
   })
-  const dialog = await review(page, panel)
+  const dialog = await review(page, panel, false)
   const imports: string[] = []; page.on('request', r => { if (r.url().endsWith('/import')) imports.push(r.postDataJSON().upload_id) })
   await expectSignal(dialog.getByLabel('Imported signal preview plot', { exact: true }), 0, true)
   await dialog.getByRole('button', { name: 'Import spectrum', exact: true }).click()
@@ -181,6 +183,6 @@ test('SPEC second-scan inspection retry preserves the first scan and continues i
   expect(project.groups[5].mu).toEqual(rawData.map(row => row[1]))
   expect(imports).toHaveLength(3)
   await expect(dialog).not.toBeVisible()
-  await page.reload(); await expect(page.getByRole('heading', { name: 'Data groups 6', exact: true })).toBeVisible()
+  await page.reload(); await expect(page.getByRole('heading', { name: /^Data groups 6\b/ })).toBeVisible()
   expect(errors).toEqual([])
 })

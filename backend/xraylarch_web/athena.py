@@ -21,7 +21,7 @@ from fastapi import APIRouter, File, Header, HTTPException, Query, Request, Uplo
 from fastapi.routing import APIRoute
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from larch import __version__ as larch_version
 
@@ -643,6 +643,16 @@ class ImportEdgePolicy(BaseModel):
     fraction: float = Field(default=0.5, gt=0, le=1, strict=True)
 
 
+class AdditionalFluorescence(BaseModel):
+    """A second detector recipe sharing the primary import's energy settings."""
+    model_config = ConfigDict(extra="forbid")
+    numerator: list[str] = Field(min_length=1, max_length=64)
+    denominator: str | list[str] | None = Field(default=None, max_length=64)
+    individual_channels: bool = Field(default=False, strict=True)
+    signal_multiplier: float = Field(default=1, strict=True, allow_inf_nan=False)
+    invert: bool = Field(default=False, strict=True)
+
+
 class ImportRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: int
@@ -666,6 +676,25 @@ class ImportRequest(BaseModel):
     rebin: ImportRebin | None = None
     rebin_grid: RebinGrid | None = None
     reader_reviewed: bool = Field(default=False, strict=True)
+    additional_fluorescence: AdditionalFluorescence | None = None
+
+    @model_validator(mode="after")
+    def valid_combined_modes(self):
+        additional = self.additional_fluorescence
+        if additional is not None:
+            if self.mode != "transmission" or self.data_type == "chi":
+                raise ValueError("Combined transmission and fluorescence import requires transmission energy data.")
+            if not self.numerator or not self.denominator or not additional.denominator:
+                raise ValueError("Choose numerator and denominator columns for both transmission and fluorescence.")
+        return self
+
+    def measurement_requests(self):
+        """Expand a combined import without persisting either half separately."""
+        if self.additional_fluorescence is None:
+            return [self]
+        primary = self.model_copy(update={"additional_fluorescence": None})
+        fluorescence = primary.model_copy(update={"mode": "fluorescence", **self.additional_fluorescence.model_dump()})
+        return [primary, fluorescence]
 
 
 class Command(BaseModel):
@@ -1559,7 +1588,6 @@ class AthenaStore:
             self.check(old, request.version)
             p = copy.deepcopy(old)
             standard = self.import_standard(p, request)
-            shared_alignment = None
             self.storage._validate_id(request.upload_id)
             arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
             metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
@@ -1567,95 +1595,103 @@ class AthenaStore:
                 raise WebInputError('reader_review_required', 'Review the I0 correction plot before importing.',
                                     recovery='Inspect the fit and corrected I0, then confirm the review for this file.')
             from .athena_columns import map_columns
-            mapped = map_columns(arrays, request)
-            prepare_rebin(mapped, request, standard)
-            x, order = mapped["x"], mapped["order"]
-            nnew = len(mapped["samples"]) * (2 if mapped["reference"] is not None else 1)
+            measurements = []
+            for mode_request in request.measurement_requests():
+                mapped = map_columns(arrays, mode_request)
+                prepare_rebin(mapped, mode_request, standard)
+                measurements.append((mode_request, mapped))
+            nnew = sum(len(mapped["samples"]) * (2 if mapped["reference"] is not None else 1)
+                       for _, mapped in measurements)
             if len(p["groups"]) + nnew > 100:
                 fail("A project can contain at most 100 groups.")
             def column(key):
                 if key not in arrays:
                     fail("Choose columns from the inspected file.")
                 return np.asarray(arrays[key], dtype=float)
-            source_base = {"filename": metadata["display_name"], "mapping": request.model_dump(exclude={"version", "edge_policy"}),
-                      "original_filename": metadata.get("original_filename", metadata["display_name"]),
-                      "source_sha256": metadata.get("raw_sha256"),
-                      "parser_identity": metadata.get("parser_identity", "xraylarch.parse_upload"),
-                      "parse_metadata": copy.deepcopy(metadata.get("parse_metadata", {})),
-                      "warnings": list(metadata.get("warnings", [])) + mapped["warnings"], "columns": metadata["columns"],
-                      "column_arrays": {key: np.asarray(values)[order].tolist() if request.sort else np.asarray(values).tolist()
-                                        for key, values in arrays.items()},
-                      "column_order": "group", "raw_arrays": {}}
-            if metadata.get('file_plugin'):
-                source_base['file_plugin'] = copy.deepcopy(metadata['file_plugin'])
-            if metadata.get('beamline_metadata'):
-                source_base['beamline_metadata'] = copy.deepcopy(metadata['beamline_metadata'])
-            if metadata.get('xdi_metadata'):
-                from .athena_xdi import identity as xdi_identity
-                source_base['xdi_metadata'] = copy.deepcopy(metadata['xdi_metadata'])
-                if xdi_identity(metadata['xdi_metadata']):
-                    source_base['edge_identity'] = xdi_identity(metadata['xdi_metadata'])
-            # Preserve original units/column IDs. When sorting was requested,
-            # all retained columns follow the group row order; row_order maps
-            # those rows back to the uploaded table.
-            if request.sort:
-                source_base["row_order"] = order.tolist()
-            def aligned(values):
-                return (values[order] if request.sort else values).tolist()
-            names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
-            for sample in mapped["samples"]:
-                source = copy.deepcopy(source_base)
-                source["mapping"]["numerator"] = sample["columns"]
-                if request.data_type == 'chi':
-                    source['mapping'].update(mode='mu', denominator=None, signal_multiplier=1., invert=False)
-                numerator, denominator = sample["numerator"], mapped["denominator"]
-                y = sample["y"][order]
-                if mapped["mode"] == "transmission":
-                    source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(mapped['scale'] * denominator))
-                elif mapped["mode"] == "fluorescence":
-                    source["raw_arrays"].update(i0=aligned(denominator), signal=aligned(mapped['scale'] * numerator))
-                else:
-                    source["raw_arrays"]["signal"] = aligned(mapped['scale'] * numerator)
-                    i0_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() == "i0"]
-                    if len(i0_columns) == 1:
-                        source["raw_arrays"]["i0"] = aligned(column(i0_columns[0]))
-                stddev_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() in ("stddev", "mu_stddev")]
-                if len(stddev_columns) == 1:
-                    source["raw_arrays"]["stddev"] = aligned(abs(mapped['scale']) * column(stddev_columns[0]))
-                source = _exchange_source(source, len(x), self.settings)
-                _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
-                label = metadata["display_name"]
-                if request.individual_channels and sample["columns"]:
-                    label += " · " + names.get(sample["columns"][0], "Constant 1")
-                group_source, group_x, group_y = self.rebinned_source(source, x, y, sample.get('rebin'))
-                g = self.make_import_group(label, group_x, group_y, data_type=request.data_type,
-                                          source=group_source, edge_policy=request.edge_policy)
-                if sample.get('rebin') is not None:
-                    from .athena_xdi_history import inherit_source
-                    g['source']['xdi_metadata'] = inherit_source(g, 'rebin', {})
-                p["groups"].append(g)
-                self.preprocess_import(p, g, standard, request.preprocessing)
-                reference = None
-                if mapped["reference"] is not None:
-                    ref = mapped["reference"]
-                    reference_source = copy.deepcopy(source)
-                    reference_source["raw_arrays"] = ({"i0": aligned(ref["numerator"]), "signal": aligned(ref["denominator"])}
-                        if request.reference_log else {"i0": aligned(ref["denominator"]), "signal": aligned(ref["numerator"])})
-                    reference_source["mapping"].update(numerator=[request.reference_numerator] if request.reference_numerator else [],
-                        denominator=request.reference_denominator, reference_numerator=None, reference_denominator=None,
-                        individual_channels=False, signal_multiplier=1., invert=False,
-                        preprocessing=ImportPreprocessing().model_dump() if request.preprocessing is not None else None,
-                        data_type=g["data_type"], mode="transmission" if request.reference_log else "fluorescence")
-                    reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
-                    reference = self.make_reference_group(g, ref_x, ref_y,
-                        source=reference_source, same_element=request.reference_same_element)
-                    if sample.get('reference_rebin') is not None:
+            for mode_request, mapped in measurements:
+                x, order = mapped["x"], mapped["order"]
+                shared_alignment = None
+                source_base = {"filename": metadata["display_name"], "mapping": mode_request.model_dump(exclude={"version", "edge_policy", "additional_fluorescence"}),
+                          "original_filename": metadata.get("original_filename", metadata["display_name"]),
+                          "source_sha256": metadata.get("raw_sha256"),
+                          "parser_identity": metadata.get("parser_identity", "xraylarch.parse_upload"),
+                          "parse_metadata": copy.deepcopy(metadata.get("parse_metadata", {})),
+                          "warnings": list(metadata.get("warnings", [])) + mapped["warnings"], "columns": metadata["columns"],
+                          "column_arrays": {key: np.asarray(values)[order].tolist() if mode_request.sort else np.asarray(values).tolist()
+                                            for key, values in arrays.items()},
+                          "column_order": "group", "raw_arrays": {}}
+                if metadata.get('file_plugin'):
+                    source_base['file_plugin'] = copy.deepcopy(metadata['file_plugin'])
+                if metadata.get('beamline_metadata'):
+                    source_base['beamline_metadata'] = copy.deepcopy(metadata['beamline_metadata'])
+                if metadata.get('xdi_metadata'):
+                    from .athena_xdi import identity as xdi_identity
+                    source_base['xdi_metadata'] = copy.deepcopy(metadata['xdi_metadata'])
+                    if xdi_identity(metadata['xdi_metadata']):
+                        source_base['edge_identity'] = xdi_identity(metadata['xdi_metadata'])
+                # Preserve original units/column IDs. When sorting was requested,
+                # all retained columns follow the group row order; row_order maps
+                # those rows back to the uploaded table.
+                if mode_request.sort:
+                    source_base["row_order"] = order.tolist()
+                def aligned(values):
+                    return (values[order] if mode_request.sort else values).tolist()
+                names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
+                for sample in mapped["samples"]:
+                    source = copy.deepcopy(source_base)
+                    source["mapping"]["numerator"] = sample["columns"]
+                    if mode_request.data_type == 'chi':
+                        source['mapping'].update(mode='mu', denominator=None, signal_multiplier=1., invert=False)
+                    numerator, denominator = sample["numerator"], mapped["denominator"]
+                    y = sample["y"][order]
+                    if mapped["mode"] == "transmission":
+                        source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(mapped['scale'] * denominator))
+                    elif mapped["mode"] == "fluorescence":
+                        source["raw_arrays"].update(i0=aligned(denominator), signal=aligned(mapped['scale'] * numerator))
+                    else:
+                        source["raw_arrays"]["signal"] = aligned(mapped['scale'] * numerator)
+                        i0_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() == "i0"]
+                        if len(i0_columns) == 1:
+                            source["raw_arrays"]["i0"] = aligned(column(i0_columns[0]))
+                    stddev_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() in ("stddev", "mu_stddev")]
+                    if len(stddev_columns) == 1:
+                        source["raw_arrays"]["stddev"] = aligned(abs(mapped['scale']) * column(stddev_columns[0]))
+                    source = _exchange_source(source, len(x), self.settings)
+                    _exchange_budget([*p["groups"], {"energy": x, "mu": y, "source": source}], self.settings)
+                    label = metadata["display_name"]
+                    if request.additional_fluorescence is not None:
+                        label += " · " + mode_request.mode.capitalize()
+                    if mode_request.individual_channels and sample["columns"]:
+                        label += " · " + names.get(sample["columns"][0], "Constant 1")
+                    group_source, group_x, group_y = self.rebinned_source(source, x, y, sample.get('rebin'))
+                    g = self.make_import_group(label, group_x, group_y, data_type=mode_request.data_type,
+                                              source=group_source, edge_policy=mode_request.edge_policy)
+                    if sample.get('rebin') is not None:
                         from .athena_xdi_history import inherit_source
-                        reference['source']['xdi_metadata'] = inherit_source(reference, 'rebin', {})
-                    g["reference_id"] = reference["id"]
-                    p["groups"].append(reference)
-                shared_alignment = self.align_import(p, g, reference, standard,
-                                                     request.preprocessing, shared_alignment)
+                        g['source']['xdi_metadata'] = inherit_source(g, 'rebin', {})
+                    p["groups"].append(g)
+                    self.preprocess_import(p, g, standard, mode_request.preprocessing)
+                    reference = None
+                    if mapped["reference"] is not None:
+                        ref = mapped["reference"]
+                        reference_source = copy.deepcopy(source)
+                        reference_source["raw_arrays"] = ({"i0": aligned(ref["numerator"]), "signal": aligned(ref["denominator"])}
+                            if mode_request.reference_log else {"i0": aligned(ref["denominator"]), "signal": aligned(ref["numerator"])})
+                        reference_source["mapping"].update(numerator=[mode_request.reference_numerator] if mode_request.reference_numerator else [],
+                            denominator=mode_request.reference_denominator, reference_numerator=None, reference_denominator=None,
+                            individual_channels=False, signal_multiplier=1., invert=False,
+                            preprocessing=ImportPreprocessing().model_dump() if mode_request.preprocessing is not None else None,
+                            data_type=g["data_type"], mode="transmission" if mode_request.reference_log else "fluorescence")
+                        reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
+                        reference = self.make_reference_group(g, ref_x, ref_y,
+                            source=reference_source, same_element=mode_request.reference_same_element)
+                        if sample.get('reference_rebin') is not None:
+                            from .athena_xdi_history import inherit_source
+                            reference['source']['xdi_metadata'] = inherit_source(reference, 'rebin', {})
+                        g["reference_id"] = reference["id"]
+                        p["groups"].append(reference)
+                    shared_alignment = self.align_import(p, g, reference, standard,
+                                                         mode_request.preprocessing, shared_alignment)
             _exchange_budget(p["groups"], self.settings)
             saved = self.save(p, old, f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
             try:
@@ -1674,36 +1710,45 @@ class AthenaStore:
         self.storage._validate_id(request.upload_id)
         arrays = self.storage.read_arrays(ident, f"upload-{request.upload_id}.npz")
         metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
-        mapped = map_columns(arrays, request)
-        prepare_rebin(mapped, request, standard)
-        x, order = mapped["x"], mapped["order"]
-        if not np.isfinite(x).all():
-            fail("The selected horizontal axis contains non-finite values after unit conversion.")
-        warnings = list(metadata.get("warnings", [])) + mapped["warnings"]
-        if request.preprocessing is not None and request.preprocessing.align:
-            warnings.append('This preview shows the selected columns on the original energy axis. Standard alignment is applied when importing.')
-        if request.rebin is None and np.any(np.diff(x) <= 0):
-            warnings.append("The horizontal axis is not strictly increasing. Choose the energy column or sort the rows; duplicate energies must be repaired before import.")
-        names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
-        traces = [preview_trace(x, sample["y"][order], label=names.get(sample["columns"][0], 'Constant 1') if request.individual_channels and sample["columns"] else "Sample",
-                  role="sample", ident="sample:" + "+".join(sample["columns"])) for sample in mapped["samples"]]
-        if mapped["reference"] is not None:
-            traces.append(preview_trace(x, mapped["reference"]["y"][order], label="Reference", role="reference", ident="reference"))
-        rebin_results = []
-        if request.rebin is not None:
-            for trace in traces:
-                trace.update(stage='original', label=trace['label'] + ' · original')
-            for i, sample in enumerate(mapped['samples']):
-                label = names.get(sample['columns'][0], 'Constant 1') if request.individual_channels and sample['columns'] else 'Sample'
-                for key, y, role, title in [('rebin', sample['y'][order], 'sample', label),
-                    ('reference_rebin', mapped['reference']['y'][order] if mapped['reference'] else None, 'reference', 'Reference · ' + label)]:
-                    plan = sample.get(key)
-                    if plan is None:
-                        continue
-                    trace = preview_trace(plan.energy, plan.apply(y), label=title + ' · rebinned', role=role, ident=f'{key}:{i}')
-                    traces.append(trace | {'stage': 'rebinned'})
-                    rebin_results.append({'id': trace['id'], 'label': title, 'role': role, **plan.details})
-                    warnings.extend(plan.details['warnings'])
+        traces, rebin_results = [], []
+        warnings = list(metadata.get("warnings", []))
+        for mode_request in request.measurement_requests():
+            mapped = map_columns(arrays, mode_request)
+            prepare_rebin(mapped, mode_request, standard)
+            x, order = mapped["x"], mapped["order"]
+            if not np.isfinite(x).all():
+                fail("The selected horizontal axis contains non-finite values after unit conversion.")
+            warnings.extend(mapped["warnings"])
+            if mode_request.preprocessing is not None and mode_request.preprocessing.align:
+                warnings.append('This preview shows the selected columns on the original energy axis. Standard alignment is applied when importing.')
+            if mode_request.rebin is None and np.any(np.diff(x) <= 0):
+                warnings.append("The horizontal axis is not strictly increasing. Choose the energy column or sort the rows; duplicate energies must be repaired before import.")
+            names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
+            mode_traces = [preview_trace(x, sample["y"][order], label=names.get(sample["columns"][0], 'Constant 1') if mode_request.individual_channels and sample["columns"] else "Sample",
+                      role="sample", ident="sample:" + "+".join(sample["columns"])) for sample in mapped["samples"]]
+            if mapped["reference"] is not None:
+                mode_traces.append(preview_trace(x, mapped["reference"]["y"][order], label="Reference", role="reference", ident="reference"))
+            mode_rebin_results = []
+            if mode_request.rebin is not None:
+                for trace in mode_traces:
+                    trace.update(stage='original', label=trace['label'] + ' · original')
+                for i, sample in enumerate(mapped['samples']):
+                    label = names.get(sample['columns'][0], 'Constant 1') if mode_request.individual_channels and sample['columns'] else 'Sample'
+                    for key, y, role, title in [('rebin', sample['y'][order], 'sample', label),
+                        ('reference_rebin', mapped['reference']['y'][order] if mapped['reference'] else None, 'reference', 'Reference · ' + label)]:
+                        plan = sample.get(key)
+                        if plan is None:
+                            continue
+                        trace = preview_trace(plan.energy, plan.apply(y), label=title + ' · rebinned', role=role, ident=f'{key}:{i}')
+                        mode_traces.append(trace | {'stage': 'rebinned'})
+                        mode_rebin_results.append({'id': trace['id'], 'label': title, 'role': role, **plan.details})
+                        warnings.extend(plan.details['warnings'])
+            if request.additional_fluorescence is not None:
+                for entry in [*mode_traces, *mode_rebin_results]:
+                    entry['id'] = mode_request.mode + ':' + entry['id']
+                    entry['label'] = mode_request.mode.capitalize() + ' · ' + entry['label']
+            traces.extend(mode_traces)
+            rebin_results.extend(mode_rebin_results)
         self.check(self.load(ident), request.version)
         return {"filename": metadata["display_name"], "points": len(x), "traces": traces, "warnings": list(dict.fromkeys(warnings)),
                 **({'rebin_results': rebin_results} if request.rebin is not None else {}),

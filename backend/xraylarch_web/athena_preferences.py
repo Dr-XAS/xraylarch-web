@@ -65,6 +65,12 @@ class ColumnMemory(BaseModel):
         if len(set(req.numerator)) != len(req.numerator) or len(set(den)) != len(den):
             raise ValueError('Remembered detector operands contain repeated columns.')
         selected = [req.energy_column, *req.numerator, *den, req.reference_numerator, req.reference_denominator]
+        if req.additional_fluorescence is not None:
+            additional = req.additional_fluorescence
+            extra_den = additional.denominator if isinstance(additional.denominator, list) else [additional.denominator]
+            if len(set(additional.numerator)) != len(additional.numerator) or len(set(extra_den)) != len(extra_den):
+                raise ValueError('Remembered fluorescence operands contain repeated columns.')
+            selected.extend([*additional.numerator, *extra_den])
         if any(key not in ids and key not in (None, '', '1') for key in selected) or req.energy_column not in ids:
             raise ValueError('Remembered selections refer to unavailable columns.')
         return self
@@ -209,9 +215,13 @@ class AthenaPreferences:
                 return ids.get(value, value) or ''
             for key in ('energy_column', 'numerator', 'denominator', 'reference_numerator', 'reference_denominator'):
                 mapping[key] = convert(mapping.get(key))
+            if mapping.get('additional_fluorescence') is not None:
+                for key in ('numerator', 'denominator'):
+                    mapping['additional_fluorescence'][key] = convert(mapping['additional_fluorescence'].get(key))
         else:
             mapping.update(reference_numerator='', reference_denominator='', reference_log=True,
                            reference_same_element=True, individual_channels=False,
+                           additional_fluorescence=None,
                            signal_multiplier=old.get('signal_multiplier', 1), invert=old.get('invert', False))
         mapping['sort'] = old.get('sort', False)
         mapping['rebin'] = {'enabled': matching and old.get('rebin') is not None,
@@ -232,7 +242,7 @@ class AthenaPreferences:
         mapping['preprocessing'] = prep
         if mapping['data_type'] == 'chi':
             mapping.update(mode='mu', units='eV', denominator='', reference_numerator='', reference_denominator='',
-                           signal_multiplier=1., invert=False)
+                           signal_multiplier=1., invert=False, additional_fluorescence=None)
             mapping['rebin']['enabled'] = False
             prep.update(standard_id=None, copy_parameters=False, align=False)
         return {'version': memory.version, 'matching_columns': matching, 'mapping': mapping, 'warnings': warnings}
