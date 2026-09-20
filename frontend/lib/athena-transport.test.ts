@@ -40,9 +40,15 @@ describe("Athena transport", () => {
     expect(click).toHaveBeenCalledOnce()
     expect(filename).toBe("Fe foil.csv")
     expect(create).toHaveBeenCalledOnce()
-    // Response.blob() uses Node's Blob, which is a different realm from jsdom's.
+    // Response.blob() may use Node's Blob or jsdom's, depending on the Node runtime.
     const downloaded = create.mock.calls[0][0] as Blob
-    expect(new Uint8Array(await downloaded.arrayBuffer())).toEqual(new Uint8Array([1, 2]))
+    const bytes = typeof downloaded.arrayBuffer === "function" ? await downloaded.arrayBuffer() : await new Promise<ArrayBuffer>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as ArrayBuffer)
+      reader.onerror = () => reject(reader.error)
+      reader.readAsArrayBuffer(downloaded)
+    })
+    expect(new Uint8Array(bytes)).toEqual(new Uint8Array([1, 2]))
     expect(revoke).toHaveBeenCalledWith("blob:test")
   })
 

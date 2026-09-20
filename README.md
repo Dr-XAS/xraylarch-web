@@ -332,6 +332,15 @@ why Athena's effective SG default is order 9 despite its literal default 4.
 
 ### Run locally
 
+The frontend uses Node.js 24 LTS (`frontend/.nvmrc`); Node.js 22 or newer is
+required by Plotly 4. Select that runtime before installing dependencies with
+`npm ci` inside `frontend/`, and use the same Node major in CI and deployment.
+
+Plots and image exports share the lazy-loaded Plotly 4 bundle through
+`frontend/lib/plotly-runtime.ts`. Keep `plotly.js` (the React adapter's peer
+dependency) and `plotly.js-dist-min` pinned to the same version. Rendering uses
+`react-plotly.js/factory`, so its default, separate Plotly bundle is not loaded.
+
 Create the backend environment from `backend/requirements.txt` before starting
 the services. From the repository root, start the backend in one terminal:
 

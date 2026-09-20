@@ -12,7 +12,7 @@ import type {
 } from "@/lib/contracts"
 import { WorkbenchShell } from "@/components/workbench-shell"
 
-vi.mock("react-plotly.js", () => ({ default: () => null }))
+vi.mock("./themed-plot", () => ({ ThemedPlot: () => null }))
 
 const recipe: RecipeDraft = {
   e0: null,

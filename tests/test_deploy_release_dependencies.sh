@@ -37,6 +37,29 @@ command_status=1
 if assert_backend_application_import "$release"; then fail_test 'broken app import must fail'; fi
 command_status=0
 
+# Exercise the actual Node expression while keeping the deployment host and
+# conda environment out of the test. Include both sides of the major boundary.
+(
+  CONDA_BIN=/fake/conda
+  run_clean() {
+    [[ "$#" -eq 8 && "$1" == "$CONDA_BIN" && "$2" == run && "$3" == --no-capture-output &&
+       "$4" == -n && "$5" == drxas-node20 && "$6" == node && "$7" == -e ]] \
+      || fail_test 'runtime check must use the existing frontend conda environment'
+    node -e 'Object.defineProperty(process.versions, "node", { value: process.argv[1] }); eval(process.argv[2])' \
+      "$runtime_version" "$8"
+  }
+  for runtime_version in 18.20.8 20.9.0 20.19.6 21.7.3; do
+    if assert_frontend_runtime_supported >"$test_root/runtime-output" 2>&1; then
+      fail_test "unsupported Node $runtime_version passed the frontend runtime gate"
+    fi
+    grep -F 'Node.js 22 or newer for Plotly 4' "$test_root/runtime-output" >/dev/null \
+      || fail_test 'runtime failure must explain the required upgrade'
+  done
+  for runtime_version in 22.0.0 22.14.0 24.0.0; do
+    assert_frontend_runtime_supported || fail_test "supported Node $runtime_version failed the frontend runtime gate"
+  done
+)
+
 
 # CI and deployment must execute the same complete installer. Every dependency
 # gate must fail before the immutable release or frontend can be published.
@@ -50,7 +73,7 @@ health_source=$(declare -f backend_health_ok)
 [[ "$health_source" == *'git_revision'* ]] || fail_test 'backend health must verify the exact release revision'
 [[ "$health_source" == *'integration_contract_version'* ]] || fail_test 'backend health must verify integration contract version 2'
 
-for failure in constraints wheel backend app check freeze collection runtime; do
+for failure in constraints wheel backend app check freeze collection runtime frontend_runtime; do
 (
   XRAYLARCH_WEB_TEST_MODE=1 source "$repo_root/scripts/deploy-xraylarch-web.sh"
   RELEASES_ROOT="$test_root/build-releases-$failure"
@@ -82,7 +105,8 @@ for failure in constraints wheel backend app check freeze collection runtime; do
       *'pip freeze'*) stage=freeze ;;
       *'pytest '*--collect-only*) stage=collection ;;
       *'pytest '*) stage=runtime ;;
-      *'node -e '*|*'npm '*) fail_test 'frontend must not run after backend failure' ;;
+      *'node -e '*) stage=frontend_runtime ;;
+      *'npm '*) fail_test 'frontend install/build must not run after a dependency or runtime failure' ;;
     esac
     if [[ -n "$stage" ]]; then
       echo "$stage" >> "$events"

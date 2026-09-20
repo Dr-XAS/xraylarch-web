@@ -8,6 +8,7 @@ import { AthenaDiagnosticPlot } from "./athena-diagnostic-plot"
 import { useTheme } from "./theme-provider"
 import { plotColorForTheme, plotDataForTheme } from "@/lib/plot-theme"
 import { plotLayoutWithTypography } from "@/lib/plot-typography"
+import { loadPlotly } from "@/lib/plotly-runtime"
 import styles from "./athena-special-plot.module.css"
 
 const colors = ["#16736b", "#c37b38", "#7470b0", "#c85a65", "#467cac", "#8e9c47"]
@@ -82,7 +83,7 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
     const requestedKey = key
     setExporting(true)
     try {
-      const Plotly = (await import('plotly.js-dist-min')).default
+      const Plotly = await loadPlotly()
       const traces = current.result.curves.filter((_, i) => !hidden.includes(i)).map(c => {
         const chunks = c.name.match(/.{1,60}/gu) ?? [c.name]
         const name = chunks.map(text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('<br>')

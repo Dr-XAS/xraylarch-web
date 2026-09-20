@@ -102,7 +102,12 @@ for (const mobile of [false, true]) test((mobile ? 'mobile' : 'desktop') + ' ori
 
   // Native normalized shortcuts must follow a saved Flatten change.
   const changing = page.waitForResponse(r => r.url().endsWith('/command') && r.request().postDataJSON().action === 'parameters')
-  await page.getByRole('checkbox', { name: 'Flatten normalized data', exact: true }).uncheck()
+  const flatten = page.getByRole('checkbox', { name: 'Flatten normalized data', exact: true })
+  await expect(flatten).toBeChecked()
+  // Focusing opens the mobile help tooltip; use the checkbox's keyboard action.
+  await flatten.focus()
+  await flatten.press('Space')
+  await expect(flatten).not.toBeChecked()
   const changed = await changing; expect(changed.ok()).toBe(true); project = await changed.json()
   dialog = await open(page)
   const unflat = await review(page, dialog, 'normderiv')

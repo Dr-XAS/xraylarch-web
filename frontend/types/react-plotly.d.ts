@@ -15,3 +15,10 @@ declare module "react-plotly.js" {
 
   export default Plot
 }
+
+declare module "react-plotly.js/factory" {
+  function createPlotlyComponent(
+    plotly: typeof import("plotly.js-dist-min").default,
+  ): typeof import("react-plotly.js").default
+  export default createPlotlyComponent
+}

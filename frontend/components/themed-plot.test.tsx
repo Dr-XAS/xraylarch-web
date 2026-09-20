@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest"
 import { ThemeProvider, useTheme } from "./theme-provider"
 import { ThemedPlot } from "./themed-plot"
 
-const plotly = vi.hoisted(() => vi.fn((_props: { layout?: Record<string, unknown> }) => null))
+const plotly = vi.hoisted(() => vi.fn((_props: { layout?: Record<string, unknown>; config?: Record<string, unknown> }) => null))
 vi.mock("next/dynamic", () => ({ default: () => plotly }))
 
 beforeEach(() => {
@@ -29,4 +29,22 @@ it("updates an already mounted plot when the application theme changes", () => {
   })
   fireEvent.click(screen.getByText("Toggle theme"))
   expect(plotly.mock.calls.at(-1)?.[0].layout).toEqual(lightLayout)
+})
+
+it("keeps plots local and preserves the existing double-click timing with Plotly 4", () => {
+  render(<ThemedPlot data={[]} />)
+  expect(plotly.mock.calls.at(-1)?.[0].config).toMatchObject({
+    showSendToCloud: false, doubleClickDelay: 300,
+  })
+})
+
+it("preserves plot-specific export and interaction options without enabling cloud upload", () => {
+  const config = {
+    responsive: true, doubleClickDelay: 450, showSendToCloud: true,
+    toImageButtonOptions: { format: "svg", filename: "athena-spectrum" },
+    modeBarButtonsToRemove: ["lasso2d", "select2d"],
+  }
+  render(<ThemedPlot data={[]} config={config} />)
+  expect(plotly.mock.calls.at(-1)?.[0].config).toEqual({ ...config, showSendToCloud: false })
+  expect(config.showSendToCloud).toBe(true)
 })

@@ -47,6 +47,11 @@ equal the requested SHA. It builds a new detached checkout under
 `drxas-deploy`, installs the complete pinned set in
 `deploy/python-release-constraints.txt`, records `pip freeze`, runs `pip check`,
 and runs `npm ci` plus the production frontend build through `drxas-node20`.
+Plotly 4 requires Node.js 22 or newer. Before the next deployment, update the
+Node runtime in that existing conda environment; `drxas-node20` remains its
+historical name and does not indicate the supported Node version. The deployer
+checks the runtime before `npm ci` and refuses unsupported versions. This
+repository change does not update the host environment or restart running services.
 The shared backend installer also installs the web dependencies declared in
 `backend/requirements.txt` under the release constraints, preserving the built
 Larch wheel instead of installing the repository as an editable package. It

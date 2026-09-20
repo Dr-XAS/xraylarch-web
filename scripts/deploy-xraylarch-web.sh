@@ -61,6 +61,10 @@ Usage:
 
 Host-only release control for XrayLarch Web. A full SHA is exactly 40 lowercase
 hexadecimal characters. --help performs no host write.
+
+Frontend builds require Node.js 22 or newer for Plotly 4. Update the runtime in
+the existing drxas-node20 conda environment before the next deployment; its name
+is retained for compatibility with the existing service configuration.
 EOF
 }
 
@@ -915,8 +919,8 @@ verify_remote_branch_tip() {
 
 assert_frontend_runtime_supported() {
   run_clean "$CONDA_BIN" run --no-capture-output -n drxas-node20 node -e \
-    'const [major, minor] = process.versions.node.split(".").map(Number); process.exit(major > 20 || (major === 20 && minor >= 9) ? 0 : 1)' \
-    || { fail "drxas-node20 must provide Node.js 20.9 or newer"; return 1; }
+    'const major = Number(process.versions.node.split(".")[0]); process.exit(major >= 22 ? 0 : 1)' \
+    || { fail "drxas-node20 must provide Node.js 22 or newer for Plotly 4; update its runtime before deployment"; return 1; }
 }
 
 install_backend_requirements() (

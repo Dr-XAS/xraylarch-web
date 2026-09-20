@@ -57,7 +57,7 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
         layout={{ autosize: true, margin: { l: 60, r: plottedReference ? 60 : 25, t: traces.length > 1 ? 65 : 15, b: 60 },
           paper_bgcolor: "white", plot_bgcolor: "white", font: { color: "#43513d" },
           xaxis: { title: { text: value.x_label }, zeroline: false }, yaxis: { title: { text: value.y_label }, zeroline: false },
-          yaxis2: { title: { text: "Reference" }, overlaying: "y", side: "right", showgrid: false, zeroline: false },
+          yaxis2: { title: { text: "Reference" }, overlaying: "y", tickmode: "auto", side: "right", showgrid: false, zeroline: false },
           showlegend: traces.length > 1, legend: { orientation: "h", x: 0, y: 1.12, xanchor: "left", yanchor: "bottom" },
           uirevision: state?.key, hovermode: "closest" }}
         config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ["select2d", "lasso2d"], toImageButtonOptions: { filename: "athena-column-preview" } }}
