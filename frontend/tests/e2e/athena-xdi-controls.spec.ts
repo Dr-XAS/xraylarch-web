@@ -116,7 +116,7 @@ for (const file of ['xdi-official-cu_metal_rt.xdi', 'demeter-x11a-cu.012']) {
 
 test('ordinary groups expose absorber metadata and missing field status', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Load copper foil example', exact: true }).click()
+  await page.getByRole('button', { name: 'Load copper examples', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Edit group information', exact: true })).toBeVisible()
   const { dialog } = await openMetadata(page)
   await expect(dialog.getByText('Required metadata: 2 of 3 present', { exact: true })).toBeVisible()

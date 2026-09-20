@@ -34,7 +34,8 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
-foil example. The earlier single-spectrum interface is at `/classic`. The
+examples: three temperature-series foils and a room-temperature Cu₂O reference.
+The earlier single-spectrum interface is at `/classic`. The
 Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
 both the frontend and backend to loopback and relies on Dr.XAS ingress rather
 than exposing either service port directly.
@@ -121,7 +122,7 @@ without normalization or EXAFS processing.
 
 Right-click the group list or processing labels, or use their **⋯** buttons,
 for Athena's current-group actions, paired parameter copies and reports.
-Plot tabs also offer native shortcuts; **Plot shortcuts…** exposes the same
+Plot tabs also offer native shortcuts; **Plot → Plot shortcuts…** exposes the same
 comparisons without right-clicking. Plugin and XDI field menus provide reader
 documentation/configuration and saved-field validation. See the
 [context-menu reference](docs/athena-context-menu-reference.md) for the pinned
@@ -231,11 +232,11 @@ for executed native plotting rules and original project examples.
 **Plot → Diagnostic plots…** shows native Quad, two-group Bi-Quad and k/q
 comparisons. Inspect raw/background energy curves, weighted EXAFS and Fourier
 components; change the display weight or each panel's range without changing
-the saved project. Quad entries in **Plot shortcuts…** use the same verified
+the saved project. Quad entries in **Plot → Plot shortcuts…** use the same verified
 curves. See the [diagnostic plot reference](docs/athena-diagnostic-plot-reference.md)
 for original-template comparisons and the corrected Bi-Quad energy-axis rule.
 
-**Plot shortcuts…** also provides normalized/derivative, detector, marked E₀/I₀/edge-step and k/R three-weight comparisons. Calculations follow the saved group settings in the backend. Curve labels wrap on narrow screens, and SVG downloads include complete legends. See the [shortcut reference](docs/athena-shortcut-plot-reference.md) for detector project-exchange rules and native comparisons.
+**Plot → Plot shortcuts…** also provides normalized/derivative, detector, marked E₀/I₀/edge-step and k/R three-weight comparisons. Calculations follow the saved group settings in the backend. Curve labels wrap on narrow screens, and SVG downloads include complete legends. See the [shortcut reference](docs/athena-shortcut-plot-reference.md) for detector project-exchange rules and native comparisons.
 
 **Process → Calibrate energy** previews μ(E), normalized μ(E), and raw first
 and second derivatives. Pick a reference on the plot or enter it, compare

@@ -161,7 +161,8 @@ def test_http_stale_preview_save_and_noise_seed_capture(tmp_path):
     response=client.post(path+'/convolve/preview',json=req);assert response.status_code==200,response.text
     preview=response.json();req['options']=preview['options']
     response=client.post(path+'/command',json=req);assert response.status_code==200,response.text
-    assert response.json()['groups'][1]['mu']==preview['results'][0]['modified_mu']
+    saved=response.json();created=saved['last_operation']['convolution_results'][0]['group_id']
+    assert next(group for group in saved['groups'] if group['id']==created)['mu']==preview['results'][0]['modified_mu']
     assert client.post(path+'/convolve/preview',json=req).status_code==409
     assert client.post(path+'/command',json=req).status_code==409
 

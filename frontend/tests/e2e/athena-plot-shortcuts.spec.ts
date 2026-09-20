@@ -22,7 +22,9 @@ async function review(page: Page, dialog: Locator, kind: string) {
   return value
 }
 async function open(page: Page) {
-  await page.getByRole('button', { name: 'Plot shortcuts…', exact: true }).click()
+  const menu = page.getByRole('navigation', { name: 'Main menu', exact: true })
+  await menu.getByRole('button', { name: 'Plot', exact: true }).click()
+  await menu.getByRole('button', { name: 'Plot shortcuts…', exact: true }).click()
   return page.getByRole('dialog', { name: 'Athena plot shortcuts', exact: true })
 }
 async function close(dialog: Locator) {

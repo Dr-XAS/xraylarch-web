@@ -179,7 +179,9 @@ test("shortcut SVG export uses the live renderer's curves and omits hidden legen
   const errors: string[] = []
   page.on("pageerror", error => errors.push(error.message))
   const project = await importIron(page)
-  await page.getByRole("button", { name: "Plot shortcuts…", exact: true }).click()
+  const menu = page.getByRole("navigation", { name: "Main menu", exact: true })
+  await menu.getByRole("button", { name: "Plot", exact: true }).click()
+  await menu.getByRole("button", { name: "Plot shortcuts…", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Athena plot shortcuts", exact: true })
   await dialog.getByLabel("Plot shortcut", { exact: true }).selectOption("normderiv")
   const replot = dialog.getByRole("button", { name: "Replot shortcut", exact: true })

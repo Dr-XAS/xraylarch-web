@@ -7,7 +7,7 @@ const python=fileURLToPath(new URL('../../../backend/.venv/bin/python',import.me
 async function example(page:Page){
   await page.goto('/')
   const response=page.waitForResponse(r=>r.url().endsWith('/command') && r.request().postDataJSON().action==='example')
-  await page.getByRole('button',{name:'Load copper foil example',exact:true}).click()
+  await page.getByRole('button',{name:'Load copper examples',exact:true}).click()
   const loaded=await response;expect(loaded.ok()).toBe(true);return loaded.json()
 }
 async function openReport(page:Page,scope='all'){
@@ -33,7 +33,7 @@ test('all and marked Excel downloads retain every previewed parameter, frozen gr
   const changed=await page.request.post(`/api/backend/api/athena/projects/${project.id}/command`,{data:{version:project.version,action:'metadata',group_ids:[project.groups[1].id],options:{frozen:true,label:'铜 foil = 1'}}})
   expect(changed.ok()).toBe(true);project=await changed.json();await page.reload()
   let {dialog,report}=await openReport(page)
-  expect(report.rows).toHaveLength(3)
+  expect(report.rows).toHaveLength(4)
   await dialog.getByLabel('Preview section').selectOption('background')
   await page.screenshot({path:info.outputPath('parameter-report-desktop.png')})
   const file=await download(page,info,'all.xls')
@@ -52,7 +52,7 @@ test('all and marked Excel downloads retain every previewed parameter, frozen gr
 test('mobile marked report uses list order and recovers from another-window revision conflict',async({page},info)=>{
   await page.setViewportSize({width:390,height:844});let project=await example(page)
   for(const [i,g] of project.groups.entries()){
-    const changed=await page.request.post(`/api/backend/api/athena/projects/${project.id}/command`,{data:{version:project.version,action:'metadata',group_ids:[g.id],options:{marked:i!==1}}})
+    const changed=await page.request.post(`/api/backend/api/athena/projects/${project.id}/command`,{data:{version:project.version,action:'metadata',group_ids:[g.id],options:{marked:i!==1&&i<3}}})
     expect(changed.ok()).toBe(true);project=await changed.json()
   }
   await page.reload();let {dialog,report}=await openReport(page,'marked')
