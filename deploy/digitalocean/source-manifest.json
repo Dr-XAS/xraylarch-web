@@ -1,0 +1,167 @@
+{
+  "base_branch": "origin/master",
+  "base_revision": "f99be876d3b060e49bbc0b7861f1c7c7c4cd472b",
+  "description": "Master with public browser isolation and DigitalOcean deployment configuration",
+  "overlay_files": [
+    {
+      "path": ".dockerignore",
+      "sha256": "275b00e7cf8c81cfda0e40d990333c12956248b47affebf965ea980e64db8d08",
+      "base_blob": null
+    },
+    {
+      "path": "backend/tests/test_public_master.py",
+      "sha256": "e3ad4fae0dfcaf1369f858f154398915408c5dd9e34db51a36c53202e7d987d9",
+      "base_blob": null
+    },
+    {
+      "path": "backend/tests/test_public_sessions.py",
+      "sha256": "bc6e3d8cab00e4ffc39eba2fbce4ebe7f80f439c4e0c735b093cd8e3836ed98a",
+      "base_blob": null
+    },
+    {
+      "path": "backend/xraylarch_web/artemis_structures.py",
+      "sha256": "fe547b3c650ca96c17e053d6077feaf43726ff70da4fa8a4918cdb6847eeed70",
+      "base_blob": "4e67cff4973c5ca80b6cc4e48dc3ae87262881ff"
+    },
+    {
+      "path": "backend/xraylarch_web/athena.py",
+      "sha256": "4a1f11c1dd5a502923e188ff8fec5b510247abff49159ebfca91a8a785b477e4",
+      "base_blob": "3fdceb5500c82779ca18425082a743f4bdced19d"
+    },
+    {
+      "path": "backend/xraylarch_web/athena_plugin_config.py",
+      "sha256": "7b5bbf9c42e79c57df2d22a6ed80a4959f048116dafa83e99509f531ff62b581",
+      "base_blob": "c3a7e6c0195187bf60ce44b7dc6d256b8cd2e76f"
+    },
+    {
+      "path": "backend/xraylarch_web/athena_smoothing_preferences.py",
+      "sha256": "44498c8b8ec396e9d38f1c05e45b87d3f29a107755eab1955b93e11811594cd0",
+      "base_blob": "60a074ca8c3bcd62c2b2a46bd7152f5073fdca59"
+    },
+    {
+      "path": "backend/xraylarch_web/config.py",
+      "sha256": "b1e475ec4d4e5f7bf93507a70da2d75c9971881e11a9ccf074599441320f4dba",
+      "base_blob": "84df86c65f9a4671f1e5e2a9ffc945289e709de1"
+    },
+    {
+      "path": "backend/xraylarch_web/main.py",
+      "sha256": "3728dda8ad77229eed0d1bd9dc2680deb63705804194dcea90c3090cb266d590",
+      "base_blob": "7ee67053e2277f4314f5db143a643a6199213c7b"
+    },
+    {
+      "path": "backend/xraylarch_web/sessions.py",
+      "sha256": "7165cc1158d4e03c1e1aa2f6d9a1a580c08319c2c926280207183b70468509dc",
+      "base_blob": null
+    },
+    {
+      "path": "backend/xraylarch_web/upload_limit.py",
+      "sha256": "9d47dc0800aa1d31fa5b80c3c4c3aab9a90a70ca6527a991eda1e98dd3d5daf0",
+      "base_blob": "92f46fb27b5923799a30cff0bdf5da027f2bca85"
+    },
+    {
+      "path": "deploy/digitalocean/.gitignore",
+      "sha256": "8b82984e6b7f7fc83bdae1c1db51b8459d5d7a701371e0c798099de37287e205",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/Caddyfile",
+      "sha256": "30cdb6faaa26f553af5413cae24e63eb44b99b5e57b442b04a17f606b0982fdc",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/DEPLOYMENT.md",
+      "sha256": "3342bd545e75abe0800e132c130b3c47a07794c1d18a0d1dfd832cf8b7ad7ba6",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/Dockerfile.backend",
+      "sha256": "3b9c5aade0d3722b36b8b00607595b21897c463f5c8dcb7033d256e1635695de",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/Dockerfile.frontend",
+      "sha256": "ea0f7d58a60d2de7a582c8334dbf4a4a1f47043a0693b13f0be36cb58a1cfdd0",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/README.md",
+      "sha256": "fc732456ea6e332f406e5fda30068dee7efcc7b6ef2351ea822d6845b0562e26",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/bootstrap.sh",
+      "sha256": "6ba0eaa56274b8f919571a812dfe23b960e1621fb3de96cd991f0c146067d77c",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/compose.yml",
+      "sha256": "2910ffcd928fb0ecb041b2c57bfbf0945c6369a91827745ef30cb4a967f7234d",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/env.example",
+      "sha256": "b8a3ddbb14b2e7aa825f5d1e6674dbc1b1b1e1c73c97de3949e7c4b98d3bb725",
+      "base_blob": null
+    },
+    {
+      "path": "deploy/digitalocean/smoke_test.py",
+      "sha256": "c9355cfcb03ed8fbc5facd1b7bdc32d34723c11a5e2a244dc87c56bb77fd5756",
+      "base_blob": null
+    },
+    {
+      "path": "frontend/app/api/backend/[...path]/route.test.ts",
+      "sha256": "1c8f8869cad93632e57ea743d9638ffa81a6d2e7a1d5e1b6ffd43101bae0dab0",
+      "base_blob": "7f1aefd79eaaaa75dbb53a632972459231e91600"
+    },
+    {
+      "path": "frontend/app/api/backend/[...path]/route.ts",
+      "sha256": "7bd2062cba784500cff6f487c16c0bd9c6a626545755d27e35c277ababde15e3",
+      "base_blob": "4d4cc48ebd0afabf11a29da0dd97fb1343ce590e"
+    },
+    {
+      "path": "frontend/components/athena-project-import.tsx",
+      "sha256": "c94571ca8616d4ec62ed2957298ebc275165fc4011d761412bb942e8e72a9e9f",
+      "base_blob": "ad586312084e5805b550b4934e3dac26a1ed1a61"
+    },
+    {
+      "path": "frontend/components/athena-workbench.test.tsx",
+      "sha256": "a417f37c317fe3915c4bd966df388c457112471b7a74663db810b99134b2c55e",
+      "base_blob": "a9f4dfba99e04d93e973e3fe8b914247302c2039"
+    },
+    {
+      "path": "frontend/components/athena-workbench.tsx",
+      "sha256": "8017244f0b98148726ff469926f2904db96879494eec54ff949075b023654e6b",
+      "base_blob": "b9e4f45af3285c70a60a5af495a73712dd5b63df"
+    },
+    {
+      "path": "frontend/components/workbench-shell.test.tsx",
+      "sha256": "d8cbf1f688d72c94c2a4fff1d02e286d65ae5bda67e20c292e1fb5da8cff966f",
+      "base_blob": "ae40582d14068efaceebe6164fbdd4506f8529b2"
+    },
+    {
+      "path": "frontend/components/workbench-shell.tsx",
+      "sha256": "0921a3af1930a9ba3919a061858dae3f1a449a56c78839eda30781aaf11effb9",
+      "base_blob": "28c701fca38eb20be99f13ad1fd8e3ac6c8c9f85"
+    },
+    {
+      "path": "frontend/lib/session-headers.ts",
+      "sha256": "199462c9c942df03198f9dd67c3e119f591485b2b6599835343579f7bd460598",
+      "base_blob": null
+    },
+    {
+      "path": "frontend/next.config.mjs",
+      "sha256": "83fc948ab6c43f3d78f111c4debb61d3d34f82c191286bc070fab5c4a65555f5",
+      "base_blob": "0d6ffce42a7a5ad5bd6eecd6c1da26a4fa74439b"
+    },
+    {
+      "path": "frontend/proxy.test.ts",
+      "sha256": "db0d1d427669234ae88ece159bf20d24240625f98087e940597cd191d1e18d3c",
+      "base_blob": null
+    },
+    {
+      "path": "frontend/proxy.ts",
+      "sha256": "d1b44270828061f850755ba7f228ce3837fdd28500459c68221e4520f8316d40",
+      "base_blob": null
+    }
+  ]
+}
