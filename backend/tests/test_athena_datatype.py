@@ -27,7 +27,7 @@ def workspace(tmp_path):
         g.update(marked=i != 1, frozen=i == 2, notes='retained notes', multiplier=1.7, offset=0.2)
         assert g['processing_error'] is None
         p['groups'].append(g)
-    store.storage.write_json(p['id'], 'project.json', p)
+    p = store.save(p, store.load(p['id']), 'Test fixture')
     return store, p
 
 
@@ -191,7 +191,7 @@ def test_normalized_xanes_e0_uses_supplied_signal(workspace):
 def test_unsupported_only_selection_leaves_project_untouched(workspace):
     store, p = workspace; k = np.linspace(0, 15, 301)
     p['groups'] = [store.make_group('chi', k, np.sin(k), data_type='chi')]
-    store.storage.write_json(p['id'], 'project.json', p)
+    p = store.save(p, store.load(p['id']), 'Test fixture')
     with pytest.raises(WebInputError, match='χ\\(k\\) and FEFF'):
         change(store, p, data_type='mu')
     assert store.load(p['id']) == p
