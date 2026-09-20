@@ -19,7 +19,7 @@
 .editor button.syncButton { background: var(--ath-sync-primary, #7c3aed); border-color: var(--ath-sync-primary, #7c3aed); color: var(--ath-primary-foreground); font-weight: 500; }
 .editor button.syncButton:not(:disabled):hover { background: var(--ath-sync-primary-hover, #6d28d9); border-color: var(--ath-sync-primary-hover, #6d28d9); color: var(--ath-primary-foreground); }
 .editor button.syncButton:focus-visible { outline-color: var(--ath-sync-primary, #7c3aed); }
-.editor input:not([type=checkbox]):not([type=radio]):not([type=file]), .editor select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 29px; padding: 5px 6px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; color: var(--ath-ink, #24362c); background: var(--ath-surface, #fff); font: inherit; font-size: var(--text-body); line-height: var(--leading-control); }
+.editor input:not([type=checkbox]):not([type=radio]):not([type=file]), .editor select { box-sizing: border-box; width: 100%; min-width: 0; min-height: 29px; padding: 5px 6px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; color: var(--ath-ink, #24362c); background: var(--ath-surface, #fff); font: inherit; font-size: var(--text-input); line-height: var(--leading-control); }
 .editor input:focus-visible, .editor select:focus-visible, .editor button:focus-visible, .viewer button:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
 .fileInput { display: none; }
 .path { margin-top: 10px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 5px; padding: 10px; }
@@ -37,7 +37,7 @@
 .parameterValues { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); gap: 6px; }
 .choice { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid var(--ath-line, #dce5dc); background: var(--ath-canvas, #f5f8f5); border-radius: 5px; }
 .section > .choice { margin-top: 10px; }
-.editor .choice button, .viewer .choice button { padding: 5px 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; font: inherit; font-size: var(--text-label); color: var(--ath-muted, #647669); cursor: pointer; line-height: var(--leading-control); }
+.editor .choice button, .viewer .choice button { padding: 5px 8px; border: 1px solid transparent; border-radius: 3px; background: transparent; font: inherit; font-size: var(--text-body); color: var(--ath-muted, #647669); cursor: pointer; line-height: var(--leading-control); }
 .choice button[aria-pressed=true] { color: var(--ath-primary, #268553); background: var(--ath-surface); border-color: var(--ath-primary-line, #b7d6c4); }
 .weights { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 4px 0; }
 .weights span { font-size: var(--text-label); margin-right: auto; }
@@ -55,7 +55,7 @@
 .plotOptions input[type=checkbox] { margin: 0; width: 14px; height: 14px; accent-color: var(--ath-primary, #268553); }
 .plotOptions input:focus-visible, .plotOptions button:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
 .offsetSpacing { flex-wrap: wrap; }
-.offsetSpacing input { width: 90px; min-height: 28px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; padding: 4px 6px; font: inherit; font-size: var(--text-body); line-height: var(--leading-control); color: inherit; background: var(--ath-surface, #fff); }
+.offsetSpacing input { width: 90px; min-height: 28px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; padding: 4px 6px; font: inherit; font-size: var(--text-input); line-height: var(--leading-control); color: inherit; background: var(--ath-surface, #fff); }
 .offsetSpacing input[aria-invalid=true] { border-color: var(--ath-error-line, #bd6549); }
 .offsetSpacing button { border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); padding: 4px 7px; font: inherit; font-size: var(--text-body); color: var(--ath-muted, #647669); cursor: pointer; line-height: var(--leading-control); }
 .optionHint { color: var(--ath-muted, #647669); font-size: var(--text-caption); }
