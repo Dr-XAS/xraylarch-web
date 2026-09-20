@@ -41,7 +41,7 @@ def test_reimport_preserves_identity_and_presentation_with_one_undo(tmp_path, xa
     original.update(label='My spectrum', notes='keep me', marked=False, multiplier=3.0, offset=2.0)
     other = store.make_group('Other', *xas_arrays, data_type='xanes')
     project['groups'].append(other)
-    store.storage.write_json(project['id'], 'project.json', project)
+    project = store.save(project, store.load(project['id']), 'Test fixture')
     before = copy.deepcopy(project)
     group, info, request = replacement(store, project, ids)
     assert store.load(project['id']) == before  # Opening the dialog has no project mutation.
@@ -117,7 +117,7 @@ def test_background_dependents_reprocessed_and_frozen_dependents_rejected(tmp_pa
     store.process(standard, project)
     dependent = store.make_group('Dependent', *xas_arrays, background_standard_id=standard['id'], project=project)
     project['groups'].append(dependent)
-    store.storage.write_json(project['id'], 'project.json', project)
+    project = store.save(project, store.load(project['id']), 'Test fixture')
     group, _, request = replacement(store, project, ids)
     request.data_type = 'mu'
     dependent['frozen'] = True
