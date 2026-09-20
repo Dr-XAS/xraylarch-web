@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect } from "react"
+import { ChevronDown } from "lucide-react"
 import { isPlotPalette, plotPalettes, type PlotColorSettings } from "@/lib/athena-plot-colors"
 
 const storageKey = "athena.plot-colors"
@@ -29,15 +30,18 @@ export function AthenaColorLegend({ value, onChange, disabled = false }: {
     : `linear-gradient(to right, ${stops.join(", ")})`
 
   return <div className="ath-color-legend" role="group" aria-label="Spectrum colors" aria-disabled={disabled}>
-    <label className="ath-color-select">Color legend
-      <select aria-label="Color legend" value={value.palette} disabled={disabled} onChange={event => {
-        if (isPlotPalette(event.target.value)) update({ ...value, palette: event.target.value })
-      }}>
-        {Object.entries(plotPalettes).map(([id, palette]) => <option key={id} value={id}>{palette.label}</option>)}
-      </select>
-    </label>
-    <div className="ath-color-preview" title="Colors follow the plotted groups in data-list order.">
-      <span>First</span><span className="ath-color-ramp" style={{ background }} aria-hidden="true" /><span>Last</span>
+    <div className="ath-color-preview" title="Click the colorbar to choose how plotted groups are colored.">
+      <span>First</span>
+      <label className="ath-color-ramp-picker">
+        <span className="ath-color-ramp" style={{ background }} aria-hidden="true" />
+        <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
+        <select aria-label="Color legend" value={value.palette} disabled={disabled} onChange={event => {
+          if (isPlotPalette(event.target.value)) update({ ...value, palette: event.target.value })
+        }}>
+          {Object.entries(plotPalettes).map(([id, palette]) => <option key={id} value={id}>{palette.label}</option>)}
+        </select>
+      </label>
+      <span>Last</span>
     </div>
     <label className="ath-check"><input type="checkbox" checked={value.reversed} disabled={disabled} onChange={event => update({ ...value, reversed: event.target.checked })} />Reverse</label>
   </div>
