@@ -455,9 +455,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const weightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, groups: selectedGroups,
     kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
   const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
-    : weightedPlot.groups.filter(group => spectrumTraceCoordinates(group, space, plotEnergyMode, component, viewerKWeight))
-  const displayedColors = plotSpectrumColors(displayedSpectrumGroups.length, plotColors)
-  const spectrumColors = new Map(displayedSpectrumGroups.map((group, index) =>
+    : weightedPlot.groups.map((group, index) => ({ group, index }))
+      .filter(({ group }) => spectrumTraceCoordinates(group, space, plotEnergyMode, component, viewerKWeight))
+  // Match AthenaPlot's palette positions before unavailable traces are filtered.
+  const displayedColors = plotSpectrumColors(weightedPlot.groups.length, plotColors)
+  const spectrumColors = new Map(displayedSpectrumGroups.map(({ group, index }) =>
     [group.id, plotColorForTheme(displayedColors[index], theme)]))
   const savedPlotWeight = (group: AthenaGroup) => {
     const effective = group.result?.effective.kweight

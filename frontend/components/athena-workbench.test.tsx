@@ -4121,6 +4121,30 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     return project
   }
 
+  it.each([
+    ['classic', 'rgb(195, 123, 56)'],
+    ['viridis', 'rgb(253, 231, 37)'],
+  ] as const)('preserves the plotted color in the %s sidebar when an earlier group has no R data', async (palette, expectedColor) => {
+    const missing = group('missing-r', 'Missing R', true)
+    const visible = group('visible-r', 'Visible R', true)
+    Object.assign(visible.result!.arrays, { r: [0, 1, 2], chir_mag: [0, 0.8, 0.2] })
+    const project = projectFixture({ groups: [missing, visible] })
+    const original = JSON.stringify(project)
+    await openSaved(project)
+    fireEvent.change(screen.getByRole('combobox', { name: 'Color legend' }), { target: { value: palette } })
+    const swatch = (label: string) => screen.getByRole('checkbox', { name: `Mark ${label}` })
+      .closest('.ath-group')!.querySelector<HTMLElement>('.ath-swatch')!
+    expect(swatch('Visible R').style.background).toBe(expectedColor)
+
+    fireEvent.click(screen.getByRole('tab', { name: /Fourier/ }))
+    expect(plotProps().groups.map(g => g.id)).toEqual(['missing-r', 'visible-r'])
+    expect(plotProps().colorSettings).toEqual({ palette, reversed: false })
+    expect(swatch('Visible R').style.background).toBe(expectedColor)
+    expect(swatch('Missing R').style.background).toBe('var(--ath-line)')
+    expect(JSON.stringify(project)).toBe(original)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
   it('defaults the q comparison to real while retaining independent R and q component choices', async () => {
     await openSaved()
     const chooseSpace = (name: RegExp) => fireEvent.click(within(screen.getByRole('tablist', { name: 'Plot space' })).getByRole('tab', { name }))
