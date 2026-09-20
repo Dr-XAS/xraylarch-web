@@ -62,6 +62,132 @@ def fail(message: str, code: str = "athena_invalid"):
     raise WebInputError(code, message, recovery="Review the selected groups and values, then retry.")
 
 
+_MAX_SAFE_ADDED_ORDER = (1 << 53) - 1
+
+
+def _group_added_orders(value, group_ids, *, prune_missing=False):
+    """Validate immutable per-group insertion order stored beside group payloads."""
+    ordered_ids = list(group_ids)
+    available = set(ordered_ids)
+    if value is None:
+        value = {}
+    if not isinstance(value, dict) or len(value) > 100:
+        fail("Group added orders must be an object with at most 100 entries.")
+    if (not all(isinstance(group_id, str) and group_id for group_id in value)
+            or (set(value) - available and not prune_missing)):
+        fail("Group added orders must refer only to spectra in this project.")
+    output, used = {}, set()
+    for group_id in ordered_ids:
+        if group_id not in value:
+            continue
+        order = value[group_id]
+        if (not isinstance(order, int) or isinstance(order, bool)
+                or not 0 <= order <= _MAX_SAFE_ADDED_ORDER or order in used):
+            fail("Group added orders must be unique nonnegative safe integers.")
+        output[group_id] = order
+        used.add(order)
+    next_order = max(used, default=-1) + 1
+    for group_id in ordered_ids:
+        if group_id in output:
+            continue
+        if next_order > _MAX_SAFE_ADDED_ORDER:
+            fail("Group added orders exceed the supported range.")
+        output[group_id] = next_order
+        used.add(next_order)
+        next_order += 1
+    return output
+
+
+def _stamp_group_added_orders(project, previous):
+    """Keep surviving ordinals immutable and allocate ordinals for new IDs once."""
+    previous_orders = _group_added_orders(
+        previous.get("group_added_orders"), (group["id"] for group in previous["groups"]),
+        prune_missing=True,
+    )
+    proposed = project.get("group_added_orders", {})
+    if not isinstance(proposed, dict):
+        fail("Group added orders must be an object.")
+    live_ids = [group["id"] for group in project["groups"]]
+    live = set(live_ids)
+    output = {group_id: order for group_id, order in previous_orders.items() if group_id in live}
+    used = set(output.values())
+    floor = max(previous_orders.values(), default=-1)
+    # Project restore may preallocate rebased ordinals for new IDs. No command
+    # can alter an existing ID because its previous value always wins above.
+    for group_id in live_ids:
+        if group_id in previous_orders or group_id not in proposed:
+            continue
+        order = proposed[group_id]
+        if (not isinstance(order, int) or isinstance(order, bool)
+                or not floor < order <= _MAX_SAFE_ADDED_ORDER or order in used):
+            fail("New group added orders must be unique integers after the existing groups.")
+        output[group_id] = order
+        used.add(order)
+    next_order = max(used | set(previous_orders.values()), default=-1) + 1
+    for group_id in live_ids:
+        if group_id in output:
+            continue
+        if next_order > _MAX_SAFE_ADDED_ORDER:
+            fail("Group added orders exceed the supported range.")
+        output[group_id] = next_order
+        used.add(next_order)
+        next_order += 1
+    project["group_added_orders"] = output
+
+
+def _group_folders(value, group_ids, *, prune_missing=False):
+    """Validate project-owned spectrum folders without touching group revisions."""
+    if value is None:
+        return []
+    if not isinstance(value, list) or len(value) > 100:
+        fail("Data-group folders must be a list with at most 100 entries.")
+    ordered_ids = list(group_ids)
+    available = set(ordered_ids)
+    folder_ids, assigned, output = set(), set(), []
+    for record in value:
+        if not isinstance(record, dict) or set(record) != {"id", "name", "group_ids"}:
+            fail("Each data-group folder needs an id, name, and group list.")
+        ident, name, members = record["id"], record["name"], record["group_ids"]
+        if not isinstance(ident, str) or not ident or len(ident) > 100 or ident in folder_ids:
+            fail("Data-group folder IDs must be unique nonempty strings of at most 100 characters.")
+        if not isinstance(name, str) or not name.strip() or len(name.strip()) > 100:
+            fail("Data-group folder names must contain 1–100 characters.")
+        if (not isinstance(members, list) or len(members) > 100
+                or not all(isinstance(group_id, str) for group_id in members)
+                or len(set(members)) != len(members)):
+            fail("Each data-group folder must contain a unique list of spectrum IDs.")
+        unknown = set(members) - available
+        if unknown and not prune_missing:
+            fail("A data-group folder refers to a spectrum that is not in this project.")
+        requested = set(members)
+        kept = [group_id for group_id in ordered_ids if group_id in requested]
+        if assigned.intersection(kept):
+            fail("A spectrum can belong to only one data-group folder.")
+        folder_ids.add(ident)
+        assigned.update(kept)
+        if kept:
+            output.append({"id": ident, "name": name.strip(), "group_ids": kept})
+    return output
+
+
+def _foldered_group_order(groups, folders):
+    """Keep folder members contiguous while preserving their project order."""
+    membership = {
+        group_id: folder["id"]
+        for folder in folders
+        for group_id in folder["group_ids"]
+    }
+    emitted, output = set(), []
+    for group in groups:
+        folder_id = membership.get(group["id"])
+        if folder_id is None:
+            output.append(group)
+        elif folder_id not in emitted:
+            output.extend(candidate for candidate in groups if membership.get(candidate["id"]) == folder_id)
+            emitted.add(folder_id)
+    return output
+
+
 def _can_reimport_columns(group):
     """Cheap availability hint; validate actual retained data only on demand."""
     source = group.get('source') or {}
@@ -803,6 +929,7 @@ class AthenaStore:
         self.storage.workspace_dir(ident, create=True)
         project = {"id": ident, "format": "athena-web", "schema_version": 1,
                    "name": "Untitled project", "version": 0, "groups": [], "group_versions": {},
+                   "group_folders": [], "group_added_orders": {},
                    "journal": "", "history": [], "undo": [], "redo": [], "analyses": [],
                    "created": now(), "updated": now()}
         self.storage.write_json(ident, "project.json", project)
@@ -815,6 +942,15 @@ class AthenaStore:
                 project["analyses"] = self.storage.read_json(ident, "analyses.json")["analyses"]
             except FileNotFoundError:
                 project.setdefault("analyses", [])
+            project["group_added_orders"] = _group_added_orders(
+                project.get("group_added_orders"), (group["id"] for group in project["groups"]),
+                prune_missing=True,
+            )
+            project["group_folders"] = _group_folders(
+                project.get("group_folders", []), (group["id"] for group in project["groups"]),
+                prune_missing=True,
+            )
+            project["groups"] = _foldered_group_order(project["groups"], project["group_folders"])
             # Fill new controls from the settings that actually produced an
             # older cached result, rather than relabeling it with new defaults.
             defaults = AthenaParameters().model_dump()
@@ -872,6 +1008,12 @@ class AthenaStore:
     def save(self, p: dict, old: dict, message: str) -> dict:
         if len(p["groups"]) > 100:
             fail("A project can contain at most 100 groups.")
+        _stamp_group_added_orders(p, old)
+        p["group_folders"] = _group_folders(
+            p.get("group_folders", []), (group["id"] for group in p["groups"]),
+            prune_missing=True,
+        )
+        p["groups"] = _foldered_group_order(p["groups"], p["group_folders"])
         for group in p['groups']:
             group['can_reimport_columns'] = _can_reimport_columns(group)
         snapshot = f"undo-{old['version']}.json"
@@ -2572,6 +2714,15 @@ class AthenaStore:
                 if not stack:
                     fail(f"There is nothing to {action}.")
                 restore = self.storage.read_json(ident, stack[-1])
+                restore["group_added_orders"] = _group_added_orders(
+                    restore.get("group_added_orders"), (group["id"] for group in restore["groups"]),
+                    prune_missing=True,
+                )
+                restore["group_folders"] = _group_folders(
+                    restore.get("group_folders", []), (group["id"] for group in restore["groups"]),
+                    prune_missing=True,
+                )
+                restore["groups"] = _foldered_group_order(restore["groups"], restore["group_folders"])
                 for group in restore["groups"]:
                     group["is_difference"] = _is_difference(group)
                     group['can_reimport_columns'] = _can_reimport_columns(group)
@@ -2588,15 +2739,35 @@ class AthenaStore:
             if action == "project":
                 p["name"] = str(options.get("name", p["name"]))[:200] or "Untitled project"
                 p["journal"] = str(options.get("journal", p["journal"]))[:50_000]
+                if "group_folders" in options:
+                    p["group_folders"] = _group_folders(
+                        options["group_folders"], (group["id"] for group in p["groups"])
+                    )
             elif action == "example":
+                foil_ids = []
                 for filename, label in (("cu_10k.xmu", "Cu foil · 10 K"), ("cu_50k.xmu", "Cu foil · 50 K"), ("cu_rt01.xmu", "Cu foil · 300 K")):
                     path = Path(__file__).resolve().parents[2] / "examples" / "xafsdata" / filename
                     raw = np.loadtxt(path)
                     g = self.make_group(label, raw[:, 0], raw[:, 1], source={"filename": filename,
                         "citation": "XrayLarch example data; Newville, Ravel and Zhang (Cu 10/50 K: NSLS X11-A, 1992; room temperature: APS 13ID, 2001)."})
                     p["groups"].append(g)
+                    foil_ids.append(g["id"])
+                filename = "Cu2O_standard.0001"
+                path = Path(__file__).resolve().parents[2] / "examples" / "xafsdata" / filename
+                raw = np.loadtxt(path)
+                cu2o = self.make_group("Cu₂O · room temperature", raw[:, 0], np.log(np.abs(raw[:, 3] / raw[:, 4])),
+                    source={"filename": filename,
+                        "citation": "Cu2O room-temperature standard measured at APS 20-BM on 2026-02-12 (21.5 °C).",
+                        "mapping": {"energy_column": "column_0001", "numerator": ["column_0004"],
+                            "denominator": "column_0005", "mode": "transmission", "units": "eV",
+                            "data_type": "mu", "is_reference": True}})
+                p["groups"].append(cu2o)
+                p.setdefault("group_folders", []).extend([
+                    {"id": uid(), "name": "Temperature series", "group_ids": foil_ids},
+                    {"id": uid(), "name": "reference", "group_ids": [cu2o["id"]]},
+                ])
                 if p["name"] == "Untitled project":
-                    p["name"] = "Copper foil · temperature series"
+                    p["name"] = "Copper examples · foils and reference"
             elif action == "reorder":
                 ids = options.get("ids", [])
                 if len(ids) != len(p["groups"]) or set(ids) != {g["id"] for g in p["groups"]}:
@@ -2771,6 +2942,12 @@ class AthenaStore:
                         created[g['id']] = clone
                     p['groups'] = [item for parent in p['groups'] for item in
                                    ([parent, created[parent['id']]] if parent['id'] in created else [parent])]
+                    for folder in p.get("group_folders", []):
+                        folder["group_ids"] = [
+                            member
+                            for group_id in folder["group_ids"]
+                            for member in ([group_id, created[group_id]["id"]] if group_id in created else [group_id])
+                        ]
                 elif action == "copy_series":
                     key = options.get("parameter")
                     if key not in ("e0", "rbkg", "kmin", "kmax", "dk", "rmin", "rmax", "energy_shift"):
@@ -3123,6 +3300,12 @@ class AthenaStore:
             return p
         out = copy.deepcopy({**p, "groups": groups})
         selected = {g["id"] for g in groups}
+        out["group_added_orders"] = _group_added_orders(
+            out.get("group_added_orders"), (group["id"] for group in groups), prune_missing=True
+        )
+        out["group_folders"] = _group_folders(
+            out.get("group_folders", []), (group["id"] for group in groups), prune_missing=True
+        )
         all_ids = {g["id"] for g in p["groups"]}
         warnings = out.setdefault("import_warnings", [])
         for g in out["groups"]:
@@ -3258,6 +3441,8 @@ class AthenaStore:
         # on a web round trip; native Athena ignores this comment.
         sidecar = {"name": p["name"], "version": p["version"], "analyses": p.get("analyses", []),
                    "native_projects": p.get("native_projects", []), "import_warnings": p.get("import_warnings", []),
+                   "group_added_orders": p.get("group_added_orders", {}),
+                   "group_folders": p.get("group_folders", []),
                    "groups": [dict({k: g[k] for k in ("id", "parameters", "notes", "source", "reference_id")},
                                    background_standard_id=g.get("background_standard_id")) for g in p["groups"]]}
         if p.get("artemis_structures"):
@@ -3468,11 +3653,15 @@ class AthenaStore:
         if not isinstance(prior_warnings, list) or not all(isinstance(w, str) for w in prior_warnings):
             fail("import_warnings must be a list of strings.")
         analyses = _validate_analysis_records(sidecar.get("analyses", []))
+        group_added_orders = _group_added_orders(sidecar.get("group_added_orders"), idmap)
+        group_folders = _group_folders(sidecar.get("group_folders", []), idmap)
         from .artemis_attachments import validate_attachments
         structures = validate_attachments(sidecar.get("artemis_structures", []))
         return {"name": str(name)[:200], "journal": journal[:50_000], "groups": provisional,
                 "format": "athena-web" if web else "athena-json" if native_project and native_project["format"] == "athena-json" else "athena-perl",
                 "native_projects": retained_projects, "analyses": analyses, "artemis_structures": structures, "version": sidecar.get("version"),
+                "group_added_orders": group_added_orders,
+                "group_folders": group_folders,
                 "warnings": list(dict.fromkeys(prior_warnings + import_warnings))}
 
     @staticmethod
@@ -3520,7 +3709,7 @@ class AthenaStore:
                     is_normalized=False, is_difference=False, reference_id=None, background_standard_id=None,
                     marked=False, frozen=False, multiplier=1, offset=0))
             data = json.dumps(dict(format='athena-web', schema_version=1, version=0, name=filename,
-                journal=prepared.journal, groups=records), allow_nan=False).encode()
+                journal=prepared.journal, groups=records, group_folders=[]), allow_nan=False).encode()
         parsed = self._parse_project(data, filename)
         groups = []
         for record in parsed["groups"]:
@@ -3664,6 +3853,23 @@ class AthenaStore:
                     g["source"].setdefault("warnings", []).append("Native annotation exceeds the notes limit; original text remains in native args.")
                 idmap[record["old_id"]] = g["id"]
                 imported.append(g)
+            next_added_order = max(old.get("group_added_orders", {}).values(), default=-1) + 1
+            source_positions = {record["old_id"]: index for index, record in enumerate(records)}
+            added_sequence = sorted(records, key=lambda record: (
+                parsed["group_added_orders"][record["old_id"]], source_positions[record["old_id"]]
+            ))
+            p.setdefault("group_added_orders", {}).update({
+                idmap[record["old_id"]]: next_added_order + index
+                for index, record in enumerate(added_sequence)
+            })
+            imported_folders = [
+                {"id": uid(), "name": folder["name"],
+                 "group_ids": [idmap[group_id] for group_id in folder["group_ids"] if group_id in idmap]}
+                for folder in parsed["group_folders"]
+            ]
+            p.setdefault("group_folders", []).extend(
+                folder for folder in imported_folders if folder["group_ids"]
+            )
             broken_links = set()
             for g in imported:
                 for key, label in (("reference_id", "Reference"), ("background_standard_id", "Background standard")):

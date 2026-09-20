@@ -83,6 +83,7 @@ def two_groups(store, xas_arrays):
 
 def test_duplicate_is_inserted_immediately_after_its_source(store, two_groups):
     originals = deepcopy(two_groups["groups"])
+    original_added_orders = deepcopy(two_groups["group_added_orders"])
     source = originals[0]
     result = command(store, two_groups, "duplicate", [source["id"]])
     duplicate = result["groups"][1]
@@ -91,10 +92,112 @@ def test_duplicate_is_inserted_immediately_after_its_source(store, two_groups):
     assert duplicate["id"] != source["id"]
     assert duplicate["label"] == source["label"] + " · copy"
     assert result["groups"][2] == originals[1]
+    assert {group_id: result["group_added_orders"][group_id] for group_id in original_added_orders} == original_added_orders
+    assert result["group_added_orders"][duplicate["id"]] == max(original_added_orders.values()) + 1
     assert store.load(result["id"])["groups"] == result["groups"]
     undone = command(store, result, "undo")
     assert undone["groups"] == originals
+    assert undone["group_added_orders"] == original_added_orders
     assert command(store, undone, "redo")["groups"] == result["groups"]
+
+
+def test_group_folders_gather_nonadjacent_spectra_atomically_without_changing_group_revisions(store, xas_arrays):
+    x, y = xas_arrays
+    project = store.create()
+    for index in range(4):
+        project = import_mu(store, project, x, y + index * .01, filename=f"scan-{index}.dat")
+    ids = [group["id"] for group in project["groups"]]
+    revisions = deepcopy(project["group_versions"])
+    added_orders = deepcopy(project["group_added_orders"])
+
+    grouped = command(store, project, "project", group_folders=[{
+        "id": "temperature-series", "name": "Temperature series", "group_ids": [ids[1], ids[3]],
+    }])
+
+    assert [group["id"] for group in grouped["groups"]] == [ids[0], ids[1], ids[3], ids[2]]
+    assert grouped["group_folders"] == [{
+        "id": "temperature-series", "name": "Temperature series", "group_ids": [ids[1], ids[3]],
+    }]
+    assert grouped["group_versions"] == revisions
+    assert grouped["group_added_orders"] == added_orders
+    undone = command(store, grouped, "undo")
+    assert [group["id"] for group in undone["groups"]] == ids
+    assert undone["group_folders"] == []
+    assert undone["group_added_orders"] == added_orders
+    redone = command(store, undone, "redo")
+    assert redone["group_folders"] == grouped["group_folders"]
+    assert [group["id"] for group in redone["groups"]] == [ids[0], ids[1], ids[3], ids[2]]
+    assert redone["group_added_orders"] == added_orders
+
+
+def test_group_folder_membership_follows_duplicate_and_prunes_deleted_spectra(store, two_groups):
+    ids = [group["id"] for group in two_groups["groups"]]
+    grouped = command(store, two_groups, "project", group_folders=[{
+        "id": "pair", "name": "Pair", "group_ids": ids,
+    }])
+    duplicated = command(store, grouped, "duplicate", [ids[0]])
+    duplicate_id = next(group["id"] for group in duplicated["groups"] if group["id"] not in ids)
+    assert duplicated["group_folders"][0]["group_ids"] == [ids[0], duplicate_id, ids[1]]
+    assert [group["id"] for group in duplicated["groups"]] == [ids[0], duplicate_id, ids[1]]
+
+    one_left = command(store, duplicated, "delete", [ids[0], duplicate_id])
+    assert one_left["group_folders"][0]["group_ids"] == [ids[1]]
+    assert set(one_left["group_added_orders"]) == {ids[1]}
+    restored = command(store, one_left, "undo")
+    assert restored["group_added_orders"] == duplicated["group_added_orders"]
+    one_left = command(store, restored, "redo")
+    empty = command(store, one_left, "delete", [ids[1]])
+    assert empty["group_folders"] == []
+    assert empty["group_added_orders"] == {}
+
+
+def test_added_order_survives_manual_reorder_and_new_groups_sort_after_existing(store, two_groups, xas_arrays):
+    original_ids = [group["id"] for group in two_groups["groups"]]
+    original_orders = deepcopy(two_groups["group_added_orders"])
+    reordered = command(store, two_groups, "reorder", ids=list(reversed(original_ids)))
+
+    assert [group["id"] for group in reordered["groups"]] == list(reversed(original_ids))
+    assert reordered["group_added_orders"] == original_orders
+
+    x, y = xas_arrays
+    added = import_mu(store, reordered, x + 8.4, y, filename="third.dat")
+    new_group = next(group for group in added["groups"] if group["id"] not in original_ids)
+    assert added["group_added_orders"][new_group["id"]] == max(original_orders.values()) + 1
+
+
+def test_legacy_project_migrates_added_order_from_its_saved_group_order(store, two_groups):
+    stored = store.storage.read_json(two_groups["id"], "project.json")
+    stored["groups"] = list(reversed(stored["groups"]))
+    stored.pop("group_added_orders")
+    store.storage.write_json(two_groups["id"], "project.json", stored)
+
+    loaded = store.load(two_groups["id"])
+    ids = [group["id"] for group in loaded["groups"]]
+    assert loaded["group_added_orders"] == {ids[0]: 0, ids[1]: 1}
+    assert "group_added_orders" not in store.storage.read_json(two_groups["id"], "project.json")
+
+    revisions = deepcopy(loaded["group_versions"])
+    saved = command(store, loaded, "project", name="Migrated legacy project")
+    assert saved["group_added_orders"] == loaded["group_added_orders"]
+    assert saved["group_versions"] == revisions
+    assert store.storage.read_json(two_groups["id"], "project.json")["group_added_orders"] == loaded["group_added_orders"]
+
+
+@pytest.mark.parametrize("folders", [
+    [{"id": "same", "name": "One", "group_ids": ["first"]},
+     {"id": "same", "name": "Two", "group_ids": ["second"]}],
+    [{"id": "one", "name": "One", "group_ids": ["first"]},
+     {"id": "two", "name": "Two", "group_ids": ["first"]}],
+    [{"id": "one", "name": "One", "group_ids": ["missing"]}],
+    [{"id": "one", "name": "   ", "group_ids": ["first"]}],
+])
+def test_invalid_group_folder_payload_is_rejected_atomically(store, two_groups, folders):
+    ids = [group["id"] for group in two_groups["groups"]]
+    serialized = json.loads(json.dumps(folders).replace('"first"', json.dumps(ids[0])).replace('"second"', json.dumps(ids[1])))
+    before = deepcopy(two_groups)
+    with pytest.raises(WebInputError, match="folder|spectrum"):
+        command(store, two_groups, "project", group_folders=serialized)
+    assert store.load(two_groups["id"]) == before
 
 
 def test_create_inspect_and_import_persist_across_store_instances(store, xas_arrays):
@@ -102,6 +205,8 @@ def test_create_inspect_and_import_persist_across_store_instances(store, xas_arr
     created = store.create()
     assert created["version"] == 0
     assert created["groups"] == []
+    assert created["group_folders"] == []
+    assert created["group_added_orders"] == {}
     inspection, ids = inspect_columns(store, created, energy=x, mu=y)
     assert inspection["row_count"] == len(x)
     assert set(ids) == {"energy", "mu"}
@@ -112,6 +217,7 @@ def test_create_inspect_and_import_persist_across_store_instances(store, xas_arr
     assert imported["version"] == 1
     assert len(imported["groups"]) == 1
     g = imported["groups"][0]
+    assert imported["group_added_orders"] == {g["id"]: 0}
     np.testing.assert_array_equal(g["energy"], x)
     np.testing.assert_array_equal(g["mu"], y)
     assert g["processing_error"] is None
@@ -265,8 +371,8 @@ def test_example_import_uses_measured_copper_files_and_processes_all_groups(stor
     created = store.create()
     p = command(store, created, "example")
     expected = ["cu_10k.xmu", "cu_50k.xmu", "cu_rt01.xmu"]
-    assert len(p["groups"]) == 3 and p["version"] == 1
-    for g, filename in zip(p["groups"], expected, strict=True):
+    assert len(p["groups"]) == 4 and p["version"] == 1
+    for g, filename in zip(p["groups"][:3], expected, strict=True):
         measured = np.loadtxt(EXAMPLES / filename)
         np.testing.assert_array_equal(g["energy"], measured[:, 0])
         np.testing.assert_array_equal(g["mu"], measured[:, 1])
@@ -274,7 +380,20 @@ def test_example_import_uses_measured_copper_files_and_processes_all_groups(stor
         assert g["source"]["citation"]
         assert g["processing_error"] is None
         assert g["result"]["arrays"]["chi"] and g["result"]["arrays"]["chir_mag"]
-    assert command(store, p, "undo")["groups"] == []
+    measured = np.loadtxt(EXAMPLES / "Cu2O_standard.0001")
+    cu2o = p["groups"][3]
+    assert cu2o["label"] == "Cu₂O · room temperature"
+    np.testing.assert_array_equal(cu2o["energy"], measured[:, 0])
+    np.testing.assert_allclose(cu2o["mu"], np.log(np.abs(measured[:, 3] / measured[:, 4])), rtol=0, atol=0)
+    assert cu2o["source"]["mapping"]["mode"] == "transmission"
+    assert cu2o["source"]["mapping"]["is_reference"] is True
+    assert cu2o["processing_error"] is None
+    assert cu2o["result"]["arrays"]["chi"] and cu2o["result"]["arrays"]["chir_mag"]
+    assert [folder["name"] for folder in p["group_folders"]] == ["Temperature series", "reference"]
+    assert p["group_folders"][0]["group_ids"] == [group["id"] for group in p["groups"][:3]]
+    assert p["group_folders"][1]["group_ids"] == [cu2o["id"]]
+    undone = command(store, p, "undo")
+    assert undone["groups"] == [] and undone["group_folders"] == []
 
 
 def test_calibrate_updates_shifted_results_without_changing_measured_energy(store, two_groups):
@@ -405,6 +524,12 @@ def assert_exchange_preserved(original, restored):
     old_ids = {g["id"] for g in original["groups"]}
     new_ids = {g["id"] for g in restored["groups"]}
     assert old_ids.isdisjoint(new_ids)
+    def labels_by_added_order(project):
+        labels = {group["id"]: group["label"] for group in project["groups"]}
+        return [labels[group_id] for group_id in sorted(
+            labels, key=lambda group_id: project["group_added_orders"][group_id]
+        )]
+    assert labels_by_added_order(restored) == labels_by_added_order(original)
     idmap = {a["id"]: b["id"] for a, b in zip(original["groups"], restored["groups"], strict=True)}
     for expected, actual in zip(original["groups"], restored["groups"], strict=True):
         for key in ("label", "data_type", "parameters", "marked", "frozen", "multiplier", "offset", "notes", "source"):
@@ -437,6 +562,37 @@ def test_project_round_trip_preserves_groups_recipes_references_notes_and_journa
     assert_exchange_preserved(original, restored)
     assert store.load(original["id"]) == original
     assert store.load(destination["id"]) == restored
+
+
+@pytest.mark.parametrize("format", ["json", "prj"])
+def test_project_round_trip_remaps_group_folder_members_and_subset_export_prunes_them(store, exchange_project, format):
+    original_ids = [group["id"] for group in exchange_project["groups"]]
+    grouped = command(store, exchange_project, "project", group_folders=[
+        {"id": "samples", "name": "Samples", "group_ids": [original_ids[0], original_ids[2]]},
+        {"id": "standards", "name": "Standards", "group_ids": [original_ids[1]]},
+    ])
+    payload = store.export_project(grouped["id"], format)
+    destination = store.create()
+    restored = store.restore(destination["id"], 0, payload, f"folders.{format}")
+    restored_by_label = {group["label"]: group["id"] for group in restored["groups"]}
+    original_by_id = {group["id"]: group["label"] for group in grouped["groups"]}
+    assert [folder["name"] for folder in restored["group_folders"]] == ["Samples", "Standards"]
+    assert restored["group_folders"][0]["id"] != "samples"
+    assert restored["group_folders"][1]["id"] != "standards"
+    assert restored["group_folders"][0]["group_ids"] == [
+        restored_by_label[original_by_id[group_id]] for group_id in grouped["group_folders"][0]["group_ids"]
+    ]
+    assert restored["group_folders"][1]["group_ids"] == [
+        restored_by_label[original_by_id[group_id]] for group_id in grouped["group_folders"][1]["group_ids"]
+    ]
+
+    selected_ids = [grouped["group_folders"][0]["group_ids"][0]]
+    subset = store.project_for_export(grouped, selected_ids)
+    assert [group["id"] for group in subset["groups"]] == selected_ids
+    assert subset["group_added_orders"] == {
+        selected_ids[0]: grouped["group_added_orders"][selected_ids[0]]
+    }
+    assert subset["group_folders"] == [{"id": "samples", "name": "Samples", "group_ids": selected_ids}]
 
 
 def test_prj_export_is_readable_by_local_larch(store, exchange_project, tmp_path):

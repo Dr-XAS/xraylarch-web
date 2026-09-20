@@ -166,7 +166,7 @@ def test_explicit_detector_calibration_does_not_find_an_edge(workspace,monkeypat
 
 def test_detector_cannot_be_an_absorption_alignment_or_background_standard(workspace):
     store,p=workspace; detector=p['groups'][0]
-    p=run(store,p,'example',[]); sample=p['groups'][-1]
+    p=run(store,p,'example',[]); sample=next(g for g in p['groups'] if g['label']=='Cu foil · 300 K')
     for action,options in [('align',{'reference_id':detector['id']}), ('background_standard',{'standard_id':detector['id']})]:
         with pytest.raises((ValueError,WebInputError)):
             run(store,p,action,[sample['id']],**options)

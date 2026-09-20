@@ -166,7 +166,8 @@ def test_calibration_is_materialized_once_and_batch_failure_is_atomic(store):
     np.testing.assert_array_equal(after['groups'][1]['energy'], np.asarray(parent['energy']) + 3.5)
     assert after['groups'][1]['parameters']['energy_shift'] == 0
     short = store.make_group('Too short for this kernel', parent['energy'][:12], parent['mu'][:12], data_type='xanes')
-    after['groups'].append(short); store.storage.write_json(p['id'], 'project.json', after)
+    after['groups'].append(short)
+    after = store.save(after, store.load(p['id']), 'Test fixture')
     before = copy.deepcopy(after)
     with pytest.raises(ValueError, match='smaller smoothing kernel'):
         store.command(p['id'], request(after, dict(method='boxcar', window=11), [parent['id'], short['id']]))

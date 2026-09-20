@@ -108,7 +108,7 @@ def test_edge_catalog_and_e0_batch_through_http(client):
     assert response.status_code == 200, response.text
     after = response.json()
     assert after["version"] == p["version"] + 1
-    assert len(after["last_operation"]["e0_results"]) == 3
+    assert len(after["last_operation"]["e0_results"]) == len(ids)
     assert all(g["parameters"]["e0"] == g["result"]["effective"]["e0"] == 8979 for g in after["groups"])
     assert all(g["parameters"]["energy_shift"] == 0 for g in after["groups"])
     invalid = command(client, after, "set_e0", ids, method="fraction", fraction=1.1)
@@ -203,7 +203,8 @@ def test_invalid_import_edge_policy_is_rejected_before_mutation(client, xas_arra
 
 def test_example_api_all_four_spaces_and_exchange_files(client):
     p = example(client)
-    assert len(p["groups"]) == 3
+    assert len(p["groups"]) == 4
+    assert [folder["name"] for folder in p["group_folders"]] == ["Temperature series", "reference"]
     assert all(g["processing_error"] is None for g in p["groups"])
     gid = p["groups"][0]["id"]
     for space, axis in (("E", "energy"), ("k", "k"), ("R", "r"), ("q", "q")):
@@ -218,6 +219,7 @@ def test_example_api_all_four_spaces_and_exchange_files(client):
     restored = client.post(f"/api/athena/projects/{target['id']}/restore?version=0", files={"file": ("copper.prj", exported.content)})
     assert restored.status_code == 200, restored.text
     assert [g["label"] for g in restored.json()["groups"]] == [g["label"] for g in p["groups"]]
+    assert [folder["name"] for folder in restored.json()["group_folders"]] == ["Temperature series", "reference"]
     listing = client.get("/api/athena/projects").json()
     assert {item["id"] for item in listing} == {p["id"], target["id"]}
 
@@ -273,16 +275,17 @@ def test_transform_dialog_payloads_create_a_finite_derived_group(client, action,
     assert response.status_code == 200, response.text
     next = response.json()
     inplace = action in ('deglitch', 'truncate')
-    assert len(next["groups"]) == (3 if inplace else 4)
+    assert len(next["groups"]) == (4 if inplace else 5)
     if inplace:
         assert next['groups'][1:] == p['groups'][1:]
         assert next['groups'][0]['id'] == original['id']
         assert len(next['groups'][0]['mu']) < len(original['mu'])
     else:
         assert next["groups"][0] == original
-    derived = next['groups'][0] if inplace else next["groups"][1 if action in ('rebin', 'multi_electron', 'convolve') else -1]
-    if action in ('rebin', 'multi_electron', 'convolve'):
-        assert next['groups'][2:] == p['groups'][1:]
+    original_ids = {group["id"] for group in p["groups"]}
+    derived = next['groups'][0] if inplace else [
+        group for group in next["groups"] if group["id"] not in original_ids
+    ][0]
     assert (derived["source"]["point_edits"][-1]["action"] if inplace else derived["source"]["operation"]) == action
     assert np.isfinite(derived["energy"]).all() and np.isfinite(derived["mu"]).all()
     assert derived["processing_error"] is None, derived["processing_error"]

@@ -128,8 +128,10 @@ def test_previews_capture_preferences_and_changes_do_not_mutate_spectra_or_saved
     prefs.apply(request(state,dict(window=31,order=9),save=True))
     assert store.load(p['id']) == before
     req.options = preview['options']; after = store.command(p['id'],req)
-    assert after['groups'][1]['mu'] == preview['results'][0]['smoothed_mu']
-    assert after['groups'][1]['source']['options']['order'] == 11
+    created = after['last_operation']['smoothing_results'][0]['group_id']
+    smoothed = next(group for group in after['groups'] if group['id'] == created)
+    assert smoothed['mu'] == preview['results'][0]['smoothed_mu']
+    assert smoothed['source']['options']['order'] == 11
     undone = store.command(p['id'],Command(version=after['version'],action='undo'))
     assert undone['groups'] == before['groups']
     assert prefs.read()['values'] == dict(window=31,order=9)

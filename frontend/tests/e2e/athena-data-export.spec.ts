@@ -37,7 +37,7 @@ async function download(page: Page, info: TestInfo, button: string, filename: st
 async function example(page: Page) {
   await page.goto('/')
   const waiting=page.waitForResponse(r=>r.url().endsWith('/command') && r.request().postDataJSON().action==='example')
-  await page.getByRole('button',{name:'Load copper foil example',exact:true}).click()
+  await page.getByRole('button',{name:'Load copper examples',exact:true}).click()
   const response=await waiting;expect(response.ok()).toBe(true);return response.json()
 }
 
@@ -76,7 +76,7 @@ test('mobile marked output and separate ZIP retain order, distinct names and arb
   await page.setViewportSize({width:390,height:844});let project=await example(page)
   for (const [index,g] of project.groups.entries()) {
     const response=await page.request.post('/api/backend/api/athena/projects/'+project.id+'/command',{data:{
-      version:project.version,action:'metadata',group_ids:[g.id],options:{marked:true,label:index<2 ? ['Cu/foil','Cu:foil'][index] : g.label,multiplier:index+1},
+      version:project.version,action:'metadata',group_ids:[g.id],options:{marked:index<3,label:index<2 ? ['Cu/foil','Cu:foil'][index] : g.label,multiplier:index+1},
     }})
     expect(response.ok()).toBe(true);project=await response.json()
   }

@@ -410,7 +410,7 @@ class IntegrationService:
         project_id = uid()
         project = {
             "id": project_id, "format": "athena-web", "schema_version": 1,
-            "name": request.name, "version": 0, "groups": [], "journal": "",
+            "name": request.name, "version": 0, "groups": [], "group_folders": [], "group_added_orders": {}, "journal": "",
             "history": [], "undo": [], "redo": [], "analyses": [],
             "created": athena_now(), "updated": athena_now(), "integration": True,
             "group_versions": {},
@@ -425,6 +425,7 @@ class IntegrationService:
                 "result": None, "processing_error": None, "is_difference": False,
             }
             project["groups"].append(group)
+            project["group_added_orders"][group["id"]] = 0
             project["group_versions"][group["id"]] = project["version"]
         # Processing materializes many derived arrays. Reject against their
         # conservative serialized ceiling before spending CPU or mutating Athena.
@@ -1021,6 +1022,8 @@ class IntegrationService:
             "name": envelope.provenance.source_filename or "Dr.XAS draft",
             "version": 0,
             "groups": [group],
+            "group_folders": [],
+            "group_added_orders": {group_id: 0},
             "journal": "",
             "history": [],
             "undo": [],

@@ -188,11 +188,12 @@ describe("integration mode", () => {
     expect(screen.queryByRole("button", { name: /^Import data$/i })).not.toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /edit absorber and edge/i })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /plot shortcuts/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /edit group information/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Edit" }))
     expect(screen.getByRole("button", { name: /excel report on all groups/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Plot" }))
+    expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /diagnostic plots/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Energy" }))
     expect(screen.getByRole("button", { name: /select e₀/i })).toBeDisabled()
@@ -296,16 +297,17 @@ function group(id: string, label: string, marked = false, rbkg = 1): AthenaGroup
 }
 
 function projectFixture(overrides: Partial<AthenaProject> = {}): AthenaProject {
+  const groups = overrides.groups ?? [
+    group("foil", "Foil scan"),
+    group("sample", "Sample scan", true, 1.2),
+    group("oxide", "Oxide standard", true, 1.4),
+    group("unused", "Unused reference", false, 1.6),
+  ]
   return {
     id: "project-cu", name: "Copper study", version: 7,
-    groups: [
-      group("foil", "Foil scan"),
-      group("sample", "Sample scan", true, 1.2),
-      group("oxide", "Oxide standard", true, 1.4),
-      group("unused", "Unused reference", false, 1.6),
-    ],
     journal: "Beamline notes", updated: "2026-09-07T12:00:00Z",
-    undo: [], redo: [], history: [], ...overrides,
+    undo: [], redo: [], history: [], ...overrides, groups,
+    group_added_orders: overrides.group_added_orders ?? Object.fromEntries(groups.map((item, index) => [item.id, index])),
   }
 }
 
@@ -331,6 +333,10 @@ function plotProps() {
   const lastCall = plot.mock.calls.at(-1)
   if (!lastCall) throw new Error("AthenaPlot has not rendered")
   return lastCall[0]
+}
+
+function listedGroupIds(root: ParentNode = screen.getByRole("list")) {
+  return Array.from(root.querySelectorAll<HTMLElement>(".ath-group[data-group-id]")).map(row => row.dataset.groupId)
 }
 
 async function openSaved(project = projectFixture()) {
@@ -629,7 +635,7 @@ describe("AthenaWorkbench menu command search", () => {
   async function openMenuSearch(project = projectFixture()) {
     await openSaved(project)
     const navigation = screen.getByRole("navigation", { name: /main menu/i })
-    const trigger = within(navigation).getByRole("button", { name: "Help" })
+    const trigger = within(navigation).getByRole("button", { name: "Search menu" })
     fireEvent.click(trigger)
     const dialog = screen.getByRole("dialog", { name: "Search menu commands" })
     const searchbox = within(dialog).getByRole("searchbox", { name: "Search menu commands" })
@@ -637,7 +643,33 @@ describe("AthenaWorkbench menu command search", () => {
     return { trigger, dialog, searchbox }
   }
 
-  it("opens from Help, focuses search, and shows menu paths for keyword matches", async () => {
+  it("moves plot shortcuts into the Plot menu and opens the existing dialog", async () => {
+    await openSaved()
+    const navigation = screen.getByRole("navigation", { name: /main menu/i })
+    const plotTop = screen.getByRole("tablist", { name: "Plot space" }).closest(".ath-plot-top") as HTMLElement
+
+    expect(within(plotTop).queryByRole("button", { name: "Plot shortcuts…" })).not.toBeInTheDocument()
+    fireEvent.click(within(navigation).getByRole("button", { name: "Plot" }))
+    const shortcut = within(navigation).getByRole("button", { name: "Plot shortcuts…" })
+    expect(shortcut).toBeEnabled()
+    fireEvent.click(shortcut)
+
+    expect(await screen.findByRole("dialog", { name: "Athena plot shortcuts" })).toBeVisible()
+    expect(within(navigation).queryByRole("button", { name: "Plot shortcuts…" })).not.toBeInTheDocument()
+  })
+
+  it("finds plot shortcuts by its Plot menu path", async () => {
+    const { dialog, searchbox } = await openMenuSearch()
+    fireEvent.change(searchbox, { target: { value: "shortcut" } })
+
+    const result = within(dialog).getByRole("button", { name: "Plot › Plot shortcuts…" })
+    expect(result).toBeEnabled()
+    fireEvent.click(result)
+
+    expect(await screen.findByRole("dialog", { name: "Athena plot shortcuts" })).toBeVisible()
+  })
+
+  it("opens from Search menu, focuses search, and shows menu paths for keyword matches", async () => {
     const { dialog, searchbox } = await openMenuSearch()
     expect(within(dialog).getByText("Type a keyword to find a menu command.")).toBeVisible()
 
@@ -689,7 +721,7 @@ describe("AthenaWorkbench menu command search", () => {
     vi.useFakeTimers()
     editNumber(/^Rbkg/, 2.2)
     const navigation = screen.getByRole("navigation", { name: /main menu/i })
-    fireEvent.click(within(navigation).getByRole("button", { name: "Help" }))
+    fireEvent.click(within(navigation).getByRole("button", { name: "Search menu" }))
     const dialog = screen.getByRole("dialog", { name: "Search menu commands" })
     fireEvent.change(within(dialog).getByRole("searchbox", { name: "Search menu commands" }), { target: { value: "smooth" } })
     const result = within(dialog).getByRole("button", { name: "Process › Smooth data" })
@@ -701,7 +733,7 @@ describe("AthenaWorkbench menu command search", () => {
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
   })
 
-  it("closes on Escape and restores focus to Help", async () => {
+  it("closes on Escape and restores focus to Search menu", async () => {
     const { trigger, searchbox } = await openMenuSearch()
 
     fireEvent.keyDown(searchbox, { key: "Escape" })
@@ -859,6 +891,289 @@ describe("AthenaWorkbench data group reordering", () => {
     fireEvent(handle, groupPointer("pointermove", 115, 8))
     expect(list.scrollTop).toBeGreaterThan(0)
     fireEvent(handle, groupPointer("pointercancel", 115, 8))
+  })
+})
+
+describe("AthenaWorkbench data group sorting", () => {
+  it("separates the saved manual order from immutable Added order and only enables manual reordering", async () => {
+    const alpha = group("a", "Alpha")
+    const beta = group("b", "Beta")
+    const charlie = group("c", "Charlie")
+    await openSaved(projectFixture({
+      groups: [beta, alpha, charlie],
+      group_added_orders: { a: 0, b: 1, c: 2 },
+    }))
+    const sort = screen.getByRole("combobox", { name: "Sort spectra" })
+
+    expect(sort).toHaveValue("manual")
+    expect(listedGroupIds()).toEqual(["b", "a", "c"])
+    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(handle => !handle.hasAttribute("disabled"))).toBe(true)
+
+    fireEvent.change(sort, { target: { value: "added" } })
+
+    expect(listedGroupIds()).toEqual(["a", "b", "c"])
+    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(handle => handle.hasAttribute("disabled"))).toBe(true)
+    expect(localStorage.getItem("athena.group-sort.v1")).toBe("added")
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("sorts names naturally as a view, restores Manual order, and pauses manual reordering", async () => {
+    const groups = [
+      group("scan-10", "scan 10"),
+      group("beta", "Beta"),
+      group("scan-2", "Scan 2"),
+      group("alpha", "alpha", true),
+    ]
+    await openSaved(projectFixture({ groups }))
+    const sort = screen.getByRole("combobox", { name: "Sort spectra" })
+
+    expect(sort).toHaveValue("manual")
+    expect(listedGroupIds()).toEqual(["scan-10", "beta", "scan-2", "alpha"])
+    fireEvent.change(sort, { target: { value: "name" } })
+
+    expect(listedGroupIds()).toEqual(["alpha", "beta", "scan-2", "scan-10"])
+    expect(screen.getByText("Sorted view")).toHaveAttribute("title", "Switch to Manual order to reorder spectra")
+    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(handle => handle.hasAttribute("disabled"))).toBe(true)
+    expect(screen.getByRole("button", { name: "Reorder scan 10" })).toHaveAttribute("title", "Switch to Manual order to reorder spectra")
+    expect(screen.getByRole("checkbox", { name: "Mark alpha" })).toBeChecked()
+    expect(plotProps().active?.id).toBe("scan-10")
+    expect(localStorage.getItem("athena.group-sort.v1")).toBe("name")
+    expect(api).toHaveBeenCalledTimes(1)
+
+    fireEvent.change(sort, { target: { value: "manual" } })
+    expect(listedGroupIds()).toEqual(["scan-10", "beta", "scan-2", "alpha"])
+    expect(screen.getByRole("button", { name: "Reorder scan 10" })).toBeEnabled()
+    expect(screen.getByText("Drag to reorder")).toBeVisible()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("sorts by trans, fluo, ref, and untagged while treating linked and dual-tag spectra as references", async () => {
+    const plain = group("plain", "Plain derived")
+    const linked = group("linked", "Linked reference")
+    const fluo = group("fluo", "Fluorescence")
+    fluo.source = { mapping: { mode: "fluorescence" } }
+    const transRef = group("trans-ref", "Transmission reference")
+    transRef.source = { mapping: { mode: "transmission", is_reference: true } }
+    const trans = group("trans", "Transmission")
+    trans.source = { mapping: { mode: "transmission" } }
+    const sample = group("sample", "Sample")
+    sample.source = { mapping: { mode: "transmission" } }
+    sample.reference_id = linked.id
+    await openSaved(projectFixture({ groups: [plain, linked, fluo, transRef, trans, sample] }))
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort spectra" }), { target: { value: "tag" } })
+
+    expect(listedGroupIds()).toEqual(["trans", "sample", "fluo", "linked", "trans-ref", "plain"])
+    expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("trans")).toBeVisible()
+    expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("ref")).toBeVisible()
+    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref")).toBeVisible()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("keeps folder blocks in Manual order while sorting their members and ungrouped spectra independently", async () => {
+    const groups = [
+      group("first-z", "Zulu in first"),
+      group("root-z", "Zulu root"),
+      group("first-a", "Alpha in first"),
+      group("second-z", "Zulu in second"),
+      group("root-a", "Alpha root"),
+      group("second-a", "Alpha in second"),
+    ]
+    await openSaved(projectFixture({
+      groups,
+      group_folders: [
+        { id: "first-folder", name: "First folder", group_ids: ["first-z", "first-a"] },
+        { id: "second-folder", name: "Second folder", group_ids: ["second-z", "second-a"] },
+      ],
+    }))
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort spectra" }), { target: { value: "name" } })
+
+    const first = screen.getByRole("group", { name: "First folder data group" })
+    const second = screen.getByRole("group", { name: "Second folder data group" })
+    expect(listedGroupIds(first)).toEqual(["first-a", "first-z"])
+    expect(listedGroupIds(second)).toEqual(["second-a", "second-z"])
+    expect(listedGroupIds()).toEqual(["first-a", "first-z", "root-a", "second-a", "second-z", "root-z"])
+    expect(screen.getAllByRole("group", { name: /folder data group$/ }).map(folder => folder.getAttribute("aria-label")))
+      .toEqual(["First folder data group", "Second folder data group"])
+  })
+
+  it("restores a saved view sort without needing project mutation permission", async () => {
+    localStorage.setItem("athena.group-sort.v1", "name")
+    api.mockImplementation(async path => path === "/projects/integrated-project"
+      ? projectFixture({ id: "integrated-project", groups: [group("z", "Zulu"), group("a", "Alpha")] })
+      : Promise.reject(new Error(`unexpected ${path}`)))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project"] }} />)
+
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Sort spectra" })).toHaveValue("name"))
+    expect(listedGroupIds()).toEqual(["a", "z"])
+    expect(screen.getByRole("button", { name: "Reorder Zulu" })).toBeDisabled()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe("AthenaWorkbench data group folders", () => {
+  it("keeps the example loader at the top and activates the first newly loaded spectrum by identity", async () => {
+    const project = await openSaved()
+    const button = screen.getByRole("button", { name: "Load copper examples" })
+    const openProject = screen.getByRole("button", { name: "Open project" })
+    expect(button.compareDocumentPosition(openProject) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
+    expect(screen.getByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).toBeVisible()
+
+    const added = [
+      group("example-10k", "Cu foil · 10 K"),
+      group("example-50k", "Cu foil · 50 K"),
+      group("example-300k", "Cu foil · 300 K"),
+      group("example-cu2o", "Cu₂O · room temperature"),
+    ]
+    api.mockResolvedValueOnce({
+      ...project,
+      version: project.version + 1,
+      groups: [...project.groups, ...added],
+      group_folders: [
+        { id: "example-foils", name: "Temperature series", group_ids: added.slice(0, 3).map(item => item.id) },
+        { id: "example-reference", name: "reference", group_ids: [added[3].id] },
+      ],
+    })
+    fireEvent.click(button)
+
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "example", group_ids: [], options: {},
+    }))
+    await waitFor(() => expect(plotProps().active?.id).toBe("example-10k"))
+    expect(screen.getByRole("button", { name: "Collapse Temperature series group" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "Collapse reference group" })).toBeVisible()
+  })
+
+  it("creates a project-backed folder from marked spectra and collapses it without changing the active plot", async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole("button", { name: "Group spectra" }))
+    const dialog = screen.getByRole("dialog", { name: "Group spectra" })
+    expect(within(dialog).getByRole("checkbox", { name: /Sample scan/ })).toBeChecked()
+    expect(within(dialog).getByRole("checkbox", { name: /Oxide standard/ })).toBeChecked()
+    expect(within(dialog).getByRole("checkbox", { name: /Foil scan/ })).not.toBeChecked()
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Group name" }), { target: { value: "Standards" } })
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: AthenaProject["group_folders"] } }
+      return { ...project, version: project.version + 1, group_folders: request.options.group_folders }
+    })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save group" }))
+
+    const toggle = await screen.findByRole("button", { name: "Collapse Standards group" })
+    const body = api.mock.calls.at(-1)?.[1] as { action: string; group_ids: string[]; options: { group_folders: NonNullable<AthenaProject["group_folders"]> } }
+    expect(body.action).toBe("project")
+    expect(body.group_ids).toEqual([])
+    expect(body.options.group_folders).toEqual([{ id: expect.any(String), name: "Standards", group_ids: ["sample", "oxide"] }])
+    expect(plotProps().active?.id).toBe("foil")
+
+    fireEvent.click(toggle)
+    expect(screen.getByRole("button", { name: "Expand Standards group" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: /^Sample scan/ })).toBeNull()
+    expect(plotProps().active?.id).toBe("foil")
+    fireEvent.click(screen.getByRole("button", { name: "Expand Standards group" }))
+    expect(screen.getByRole("button", { name: /^Sample scan/ })).toBeVisible()
+  })
+
+  it("temporarily reveals matches inside a collapsed folder and restores the collapse state after search", async () => {
+    const project = projectFixture({ group_folders: [{ id: "reference-data", name: "Reference data", group_ids: ["foil", "sample"] }] })
+    localStorage.setItem(`athena.group-folders.collapsed.v1:${project.id}`, JSON.stringify(["reference-data"]))
+    await openSaved(project)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Expand Reference data group" })).toHaveAttribute("aria-expanded", "false"))
+    expect(screen.queryByRole("button", { name: /^Sample scan/ })).toBeNull()
+
+    const search = screen.getByRole("textbox", { name: "Search groups" })
+    fireEvent.change(search, { target: { value: "sample" } })
+    const searchDisclosure = screen.getByRole("button", { name: "Reference data group expanded for search" })
+    expect(searchDisclosure).toHaveAttribute("aria-expanded", "true")
+    expect(searchDisclosure).toBeDisabled()
+    expect(screen.getByRole("button", { name: /^Sample scan/ })).toBeVisible()
+    fireEvent.click(searchDisclosure)
+    fireEvent.change(search, { target: { value: "" } })
+    expect(screen.getByRole("button", { name: "Expand Reference data group" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("button", { name: /^Sample scan/ })).toBeNull()
+  })
+
+  it("shows project save failures inside the open folder editor", async () => {
+    const project = projectFixture({ group_folders: [{ id: "pair", name: "Pair", group_ids: ["foil", "sample"] }] })
+    await openSaved(project)
+    fireEvent.click(screen.getByRole("button", { name: "Edit Pair group" }))
+    const dialog = screen.getByRole("dialog", { name: "Edit spectrum group" })
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Group name" }), { target: { value: "Renamed pair" } })
+    api.mockRejectedValueOnce(new Error("The project version changed."))
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save group" }))
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("The project version changed.")
+    expect(dialog).toBeVisible()
+  })
+
+  it("moves spectra between folders and removes a folder without deleting its spectra", async () => {
+    const project = projectFixture({ group_folders: [
+      { id: "pair", name: "Pair", group_ids: ["foil", "sample"] },
+      { id: "standards", name: "Standards", group_ids: ["oxide", "unused"] },
+    ] })
+    await openSaved(project)
+    fireEvent.click(screen.getByRole("button", { name: "Edit Pair group" }))
+    const edit = screen.getByRole("dialog", { name: "Edit spectrum group" })
+    fireEvent.change(within(edit).getByRole("textbox", { name: "Group name" }), { target: { value: "Primary" } })
+    fireEvent.click(within(edit).getByRole("checkbox", { name: /Oxide standard/ }))
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: NonNullable<AthenaProject["group_folders"]> } }
+      return { ...project, version: project.version + 1, group_folders: request.options.group_folders }
+    })
+    fireEvent.click(within(edit).getByRole("button", { name: "Save group" }))
+    await screen.findByRole("button", { name: "Collapse Primary group" })
+    const moved = api.mock.calls.at(-1)?.[1] as { options: { group_folders: NonNullable<AthenaProject["group_folders"]> } }
+    expect(moved.options.group_folders).toEqual([
+      { id: "standards", name: "Standards", group_ids: ["unused"] },
+      { id: "pair", name: "Primary", group_ids: ["foil", "sample", "oxide"] },
+    ])
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Primary group" }))
+    const remove = screen.getByRole("dialog", { name: "Edit spectrum group" })
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: NonNullable<AthenaProject["group_folders"]> } }
+      return { ...project, version: project.version + 2, group_folders: request.options.group_folders }
+    })
+    fireEvent.click(within(remove).getByRole("button", { name: "Remove group · keep spectra" }))
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Edit Primary group" })).toBeNull())
+    const removed = api.mock.calls.at(-1)?.[1] as { options: { group_folders: NonNullable<AthenaProject["group_folders"]> } }
+    expect(removed.options.group_folders).toEqual([{ id: "standards", name: "Standards", group_ids: ["unused"] }])
+    expect(screen.getByRole("button", { name: /^Foil scan/ })).toBeVisible()
+    expect(screen.getByRole("button", { name: /^Sample scan/ })).toBeVisible()
+    expect(screen.getByRole("button", { name: /^Oxide standard/ })).toBeVisible()
+  })
+
+  it("keeps a folder whose id is ungrouped isolated from truly ungrouped spectra", async () => {
+    const project = projectFixture({ group_folders: [{ id: "ungrouped", name: "Named folder", group_ids: ["foil", "sample"] }] })
+    await openSaved(project)
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    expect(handle).toBeEnabled()
+    fireEvent.keyDown(handle, { key: "ArrowDown" })
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(screen.queryByText(/^Moved Sample scan/)).not.toBeInTheDocument()
+  })
+
+  it("keeps keyboard reordering inside one folder", async () => {
+    const project = projectFixture({ group_folders: [
+      { id: "pair", name: "Pair", group_ids: ["foil", "sample"] },
+      { id: "standards", name: "Standards", group_ids: ["oxide", "unused"] },
+    ] })
+    await openSaved(project)
+    const response = {
+      ...project,
+      version: project.version + 1,
+      groups: [project.groups[1], project.groups[0], project.groups[2], project.groups[3]],
+      group_folders: [
+        { id: "pair", name: "Pair", group_ids: ["sample", "foil"] },
+        { id: "standards", name: "Standards", group_ids: ["oxide", "unused"] },
+      ],
+    }
+    api.mockResolvedValueOnce(response)
+    fireEvent.keyDown(screen.getByRole("button", { name: "Reorder Foil scan" }), { key: "ArrowDown" })
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "reorder", group_ids: [], options: { ids: ["sample", "foil", "oxide", "unused"] },
+    }))
+    await waitFor(() => expect(screen.getByText("Moved Foil scan to position 2 of 2 in Pair.")).toBeVisible())
+    expect(screen.getByRole("button", { name: "Reorder Oxide standard" })).toBeEnabled()
   })
 })
 
@@ -4658,9 +4973,11 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     const legend = screen.getByRole('checkbox', { name: 'Show legend' })
     const stackOffset = screen.getByRole('spinbutton', { name: 'Stack offset' })
     const controls = legend.closest('.ath-plot-display-controls')
+    const plotTop = screen.getByRole('tablist', { name: 'Plot space' }).closest('.ath-plot-top') as HTMLElement
     expect(controls).toBeInTheDocument()
     expect(Array.from(controls!.children)).toEqual([stackOffset.closest('label'), legend.closest('label')])
-    expect(screen.getByRole('button', { name: 'Plot shortcuts…' }).closest('.ath-plot-top')).not.toContainElement(legend)
+    expect(plotTop).not.toContainElement(legend)
+    expect(within(plotTop).queryByRole('button', { name: 'Plot shortcuts…' })).not.toBeInTheDocument()
     expect(plotProps().showLegend).toBe(true)
     fireEvent.click(legend)
     expect(plotProps().showLegend).toBe(false)
