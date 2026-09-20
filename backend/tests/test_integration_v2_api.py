@@ -16,10 +16,15 @@ from xraylarch_web.integration_service import v2_signing_payload
 from xraylarch_web.main import create_app
 
 
-NOW = datetime.now(UTC).replace(microsecond=0)
 SECRET = "integration-secret-that-is-long-enough"
 ISSUER = "drxas"
 AUDIENCE = "xraylarch-web"
+
+
+@pytest.fixture
+def now():
+    # Session lifetimes start with the test, not when pytest collects this file.
+    return datetime.now(UTC).replace(microsecond=0)
 
 
 def settings(tmp_path, **overrides):
@@ -31,7 +36,9 @@ def settings(tmp_path, **overrides):
     return Settings(data_root=tmp_path, **(defaults | overrides))
 
 
-def signed_headers(method, path, raw, *, nonce="n" * 32, timestamp=NOW):
+def signed_headers(method, path, raw, *, nonce="n" * 32, timestamp=None):
+    if timestamp is None:
+        timestamp = datetime.now(UTC)
     stamp = str(int(timestamp.timestamp()))
     digest = hashlib.sha256(raw).hexdigest()
     payload = v2_signing_payload(
@@ -89,6 +96,33 @@ def test_v2_signature_rejects_tampering(tmp_path, tamper):
         if tamper == "nonce":
             headers["X-DrXAS-Nonce"] = "b" * 32
         assert client.request(method, path, content=raw, headers=headers).status_code == 401
+
+
+def test_v2_signatures_refresh_after_authentication_window(tmp_path, monkeypatch):
+    import xraylarch_web.integration_routes as integration_routes
+
+    clock = [datetime.now(UTC).replace(microsecond=0)]
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0] if tz is None else clock[0].astimezone(tz)
+
+    monkeypatch.setattr(__name__ + ".datetime", Clock)
+    monkeypatch.setattr(integration_routes, "_now", lambda: clock[0])
+    path = "/api/integration/v2/projects"
+    raw = json.dumps({"contract_version": 2, "name": "Fresh signature", "persistent": True}).encode()
+    stale_headers = signed_headers("POST", path, raw, nonce="s" * 32)
+
+    with TestClient(create_app(settings(tmp_path))) as client:
+        clock[0] += timedelta(seconds=301)
+        stale = client.post(path, content=raw, headers=stale_headers)
+        assert stale.status_code == 401
+
+        fresh_headers = signed_headers("POST", path, raw, nonce="f" * 32)
+        assert fresh_headers["X-DrXAS-Timestamp"] == str(int(clock[0].timestamp()))
+        fresh = client.post(path, content=raw, headers=fresh_headers)
+        assert fresh.status_code == 200, fresh.text
 
 
 def test_create_launch_rename_rotate_and_delete_project(tmp_path):
@@ -167,7 +201,7 @@ def test_rename_updates_exact_stored_bytes_and_rejects_over_quota(tmp_path):
         assert json.loads(integration_record.read_text())["stored_bytes"] == actual
 
 
-def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, monkeypatch):
+def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, monkeypatch, now):
     from xraylarch_web.athena import AthenaStore
     from xraylarch_web.integration_service import IntegrationService
     from xraylarch_web.integration_storage import IntegrationStorage
@@ -177,7 +211,7 @@ def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, 
     service = IntegrationService(configured, AthenaStore(configured), storage)
     from xraylarch_web.integration_contracts import ProjectBootstrapRequest
     project_id, capability, _ = service.create_v2_project(
-        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=now
     )
     original = storage._set_project_stored_bytes_locked
     failed = False
@@ -191,11 +225,11 @@ def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, 
 
     monkeypatch.setattr(storage, "_set_project_stored_bytes_locked", interrupt)
     with pytest.raises(OSError, match="process stopped"):
-        service.rename_v2_project(project_id, capability, "Committed", now=NOW)
+        service.rename_v2_project(project_id, capability, "Committed", now=now)
     assert json.loads((tmp_path / "athena" / project_id / "project.json").read_text())["name"] == "Committed"
     assert list((tmp_path / "integration" / "rename-intents").glob("*.json"))
 
-    summary = service.rename_v2_project(project_id, capability, "Recovered", now=NOW)
+    summary = service.rename_v2_project(project_id, capability, "Recovered", now=now)
 
     workspace_path = tmp_path / "athena" / project_id / "project.json"
     assert summary.name == "Recovered"
@@ -204,7 +238,7 @@ def test_rename_recovers_metadata_after_workspace_commit_interruption(tmp_path, 
 
 
 @pytest.mark.parametrize("boundary", ("intent", "workspace", "metadata"))
-def test_restart_launch_recovers_rename_intent_at_every_durable_boundary(tmp_path, boundary):
+def test_restart_launch_recovers_rename_intent_at_every_durable_boundary(tmp_path, boundary, now):
     from xraylarch_web.athena import AthenaStore
     from xraylarch_web.integration_contracts import ProjectBootstrapRequest
     from xraylarch_web.integration_service import IntegrationService
@@ -213,7 +247,7 @@ def test_restart_launch_recovers_rename_intent_at_every_durable_boundary(tmp_pat
     configured = settings(tmp_path)
     service = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
     project_id, capability, before = service.create_v2_project(
-        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=now
     )
     intent = service.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
     service.storage._atomic_json(intent, {"project_id": project_id, "name": "After"})
@@ -223,18 +257,18 @@ def test_restart_launch_recovers_rename_intent_at_every_durable_boundary(tmp_pat
         project["name"] = "After"
         service.athena_store.storage.write_json(project_id, "project.json", project)
     if boundary == "metadata":
-        service.storage.set_project_stored_bytes(project_id, capability, workspace.stat().st_size, now=NOW)
+        service.storage.set_project_stored_bytes(project_id, capability, workspace.stat().st_size, now=now)
 
     restarted = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
-    handle = restarted.launch_v2_project(project_id, capability, now=NOW)
+    handle = restarted.launch_v2_project(project_id, capability, now=now)
 
     assert handle
-    assert restarted.storage.load_project(project_id, capability, now=NOW).stored_bytes == workspace.stat().st_size
+    assert restarted.storage.load_project(project_id, capability, now=now).stored_bytes == workspace.stat().st_size
     assert not intent.exists()
 
 
 @pytest.mark.parametrize("boundary", ("intent", "workspace", "metadata"))
-def test_restart_delete_consumes_rename_intent_at_every_durable_boundary(tmp_path, boundary):
+def test_restart_delete_consumes_rename_intent_at_every_durable_boundary(tmp_path, boundary, now):
     from xraylarch_web.athena import AthenaStore
     from xraylarch_web.integration_contracts import ProjectBootstrapRequest
     from xraylarch_web.integration_service import IntegrationService
@@ -243,7 +277,7 @@ def test_restart_delete_consumes_rename_intent_at_every_durable_boundary(tmp_pat
     configured = settings(tmp_path)
     service = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
     project_id, capability, _ = service.create_v2_project(
-        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=now
     )
     intent = service.storage.rename_intents_dir / f"{hashlib.sha256(project_id.encode()).hexdigest()}.json"
     service.storage._atomic_json(intent, {"project_id": project_id, "name": "After"})
@@ -253,17 +287,17 @@ def test_restart_delete_consumes_rename_intent_at_every_durable_boundary(tmp_pat
         project["name"] = "After"
         service.athena_store.storage.write_json(project_id, "project.json", project)
     if boundary == "metadata":
-        service.storage.set_project_stored_bytes(project_id, capability, workspace.stat().st_size, now=NOW)
+        service.storage.set_project_stored_bytes(project_id, capability, workspace.stat().st_size, now=now)
 
     restarted = IntegrationService(configured, AthenaStore(configured), IntegrationStorage(tmp_path, integration_secret=SECRET))
-    result = restarted.delete_v2_project(project_id, capability, now=NOW)
+    result = restarted.delete_v2_project(project_id, capability, now=now)
 
     assert result["cleanup_pending"] is False
     assert not intent.exists()
     assert not workspace.parent.exists()
 
 
-def test_rename_holds_integration_then_workspace_lock(tmp_path, monkeypatch):
+def test_rename_holds_integration_then_workspace_lock(tmp_path, monkeypatch, now):
     from contextlib import contextmanager
     from xraylarch_web.athena import AthenaStore
     from xraylarch_web.integration_service import IntegrationService
@@ -275,7 +309,7 @@ def test_rename_holds_integration_then_workspace_lock(tmp_path, monkeypatch):
     athena = AthenaStore(configured)
     service = IntegrationService(configured, athena, storage)
     project_id, capability, _ = service.create_v2_project(
-        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=NOW
+        ProjectBootstrapRequest(contract_version=2, name="Before", persistent=True), now=now
     )
     held = []
     project_lock = storage.project_lock
@@ -303,13 +337,13 @@ def test_rename_holds_integration_then_workspace_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(storage, "project_lock", traced_project_lock)
     monkeypatch.setattr(athena.storage, "lock", traced_workspace_lock)
 
-    service.rename_v2_project(project_id, capability, "After", now=NOW)
+    service.rename_v2_project(project_id, capability, "After", now=now)
     assert held == []
 
 
-def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monkeypatch):
+def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monkeypatch, now):
     import xraylarch_web.integration_routes as integration_routes
-    clock = [NOW]
+    clock = [now]
     monkeypatch.setattr(integration_routes, "_now", lambda: clock[0])
     app = create_app(settings(tmp_path, integration_guest_max_projects=1, integration_guest_ttl_seconds=1))
     with TestClient(app) as client:
@@ -320,7 +354,7 @@ def test_guest_expiry_and_quota_rejection_precede_athena_mutation(tmp_path, monk
         }, nonce="q" * 32)
         assert rejected.status_code == 409
         assert len(list((tmp_path / "athena").iterdir())) == 1
-        later = NOW + timedelta(seconds=2)
+        later = now + timedelta(seconds=2)
         clock[0] = later
         raw = json.dumps({"capability": guest["capability"]}).encode()
         response = client.post(
@@ -421,9 +455,9 @@ def test_seeded_creation_persists_seed_summary_into_one_use_browser_session(tmp_
         )
 
 
-def test_v2_create_purges_expired_project_handles(tmp_path, monkeypatch):
+def test_v2_create_purges_expired_project_handles(tmp_path, monkeypatch, now):
     import xraylarch_web.integration_routes as integration_routes
-    clock = [NOW]
+    clock = [now]
     monkeypatch.setattr(integration_routes, "_now", lambda: clock[0])
     with TestClient(create_app(settings(tmp_path))) as client:
         created = create(client)
@@ -709,11 +743,11 @@ def _browser_session(client, integrated, *, nonce="l" * 32):
     return consumed.json()
 
 
-def test_guest_browser_session_expires_with_project_without_cleanup(tmp_path, monkeypatch):
+def test_guest_browser_session_expires_with_project_without_cleanup(tmp_path, monkeypatch, now):
     import xraylarch_web.athena as athena_module
     import xraylarch_web.integration_routes as integration_routes
 
-    clock = [NOW]
+    clock = [now]
 
     class Clock(datetime):
         @classmethod
@@ -725,16 +759,16 @@ def test_guest_browser_session_expires_with_project_without_cleanup(tmp_path, mo
     app = create_app(settings(tmp_path, integration_guest_ttl_seconds=10))
     with TestClient(app) as client:
         guest = create(client, persistent=False)
-        clock[0] = NOW + timedelta(seconds=9)
+        clock[0] = now + timedelta(seconds=9)
         session = _browser_session(client, guest)
         session_path = (
             tmp_path / "integration" / "sessions"
             / f"{hashlib.sha256(session['capability'].encode()).hexdigest()}.json"
         )
         session_record = json.loads(session_path.read_text(encoding="utf-8"))
-        assert datetime.fromisoformat(session_record["expires_at"]) == NOW + timedelta(seconds=10)
+        assert datetime.fromisoformat(session_record["expires_at"]) == now + timedelta(seconds=10)
 
-        clock[0] = NOW + timedelta(seconds=11)
+        clock[0] = now + timedelta(seconds=11)
         denied = client.get(
             f"/api/athena/projects/{guest['project_id']}",
             headers=project_headers(session["capability"]),
@@ -840,7 +874,7 @@ def test_legacy_project_collection_rejects_capability_headers(tmp_path, headers)
     assert creation.status_code == 403
 
 
-def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path):
+def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path, now):
     from xraylarch_web.integration_service import IntegrationService
 
     app = create_app(settings(
@@ -853,8 +887,8 @@ def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path):
             project_id=integrated["project_id"],
             owner_capability=integrated["capability"],
             allowed_operations=("command", "project", "example"),
-            expires_at=NOW + timedelta(minutes=5),
-            now=NOW,
+            expires_at=now + timedelta(minutes=5),
+            now=now,
         )
         renamed = client.post(
             f"/api/athena/projects/{integrated['project_id']}/command",
@@ -870,7 +904,7 @@ def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path):
 
     workspace = tmp_path / "athena" / integrated["project_id"]
     record = service.storage.load_project(
-        integrated["project_id"], integrated["capability"], now=NOW
+        integrated["project_id"], integrated["capability"], now=now
     )
     assert renamed.status_code == 200, renamed.text
     assert record.stored_bytes == sum(
@@ -882,7 +916,7 @@ def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path):
     assert json.loads((workspace / "project.json").read_text())["groups"] == []
 
 
-def test_compact_selection_retains_integration_authorization_and_quota_transaction(tmp_path, monkeypatch):
+def test_compact_selection_retains_integration_authorization_and_quota_transaction(tmp_path, monkeypatch, now):
     app = create_app(settings(tmp_path))
     with TestClient(app) as client:
         service = app.state.integration_service
@@ -892,14 +926,14 @@ def test_compact_selection_retains_integration_authorization_and_quota_transacti
         session = service.storage.create_project_session(
             project_id=ident, owner_capability=integrated["capability"],
             allowed_operations=("command", "example", "metadata"),
-            expires_at=NOW + timedelta(minutes=5), now=NOW,
+            expires_at=now + timedelta(minutes=5), now=now,
         )
         seeded = client.post(route, headers=project_headers(session), json={
             "version": 0, "action": "example",
         })
         assert seeded.status_code == 200, seeded.text
         project = seeded.json()
-        service.rename_v2_project(ident, integrated["capability"], "Renamed in Dr.XAS", now=NOW)
+        service.rename_v2_project(ident, integrated["capability"], "Renamed in Dr.XAS", now=now)
         assert service.athena_store.load(ident)["version"] == project["version"]
         payload = {"version": project["version"], "action": "metadata",
                    "group_ids": [group["id"] for group in project["groups"]],
@@ -917,7 +951,7 @@ def test_compact_selection_retains_integration_authorization_and_quota_transacti
         restricted = service.storage.create_project_session(
             project_id=ident, owner_capability=integrated["capability"],
             allowed_operations=("command",),
-            expires_at=NOW + timedelta(minutes=5), now=NOW,
+            expires_at=now + timedelta(minutes=5), now=now,
         )
         denied = client.post(route, headers=project_headers(restricted), json=payload)
         assert denied.status_code == 404
@@ -946,7 +980,7 @@ def test_compact_selection_retains_integration_authorization_and_quota_transacti
                                     for group, row in zip(project["groups"], delta["groups"])]}
         assert reconstructed == service.athena_store.load(ident)
         assert len(transaction_results) == 1
-        record = service.storage.load_project(ident, integrated["capability"], now=NOW)
+        record = service.storage.load_project(ident, integrated["capability"], now=now)
         assert record.stored_bytes == sum(len(value) for value in snapshot().values())
 
         record_path = tmp_path / "integration" / "projects" / f"{ident}.json"
@@ -962,7 +996,7 @@ def test_compact_selection_retains_integration_authorization_and_quota_transacti
 
 
 @pytest.mark.parametrize("declared_length", (None, "1"))
-def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_length):
+def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_length, now):
     from xraylarch_web.integration_service import IntegrationService
 
     app = create_app(settings(tmp_path))
@@ -973,8 +1007,8 @@ def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_l
             project_id=integrated["project_id"],
             owner_capability=integrated["capability"],
             allowed_operations=("upload",),
-            expires_at=NOW + timedelta(minutes=5),
-            now=NOW,
+            expires_at=now + timedelta(minutes=5),
+            now=now,
         )
         record_path = tmp_path / "integration" / "projects" / f"{integrated['project_id']}.json"
         metadata = json.loads(record_path.read_text())
@@ -1002,7 +1036,7 @@ def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_l
 
 
 @pytest.mark.parametrize("action", ("deconvolve", "self_absorption"))
-def test_scientific_command_action_requires_its_exact_scope(tmp_path, action):
+def test_scientific_command_action_requires_its_exact_scope(tmp_path, action, now):
     from test_integration_contracts import launch_payload
     from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
 
@@ -1024,11 +1058,11 @@ def test_scientific_command_action_requires_its_exact_scope(tmp_path, action):
         }, nonce="q" * 32).json()
         allowed_capability = service.storage.create_project_session(
             project_id=created["project_id"], owner_capability=created["capability"],
-            allowed_operations=("command", action), expires_at=NOW + timedelta(minutes=5), now=NOW,
+            allowed_operations=("command", action), expires_at=now + timedelta(minutes=5), now=now,
         )
         denied_capability = service.storage.create_project_session(
             project_id=created["project_id"], owner_capability=created["capability"],
-            allowed_operations=("command", "project"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+            allowed_operations=("command", "project"), expires_at=now + timedelta(minutes=5), now=now,
         )
         group_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
         options = ({"form": "gaussian", "width": 1, "xmin": 8950, "xmax": 9100}
@@ -1049,7 +1083,7 @@ def test_scientific_command_action_requires_its_exact_scope(tmp_path, action):
     assert denied.json() == {"detail": "Project was not found."}
 
 
-def test_command_action_requires_its_individual_scope(tmp_path):
+def test_command_action_requires_its_individual_scope(tmp_path, now):
     app = create_app(settings(tmp_path))
     with TestClient(app) as client:
         service = app.state.integration_service
@@ -1058,7 +1092,7 @@ def test_command_action_requires_its_individual_scope(tmp_path):
             project_id=integrated["project_id"],
             owner_capability=integrated["capability"],
             allowed_operations=("command", "project"),
-            expires_at=NOW + timedelta(minutes=5), now=NOW,
+            expires_at=now + timedelta(minutes=5), now=now,
         )
         allowed = client.post(
             f"/api/athena/projects/{integrated['project_id']}/command",
@@ -1077,7 +1111,7 @@ def test_command_action_requires_its_individual_scope(tmp_path):
     assert denied.json() == {"detail": "Project was not found."}
 
 
-def test_concurrent_integrated_uploads_cannot_take_same_last_file_slot(tmp_path):
+def test_concurrent_integrated_uploads_cannot_take_same_last_file_slot(tmp_path, now):
     app = create_app(settings(
         tmp_path, integration_max_files=1, integration_guest_max_files=1
     ))
@@ -1087,8 +1121,8 @@ def test_concurrent_integrated_uploads_cannot_take_same_last_file_slot(tmp_path)
         session_capability = service.storage.create_project_session(
             project_id=integrated["project_id"],
             owner_capability=integrated["capability"],
-            allowed_operations=("upload",), expires_at=NOW + timedelta(minutes=5),
-            now=NOW,
+            allowed_operations=("upload",), expires_at=now + timedelta(minutes=5),
+            now=now,
         )
 
     raw = b"energy mu\n" + b"\n".join(
@@ -1111,7 +1145,7 @@ def test_concurrent_integrated_uploads_cannot_take_same_last_file_slot(tmp_path)
     assert len(list(workspace.glob("upload-*.source"))) == 1
 
 
-def test_integrated_project_preview_group_uses_staged_ownership(tmp_path):
+def test_integrated_project_preview_group_uses_staged_ownership(tmp_path, now):
     from xraylarch_web.integration_service import IntegrationService
 
     app = create_app(settings(tmp_path))
@@ -1124,7 +1158,7 @@ def test_integrated_project_preview_group_uses_staged_ownership(tmp_path):
             capabilities[item["project_id"]] = service.storage.create_project_session(
                 project_id=item["project_id"], owner_capability=item["capability"],
                 allowed_operations=("upload", "read_upload"),
-                expires_at=NOW + timedelta(minutes=5), now=NOW,
+                expires_at=now + timedelta(minutes=5), now=now,
             )
         source = {
             "format": "athena-web", "schema_version": 1, "version": 0,
@@ -1268,7 +1302,7 @@ def test_selected_group_export_requires_both_the_signature_and_the_project_capab
     assert wrong_capability.status_code == 404
 
 
-def test_selected_group_export_puts_a_derived_group_under_xraylarch_web_authority(tmp_path):
+def test_selected_group_export_puts_a_derived_group_under_xraylarch_web_authority(tmp_path, now):
     """A deconvolved group is norm(E) with no portable recipe: xraylarch-web owns it."""
     from xraylarch_web.integration_contracts import SelectedGroupExportBatch
 
@@ -1279,7 +1313,7 @@ def test_selected_group_export_puts_a_derived_group_under_xraylarch_web_authorit
         seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
         session = service.storage.create_project_session(
             project_id=created["project_id"], owner_capability=created["capability"],
-            allowed_operations=("command", "deconvolve"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+            allowed_operations=("command", "deconvolve"), expires_at=now + timedelta(minutes=5), now=now,
         )
         commanded = client.post(
             f"/api/athena/projects/{created['project_id']}/command",
@@ -1305,7 +1339,7 @@ def test_selected_group_export_puts_a_derived_group_under_xraylarch_web_authorit
     assert "energy" in group.science.arrays and "norm" in group.science.arrays
 
 
-def test_selected_group_export_refuses_a_group_whose_processing_failed(tmp_path):
+def test_selected_group_export_refuses_a_group_whose_processing_failed(tmp_path, now):
     """A group Athena could not process has no science to export, only an error."""
     app = create_app(settings(tmp_path))
     with TestClient(app) as client:
@@ -1314,7 +1348,7 @@ def test_selected_group_export_refuses_a_group_whose_processing_failed(tmp_path)
         seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
         session = service.storage.create_project_session(
             project_id=created["project_id"], owner_capability=created["capability"],
-            allowed_operations=("command", "deconvolve"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+            allowed_operations=("command", "deconvolve"), expires_at=now + timedelta(minutes=5), now=now,
         )
         # Deconvolving a narrow window leaves too little post-edge k to process.
         commanded = client.post(
@@ -1346,7 +1380,7 @@ def reserve(client, project, selections, *, project_version, reservation="reserv
     }, nonce=nonce, capability=project["capability"])
 
 
-def test_export_reservation_pins_the_revisions_it_was_asked_for(tmp_path):
+def test_export_reservation_pins_the_revisions_it_was_asked_for(tmp_path, now):
     """A reservation that records version 0 for every project cannot bind anything."""
     app = create_app(settings(tmp_path))
     with TestClient(app) as client:
@@ -1355,7 +1389,7 @@ def test_export_reservation_pins_the_revisions_it_was_asked_for(tmp_path):
         seed_id = service.athena_store.load(created["project_id"])["groups"][0]["id"]
         session = service.storage.create_project_session(
             project_id=created["project_id"], owner_capability=created["capability"],
-            allowed_operations=("command", "deconvolve"), expires_at=NOW + timedelta(minutes=5), now=NOW,
+            allowed_operations=("command", "deconvolve"), expires_at=now + timedelta(minutes=5), now=now,
         )
         assert client.post(
             f"/api/athena/projects/{created['project_id']}/command",
@@ -1396,7 +1430,7 @@ def test_selected_group_export_refuses_a_result_that_predates_version_attributio
     )
 
 
-def test_selected_group_export_puts_a_difference_spectrum_under_xraylarch_web_authority(tmp_path):
+def test_selected_group_export_puts_a_difference_spectrum_under_xraylarch_web_authority(tmp_path, now):
     """A difference has no absorption edge, so no recipe could replay it."""
     from xraylarch_web.integration_contracts import SelectedGroupExportBatch
 
@@ -1408,7 +1442,7 @@ def test_selected_group_export_puts_a_difference_spectrum_under_xraylarch_web_au
         session = service.storage.create_project_session(
             project_id=created["project_id"], owner_capability=created["capability"],
             allowed_operations=("command", "duplicate", "difference"),
-            expires_at=NOW + timedelta(minutes=5), now=NOW,
+            expires_at=now + timedelta(minutes=5), now=now,
         )
 
         def command(version, action, group_ids):
