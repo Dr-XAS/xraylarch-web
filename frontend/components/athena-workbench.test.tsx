@@ -57,6 +57,11 @@ vi.mock("./artemis-fitting", () => ({
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // Live arithmetic and stale-response behavior have dedicated preview tests.
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div data-testid="column-preview" /> }))
+// Correction plotting and readiness have dedicated reader-preview tests.
+vi.mock("./athena-reader-preview", () => ({
+  AthenaReaderPreview: ({ required, reviewed, onReviewed, disabled }: { required: boolean; reviewed: boolean; onReviewed: (value: boolean) => void; disabled: boolean }) =>
+    required ? <label><input type="checkbox" checked={reviewed} disabled={disabled} onChange={event => onReviewed(event.target.checked)} />I reviewed the I0 correction for this file</label> : null,
+}))
 // The standalone panel tests own preview/import interactions; verify its host contract here.
 vi.mock("./athena-project-import", () => ({
   AthenaProjectImport: vi.fn(() => <div data-testid="project-import-panel" />),
@@ -2475,6 +2480,106 @@ describe('AthenaWorkbench multi-scan files', () => {
 })
 
 describe("AthenaWorkbench batch import", () => {
+  it('shows one progress view throughout shared-parameter import and updates plotted groups only when finished', async () => {
+    const project = await openSaved()
+    const inspections = ['progress-first.dat', 'progress-second.dat'].map(name => inspectionFixture(name))
+    const { dialog } = await chooseImportFiles(inspections)
+    chooseFluorescenceMapping(dialog)
+    const afterFirst = importedProject(project, inspections[0].display_name)
+    const afterSecond = importedProject(afterFirst, inspections[1].display_name)
+    const firstImport = deferred<AthenaProject>()
+    const secondInspection = deferred<InspectionResponse>()
+    const secondImport = deferred<AthenaProject>()
+    api.mockReturnValueOnce(firstImport.promise).mockReturnValueOnce(secondInspection.promise).mockReturnValueOnce(secondImport.promise)
+    const originalGroups = plotProps().groups
+    plot.mockClear()
+
+    const expectProgress = (completed: number, filename: string) => {
+      expect(screen.getByRole('dialog', { name: /import spectra/i })).toBe(dialog)
+      const view = within(dialog)
+      expect(view.getByRole('progressbar', { name: 'Batch import progress' })).toHaveAttribute('value', String(completed))
+      expect(view.getByRole('progressbar', { name: 'Batch import progress' })).toHaveAttribute('max', '2')
+      expect(view.getByText(`${completed} of 2 files imported`)).toBeVisible()
+      expect(view.getByText(filename)).toBeVisible()
+      expect(view.queryByRole('combobox', { name: 'Measurement' })).not.toBeInTheDocument()
+      expect(view.queryByRole('combobox', { name: 'Energy column' })).not.toBeInTheDocument()
+      expect(view.queryByTestId('column-preview')).not.toBeInTheDocument()
+      expect(plot.mock.calls.every(([props]) => props.groups === originalGroups)).toBe(true)
+    }
+
+    submitImport(dialog)
+    await waitFor(() => expect(importCalls()).toHaveLength(1))
+    expectProgress(0, inspections[0].display_name)
+
+    await act(async () => { firstImport.resolve(afterFirst) })
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path.endsWith('/inspect'))).toHaveLength(2))
+    expectProgress(1, inspections[1].display_name)
+
+    await act(async () => { secondInspection.resolve(inspections[1]) })
+    await waitFor(() => expect(importCalls()).toHaveLength(2))
+    expectProgress(1, inspections[1].display_name)
+    expect(importCalls()[1][1]).toMatchObject({ ...fluorescenceMapping, version: afterFirst.version })
+
+    await act(async () => { secondImport.resolve(afterSecond) })
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(plotProps().groups).toEqual(afterSecond.groups.filter(g => g.marked))
+    expect(plotProps().active).toEqual(afterSecond.groups.at(-1))
+    expect(plot.mock.calls.some(([props]) => props.groups.some(g => g.id === inspections[0].display_name)
+      && !props.groups.some(g => g.id === inspections[1].display_name))).toBe(false)
+  })
+
+  it.each([false, true])('restores the selected mapping after the first shared import fails and retries the batch (reader review: %s)', async readerRequired => {
+    const project = await openSaved()
+    const inspections = ['retry-first.dat', 'retry-second.dat'].map(name => inspectionFixture(name))
+    if (readerRequired) {
+      inspections[0].file_plugin = { id: 'BL8Ar', version: '0.1', description: 'BL8', summary: 'Argon correction',
+        source_sha256: 'source', converted_sha256: 'converted', review_required: true }
+      inspections[0].reader_preview = { points: 3, edge_energy: 3206, step_size: 600,
+        pre_range: [3000, 3100], post_range: [3300, 3400], traces: [] }
+    }
+    const { dialog } = await chooseImportFiles(inspections, readerRequired ? null : true)
+    if (readerRequired) {
+      fireEvent.click(within(dialog).getByRole('radio', { name: 'Yes, use the same parameters' }))
+      expect(within(dialog).getByRole('button', { name: 'Import 2 files' })).toBeDisabled()
+      fireEvent.click(within(dialog).getByRole('checkbox', { name: 'I reviewed the I0 correction for this file' }))
+    }
+    chooseFluorescenceMapping(dialog)
+    const firstImport = deferred<AthenaProject>()
+    api.mockReturnValueOnce(firstImport.promise)
+    submitImport(dialog)
+    expect(await within(dialog).findByRole('progressbar', { name: 'Batch import progress' })).toHaveAttribute('value', '0')
+
+    await act(async () => { firstImport.reject(new Error('First file could not be imported')) })
+    const view = within(dialog)
+    expect(await view.findByRole('alert')).toHaveTextContent('First file could not be imported')
+    expect(view.queryByRole('progressbar', { name: 'Batch import progress' })).not.toBeInTheDocument()
+    expect(view.getByRole('combobox', { name: 'Measurement' })).toHaveValue('fluorescence')
+    expect(view.getByRole('combobox', { name: 'Energy units' })).toHaveValue('keV')
+    expect(view.getByRole('checkbox', { name: 'Numerator If1' })).toBeChecked()
+    expect(view.getByRole('checkbox', { name: 'Numerator If2' })).toBeChecked()
+    expect(view.getByLabelText('reference numerator')).toHaveValue('col_1')
+    expect(view.getByLabelText('reference denominator')).toHaveValue('col_5')
+    if (readerRequired) expect(view.getByRole('checkbox', { name: 'I reviewed the I0 correction for this file' })).toBeChecked()
+    expect(view.getByTestId('column-preview')).toBeInTheDocument()
+    expect(view.getByRole('button', { name: 'Import 2 files' })).toBeEnabled()
+    expect(plotProps().groups).toEqual(project.groups.filter(g => g.marked))
+
+    const afterFirst = importedProject(project, inspections[0].display_name)
+    const afterSecond = importedProject(afterFirst, inspections[1].display_name)
+    api.mockResolvedValueOnce(afterFirst).mockResolvedValueOnce(inspections[1]).mockResolvedValueOnce(afterSecond)
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+    expect(importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)).toEqual([
+      inspections[0].upload_id, inspections[0].upload_id, inspections[1].upload_id,
+    ])
+    expect(importCalls()[0]).toEqual(importCalls()[1])
+    if (readerRequired) {
+      expect(importCalls()[1][1]).toMatchObject({ reader_reviewed: true })
+      expect(importCalls()[2][1]).not.toHaveProperty('reader_reviewed')
+    }
+    expect(plotProps().groups).toEqual(afterSecond.groups.filter(g => g.marked))
+  })
+
   it('requires an explicit parameter-sharing choice before importing multiple files', async () => {
     await openSaved()
     const { dialog } = await chooseImportFiles(['one.dat', 'two.dat'].map(name => inspectionFixture(name)), null)
@@ -4463,19 +4568,49 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
   })
 
   it.each([
-    { count: 0, scope: 'current', label: 'Current spectrum' },
-    { count: 1, scope: 'current', label: 'Current spectrum' },
-    { count: 2, scope: 'selected', label: 'All selected' },
-  ] as const)('defaults to $label with $count imported spectra', async ({ count, scope, label }) => {
-    const project = projectFixture()
+    { count: 0, scope: 'current', label: 'Current spectrum', showLegend: false, energyMode: 'mu', showLines: false },
+    { count: 1, scope: 'current', label: 'Current spectrum', showLegend: false, energyMode: 'mu', showLines: true },
+    { count: 2, scope: 'selected', label: 'All selected', showLegend: true, energyMode: 'norm', showLines: false },
+  ] as const)('defaults to $label with $count imported spectra', async ({ count, scope, label, showLegend, energyMode, showLines }) => {
+    const project = processedProject()
     project.groups = project.groups.slice(0, count)
     await openSaved(project)
 
     expect(screen.getByRole('radio', { name: label })).toBeChecked()
+    expect(screen.getByRole('radio', { name: energyMode === 'mu' ? 'μ(E) · raw' : 'μ(E) · normalized' })).toBeChecked()
+    expect(screen.getByRole('checkbox', { name: 'Show legend' })).toHaveProperty('checked', showLegend)
     expect(plotProps().plotScope).toBe(scope)
+    expect(plotProps().showLegend).toBe(showLegend)
+    for (const line of ['Background', 'Pre-edge line', 'Post-edge line']) {
+      expect(screen.getByRole('checkbox', { name: line })).toHaveProperty('checked', showLines)
+    }
+    expect(plotProps()).toMatchObject({ energyMode, background: showLines, preEdge: showLines, postEdge: showLines })
   })
 
-  it('switches from Current spectrum to All selected as a second spectrum is imported', async () => {
+  it('defaults the legend off and names the highlighted group in Current spectrum mode', async () => {
+    await openSaved()
+    const plotCard = screen.getByTestId('athena-plot').closest('.ath-plot-card')!
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    expect(screen.getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
+    expect(plotProps().showLegend).toBe(false)
+    const currentSpectrum = () => plotCard.querySelector<HTMLElement>('.ath-plot-current-spectrum')
+    expect(currentSpectrum()).toBeInTheDocument()
+    expect(within(currentSpectrum()!).getByText('Current spectrum')).toBeVisible()
+    expect(within(currentSpectrum()!).getByText('Foil scan')).toBeVisible()
+
+    selectGroup('Unused reference')
+    expect(within(currentSpectrum()!).getByText('Unused reference')).toBeVisible()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Show legend' }))
+    expect(plotProps().showLegend).toBe(true)
+
+    fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
+    expect(currentSpectrum()).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    expect(screen.getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
+  })
+
+  it('switches from Current spectrum to All selected when a shared batch of two spectra finishes', async () => {
     const initial = projectFixture({ groups: [] })
     await openSaved(initial)
     expect(screen.getByRole('radio', { name: 'Current spectrum' })).toBeChecked()
@@ -4489,7 +4624,9 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     api.mockResolvedValueOnce(afterFirst).mockReturnValueOnce(secondInspection.promise)
     submitImport(dialog)
 
-    await waitFor(() => expect(plotProps().active?.id).toBe(first.display_name))
+    await within(dialog).findByText('1 of 2 files imported')
+    expect(plotProps().active).toBeUndefined()
+    expect(plotProps().groups).toEqual([])
     expect(screen.getByRole('radio', { name: 'Current spectrum' })).toBeChecked()
     expect(plotProps().plotScope).toBe('current')
 
@@ -4501,7 +4638,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
   })
 
   it('leaves All selected empty when no groups are marked and can still plot the current spectrum', async () => {
-    const project = projectFixture()
+    const project = processedProject()
     for (const g of project.groups) g.marked = false
     await openSaved(project)
 
@@ -4522,7 +4659,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
   })
 
   it('refreshes automatic plot limits for the scope and current spectrum while preserving explicit limits', async () => {
-    const project = projectFixture()
+    const project = processedProject()
     project.groups[0].result!.arrays.energy = [8900, 8980, 9050]
     project.groups[1].result!.arrays.energy = [8950, 8980, 9060]
     project.groups[2].result!.arrays.energy = [8920, 8980, 9080]
@@ -4547,7 +4684,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps().range).toEqual([8965, null])
   })
 
-  it('controls pre-edge, post-edge and background independently and restores preferences when individual raw plotting resumes', async () => {
+  it('defaults Current spectrum to raw with every processing line and preserves manual choices within the scope', async () => {
     await openSaved(processedProject())
     const pre = screen.getByRole('checkbox', { name: 'Pre-edge line' })
     const post = screen.getByRole('checkbox', { name: 'Post-edge line' })
@@ -4557,42 +4694,47 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
       expect(control).toBeDisabled()
     }
 
-    fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · raw' }))
-    expect(pre).toBeDisabled()
-    expect(post).toBeDisabled()
-    expect(background).toBeDisabled() // The active, unmarked foil is outside the selected plot.
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
-    for (const control of [pre, post, background]) expect(control).toBeEnabled()
+    expect(screen.getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
+    for (const control of [pre, post, background]) {
+      expect(control).toBeEnabled()
+      expect(control).toBeChecked()
+    }
+    expect(plotProps()).toMatchObject({ energyMode: 'mu', preEdge: true, postEdge: true, background: true })
     fireEvent.click(pre)
-    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: false, background: false })
-    fireEvent.click(post)
-    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: true, background: false })
-    fireEvent.click(pre)
-    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: false })
-    fireEvent.click(background)
     expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: true })
+    fireEvent.click(post)
+    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: true })
+    fireEvent.click(pre)
+    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: false, background: true })
+    fireEvent.click(background)
+    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: false, background: false })
 
     fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · normalized' }))
     for (const control of [pre, post, background]) expect(control).toBeDisabled()
-    expect(post).not.toBeChecked()
+    expect(pre).not.toBeChecked()
     expect(background).not.toBeChecked()
     expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: false })
     fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · raw' }))
-    expect(post).toBeChecked()
-    expect(background).toBeChecked()
-    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: true })
+    expect(pre).toBeChecked()
+    expect(post).not.toBeChecked()
+    expect(background).not.toBeChecked()
+    expect(plotProps()).toMatchObject({ preEdge: true, postEdge: false, background: false })
 
     fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
-    expect(post).toBeDisabled()
-    expect(post).not.toBeChecked()
+    expect(screen.getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
+    for (const control of [pre, post, background]) {
+      expect(control).toBeDisabled()
+      expect(control).not.toBeChecked()
+    }
     expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: false })
-    selectGroup('Sample scan')
-    expect(background).toBeEnabled()
-    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: true })
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
-    expect(post).toBeEnabled()
-    expect(post).toBeChecked()
-    expect(plotProps()).toMatchObject({ preEdge: false, postEdge: true, background: true })
+    expect(screen.getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
+    for (const control of [pre, post, background]) {
+      expect(control).toBeEnabled()
+      expect(control).toBeChecked()
+    }
+    expect(plotProps()).toMatchObject({ energyMode: 'mu', preEdge: true, postEdge: true, background: true })
     expect(api).toHaveBeenCalledTimes(1)
   })
 
@@ -4604,11 +4746,10 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     project.groups[2].result = null
     await openSaved(project)
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
-    fireEvent.click(screen.getByRole('radio', { name: 'μ(E) · raw' }))
     for (const label of ['Pre-edge line', 'Post-edge line', 'Background']) {
       const control = screen.getByRole('checkbox', { name: label })
       expect(control).toBeEnabled()
-      fireEvent.click(control)
+      expect(control).toBeChecked()
     }
     for (const label of ['Sample scan', 'Oxide standard']) {
       selectGroup(label)
@@ -4622,11 +4763,11 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
   })
 })
 
-it('lists every energy view directly beneath the plot and switches each plotted signal', async () => {
+it('lists every energy view directly above the plot and switches each plotted signal', async () => {
   await openSaved()
   const choices = screen.getByRole('radiogroup', { name: 'Energy plot' })
   expect(screen.queryByRole('combobox', { name: 'Energy plot' })).not.toBeInTheDocument()
-  expect(screen.getByTestId('athena-plot').nextElementSibling).toBe(choices)
+  expect(screen.getByTestId('athena-plot').previousElementSibling).toBe(choices)
   expect(within(choices).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['mu', 'norm', 'flat', 'dmude', 'd2mude'])
   expect(within(choices).getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
   for (const [name, value] of [

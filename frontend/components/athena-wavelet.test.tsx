@@ -3,8 +3,9 @@ import "@testing-library/jest-dom/vitest"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { athenaApi, type AthenaGroup, type Parameters } from "@/lib/athena"
+import { plotlyColorscale } from "@/lib/athena-colormaps"
 import { athenaPlotHeightKey } from "./athena-plot-card"
-import { AthenaWavelet, athenaWaveletHeightKey, type WaveletResult } from "./athena-wavelet"
+import { AthenaWavelet, athenaWaveletColorsKey, athenaWaveletHeightKey, type WaveletResult } from "./athena-wavelet"
 import type { PlotWeightResult } from "./athena-plot-weight"
 
 type Trace = {
@@ -62,6 +63,11 @@ function handoff() {
   if (!props) throw new Error("No wavelet Plotly handoff")
   return props
 }
+function waveletHandoff() {
+  const props = plot.mock.calls.toReversed().map(call => call[0]).find(candidate => ["heatmap", "surface"].includes(candidate.data[0]?.type))
+  if (!props) throw new Error("No main wavelet Plotly handoff")
+  return props
+}
 
 beforeEach(() => {
   vi.useFakeTimers(); api.mockReset(); backendApi.mockReset(); plot.mockClear(); localStorage.clear()
@@ -94,6 +100,35 @@ describe("AthenaWavelet", () => {
     expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
     expect(handoff().data[0].z).toEqual(result().magnitude)
     expect(screen.getByText(/Cauchy wavelet.*k-weight 3/)).toBeVisible()
+  })
+
+  it("uses an independent persistent color legend for both wavelet views without recalculating", async () => {
+    serve()
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
+    const palette = screen.getByRole("combobox", { name: "Wavelet color legend" })
+    const colorGroup = screen.getByRole("group", { name: "Wavelet colors" })
+    expect(palette).toHaveValue("magma")
+    expect(palette.querySelectorAll("option")).toHaveLength(11)
+    expect(colorGroup).toHaveTextContent("Low")
+    expect(colorGroup).toHaveTextContent("High")
+    await calculate()
+    expect(waveletHandoff().data[0].colorscale).toEqual(plotlyColorscale("magma"))
+
+    fireEvent.change(palette, { target: { value: "turbo" } })
+    expect(waveletHandoff().data[0].colorscale).toEqual(plotlyColorscale("turbo"))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Reverse" }))
+    expect(waveletHandoff().data[0].colorscale).toEqual(plotlyColorscale("turbo", true))
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(localStorage.getItem(athenaWaveletColorsKey)).toBe(JSON.stringify({ colormap: "turbo", reversed: true }))
+
+    fireEvent.click(screen.getByRole("button", { name: "3D surface" }))
+    expect(waveletHandoff().data[0]).toMatchObject({ type: "surface", colorscale: plotlyColorscale("turbo", true) })
+    expect(api).toHaveBeenCalledTimes(1)
+
+    view.unmount()
+    render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
+    expect(screen.getByRole("combobox", { name: "Wavelet color legend" })).toHaveValue("turbo")
+    expect(screen.getByRole("checkbox", { name: "Reverse" })).toBeChecked()
   })
 
   it("downloads the current wavelet grid as CSV and disables export while a new revision is pending", async () => {

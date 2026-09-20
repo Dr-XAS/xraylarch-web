@@ -73,7 +73,7 @@
 .ath-mark-toolbar { flex-wrap: wrap; gap: 6px; padding: 0 15px 9px; display: flex; justify-content: space-between; align-items: center; color: var(--ath-muted); border-bottom: 1px solid var(--ath-line); font-size: var(--text-label); }
 .ath-mark-toolbar label { display: flex; gap: 9px; align-items: center; }
 .ath-reorder-hint { display: flex; align-items: center; gap: 3px; white-space: nowrap; }
-.ath-group-list { max-height: 66vh; overflow: auto; }
+.ath-group-list { overflow: auto; }
 .ath-group { position: relative; display: flex; align-items: center; gap: 7px; min-height: 63px; padding: 6px 10px 6px 7px; border-left: 3px solid transparent; border-bottom: 1px solid var(--ath-line); }
 .ath-group.selected { background: var(--ath-surface-muted); border-left-color: var(--ath-primary); }
 .ath-group[data-dragging="true"] { opacity: .45; }
@@ -142,12 +142,15 @@
 .ath-color-legend[aria-disabled="true"] { opacity: .5; }
 .ath-plot { height: min(47vh, 470px); min-height: 325px; padding: 0 5px; }
 .ath-plot:focus-visible, .ath-no-plot:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: -3px; }
-.ath-energy-plot-options { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 18px; border-top: 1px solid var(--ath-line); background: var(--ath-surface-muted); }
+.ath-energy-plot-options { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 18px; border-block: 1px solid var(--ath-line); background: var(--ath-surface-muted); }
 .ath-energy-plot-option { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 5px 8px; border: 1px solid transparent; border-radius: 4px; color: var(--ath-muted); font-size: var(--text-label); line-height: 1.35; cursor: pointer; }
 .ath-energy-plot-option:hover { background: var(--ath-surface-muted); }
 .ath-energy-plot-option.selected { color: var(--ath-primary); border-color: var(--ath-primary-line); background: var(--ath-primary-soft); }
 .ath-energy-plot-option.disabled { opacity: .45; cursor: not-allowed; }
 .ath-energy-plot-option.disabled:hover { background: var(--ath-primary-soft); }
+.ath-plot-current-spectrum { display: flex; flex-wrap: wrap; min-width: 0; gap: 5px 9px; padding: 12px 18px; background: var(--ath-canvas); font-size: var(--text-label); }
+.ath-plot-current-spectrum > span { color: var(--ath-muted); }
+.ath-plot-current-spectrum strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
 .ath-no-plot, .ath-plot-loading { min-height: 380px; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 45px; text-align: center; }
 .ath-no-plot > span { font-family: Georgia, serif; font-size: var(--text-illustration); color: var(--ath-primary-line); margin-bottom: 20px; font-style: italic; }
 .ath-no-plot h3 { color: var(--ath-ink); font-size: var(--text-title); font-family: var(--font-sans); font-weight: 500; }
@@ -205,6 +208,11 @@
 .ath-modal .ath-tool-target { display: flex; gap: 10px; padding: 10px 12px; background: var(--ath-surface-muted); font-size: var(--text-caption); color: var(--ath-muted); border-radius: 4px; }.ath-tool-target strong { font-weight: 500; color: var(--ath-ink); }.ath-selected-list { display: grid; gap: 8px; padding: 15px; background: var(--ath-surface-muted); border: 1px solid var(--ath-line); border-radius: 5px; color: var(--ath-primary); font-size: var(--text-label); }.ath-fit-groups { max-height: 200px; overflow: auto; border: 1px solid var(--ath-line); padding: 12px; border-radius: 4px; margin: 15px 0; }.ath-fit-groups label:last-child { margin-bottom: 0; }
 .ath-analysis-result { border: 1px solid var(--ath-line); padding: 16px; margin-bottom: 20px; border-radius: 6px; background: var(--ath-surface); }.ath-analysis-result header { display: flex; align-items: center; gap: 10px; }.ath-analysis-result h3 { flex: 1; font-weight: 500; font-size: var(--text-section); }.ath-analysis-result p { font-size: var(--text-body); margin: 12px 0 0; }.ath-weights { display: flex; gap: 15px; flex-wrap: wrap; padding: 13px 0 0; }.ath-weights > div { display: grid; gap: 8px; min-width: 110px; padding: 10px 14px; background: var(--ath-surface-muted); border-radius: 4px; font-size: var(--text-caption); }.ath-weights strong { font-size: var(--text-title); color: var(--ath-primary); font-weight: 400; }.ath-analysis-result pre { max-height: 170px; overflow: auto; font-size: var(--text-label); }
 .ath-peak-editor { border: 1px solid var(--ath-line); padding: 12px; border-radius: 5px; margin: 12px 0; }.ath-peak-editor header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }.ath-peak-editor h3 { font-weight: 500; font-size: var(--text-section); }
+@media(min-width:621px) {
+  .ath-groups { min-height: 0; }
+  /* Fill the shared row without letting the number of files set its height. */
+  .ath-group-list:not(:empty) { flex: 1 1 0px; height: 0; min-height: 0; }
+}
 @media(min-width:1650px) { .ath-workspace { --ath-groups-width: 270px; --ath-processing-width: 340px; }.ath-center { padding: 34px 38px; }.ath-plot { max-height: 560px; height: 50vh; } }
 @media(max-width:1200px) { .ath-header { gap: 16px; padding: 8px 18px; }.ath-brand { min-width: 216px; }.ath-header nav { gap: 3px; }.ath-local { display: none; }.ath-workspace { --ath-groups-width: 198px; --ath-processing-width: 275px; grid-template-columns: var(--ath-groups-width) var(--ath-resizer-width) var(--ath-processing-width) var(--ath-resizer-width) minmax(380px,1fr); }.ath-center { padding: 23px 15px; }.ath-space-tabs span { display: none; }.ath-app .ath-space-tabs button { padding: 0 14px; }.ath-center-note span { max-width: 170px; line-height: 1.6; }.ath-plot-controls { gap: 10px; } }
 @media(max-width:950px) { .ath-workspace { grid-template-columns: 190px minmax(0,1fr); grid-template-areas: "groups processing" "spectrum spectrum"; }.ath-app .ath-workspace-resizer { display: none; }.ath-groups { border-right: 1px solid var(--ath-line); }.ath-parameters { display: block; }.ath-parameter-tab-panel { flex: none; height: auto; }.ath-center { border-top: 1px solid var(--ath-line); }.ath-param-fields { flex: none; height: auto; display: grid; grid-template-columns: 1fr 1fr; min-height: 0; align-items: start; }.ath-apply { max-width: 500px; margin: auto; }.ath-header { flex-wrap: wrap; height: auto; padding: 15px; gap: 12px; }.ath-header nav { justify-content: flex-end; }.ath-app .ath-learn { margin-left: auto; }.ath-brand { min-width: 180px; }.ath-project-name { max-width: 290px !important; }.ath-autosaved { display: none; }.ath-project-bar { padding: 0 15px; }.ath-status { flex-wrap: wrap; gap: 8px; padding: 8px 15px; } }

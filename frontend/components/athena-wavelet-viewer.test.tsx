@@ -278,14 +278,14 @@ describe("WaveletFigure", () => {
     expect(mainPlot().data[0].z).toEqual(wavelet().magnitude)
   })
 
-  it("changes only the colorscale when the colormap changes", async () => {
+  it("changes and reverses only the colorscale when the colormap options change", async () => {
     serve()
     const data = wavelet(), spectrum = group()
     const view = render(<WaveletFigure data={data} group={spectrum} mode="2d" colormap="magma" />)
     await calculate()
     expect(mainPlot().data[0].colorscale).toEqual(plotlyColorscale("magma"))
-    view.rerender(<WaveletFigure data={data} group={spectrum} mode="2d" colormap="viridis" />)
-    expect(mainPlot().data[0].colorscale).toEqual(plotlyColorscale("viridis"))
+    view.rerender(<WaveletFigure data={data} group={spectrum} mode="2d" colormap="turbo" reverseColormap />)
+    expect(mainPlot().data[0].colorscale).toEqual(plotlyColorscale("turbo", true))
     expect(mainPlot().data[0].z).toEqual(data.magnitude)
     await calculate()
     expect(api).toHaveBeenCalledTimes(1)

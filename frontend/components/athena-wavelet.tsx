@@ -4,12 +4,42 @@ import { useEffect, useRef, useState } from "react"
 import { Box, Download, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
-import { DEFAULT_COLORMAP, type AthenaColormap } from "@/lib/athena-colormaps"
+import { ATHENA_COLORMAPS, DEFAULT_COLORMAP, isAthenaColormap, plotlyColorscale, type AthenaColormap } from "@/lib/athena-colormaps"
 import { WaveletFigure } from "./athena-wavelet-viewer"
 import { ResizablePlotCard } from "./athena-plot-card"
 import styles from "./athena-wavelet.module.css"
 
 export const athenaWaveletHeightKey = "athena.wavelet.height.v1"
+export const athenaWaveletColorsKey = "athena.wavelet-colors.v1"
+
+type WaveletColorSettings = { colormap: AthenaColormap; reversed: boolean }
+
+function WaveletColorLegend({ value, onChange }: {
+  value: WaveletColorSettings; onChange: (value: WaveletColorSettings) => void
+}) {
+  const stops = plotlyColorscale(value.colormap, value.reversed)
+  const background = `linear-gradient(to right, ${stops.map(([position, color]) => `${color} ${position * 100}%`).join(", ")})`
+
+  function update(next: WaveletColorSettings) {
+    onChange(next)
+    try { localStorage.setItem(athenaWaveletColorsKey, JSON.stringify(next)) }
+    catch { /* Keep the in-memory preference when storage is unavailable. */ }
+  }
+
+  return <div className={`ath-color-legend ${styles.colorLegend}`} role="group" aria-label="Wavelet colors">
+    <label className="ath-color-select">Color legend
+      <select aria-label="Wavelet color legend" value={value.colormap} onChange={event => {
+        if (isAthenaColormap(event.target.value)) update({ ...value, colormap: event.target.value })
+      }}>
+        {ATHENA_COLORMAPS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+      </select>
+    </label>
+    <div className="ath-color-preview" title="Colors map wavelet magnitude from low to high.">
+      <span>Low</span><span className="ath-color-ramp" style={{ background }} aria-hidden="true" /><span>High</span>
+    </div>
+    <label className="ath-check"><input type="checkbox" checked={value.reversed} onChange={event => update({ ...value, reversed: event.target.checked })} />Reverse</label>
+  </div>
+}
 
 export interface WaveletResult {
   project_id: string; version: number; group_id: string; label: string; kweight: number
@@ -22,7 +52,6 @@ interface Props {
   /** May stay stable only when a confirmed project update leaves scientific data unchanged. */
   dataVersion?: number
   kWeight: number | null
-  colormap?: AthenaColormap
 }
 
 function validGrid(data: WaveletResult) {
@@ -49,9 +78,10 @@ function exportWavelet(data: WaveletResult) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP }: Props) {
+export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight }: Props) {
   const athenaApi = useAthenaApi()
   const [mode, setMode] = useState<"2d" | "3d">("2d")
+  const [colors, setColors] = useState<WaveletColorSettings>({ colormap: DEFAULT_COLORMAP, reversed: false })
   const [retry, setRetry] = useState(0)
   const [response, setResponse] = useState<{ key: string; abort: AbortController; data?: WaveletResult; error?: string } | null>(null)
   const arrays = group?.result?.arrays
@@ -68,6 +98,15 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
   latest.current = { key, version }
   const current = response?.key === key && !response.abort.signal.aborted && !reason ? response : null
   const groupId = group?.id
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(athenaWaveletColorsKey) ?? localStorage.getItem("athena.viewer-colormap") ?? "null")
+      if (saved && isAthenaColormap(saved.colormap) && typeof saved.reversed === "boolean") {
+        setColors({ colormap: saved.colormap, reversed: saved.reversed })
+      }
+    } catch { /* Storage is optional; plotting must remain available. */ }
+  }, [])
 
   useEffect(() => {
     if (reason || !projectId || !groupId || version === undefined) return
@@ -108,10 +147,11 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
         <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
         <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button>
       </div>
+      <WaveletColorLegend value={colors} onChange={setColors} />
       <div id="athena-wavelet-viewer" className={styles.viewport}>
         {reason ? <div data-wavelet-placeholder className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
           : current?.error ? <div data-wavelet-placeholder className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>
-          : current?.data ? <WaveletFigure key={key} data={current.data} version={version} dataVersion={dataVersion} group={group!} mode={mode} colormap={colormap} />
+          : current?.data ? <WaveletFigure key={key} data={current.data} version={version} dataVersion={dataVersion} group={group!} mode={mode} colormap={colors.colormap} reverseColormap={colors.reversed} />
           : <div data-wavelet-placeholder className={styles.empty} role="status">Calculating wavelet transform…</div>}
       </div>
       <footer className={styles.footer}><span>Cauchy wavelet · |WT|{current?.data && ` · k-weight ${current.data.kweight}`}</span><span>R is not phase corrected</span></footer>
