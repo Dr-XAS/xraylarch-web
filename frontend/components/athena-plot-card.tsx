@@ -54,7 +54,7 @@ export function ResizablePlotCard({
     event.preventDefault()
     event.currentTarget.focus({ preventScroll: true })
     event.currentTarget.setPointerCapture?.(event.pointerId)
-    dragRef.current = { pointerId: event.pointerId, startY: event.clientY + window.scrollY, startHeight: plotHeight(), preferred: heightRef.current }
+    dragRef.current = { pointerId: event.pointerId, startY: event.clientY, startHeight: plotHeight(), preferred: heightRef.current }
     setDragging(true)
   }
 
@@ -123,7 +123,9 @@ export function ResizablePlotCard({
     document.body.style.overflowAnchor = "none"
     function move(event: globalThis.PointerEvent) {
       const drag = dragRef.current
-      if (drag?.pointerId === event.pointerId) resize(drag.startHeight + event.clientY + window.scrollY - drag.startY)
+      // The browser can clamp scrollY as the document shrinks; only pointer
+      // movement in the viewport should change the requested plot height.
+      if (drag?.pointerId === event.pointerId) resize(drag.startHeight + event.clientY - drag.startY)
     }
     function finish(event: globalThis.PointerEvent) { finishResize(event.pointerId) }
     function cancel(event: globalThis.PointerEvent) { finishResize(event.pointerId, true) }

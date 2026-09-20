@@ -101,6 +101,30 @@ describe("ResizablePlotCard", () => {
     expect(localStorage.getItem(athenaPlotHeightKey)).toBeNull()
   })
 
+  it("shrinks by the viewport pointer distance when the document scroll position is clamped", () => {
+    localStorage.setItem(athenaPlotHeightKey, "540")
+    vi.stubGlobal("scrollY", 1000)
+    try {
+      const { card, grip } = showCard()
+      fireEvent(grip, pointer("pointerdown", 700))
+
+      // Shrinking a plot at the document bottom can clamp the scroll position.
+      // That browser movement must not add to the user's 80-pixel drag.
+      vi.stubGlobal("scrollY", 740)
+      fireEvent(window, pointer("pointermove", 620))
+      expect(card.style.getPropertyValue("--ath-plot-height")).toBe("460px")
+      expect(localStorage.getItem(athenaPlotHeightKey)).toBe("540")
+
+      vi.stubGlobal("scrollY", 600)
+      fireEvent(window, pointer("pointermove", 620))
+      expect(card.style.getPropertyValue("--ath-plot-height")).toBe("460px")
+      fireEvent(window, pointer("pointerup", 620))
+      expect(localStorage.getItem(athenaPlotHeightKey)).toBe("460")
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
   it("ignores unrelated pointers and cancels an interrupted drag without saving", () => {
     const { card, grip } = showCard()
     fireEvent(grip, pointer("pointerdown", 480, 8, false))
