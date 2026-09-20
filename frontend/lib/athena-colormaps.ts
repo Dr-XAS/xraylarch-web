@@ -1,4 +1,4 @@
-export type AthenaColormap = "magma" | "viridis" | "plasma" | "inferno" | "cividis" | "coolwarm" | "ylgnbu" | "rainbow"
+export type AthenaColormap = "magma" | "viridis" | "plasma" | "inferno" | "cividis" | "ylgnbu" | "rainbow"
 
 export const DEFAULT_COLORMAP: AthenaColormap = "magma"
 
@@ -8,7 +8,6 @@ export const ATHENA_COLORMAPS: readonly { value: AthenaColormap; label: string }
   { value: "plasma", label: "Plasma" },
   { value: "inferno", label: "Inferno" },
   { value: "cividis", label: "Cividis" },
-  { value: "coolwarm", label: "Coolwarm" },
   { value: "ylgnbu", label: "YlGnBu" },
   { value: "rainbow", label: "Rainbow" },
 ]
@@ -52,11 +51,6 @@ const COLOR_STOPS: Record<AthenaColormap, readonly [number, string][]> = {
     [192 / 255, "#bcae6c"], [208 / 255, "#cdbb63"], [224 / 255, "#dec958"], [240 / 255, "#f0d846"],
     [1, "#fee838"],
   ],
-  coolwarm: [
-    [0, "#3b4cc0"], [1 / 8, "#6282ea"], [2 / 8, "#8db0fe"], [3 / 8, "#b9d0f9"],
-    [4 / 8, "#dddcdc"], [5 / 8, "#f5c4ac"], [6 / 8, "#f4987a"], [7 / 8, "#dd5f4b"],
-    [1, "#b40426"],
-  ],
   ylgnbu: [
     [0, "#ffffd9"], [1 / 8, "#edf8b1"], [2 / 8, "#c7e9b4"], [3 / 8, "#7fcdbb"],
     [4 / 8, "#41b6c4"], [5 / 8, "#1d91c0"], [6 / 8, "#225ea8"], [7 / 8, "#253494"],
@@ -79,15 +73,13 @@ const SPECTRUM_RANGES: Record<AthenaColormap, readonly [number, number]> = {
   plasma: [0.06, 0.64],
   inferno: [0.12, 0.67],
   cividis: [0.06, 0.62],
-  coolwarm: [0, 1],
   ylgnbu: [0.58, 0.95],
   rainbow: [0, 1],
 }
 
-export function plotlyColorscale(colormap: AthenaColormap, reversed = false): [number, string][] {
+export function plotlyColorscale(colormap: AthenaColormap): [number, string][] {
   // Plotly may mutate its inputs; do not expose the shared source arrays.
-  const stops = COLOR_STOPS[colormap].map(([position, color]) => [position, color] as [number, string])
-  return reversed ? stops.map(([position], index) => [position, stops[stops.length - 1 - index][1]]) : stops
+  return COLOR_STOPS[colormap].map(([position, color]) => [position, color])
 }
 
 export function spectrumColor(colormap: AthenaColormap, index: number, count: number): string {

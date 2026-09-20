@@ -84,6 +84,13 @@ function handoff(): Handoff {
 }
 
 describe("AthenaPlot display options", () => {
+  it("uses the spectrum-only PR palette settings", () => {
+    const first = group("First")
+    const second = group("Second")
+    show({ groups: [first, second], active: first, colorSettings: { palette: "viridis", reversed: true } })
+    expect(handoff().data.map(trace => trace.line?.color)).toEqual(["#fde725", "#440154"])
+  })
+
   it("keeps the current line-and-grid presentation by default", () => {
     show()
     expect(handoff().data[0]).toMatchObject({ mode: "lines" })

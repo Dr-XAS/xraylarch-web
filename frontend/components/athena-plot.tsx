@@ -3,7 +3,7 @@
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
-import { DEFAULT_COLORMAP, spectrumColor, type AthenaColormap } from "@/lib/athena-colormaps"
+import { defaultPlotColors, spectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { AthenaContextMenu } from "./athena-context-menu"
 import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
@@ -14,7 +14,7 @@ interface Props {
   plotScope?: "selected" | "current"; preEdge?: boolean; postEdge?: boolean; showLegend?: boolean; kWeight?: number | null
   showGrid?: boolean; showDataPoints?: boolean
   onShowGridChange?: (show: boolean) => void; onShowDataPointsChange?: (show: boolean) => void; onOptionsMenuOpen?: () => void
-  colormap?: AthenaColormap; reverseColormap?: boolean
+  colorSettings?: PlotColorSettings
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
   picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
@@ -52,12 +52,14 @@ function signalAtEnergy(energy: number[], mu: number[], target: number) {
   return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colormap = DEFAULT_COLORMAP, reverseColormap = false, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colorSettings = defaultPlotColors, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
   const [optionsMenu, setOptionsMenu] = useState<PlotOptionsMenu | null>(null)
   const compareK = space === "q" && component === "re"
   const data: Record<string, unknown>[] = []
+  // Assign before filtering by plot space so a group keeps its color across E/k/R/q.
+  const colors = spectrumColors(groups.length, colorSettings)
   const add = (x: number[], y: number[], name: string, color: string, dash = "solid", measured = false) => {
     if (!Array.isArray(x) || !Array.isArray(y) || !x.length || x.length !== y.length) return
     const points = measured && showDataPoints
@@ -86,12 +88,12 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   }
   const energyForms = [...new Set(displayed.map(trace => energyForm(trace.g)))]
   const mixedEnergyForms = space === "E" && energyForms.length > 1
-  for (const [colorIndex, trace] of displayed.entries()) {
+  for (const trace of displayed) {
     const { g, x, y, rawChi, weight, transform } = trace
     const name = g.label + (rawChi ? " (unprocessed χ(k))" : "") + (mixedWeights ? ` (k-weight ${weight})` : "") + (mixedEnergyForms ? ` (${energyForm(g)})` : "")
     // R/q products already include the forward k-weight. Apply display
     // multiplier/offset only, never another k- or q-dependent weighting.
-    const color = spectrumColor(colormap, reverseColormap ? displayed.length - 1 - colorIndex : colorIndex, displayed.length)
+    const color = colors[trace.index]
     add(x, transform(y), compareK ? `Re[χ(q)] · ${name}` : name, color, "solid", !compareK)
     if (compareK) {
       // Compare with the unwindowed input on its own full k grid, including
