@@ -95,7 +95,9 @@ class WorkspaceStorage:
 
         def write(temp: Path) -> None:
             with open(temp, "w", encoding="utf-8") as handle:
-                json.dump(data, handle, separators=(",", ":"), allow_nan=False)
+                # dumps uses the C encoder; dump streams numeric arrays through
+                # the slower Python encoder. Keep the same atomic/fsync boundary.
+                handle.write(json.dumps(data, separators=(",", ":"), allow_nan=False))
                 handle.flush()
                 os.fsync(handle.fileno())
             os.chmod(temp, 0o600)

@@ -14,6 +14,7 @@ type Trace = {
 }
 type Handoff = {
   data: Trace[]
+  config: Record<string, unknown>
   onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
   layout: {
     xaxis: { title: { text: string }; showgrid?: boolean; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
@@ -82,6 +83,58 @@ function handoff(): Handoff {
   if (!call) throw new Error("No Plotly handoff was rendered")
   return call[0]
 }
+
+describe("AthenaPlot redraw boundaries", () => {
+  it("reuses Plotly inputs on unrelated rerenders and menu changes while updating callbacks", () => {
+    const sample = group()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space: "E", energyMode: "mu", component: "mag",
+      background: false, window: false, offset: 0, analysis: null, analysisVisible: false, range: [null, null],
+    }
+    const firstPick = vi.fn(), nextPick = vi.fn()
+    const { rerender } = render(<AthenaPlot {...props} picking onPickX={firstPick} />)
+    const first = handoff()
+    rerender(<AthenaPlot {...props} range={[null, null]} colorSettings={{ palette: "classic", reversed: false }} picking onPickX={nextPick} />)
+    expect(handoff().data).toBe(first.data)
+    expect(handoff().layout).toBe(first.layout)
+    expect(handoff().config).toBe(first.config)
+    handoff().onClick?.({ points: [{ x: 8980 }] })
+    expect(nextPick).toHaveBeenCalledWith(8980, "E")
+    expect(firstPick).not.toHaveBeenCalled()
+
+    fireEvent.contextMenu(screen.getByTestId("athena-plot"), { clientX: 120, clientY: 160 })
+    expect(handoff().data).toBe(first.data)
+    expect(handoff().layout).toBe(first.layout)
+    expect(handoff().config).toBe(first.config)
+  })
+
+  it("refreshes only the affected inputs when data, styling, and plot controls change", () => {
+    const sample = group()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space: "E", energyMode: "mu", component: "mag",
+      background: false, window: false, offset: 0, analysis: null, analysisVisible: false, range: [null, null],
+    }
+    const { rerender } = render(<AthenaPlot {...props} />)
+    const first = handoff()
+    rerender(<AthenaPlot {...props} showGrid={false} range={[8960, 9000]} />)
+    const bounded = handoff()
+    expect(bounded.data).toBe(first.data)
+    expect(bounded.layout).not.toBe(first.layout)
+    expect(bounded.layout.xaxis).toMatchObject({ showgrid: false, range: [8960, 9000] })
+
+    rerender(<AthenaPlot {...props} showDataPoints colorSettings={{ palette: "viridis", reversed: false }} />)
+    const styled = handoff()
+    expect(styled.data).not.toBe(first.data)
+    expect(styled.data[0].mode).toBe("lines+markers")
+    expect(styled.data[0].line?.color).not.toBe(first.data[0].line?.color)
+
+    const changed = { ...sample, multiplier: 2 }
+    rerender(<AthenaPlot {...props} groups={[changed]} active={changed} />)
+    expect(handoff().data).not.toBe(styled.data)
+    expect(handoff().data[0].y).toEqual([2, 4, 6])
+    expect(handoff().config).toBe(first.config)
+  })
+})
 
 describe("AthenaPlot display options", () => {
   it("uses the spectrum-only PR palette settings", () => {

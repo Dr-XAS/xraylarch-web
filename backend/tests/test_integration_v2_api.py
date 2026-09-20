@@ -882,6 +882,85 @@ def test_persistent_command_enforces_quota_and_updates_exact_bytes(tmp_path):
     assert json.loads((workspace / "project.json").read_text())["groups"] == []
 
 
+def test_compact_selection_retains_integration_authorization_and_quota_transaction(tmp_path, monkeypatch):
+    app = create_app(settings(tmp_path))
+    with TestClient(app) as client:
+        service = app.state.integration_service
+        integrated = create(client)
+        ident = integrated["project_id"]
+        route = f"/api/athena/projects/{ident}/command"
+        session = service.storage.create_project_session(
+            project_id=ident, owner_capability=integrated["capability"],
+            allowed_operations=("command", "example", "metadata"),
+            expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        seeded = client.post(route, headers=project_headers(session), json={
+            "version": 0, "action": "example",
+        })
+        assert seeded.status_code == 200, seeded.text
+        project = seeded.json()
+        service.rename_v2_project(ident, integrated["capability"], "Renamed in Dr.XAS", now=NOW)
+        assert service.athena_store.load(ident)["version"] == project["version"]
+        payload = {"version": project["version"], "action": "metadata",
+                   "group_ids": [group["id"] for group in project["groups"]],
+                   "options": {"marked": True}, "response_mode": "selection"}
+        workspace = tmp_path / "athena" / ident
+
+        def snapshot():
+            return {path.name: path.read_bytes() for path in workspace.iterdir()
+                    if path.is_file() and path.name != "workspace.lock"}
+
+        before = snapshot()
+        denied = client.post(route, json=payload)
+        assert denied.status_code == 404
+        assert snapshot() == before
+        restricted = service.storage.create_project_session(
+            project_id=ident, owner_capability=integrated["capability"],
+            allowed_operations=("command",),
+            expires_at=NOW + timedelta(minutes=5), now=NOW,
+        )
+        denied = client.post(route, headers=project_headers(restricted), json=payload)
+        assert denied.status_code == 404
+        assert snapshot() == before
+
+        original_mutate = service.mutate_v2_project
+        transaction_results = []
+
+        def inspect_transaction(*args, **kwargs):
+            result = original_mutate(*args, **kwargs)
+            # The integration layer must see the full project, including data.
+            assert "result" in result["groups"][0]
+            assert "kind" not in result
+            transaction_results.append(result)
+            return result
+
+        monkeypatch.setattr(service, "mutate_v2_project", inspect_transaction)
+        marked = client.post(route, headers=project_headers(session), json=payload)
+        assert marked.status_code == 200, marked.text
+        delta = marked.json()
+        assert delta["kind"] == "selection" and all(row["marked"] for row in delta["groups"])
+        assert delta["name"] == "Renamed in Dr.XAS"
+        reconstructed = {**project, **{key: value for key, value in delta.items()
+                                      if key not in {"kind", "base_version", "groups"}},
+                         "groups": [{**group, **row}
+                                    for group, row in zip(project["groups"], delta["groups"])]}
+        assert reconstructed == service.athena_store.load(ident)
+        assert len(transaction_results) == 1
+        record = service.storage.load_project(ident, integrated["capability"], now=NOW)
+        assert record.stored_bytes == sum(len(value) for value in snapshot().values())
+
+        record_path = tmp_path / "integration" / "projects" / f"{ident}.json"
+        record_json = json.loads(record_path.read_text())
+        record_json["quota"]["max_bytes"] = record.stored_bytes + 1
+        record_path.write_text(json.dumps(record_json, separators=(",", ":")))
+        before = snapshot()
+        rejected = client.post(route, headers=project_headers(session), json={
+            **payload, "version": delta["version"], "options": {"marked": False},
+        })
+        assert rejected.status_code == 409, rejected.text
+        assert snapshot() == before
+
+
 @pytest.mark.parametrize("declared_length", (None, "1"))
 def test_integrated_upload_uses_actual_bytes_and_rolls_back(tmp_path, declared_length):
     from xraylarch_web.integration_service import IntegrationService
