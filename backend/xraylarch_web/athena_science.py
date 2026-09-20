@@ -283,9 +283,12 @@ def _transforms(group, p, effective, warnings):
             warnings.append("Short k range: automatic kmin was reduced to retain measured data.")
         # Reserve about 1 inverse angstrom at the upper end, less for short data.
         kmax = available - min(1.0, (available - kmin) / 4)
-    if kmin < group.k[0] - 1e-10 or kmax - kmin < 2 * p.kstep:
+    # Slider boundaries can lose a few ulps on subtraction (13 - 12.9 < 0.1).
+    # Accept the numerical boundary without changing the requested FT window.
+    width = kmax - kmin
+    if kmin < group.k[0] - 1e-10 or (width < 2 * p.kstep and not np.isclose(width, 2 * p.kstep, rtol=1e-12, atol=1e-12)):
         raise ScientificError("The FT range must contain at least three measured k points; adjust kmin/kmax.")
-    if p.window not in ("kaiser", "gaussian") and p.dk > 2 * (kmax - kmin):
+    if p.window not in ("kaiser", "gaussian") and p.dk > 2 * width and not np.isclose(p.dk, 2 * width, rtol=1e-12, atol=1e-12):
         raise ScientificError("dk is too wide for the selected k range; reduce dk or widen kmin/kmax.")
     if p.rwindow not in ("kaiser", "gaussian") and p.dr > 2 * (p.rmax - p.rmin):
         raise ScientificError("dr is too wide for the selected R range; reduce dr or widen rmin/rmax.")

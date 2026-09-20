@@ -1,11 +1,11 @@
 "use client"
 
-import { ThemedPlot as Plot } from "./themed-plot"
-import { useEffect, useRef, useState } from "react"
-import { Box, Grid2X2, Waves } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Box, Download, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
-import { DEFAULT_COLORMAP, plotlyColorscale, type AthenaColormap } from "@/lib/athena-colormaps"
+import { DEFAULT_COLORMAP, type AthenaColormap } from "@/lib/athena-colormaps"
+import { WaveletFigure } from "./athena-wavelet-viewer"
 import { ResizablePlotCard } from "./athena-plot-card"
 import styles from "./athena-wavelet.module.css"
 
@@ -30,53 +30,21 @@ function validGrid(data: WaveletResult) {
     data.magnitude.every(row => Array.isArray(row) && row.length === data.k.length && row.every(v => Number.isFinite(v) && v >= 0))
 }
 
-function WaveletFigure({ data, mode, colormap }: { data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap }) {
-  const ref = useRef<HTMLDivElement>(null)
-  const [size, setSize] = useState({ width: 0, height: 0 })
-  const [error, setError] = useState(false)
-  useEffect(() => {
-    const measure = () => {
-      const rect = ref.current?.getBoundingClientRect()
-      const next = { width: Math.round(rect?.width ?? 0), height: Math.round(rect?.height ?? 0) }
-      setSize(previous => previous.width === next.width && previous.height === next.height ? previous : next)
-    }
-    measure()
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
-    if (ref.current) observer?.observe(ref.current)
-    window.addEventListener("resize", measure)
-    return () => { observer?.disconnect(); window.removeEventListener("resize", measure) }
-  }, [])
-
-  // Canvas/WebGL text needs a concrete font family, as in Dr.XAS's wavelet viewer.
-  const font = { family: "Arial, Helvetica, sans-serif", size: 12, color: "#52665b" }
-  const maximum = data.magnitude.reduce((max, row) => row.reduce((m, v) => Math.max(m, v), max), 0) || 1
-  const surface = mode === "3d"
-  const axis = (text: string) => ({ title: { text, font }, tickfont: font, gridcolor: "#e6ece4", zeroline: false })
-  const context = `${data.project_id}:${data.group_id}:${data.version}:${data.kweight}:${mode}`
-  return <div ref={ref} className={styles.figure} aria-label={surface ? "3D wavelet surface" : "2D wavelet heatmap"}>
-    {error ? <div className={styles.empty} role="alert">Could not render the wavelet plot.{surface && " Try the 2D heatmap if 3D graphics are unavailable."}</div> : <Plot
-      data={[{
-        type: surface ? "surface" : "heatmap", x: data.k.slice(), y: data.r.slice(), z: data.magnitude.map(row => row.slice()),
-        colorscale: plotlyColorscale(colormap), ...(surface ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
-        colorbar: { title: { text: "|WT|", font }, tickfont: font, thickness: 12, len: 0.78, outlinewidth: 0, xpad: 8 },
-        hovertemplate: "k = %{x:.2f} Å⁻¹<br>R = %{y:.2f} Å<br>|WT| = %{z:.4g}<extra></extra>",
-      }]}
-      layout={{
-        autosize: true, ...(size.width > 0 ? { width: size.width } : {}), ...(size.height > 0 ? { height: size.height } : {}),
-        font, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
-        margin: surface ? { l: 12, r: 80, t: 20, b: 24 } : { l: 60, r: 80, t: 25, b: 55 },
-        xaxis: { ...axis("k (Å⁻¹)"), range: [data.k[0], data.k[data.k.length - 1]], constrain: "domain" },
-        yaxis: { ...axis("R (Å)"), range: [0, 6] },
-        scene: {
-          xaxis: axis("k (Å⁻¹)"), yaxis: { ...axis("R (Å)"), range: [0, 6] },
-          zaxis: { ...axis("|WT|"), range: [0, maximum] },
-          camera: { eye: { x: -1.7, y: -1.4, z: 1.2 } }, aspectratio: { x: 1.35, y: 1, z: 0.7 },
-        }, showlegend: false, uirevision: context,
-      }}
-      config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `wavelet-k${data.kweight}-${mode}`, scale: 2 } }}
-      useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setError(true)}
-    />}
-  </div>
+function exportWavelet(data: WaveletResult) {
+  const lines = [
+    `# Cauchy wavelet; k-weight = ${data.kweight}; R is not phase corrected`,
+    '# Rows: R (Å); columns: k (Å⁻¹); values: |WT|',
+    ['R / k', ...data.k].join(','),
+    ...data.r.map((r, i) => [r, ...data.magnitude[i]].join(',')),
+  ]
+  const url = URL.createObjectURL(new Blob([lines.join('\n') + '\n'], { type: 'text/csv;charset=utf-8' }))
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = `${data.label.replace(/[^a-zA-Z0-9_-]+/g, '_') || 'spectrum'}-wavelet-k${data.kweight}.csv`
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
 export function AthenaWavelet({ projectId, version, group, pending = false, kWeight, colormap = DEFAULT_COLORMAP }: Props) {
@@ -118,7 +86,7 @@ export function AthenaWavelet({ projectId, version, group, pending = false, kWei
 
   return <section aria-labelledby="ath-wavelet-title">
     <ResizablePlotCard className={styles.panel} storageKey={athenaWaveletHeightKey}
-      plotSelector="#athena-wavelet-viewer" defaultHeight={430}
+      plotSelector="[data-wavelet-main-plot], [data-wavelet-placeholder]" defaultHeight={430}
       resizeLabel="Resize wavelet plot height" controlsId="athena-wavelet-viewer">
       <header className={styles.heading}>
         <h3 id="ath-wavelet-title"><Waves size={17} />Wavelet plotter</h3>
@@ -129,12 +97,13 @@ export function AthenaWavelet({ projectId, version, group, pending = false, kWei
       </header>
       <div className={styles.controls}>
         <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
+        <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button>
       </div>
       <div id="athena-wavelet-viewer" className={styles.viewport}>
-        {reason ? <div className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
-          : current?.error ? <div className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>
-          : current?.data ? <WaveletFigure key={`${key}:${mode}`} data={current.data} mode={mode} colormap={colormap} />
-          : <div className={styles.empty} role="status">Calculating wavelet transform…</div>}
+        {reason ? <div data-wavelet-placeholder className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
+          : current?.error ? <div data-wavelet-placeholder className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>
+          : current?.data ? <WaveletFigure key={key} data={current.data} group={group!} mode={mode} colormap={colormap} />
+          : <div data-wavelet-placeholder className={styles.empty} role="status">Calculating wavelet transform…</div>}
       </div>
       <footer className={styles.footer}><span>Cauchy wavelet · |WT|{current?.data && ` · k-weight ${current.data.kweight}`}</span><span>R is not phase corrected</span></footer>
     </ResizablePlotCard>

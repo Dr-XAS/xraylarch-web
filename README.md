@@ -99,7 +99,13 @@ option. These spectrum settings are independent of the wavelet's magma scale.
 The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
 processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
 both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
-6 Å without phase correction. The plot refreshes after spectrum processing.
+6 Å without phase correction. The Dr.XAS-style 2D viewer adds draggable k-range
+handles and boundary lines alongside windowed χ(k) and Fourier |χ(R)| previews.
+These previews use Larch with the spectrum’s applied window settings and the
+selected viewer k-weight; changing the range does not modify saved processing
+parameters or the wavelet matrix. **Export CSV** downloads the active wavelet
+grid. Both modes retain the resizable plot height, and the plot refreshes after
+spectrum processing.
 
 The Athena import dialog shows a live plot while selecting columns. It also
 recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`

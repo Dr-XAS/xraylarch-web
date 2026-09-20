@@ -60,7 +60,7 @@ test("wavelet plots follow drag resizing, retain their size across modes and res
   await page.locator(".ath-group-select").filter({ has: page.locator("strong", { hasText: spectrum!.label }) }).first().click()
 
   const panel = page.getByRole("region", { name: "Wavelet plotter", exact: true })
-  const viewer = page.locator("#athena-wavelet-viewer")
+  const viewer = page.locator("#athena-wavelet-viewer [data-wavelet-main-plot]")
   const grip = panel.getByRole("separator", { name: "Resize wavelet plot height", exact: true })
   const spectrumGrip = page.getByRole("separator", { name: "Resize spectrum plot height", exact: true })
   const spectrumPlot = page.locator(".ath-plot-card").filter({ has: spectrumGrip }).locator(".ath-plot")

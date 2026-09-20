@@ -54,6 +54,7 @@ frontend/.next-verify/
 frontend/.next-artemis/
 frontend/.next-artemis-check/
 frontend/.next-wavelet-resize-e2e/
+frontend/.next-*/
 !backend/tests/fixtures/demeter-athena-json.prj
 !backend/tests/fixtures/athena-detector-probe.prj
 !backend/tests/fixtures/demeter-mee-LaCoO3.prj

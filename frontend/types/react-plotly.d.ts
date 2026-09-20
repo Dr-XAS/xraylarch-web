@@ -8,6 +8,7 @@ declare module "react-plotly.js" {
     useResizeHandler?: boolean
     style?: CSSProperties
     onClick?: (event: { points?: Array<{ x?: unknown; y?: unknown }> }) => void
+    onRelayout?: (event: Record<string, unknown>) => void
     onInitialized?: () => void
     onError?: (error: Error) => void
   }>

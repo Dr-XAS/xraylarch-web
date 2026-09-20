@@ -19,7 +19,8 @@ type PlotProps = {
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="wavelet-plot" />))
 vi.mock("next/dynamic", () => ({ default: () => plot }))
 vi.mock("@/lib/athena", () => ({ athenaApi: vi.fn() }))
-const api = vi.mocked(athenaApi)
+const api = vi.fn()
+const backendApi = vi.mocked(athenaApi)
 
 const parameters: Parameters = {
   e0: null, step: null, pre1: null, pre2: null, norm1: null, norm2: null, nnorm: null,
@@ -61,8 +62,12 @@ function handoff() {
   return props
 }
 
-beforeEach(() => { vi.useFakeTimers(); api.mockReset(); plot.mockClear(); localStorage.clear() })
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); localStorage.clear() })
+beforeEach(() => {
+  vi.useFakeTimers(); api.mockReset(); backendApi.mockReset(); plot.mockClear(); localStorage.clear()
+  // The wrapper suite owns wavelet fetching; range previews are covered by the viewer suite.
+  backendApi.mockImplementation((path, ...args) => path.endsWith('/wavelet') ? api(path, ...args) : new Promise(() => {}))
+})
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); localStorage.clear() })
 
 describe("AthenaWavelet", () => {
   it("explains empty, unprocessed and failed spectra without calculating", async () => {
@@ -88,6 +93,56 @@ describe("AthenaWavelet", () => {
     expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
     expect(handoff().data[0].z).toEqual(result().magnitude)
     expect(screen.getByText(/Cauchy wavelet.*k-weight 3/)).toBeVisible()
+  })
+
+  it("downloads the current wavelet grid as CSV and disables export while a new revision is pending", async () => {
+    const blobs: Blob[] = []
+    const createObjectURL = vi.fn((blob: Blob) => { blobs.push(blob); return "blob:wavelet-export" })
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal("URL", class extends URL { static createObjectURL = createObjectURL; static revokeObjectURL = revokeObjectURL })
+    const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    const next = deferred()
+    api.mockResolvedValueOnce(result()).mockReturnValueOnce(next.promise)
+    const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
+    const exportButton = screen.getByRole("button", { name: "Export CSV" })
+    expect(exportButton).toBeDisabled()
+    fireEvent.click(exportButton)
+    expect(createObjectURL).not.toHaveBeenCalled()
+    await calculate()
+    expect(exportButton).toBeEnabled()
+
+    view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
+    expect(exportButton).toBeDisabled()
+    fireEvent.click(exportButton)
+    expect(createObjectURL).not.toHaveBeenCalled()
+    await calculate()
+    const current = result({ version: 5, label: "Cu foil / scan 2", magnitude: [[0, 0.5, 2.5, 0], [2, 7, 3, 1], [1, 2, 1, 0]] })
+    await act(async () => { next.resolve(current) })
+    expect(exportButton).toBeEnabled()
+    // The range controls update Fourier companions; CSV still contains the full current wavelet grid.
+    fireEvent.change(screen.getByRole("slider", { name: "k minimum" }), { target: { value: "1" } })
+    fireEvent.click(exportButton)
+    expect(createObjectURL).toHaveBeenCalledOnce()
+    expect(blobs[0].type).toBe("text/csv;charset=utf-8")
+    const read = new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(blobs[0])
+    })
+    expect(revokeObjectURL).not.toHaveBeenCalled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+    expect(await read).toBe([
+      "# Cauchy wavelet; k-weight = 3; R is not phase corrected",
+      "# Rows: R (Å); columns: k (Å⁻¹); values: |WT|",
+      "R / k,0,1,2,3", "0,0,0.5,2.5,0", "1,2,7,3,1", "2,1,2,1,0", "",
+    ].join("\n"))
+    expect(click).toHaveBeenCalledOnce()
+    const anchor = click.mock.instances[0] as HTMLAnchorElement
+    expect(anchor.download).toBe("Cu_foil_scan_2-wavelet-k3.csv")
+    expect(anchor.href).toBe("blob:wavelet-export")
+    expect(anchor.isConnected).toBe(false)
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith("blob:wavelet-export")
   })
 
   it("uses saved k-weight when effective weight is absent and supports an explicit override and Auto reset", async () => {
