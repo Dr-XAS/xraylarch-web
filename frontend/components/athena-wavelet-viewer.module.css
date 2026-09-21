@@ -17,7 +17,7 @@
 .rangeInput::-webkit-slider-thumb { pointer-events: auto; appearance: none; width: 24px; height: 24px; margin-top: -10px; border: 0; background: transparent; cursor: ew-resize; }
 .rangeInput::-moz-range-track, .rangeInput::-moz-range-progress { height: 4px; background: transparent; border: 0; }
 .rangeInput::-moz-range-thumb { pointer-events: auto; appearance: none; width: 24px; height: 24px; border: 0; background: transparent; cursor: ew-resize; }
-.marker { pointer-events: none; position: absolute; top: 2px; z-index: 20; width: 20px; height: 20px; border-radius: 50%; background: rgb(109 40 217 / 80%); transform: translateX(-50%); box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
+.marker { pointer-events: none; position: absolute; top: 4px; z-index: 20; width: 16px; height: 16px; border-radius: 50%; background: rgb(109 40 217 / 80%); transform: translateX(-50%); box-shadow: 0 1px 3px rgb(0 0 0 / 12%); }
 .focusedMarker { outline: 2px solid #8b5cf6; outline-offset: 3px; }
 .rangeValue { pointer-events: none; position: absolute; top: 26px; transform: translateX(-50%); color: var(--ath-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
 .notice { display: flex; grid-row: 1 / -1; flex-direction: column; align-items: center; justify-content: center; gap: 10px; min-height: 180px; height: 100%; padding: 24px; color: var(--ath-muted); text-align: center; font-size: var(--text-body); }

@@ -101,6 +101,19 @@ def test_duplicate_is_inserted_immediately_after_its_source(store, two_groups):
     assert command(store, undone, "redo")["groups"] == result["groups"]
 
 
+def test_empty_group_folder_survives_save_load_undo_and_redo(store):
+    project = store.create()
+    created = command(store, project, "project", group_folders=[
+        {"id": "empty", "name": "New group", "group_ids": []},
+    ])
+    assert created["group_folders"] == [{"id": "empty", "name": "New group", "group_ids": []}]
+    assert store.load(project["id"])["group_folders"] == created["group_folders"]
+    undone = command(store, created, "undo")
+    assert undone["group_folders"] == []
+    redone = command(store, undone, "redo")
+    assert redone["group_folders"] == created["group_folders"]
+
+
 def test_group_folders_gather_nonadjacent_spectra_atomically_without_changing_group_revisions(store, xas_arrays):
     x, y = xas_arrays
     project = store.create()
@@ -151,6 +164,61 @@ def test_group_folder_membership_follows_duplicate_and_prunes_deleted_spectra(st
     assert empty["group_added_orders"] == {}
 
 
+def test_group_folder_move_and_order_are_one_undoable_change_without_processing(store, two_groups, monkeypatch):
+    project = two_groups
+    for spectrum in two_groups["groups"]:
+        project = command(store, project, "duplicate", [spectrum["id"]])
+    ids = [spectrum["id"] for spectrum in project["groups"]]
+    project = command(store, project, "project", group_folders=[
+        {"id": "source", "name": "Source", "group_ids": [ids[0]]},
+        {"id": "destination", "name": "Destination", "group_ids": ids[2:]},
+    ])
+    before = deepcopy(project)
+
+    def no_processing(*args, **kwargs):
+        raise AssertionError("Moving spectra between folders must not process them")
+
+    monkeypatch.setattr(store, "process", no_processing)
+    expected_order = ids[2:] + ids[:2]
+    moved = command(store, project, "project", group_order=expected_order, group_folders=[
+        {"id": "source", "name": "Source", "group_ids": []},
+        {"id": "destination", "name": "Destination", "group_ids": ids},
+    ])
+
+    assert [spectrum["id"] for spectrum in moved["groups"]] == expected_order
+    assert moved["group_folders"] == [
+        {"id": "source", "name": "Source", "group_ids": []},
+        {"id": "destination", "name": "Destination", "group_ids": expected_order},
+    ]
+    assert moved["version"] == before["version"] + 1
+    assert len(moved["undo"]) == len(before["undo"]) + 1
+    assert moved["group_versions"] == before["group_versions"]
+    assert moved["group_added_orders"] == before["group_added_orders"]
+    assert {spectrum["id"]: spectrum for spectrum in moved["groups"]} == {
+        spectrum["id"]: spectrum for spectrum in before["groups"]}
+    assert store.load(moved["id"]) == moved
+    undone = command(store, moved, "undo")
+    assert undone["groups"] == before["groups"]
+    assert undone["group_folders"] == before["group_folders"]
+    assert undone["group_versions"] == before["group_versions"]
+    redone = command(store, undone, "redo")
+    assert redone["groups"] == moved["groups"]
+    assert redone["group_folders"] == moved["group_folders"]
+    assert redone["group_versions"] == moved["group_versions"]
+
+
+@pytest.mark.parametrize("invalid_order", [None, "first", {}, [], ["first"],
+    ["first", "first"], ["first", "missing"], ["first", 42], ["first", {}]])
+def test_invalid_group_order_rejects_folder_and_project_changes_atomically(store, two_groups, invalid_order):
+    ids = [spectrum["id"] for spectrum in two_groups["groups"]]
+    order = json.loads(json.dumps(invalid_order).replace('"first"', json.dumps(ids[0])))
+    before = deepcopy(two_groups)
+    with pytest.raises(WebInputError, match="order.*every spectrum exactly once"):
+        command(store, two_groups, "project", name="Should not save", group_order=order,
+                group_folders=[{"id": "pair", "name": "Pair", "group_ids": ids}])
+    assert store.load(two_groups["id"]) == before
+
+
 def test_added_order_survives_manual_reorder_and_new_groups_sort_after_existing(store, two_groups, xas_arrays):
     original_ids = [group["id"] for group in two_groups["groups"]]
     original_orders = deepcopy(two_groups["group_added_orders"])
@@ -196,7 +264,7 @@ def test_invalid_group_folder_payload_is_rejected_atomically(store, two_groups, 
     serialized = json.loads(json.dumps(folders).replace('"first"', json.dumps(ids[0])).replace('"second"', json.dumps(ids[1])))
     before = deepcopy(two_groups)
     with pytest.raises(WebInputError, match="folder|spectrum"):
-        command(store, two_groups, "project", group_folders=serialized)
+        command(store, two_groups, "project", group_folders=serialized, group_order=list(reversed(ids)))
     assert store.load(two_groups["id"]) == before
 
 
@@ -570,21 +638,24 @@ def test_project_round_trip_remaps_group_folder_members_and_subset_export_prunes
     grouped = command(store, exchange_project, "project", group_folders=[
         {"id": "samples", "name": "Samples", "group_ids": [original_ids[0], original_ids[2]]},
         {"id": "standards", "name": "Standards", "group_ids": [original_ids[1]]},
+        {"id": "empty", "name": "New group", "group_ids": []},
     ])
     payload = store.export_project(grouped["id"], format)
     destination = store.create()
     restored = store.restore(destination["id"], 0, payload, f"folders.{format}")
     restored_by_label = {group["label"]: group["id"] for group in restored["groups"]}
     original_by_id = {group["id"]: group["label"] for group in grouped["groups"]}
-    assert [folder["name"] for folder in restored["group_folders"]] == ["Samples", "Standards"]
+    assert [folder["name"] for folder in restored["group_folders"]] == ["Samples", "Standards", "New group"]
     assert restored["group_folders"][0]["id"] != "samples"
     assert restored["group_folders"][1]["id"] != "standards"
+    assert restored["group_folders"][2]["id"] != "empty"
     assert restored["group_folders"][0]["group_ids"] == [
         restored_by_label[original_by_id[group_id]] for group_id in grouped["group_folders"][0]["group_ids"]
     ]
     assert restored["group_folders"][1]["group_ids"] == [
         restored_by_label[original_by_id[group_id]] for group_id in grouped["group_folders"][1]["group_ids"]
     ]
+    assert restored["group_folders"][2]["group_ids"] == []
 
     selected_ids = [grouped["group_folders"][0]["group_ids"][0]]
     subset = store.project_for_export(grouped, selected_ids)
@@ -592,7 +663,10 @@ def test_project_round_trip_remaps_group_folder_members_and_subset_export_prunes
     assert subset["group_added_orders"] == {
         selected_ids[0]: grouped["group_added_orders"][selected_ids[0]]
     }
-    assert subset["group_folders"] == [{"id": "samples", "name": "Samples", "group_ids": selected_ids}]
+    assert subset["group_folders"] == [
+        {"id": "samples", "name": "Samples", "group_ids": selected_ids},
+        {"id": "empty", "name": "New group", "group_ids": []},
+    ]
 
 
 def test_prj_export_is_readable_by_local_larch(store, exchange_project, tmp_path):

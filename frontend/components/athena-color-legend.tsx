@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect } from "react"
-import { ChevronDown } from "lucide-react"
-import { isPlotPalette, plotPalettes, type PlotColorSettings } from "@/lib/athena-plot-colors"
+import { isPlotPalette, plotPaletteOptions, type PlotColorSettings } from "@/lib/athena-plot-colors"
+import { AthenaColorLegendControl } from "./athena-color-legend-control"
 
 const storageKey = "athena.plot-colors"
 
@@ -23,26 +23,9 @@ export function AthenaColorLegend({ value, onChange, disabled = false }: {
     try { localStorage.setItem(storageKey, JSON.stringify(next)) } catch { /* Keep the session preference. */ }
   }
 
-  const stops = [...plotPalettes[value.palette].colors]
-  if (value.reversed) stops.reverse()
-  const background = value.palette === "classic"
-    ? `linear-gradient(to right, ${stops.map((color, index) => `${color} ${index / stops.length * 100}% ${(index + 1) / stops.length * 100}%`).join(", ")})`
-    : `linear-gradient(to right, ${stops.join(", ")})`
-
-  return <div className="ath-color-legend" role="group" aria-label="Spectrum colors" aria-disabled={disabled}>
-    <div className="ath-color-preview" title="Click the colorbar to choose how plotted groups are colored.">
-      <span>First</span>
-      <label className="ath-color-ramp-picker">
-        <span className="ath-color-ramp" style={{ background }} aria-hidden="true" />
-        <ChevronDown size={14} strokeWidth={1.75} aria-hidden="true" />
-        <select aria-label="Color legend" value={value.palette} disabled={disabled} onChange={event => {
-          if (isPlotPalette(event.target.value)) update({ ...value, palette: event.target.value })
-        }}>
-          {Object.entries(plotPalettes).map(([id, palette]) => <option key={id} value={id}>{palette.label}</option>)}
-        </select>
-      </label>
-      <span>Last</span>
-    </div>
-    <label className="ath-check"><input type="checkbox" checked={value.reversed} disabled={disabled} onChange={event => update({ ...value, reversed: event.target.checked })} />Reverse</label>
-  </div>
+  return <AthenaColorLegendControl label="Spectrum colors" pickerLabel="Color legend" endpoints={["First", "Last"]}
+    title="Click the colorbar to choose how plotted groups are colored."
+    options={plotPaletteOptions(value.reversed)} value={value.palette} reversed={value.reversed} disabled={disabled}
+    onPaletteChange={palette => update({ ...value, palette })}
+    onReverseChange={reversed => update({ ...value, reversed })} />
 }

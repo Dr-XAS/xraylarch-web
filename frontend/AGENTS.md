@@ -7,3 +7,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+## Shared viewer controls
+
+Reuse existing viewer components for repeated controls rather than copying their markup or CSS. Spectrum and Wavelet color controls share `AthenaColorLegendControl` and `AthenaRampPicker`; continuous palette definitions and previews come from `lib/athena-colormaps.ts`. Keep viewer-specific labels, categorical options, state, and storage in their callers. Presentation-only changes must not trigger scientific recalculation.

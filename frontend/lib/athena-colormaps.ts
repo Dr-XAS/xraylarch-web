@@ -128,10 +128,20 @@ export function plotlyColorscale(colormap: AthenaColormap, reversed = false): [n
     : stops.map(([position, color]) => [position, color])
 }
 
-export function spectrumColor(colormap: AthenaColormap, index: number, count: number): string {
-  const [start, end] = SPECTRUM_RANGES[colormap]
-  const fraction = count <= 1 ? 0.5 : Math.max(0, Math.min(1, index / (count - 1)))
-  const position = start + fraction * (end - start)
+export function colorscaleGradient(stops: readonly (readonly [number, string])[]): string {
+  return `linear-gradient(to right, ${stops.map(([position, color]) => `${color} ${position * 100}%`).join(", ")})`
+}
+
+export function colormapOptions(reversed = false): { value: AthenaColormap; label: string; background: string }[] {
+  return ATHENA_COLORMAPS.map(option => ({
+    ...option,
+    background: colorscaleGradient(plotlyColorscale(option.value, reversed)),
+  }))
+}
+
+/** Sample the full continuous map at its explicit stop positions, matching Plotly. */
+export function sampleColormap(colormap: AthenaColormap, fraction: number): string {
+  const position = Math.max(0, Math.min(1, fraction))
   const stops = COLOR_STOPS[colormap]
   const right = stops.findIndex(([stop]) => stop >= position)
   const [leftPosition, leftColor] = stops[Math.max(0, right - 1)]
@@ -143,4 +153,10 @@ export function spectrumColor(colormap: AthenaColormap, index: number, count: nu
     return Math.round(left + (right - left) * mix).toString(16).padStart(2, "0")
   })
   return `#${channels.join("")}`
+}
+
+export function spectrumColor(colormap: AthenaColormap, index: number, count: number): string {
+  const [start, end] = SPECTRUM_RANGES[colormap]
+  const fraction = count <= 1 ? 0.5 : Math.max(0, Math.min(1, index / (count - 1)))
+  return sampleColormap(colormap, start + fraction * (end - start))
 }

@@ -107,14 +107,16 @@ describe("AthenaWavelet", () => {
     const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     const palette = screen.getByRole("combobox", { name: "Wavelet color legend" })
     const colorGroup = screen.getByRole("group", { name: "Wavelet colors" })
-    expect(palette).toHaveValue("magma")
-    expect(palette.querySelectorAll("option")).toHaveLength(11)
+    expect(palette).toHaveAttribute("title", "Magma · black–purple–yellow")
+    fireEvent.click(palette)
+    expect(screen.getAllByRole("option")).toHaveLength(11)
+    expect(screen.getByRole("listbox", { name: "Wavelet color legend" })).not.toHaveTextContent("Magma")
     expect(colorGroup).toHaveTextContent("Low")
     expect(colorGroup).toHaveTextContent("High")
     await calculate()
     expect(waveletHandoff().data[0].colorscale).toEqual(plotlyColorscale("magma"))
 
-    fireEvent.change(palette, { target: { value: "turbo" } })
+    fireEvent.click(screen.getByRole("option", { name: "Turbo · blue–green–red" }))
     expect(waveletHandoff().data[0].colorscale).toEqual(plotlyColorscale("turbo"))
     fireEvent.click(screen.getByRole("checkbox", { name: "Reverse" }))
     expect(waveletHandoff().data[0].colorscale).toEqual(plotlyColorscale("turbo", true))
@@ -127,7 +129,7 @@ describe("AthenaWavelet", () => {
 
     view.unmount()
     render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
-    expect(screen.getByRole("combobox", { name: "Wavelet color legend" })).toHaveValue("turbo")
+    expect(screen.getByRole("combobox", { name: "Wavelet color legend" })).toHaveAttribute("title", "Turbo · blue–green–red")
     expect(screen.getByRole("checkbox", { name: "Reverse" })).toBeChecked()
   })
 
