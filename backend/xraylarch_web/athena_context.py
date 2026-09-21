@@ -114,7 +114,12 @@ def context_parameters(store, project, groups, options):
     if source:
         effective = (source.get('result') or {}).get('effective', {})
         values = source['parameters'] | {'background_standard_id': source.get('background_standard_id')} | choice.values
-        values = {key: effective.get(key, value) if value is None and key != 'background_standard_id' else value
+        # Automatic upper k limits depend on each destination's measured range.
+        # Freezing the source's resolved maxima makes an otherwise valid batch
+        # fail when any destination is shorter. Keep those recipe values auto;
+        # explicit source/draft limits still go through normal validation.
+        automatic_keys = {'background_standard_id', 'bkg_kmax', 'kmax'}
+        values = {key: effective.get(key, value) if value is None and key not in automatic_keys else value
                   for key, value in values.items()}
         metadata.update(importance=importance(source), multiplier=source['multiplier'], offset=source['offset'])
         identity = deepcopy(source['source'].get('edge_identity'))

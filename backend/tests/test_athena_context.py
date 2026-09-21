@@ -73,6 +73,91 @@ def test_parameter_selection_conflict_and_invalid_pair_roll_back(workspace):
         assert store.load(p['id']) == p
 
 
+@pytest.mark.parametrize('section', ['background', 'forward', 'all'])
+@pytest.mark.parametrize('scope', ['all', 'marked'])
+def test_example_section_copy_preserves_automatic_k_limits_and_exact_scope(tmp_path, monkeypatch, section, scope):
+    """The 10 K foil reaches k=25; the room-temperature targets stop earlier."""
+    settings = Settings(data_root=tmp_path)
+    store = AthenaStore(settings)
+    p = store.create()
+    p = store.command(p['id'], Command(version=p['version'], action='example'))
+    with TestClient(create_app(settings)) as client:
+        p = accepted(command(client, p, 'parameters', rbkg=1.2, kweight=3))
+        p = accepted(command(client, p, 'metadata', (0, 2), marked=False))
+        before = deepcopy(p)
+        indices = tuple(range(4)) if scope == 'all' else tuple(
+            i for i, group in enumerate(p['groups']) if group['marked'])
+        changed = {p['groups'][i]['id'] for i in indices if i != 0}
+        calls = []
+        process = AthenaStore.process
+
+        def counted_process(self, group, project=None):
+            calls.append(group['id'])
+            return process(self, group, project)
+
+        monkeypatch.setattr(AthenaStore, 'process', counted_process)
+        p = accepted(command(client, p, 'context_parameters', indices,
+                             source_id=p['groups'][0]['id'], section=section,
+                             values=p['groups'][0]['parameters']))
+        assert set(calls) == changed and len(calls) == len(changed)
+        assert p['version'] == before['version'] + 1
+        assert len(p['history']) == len(before['history']) + 1
+        assert len(p['undo']) == len(before['undo']) + 1
+        assert not p['last_operation']['skipped_group_ids']
+        for index, group in enumerate(p['groups']):
+            if group['id'] not in changed:
+                assert group == before['groups'][index]
+                continue
+            assert group['parameters']['bkg_kmax'] is None
+            assert group['parameters']['kmax'] is None
+            assert group['parameters']['rbkg'] == (1.2 if section in ('background', 'all') else 1.)
+            assert group['parameters']['kweight'] == (3 if section in ('forward', 'all') else 2.)
+            assert group['energy'] == before['groups'][index]['energy']
+            assert group['mu'] == before['groups'][index]['mu']
+            assert group['processing_error'] is None
+            effective = group['result']['effective']
+            assert effective['kmax'] < effective['available_kmax'] <= effective['bkg_kmax']
+            if index >= 2:
+                assert effective['bkg_kmax'] < before['groups'][0]['result']['effective']['bkg_kmax']
+        assert store.load(p['id'])['groups'] == p['groups']
+        restored = accepted(command(client, p, 'undo', ()))
+        assert restored['groups'] == before['groups']
+
+
+@pytest.mark.parametrize(('section', 'key'), [('background', 'bkg_kmax'), ('forward', 'kmax')])
+def test_example_section_copy_never_relaxes_explicit_invalid_limits(tmp_path, section, key):
+    settings = Settings(data_root=tmp_path)
+    store = AthenaStore(settings)
+    p = store.create()
+    p = store.command(p['id'], Command(version=p['version'], action='example'))
+    with TestClient(create_app(settings)) as client:
+        p = accepted(command(client, p, 'parameters', **{key: 24.}))
+        response = command(client, p, 'context_parameters', (1, 2, 3),
+                           source_id=p['groups'][0]['id'], section=section,
+                           values=p['groups'][0]['parameters'])
+        assert response.status_code == 400
+        assert store.load(p['id']) == p
+
+
+@pytest.mark.parametrize('draft_auto', [False, True])
+def test_automatic_section_limits_replace_explicit_destination_limits(workspace, draft_auto):
+    store, p, client = workspace
+    p = accepted(command(client, p, 'parameters', (1,), bkg_kmax=7, kmax=6))
+    if draft_auto:
+        p = accepted(command(client, p, 'parameters', bkg_kmax=8, kmax=7))
+    before = deepcopy(p)
+    p = accepted(command(client, p, 'context_parameters', (1,),
+                         source_id=p['groups'][0]['id'], section='all',
+                         **({'values': {'bkg_kmax': None, 'kmax': None}} if draft_auto else {})))
+    target = p['groups'][1]
+    assert target['parameters']['bkg_kmax'] is None
+    assert target['parameters']['kmax'] is None
+    assert target['result']['effective']['bkg_kmax'] > 8
+    assert target['result']['effective']['kmax'] > 7
+    assert p['groups'][0] == before['groups'][0]
+    assert p['groups'][2] == before['groups'][2]
+
+
 def test_native_all_copies_exact_supported_sections_skips_source_and_frozen(workspace):
     store, p, client = workspace
     p = accepted(command(client, p, 'parameters', (0,), step=.9, energy_shift=-2, rbkg=1.2,
