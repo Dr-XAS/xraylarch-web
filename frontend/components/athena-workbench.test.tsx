@@ -1775,6 +1775,78 @@ describe("AthenaWorkbench native context actions", () => {
   })
 
   it.each([
+    ['Normalization', 'background', 'normalization and background parameters', 'rbkg', 2.5],
+    ['Background removal', 'background', 'normalization and background parameters', 'rbkg', 2.5],
+    ['Forward Fourier transform', 'forward', 'forward transform parameters', 'kmin', 4],
+    ['Backward Fourier transform', 'reverse', 'backward transform parameters', 'rmin', 1.5],
+  ] as const)('copies the %s section to all or marked groups in one responsive batch', async (control, section, label, key, value) => {
+    for (const scope of ['all', 'marked'] as const) {
+      const initial = projectFixture()
+      initial.groups[0].marked = true
+      initial.groups[0].parameters = { ...parameters, kmax: null, bkg_kmax: null, [key]: value }
+      initial.groups[0].result!.effective = { e0: 8979, edge_step: 1, kmax: 24, bkg_kmax: 25.019 }
+      initial.groups[2].frozen = true
+      const project = await openSaved(initial)
+      // Filtering the list must not narrow either command's destination set.
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: 'Foil' } })
+      const pending = deferred<AthenaProject>()
+      api.mockReturnValueOnce(pending.promise)
+      fireEvent.contextMenu(screen.getByRole('button', { name: `Actions for ${control}` }), { clientX: 250, clientY: 300 })
+      fireEvent.click(screen.getByRole('menuitem', { name: `Set ${scope} groups to current ${label}` }))
+      expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+        version: project.version, action: 'context_parameters',
+        group_ids: scope === 'all' ? ['sample', 'oxide', 'unused'] : ['sample', 'oxide'],
+        options: { mode: 'copy', section, source_id: 'foil', values: initial.groups[0].parameters },
+      })
+      // Preserve automatic bounds in the payload, even though the source displays 24/25.019.
+      expect(screen.queryByRole('menu')).toBeNull()
+      expect(screen.getByRole('status')).toHaveTextContent('Copying current values')
+      expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toBeDisabled()
+      const legend = screen.getByRole('checkbox', { name: 'Show legend' })
+      fireEvent.click(legend)
+      expect(legend).not.toBeChecked()
+      expect(plotProps().groups).toEqual(project.groups.filter(g => g.marked))
+      const copied = (g: AthenaGroup): Partial<AthenaGroup> => ({
+        parameters: { ...g.parameters, [key]: value, ...(section === 'background' ? { bkg_kmax: null } : section === 'forward' ? { kmax: null } : {}) },
+        result: { ...g.result!, effective: { ...g.result!.effective, kmax: 13, bkg_kmax: 14.9 } },
+      })
+      const next = nextProject(project, {
+        sample: copied(project.groups[1]), ...(scope === 'all' ? { unused: copied(project.groups[3]) } : {}),
+      })
+      next.last_operation = { action: 'context_parameters', skipped_group_ids: ['oxide'] }
+      await act(async () => pending.resolve(next))
+      await waitForWorkbenchIdle()
+      expect(screen.getByRole('status')).toHaveTextContent('Copying current values · complete · 1 group skipped')
+      fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: '' } })
+      for (const [index, changed] of [[1, true], [2, false], [3, scope === 'all']] as const) {
+        selectGroup(project.groups[index].label)
+        expect(plotProps().active?.parameters[key]).toBe(changed ? value : project.groups[index].parameters[key])
+      }
+      selectGroup('Foil scan')
+      expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+      expect(api).toHaveBeenCalledTimes(2) // Load + one batch; selection/display changes need no processing.
+      cleanup(); api.mockClear(); plot.mockClear(); localStorage.clear()
+    }
+  })
+
+  it('shows a failed section copy and allows retry without publishing partial results', async () => {
+    const project = await openSaved()
+    api.mockRejectedValueOnce(new Error('The requested spline range is outside the destination spectrum.'))
+    fireEvent.click(within(fieldContext('Background removal')).getByRole('menuitem', { name: 'Set all groups to current normalization and background parameters' }))
+    await waitForWorkbenchIdle()
+    expect(screen.getByRole('alert')).toHaveTextContent('The requested spline range is outside the destination spectrum.')
+    expect(plotProps().groups).toEqual(project.groups.filter(g => g.marked))
+    api.mockResolvedValueOnce(nextProject(project, { sample: { parameters: project.groups[0].parameters } }))
+    fireEvent.click(within(fieldContext('Background removal')).getByRole('menuitem', { name: 'Set all groups to current normalization and background parameters' }))
+    await waitForWorkbenchIdle()
+    expect(screen.queryByRole('alert')).toBeNull()
+    selectGroup('Sample scan')
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+    expect(api).toHaveBeenCalledTimes(3)
+    expect(api.mock.calls[2]).toEqual(api.mock.calls[1])
+  })
+
+  it.each([
     ['Pre-edge start', 'Pre-edge start', ['pre1', 'pre2']],
     ['Post-edge start', 'Post-edge start', ['norm1', 'norm2']],
     ['FT k min', 'FT k min', ['kmin', 'kmax']],

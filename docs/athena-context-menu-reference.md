@@ -74,6 +74,13 @@ taper/window/clamp-point controls alone. Existing broad web batch-copy/reset
 commands retain their previous meanings; the context sections use a separate
 `context_parameters` command.
 
+Automatic spline and forward-transform upper k limits (`bkg_kmax` and `kmax`)
+remain automatic when copying a section. Each destination resolves these limits
+from its own measured range; a longer source scan must not force an unavailable
+k range onto shorter scans. Explicit source or draft limits are copied exactly
+and still reject the complete operation if any target cannot process them. Other
+automatic normalization values continue to copy the source's resolved values.
+
 Copying fixed-step mode freezes each destination's **own** existing step when
 the source is fixed. An automatic source returns each destination to automatic
 step calculation. This duplicates the native boolean without substituting the
