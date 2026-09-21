@@ -182,7 +182,7 @@ describe("integration mode", () => {
   })
 
   it("gates mutation controls and selected import when operations are not granted", async () => {
-    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")] }) : Promise.reject(new Error(`unexpected ${path}`)))
+    api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project", groups: [group("foil", "Foil scan")], undo: ["before edit"], redo: ["after edit"] }) : Promise.reject(new Error(`unexpected ${path}`)))
     render(<AthenaWorkbench session={{ ...integrationSession, returnTo: "/projects/native" }} />)
     await screen.findByText("SPECTRUM WORKSPACE")
     expect(screen.queryByRole("button", { name: /^Import data$/i })).not.toBeInTheDocument()
@@ -191,6 +191,8 @@ describe("integration mode", () => {
     expect(screen.queryByRole("button", { name: /plot shortcuts/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /edit group information/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Edit" }))
+    expect(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Undo" })).toBeDisabled()
+    expect(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Redo" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /excel report on all groups/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Plot" }))
     expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
@@ -642,6 +644,49 @@ describe("AthenaWorkbench menu command search", () => {
     await waitFor(() => expect(searchbox).toHaveFocus())
     return { trigger, dialog, searchbox }
   }
+
+  it("restores the last removed spectrum from Edit > Undo and reapplies it from menu search", async () => {
+    const project = await openSaved(projectFixture({ groups: [group("foil", "Foil scan", true)] }))
+    const navigation = screen.getByRole("navigation", { name: /main menu/i })
+    fireEvent.click(within(navigation).getByRole("button", { name: "Edit" }))
+    expect(within(navigation).getByRole("button", { name: "Undo" })).toBeDisabled()
+    expect(within(navigation).getByRole("button", { name: "Redo" })).toBeDisabled()
+
+    const removed = { ...project, version: project.version + 1, groups: [], undo: ["undo-7.json"] }
+    api.mockResolvedValueOnce(removed)
+    fireEvent.click(within(navigation).getByRole("button", { name: "Group" }))
+    fireEvent.click(within(navigation).getByRole("button", { name: "Remove current group" }))
+    await waitForCommand(project.id, { version: project.version, action: "delete", group_ids: ["foil"], options: {} })
+    expect(listedGroupIds()).toEqual([])
+
+    const restored = { ...project, version: project.version + 2, redo: ["redo-8.json"] }
+    const undoRequest = deferred<AthenaProject>()
+    api.mockReturnValueOnce(undoRequest.promise)
+    fireEvent.click(within(navigation).getByRole("button", { name: "Edit" }))
+    expect(within(navigation).getByRole("button", { name: "Undo" })).toBeEnabled()
+    fireEvent.click(within(navigation).getByRole("button", { name: "Undo" }))
+    expect(within(navigation).getByRole("button", { name: "Edit" })).toHaveAttribute("aria-expanded", "false")
+    fireEvent.click(within(navigation).getByRole("button", { name: "Edit" }))
+    expect(within(navigation).getByRole("button", { name: "Undo" })).toBeDisabled()
+    await act(async () => { undoRequest.resolve(restored) })
+    await waitForCommand(project.id, { version: removed.version, action: "undo", group_ids: [], options: {} })
+    expect(listedGroupIds()).toEqual(["foil"])
+    expect(plotProps().active).toEqual(project.groups[0])
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(project.groups[0].parameters.rbkg)
+    expect(within(navigation).getByRole("button", { name: "Undo" })).toBeDisabled()
+    expect(within(navigation).getByRole("button", { name: "Redo" })).toBeEnabled()
+
+    fireEvent.click(within(navigation).getByRole("button", { name: "Search menu" }))
+    const dialog = screen.getByRole("dialog", { name: "Search menu commands" })
+    fireEvent.change(within(dialog).getByRole("searchbox"), { target: { value: "redo" } })
+    const redo = within(dialog).getByRole("button", { name: "Edit › Redo" })
+    expect(redo).toBeEnabled()
+    api.mockResolvedValueOnce({ ...removed, version: project.version + 3 })
+    fireEvent.click(redo)
+    await waitForCommand(project.id, { version: restored.version, action: "redo", group_ids: [], options: {} })
+    expect(listedGroupIds()).toEqual([])
+    expect(screen.queryByRole("dialog", { name: "Search menu commands" })).not.toBeInTheDocument()
+  })
 
   it("moves plot shortcuts into the Plot menu and opens the existing dialog", async () => {
     await openSaved()
@@ -4497,7 +4542,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
   })
 
   it("blocks project-changing actions while an automatic parameter update is pending", async () => {
-    const project = await openSaved(projectFixture({ undo: ["before edit"] }))
+    const project = await openSaved(projectFixture({ undo: ["before edit"], redo: ["after edit"] }))
     vi.useFakeTimers()
     editNumber(/^Rbkg/, 2.2)
 
@@ -4505,6 +4550,10 @@ describe("AthenaWorkbench group selection and drafts", () => {
     expect(screen.getByRole("button", { name: project.name })).toBeDisabled()
     expect(screen.getByRole("button", { name: /^Open project$/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Import data" })).toBeDisabled()
+    const navigation = screen.getByRole("navigation", { name: /main menu/i })
+    fireEvent.click(within(navigation).getByRole("button", { name: "Edit" }))
+    expect(within(navigation).getByRole("button", { name: "Undo" })).toBeDisabled()
+    expect(within(navigation).getByRole("button", { name: "Redo" })).toBeDisabled()
     fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "File" }))
     expect(screen.getByRole("button", { name: "New project" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /^Open project…$/i })).toBeDisabled()
