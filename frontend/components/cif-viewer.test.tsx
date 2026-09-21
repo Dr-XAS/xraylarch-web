@@ -59,6 +59,25 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe("CifViewer", () => {
+  it("preserves the display radius and renderer when the docked viewer is collapsed", async () => {
+    render(<CifViewer structure={structure()} collapsible structureControls={<p>Saved crystal structure</p>} />)
+    await ready()
+    expect(screen.getAllByText("CIF structure viewer")).toHaveLength(1)
+    expect(screen.getByText("Saved crystal structure")).toBeVisible()
+    fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "5" } })
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse CIF structure viewer" }))
+    expect(screen.getByRole("button", { name: "Expand CIF structure viewer" })).toHaveAttribute("aria-expanded", "false")
+    expect(screen.queryByRole("slider", { name: "CIF display radius" })).not.toBeInTheDocument()
+    expect(screen.getByText("Saved crystal structure")).not.toBeVisible()
+    expect(createViewer).toHaveBeenCalledOnce()
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand CIF structure viewer" }))
+    expect(screen.getByRole("slider", { name: "CIF display radius" })).toHaveValue("5")
+    expect(screen.getByText("Saved crystal structure")).toBeVisible()
+    expect(createViewer).toHaveBeenCalledOnce()
+  })
+
   it("updates radius and center geometry while retaining one renderer", async () => {
     const attached = structure()
     const original = structuredClone(attached)

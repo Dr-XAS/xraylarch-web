@@ -16,6 +16,7 @@ interface Props {
   projectId?: string
   version?: number
   onProjectChange?: (project: AthenaProject) => void
+  onViewStructure?: (attachmentId: string) => void
   disabled?: boolean
   availableSlots: number
   existingPaths?: Pick<ArtemisInspectedPath, "filename" | "content">[]
@@ -25,7 +26,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : "
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
 const amcsdLabel = (id: number) => `AMCSD ${String(id).padStart(7, "0")}`
 
-export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
+export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, onViewStructure, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const viewerAnchor = useRef<HTMLDivElement>(null)
@@ -65,6 +66,8 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   callback.current = onAddPaths
   const projectCallback = useRef(onProjectChange)
   projectCallback.current = onProjectChange
+  const viewCallback = useRef(onViewStructure)
+  viewCallback.current = onViewStructure
   const currentProject = useRef(projectId)
   currentProject.current = projectId
   const attachPending = busy === "attach"
@@ -134,6 +137,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       setSite("")
       setBusy(null)
     }
+    viewCallback.current?.(attachment.id)
     openDialog()
   }
 
@@ -235,6 +239,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       setAttachmentId(attached.id)
       setNotice(`${attached.structure.mineral || attached.structure.formula} CIF attached to the current project.`)
       projectCallback.current?.(response)
+      viewCallback.current?.(attached.id)
       setListRevision(previous => previous + 1)
     } catch (error) { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setError(errorText(error)) }
     finally { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setBusy(null) }

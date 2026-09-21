@@ -9,6 +9,7 @@ import {
   type ArtemisInspectedPath, type ArtemisParameter, type ArtemisPath, type ArtemisTransform,
 } from "@/lib/artemis"
 import { ResizablePlotCard } from "./athena-plot-card"
+import { ViewerPanel } from "./viewer-panel"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { ArtemisStructures } from "./artemis-structures"
 import styles from "./artemis-fitting.module.css"
@@ -27,6 +28,7 @@ interface PanelProps {
   pending?: boolean
   onFitResult?: (result: ArtemisFitResult | null) => void
   onProjectChange?: (project: AthenaProject) => void
+  onViewStructure?: (attachmentId: string) => void
 }
 
 let sequence = 0
@@ -126,7 +128,7 @@ export function ArtemisFittingPanel(props: PanelProps) {
   return <FittingEditor key={key} {...props} initial={cache.current.get(key)} onSave={saved => cache.current.set(key, saved)} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onProjectChange, initial, onSave }: PanelProps & {
+function FittingEditor({ projectId, version, group, pending = false, onFitResult, onProjectChange, onViewStructure, initial, onSave }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft) => void
 }) {
   const [draft, setDraft] = useState<Draft>(() => initial?.draft ?? newDraft())
@@ -281,7 +283,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     <header className={styles.intro}><h3><FlaskConical size={16} />EXAFS fitting</h3><p>Artemis-style path models · Larch fitting core</p></header>
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
-    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} disabled={disabled} existingPaths={draft.paths}
+    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
         if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
@@ -403,9 +405,8 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
   }) : []
-  return <section className={styles.viewer} aria-label="EXAFS fit results">
+  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" className={styles.viewer} actions={<div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>}>
     <ResizablePlotCard storageKey="artemis.fit.height.v1" defaultHeight={380} plotSelector="#artemis-fit-plot" resizeLabel="Resize EXAFS fit plot height" controlsId="artemis-fit-plot">
-      <header className={styles.resultHeader}><h3>EXAFS fit</h3><div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div></header>
       {visible && <div className={styles.resultControls}><span>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</span>{space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}</div>}
       {visible && <div className={styles.plotOptions} role="group" aria-label="Fit plot display options">
         <label title={pathsAvailable ? "Display the individual FEFF paths evaluated at the fitted parameters." : "Run the fit again to include individual path curves in its results."}><input type="checkbox" checked={pathsShown} disabled={!pathsAvailable} onChange={event => setShowPaths(event.target.checked)} />Show paths</label>
@@ -445,5 +446,5 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
       <details><summary>Larch fit report</summary><pre className={styles.report}>{visible.report}</pre></details>
       <div className={styles.toolbar}>{visible.request && <button type="button" onClick={() => download("artemis-fit.json", exportBundle(visible.request!, visible, { project_id: visible.project_id, group_id: visible.group_id, group_label: visible.group_label }))}>Download fit + model JSON</button>}<button type="button" onClick={() => download("artemis-fit-report.txt", visible.report, "text/plain")}>Download report</button></div>
     </div>}
-  </section>
+  </ViewerPanel>
 }

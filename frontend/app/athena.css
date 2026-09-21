@@ -279,3 +279,8 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
   .ath-menu, .ath-menu-wrap:last-child .ath-menu { top: 100%; left: 0; right: 0; width: auto; }
   .ath-menu.ath-help-menu { width: auto; }
 }
+
+.ath-project-cif-viewer { margin-top: 24px; min-width: 0; }
+.ath-cif-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 12px; font-size: var(--text-label); color: var(--ath-muted); border-bottom: 1px solid var(--ath-line); }
+.ath-cif-selection select { flex: 1; min-width: 0; max-width: 100%; }
+.ath-cif-empty { margin: 0; padding: 18px; font-size: var(--text-body); line-height: var(--leading-body); color: var(--ath-muted); }

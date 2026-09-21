@@ -1,4 +1,5 @@
 .viewer { margin: 12px 0 16px; min-width: 0; border: 1px solid var(--ath-line); border-radius: 7px; overflow: hidden; background: var(--ath-popover); }
+.docked { min-width: 0; }
 .heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--ath-line); }
 .viewer .heading h4 { margin: 0; font-size: var(--text-body); font-weight: 500; }
 .canvas { position: relative; height: 310px; background: var(--ath-plot-bg, var(--ath-popover)); }

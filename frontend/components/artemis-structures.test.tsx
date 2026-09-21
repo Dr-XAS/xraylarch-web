@@ -96,16 +96,19 @@ describe("ArtemisStructures", () => {
 
   it("attaches the selected CIF explicitly and retains the active site across the project revision update", async () => {
     const onProjectChange = vi.fn()
-    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange} />)
+    const onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange} onViewStructure={onViewStructure} />)
     await click("Search / attach CIF")
     await findAndSelect(false)
     fireEvent.click(screen.getByRole("radio", { name: "Absorber site 3" }))
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(onViewStructure).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Generate FEFF paths" })).toBeDisabled()
     expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
     expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, amcsd_id: 13088 }, expect.any(AbortSignal))
     expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "p", version: 2, artemis_structures: [attachment()] }))
+    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1")
     expect(screen.getByRole("dialog")).toBeVisible()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", attachment().structure.cif)
@@ -152,9 +155,11 @@ describe("ArtemisStructures", () => {
 
   it("reopens an attached snapshot without AMCSD lookup and refreshes the compact project list", async () => {
     savedAttachments = [{ ...attachment(), structure: { ...structure(), cif: "data_saved_snapshot" } }]
-    await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />) })
+    const onViewStructure = vi.fn()
+    await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />) })
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     await click("Open attached Copper CIF")
+    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1")
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", "data_saved_snapshot")

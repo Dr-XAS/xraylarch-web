@@ -1,16 +1,21 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS } from "@/lib/cif-viewer"
 import { createCifRenderer } from "@/lib/cif-renderer"
+import { ViewerPanel } from "./viewer-panel"
 import styles from "./cif-viewer.module.css"
 
 const colors = ["#225ea8", "#e5bf46", "#41b6c4", "#a1dab4", "#875ba6", "#e58255"]
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z })
 
-export function CifViewer({ structure }: { structure: ArtemisStructure }) {
+export function CifViewer({ structure, collapsible = false, structureControls }: {
+  structure: ArtemisStructure
+  collapsible?: boolean
+  structureControls?: ReactNode
+}) {
   const container = useRef<HTMLDivElement>(null)
   const viewer = useRef<GLViewer | null>(null)
   const [ready, setReady] = useState(false)
@@ -89,15 +94,16 @@ export function CifViewer({ structure }: { structure: ArtemisStructure }) {
       instance.render()
       setError("")
     } catch {
-      setError("Unable to render this crystal structure. The CIF text is available below.")
+      setError("Unable to render this crystal structure.")
     }
   }, [ready, geometry, elements, hidden, bonds, cell, mode])
 
-  return <section className={styles.viewer} aria-label="CIF structure viewer">
-    <div className={styles.heading}><h4>CIF structure viewer</h4><button type="button" disabled={!ready || !!error} onClick={() => { viewer.current?.zoomTo(); viewer.current?.render() }}>Reset view</button></div>
+  const resetButton = <button type="button" disabled={!ready || !!error} onClick={() => { viewer.current?.zoomTo(); viewer.current?.render() }}>Reset view</button>
+  const content = <>
+    {structureControls}
     <div className={styles.canvas}>
       <div ref={container} className={styles.surface} role="img" aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
-      {!geometry.atoms.length ? <p className={styles.overlay}>A 3D preview is unavailable for this CIF. You can still read its text below.</p>
+      {!geometry.atoms.length ? <p className={styles.overlay}>A 3D preview is unavailable for this CIF.</p>
         : error ? <div className={styles.overlay} role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>Retry 3D viewer</button></div>
         : !ready ? <p className={styles.overlay} role="status">Loading 3D structure…</p> : null}
     </div>
@@ -117,5 +123,11 @@ export function CifViewer({ structure }: { structure: ArtemisStructure }) {
       <p className={styles.help}>Bonds are inferred from distances. Display settings do not change FEFF parameters.</p>
     </>}
     {geometry.warnings.map(warning => <p className={styles.warning} key={warning}>{warning}</p>)}
-  </section>
+  </>
+  return collapsible
+    ? <ViewerPanel title="CIF structure viewer" actions={resetButton} className={styles.docked}>{content}</ViewerPanel>
+    : <section className={styles.viewer} aria-label="CIF structure viewer">
+      <div className={styles.heading}><h4>CIF structure viewer</h4>{resetButton}</div>
+      {content}
+    </section>
 }
