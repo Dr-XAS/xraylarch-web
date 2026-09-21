@@ -5538,7 +5538,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps()).toMatchObject({ space: 'k', showGrid: false, showDataPoints: true })
   })
 
-  it('places Show legend underneath Stack offset and keeps the toggle functional', async () => {
+  it('shows only the Show legend checkbox with the plot display controls', async () => {
     await openSaved()
     const legend = screen.getByRole('checkbox', { name: 'Show legend' })
     const stackOffset = screen.getByRole('spinbutton', { name: 'Stack offset' })
@@ -5547,10 +5547,13 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(controls).toBeInTheDocument()
     expect(Array.from(controls!.children)).toEqual([stackOffset.closest('label'), legend.closest('label')])
     expect(plotTop).not.toContainElement(legend)
+    expect(screen.queryByRole('checkbox', { name: 'Overlay legend on plot' })).not.toBeInTheDocument()
     expect(within(plotTop).queryByRole('button', { name: 'Plot shortcuts…' })).not.toBeInTheDocument()
     expect(plotProps().showLegend).toBe(true)
     fireEvent.click(legend)
     expect(plotProps().showLegend).toBe(false)
+    fireEvent.click(legend)
+    expect(plotProps().showLegend).toBe(true)
   })
 
   it.each([
@@ -5587,8 +5590,14 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
     selectGroup('Unused reference')
     expect(within(currentSpectrum()!).getByText('Unused reference')).toBeVisible()
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Show legend' }))
+    const legend = screen.getByRole('checkbox', { name: 'Show legend' })
+    expect(legend).toBeEnabled()
+    fireEvent.click(legend)
+    expect(legend).toBeChecked()
     expect(plotProps().showLegend).toBe(true)
+    fireEvent.click(legend)
+    expect(legend).not.toBeChecked()
+    expect(plotProps().showLegend).toBe(false)
 
     fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
     expect(currentSpectrum()).not.toBeInTheDocument()
