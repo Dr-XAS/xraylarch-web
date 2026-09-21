@@ -8,6 +8,7 @@ import { colormapOptions, DEFAULT_COLORMAP, isAthenaColormap, type AthenaColorma
 import { WaveletFigure } from "./athena-wavelet-viewer"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { AthenaColorLegendControl } from "./athena-color-legend-control"
+import { ViewerPanel } from "./viewer-panel"
 import styles from "./athena-wavelet.module.css"
 
 export const athenaWaveletHeightKey = "athena.wavelet.height.v1"
@@ -122,17 +123,15 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
     return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== key) abort.abort() }
   }, [key, projectId, version, groupId, selectedWeight, reason])
 
-  return <section aria-labelledby="ath-wavelet-title">
+  return <ViewerPanel title="Wavelet plotter" className={styles.panel} actions={
+    <div className={styles.modes} role="group" aria-label="Wavelet view">
+      <button type="button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}><Grid2X2 size={14} />2D heatmap</button>
+      <button type="button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}><Box size={14} />3D surface</button>
+    </div>
+  }>
     <ResizablePlotCard className={styles.panel} storageKey={athenaWaveletHeightKey}
       plotSelector="[data-wavelet-main-plot], [data-wavelet-placeholder]" defaultHeight={430}
       resizeLabel="Resize wavelet plot height" controlsId="athena-wavelet-viewer">
-      <header className={styles.heading}>
-        <h3 id="ath-wavelet-title"><Waves size={17} />Wavelet plotter</h3>
-        <div className={styles.modes} role="group" aria-label="Wavelet view">
-          <button type="button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}><Grid2X2 size={14} />2D heatmap</button>
-          <button type="button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}><Box size={14} />3D surface</button>
-        </div>
-      </header>
       <div className={styles.controls}>
         <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
         <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button>
@@ -146,5 +145,5 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
       </div>
       <footer className={styles.footer}><span>Cauchy wavelet · |WT|{current?.data && ` · k-weight ${current.data.kweight}`}</span><span>R is not phase corrected</span></footer>
     </ResizablePlotCard>
-  </section>
+  </ViewerPanel>
 }
