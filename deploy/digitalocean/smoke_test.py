@@ -75,7 +75,11 @@ status, _, body = request(alice, api + "/" + project["id"] + "/command", {
 })
 assert status == 200, f"Example computation: HTTP {status}: {body[:200]!r}"
 project = json.loads(body)
-assert len(project["groups"]) == 3
+assert len(project["groups"]) == 4
+assert [group["label"] for group in project["groups"]] == [
+    "Cu foil · 10 K", "Cu foil · 50 K", "Cu foil · 300 K", "Cu₂O · room temperature",
+]
+assert [folder["name"] for folder in project["group_folders"]] == ["Temperature series", "reference"]
 assert all(group["result"] for group in project["groups"]), "Example processing missing results"
 status, headers, body = request(alice, api + "/" + project["id"] + "/export?format=prj")
 assert status == 200 and body and headers.get("Content-Disposition"), "Project export failed"
@@ -115,4 +119,4 @@ assert status == 404, "Second visitor launched a FEFF job on private structure"
 
 status, _, body = request(alice, "/api/backend/health")
 assert status == 200 and json.loads(body)["status"] == "ok"
-print("PASS: production page, session cookies, independent visitors, access isolation, three example spectra, project export, Artemis fit, AMCSD structure/attachment, private FEFF access, health")
+print("PASS: production page, session cookies, independent visitors, access isolation, four example spectra, project export, Artemis fit, AMCSD structure/attachment, private FEFF access, health")
