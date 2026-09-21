@@ -268,6 +268,17 @@ def test_workspace_lifecycle_and_athena_capability_gateway(tmp_path):
         )
         assert blocked.status_code == 404
         assert blocked.json() == {"detail": "Project was not found."}
+        blocked_organization = client.post(
+            f"/api/athena/projects/{project_id}/command",
+            headers=auth,
+            json={"version": 0, "action": "project", "options": {
+                "group_order": [group_id],
+                "group_folders": [{"id": "restricted", "name": "Restricted", "group_ids": [group_id]}],
+            }},
+        )
+        assert blocked_organization.status_code == 404
+        assert blocked_organization.json() == {"detail": "Project was not found."}
+        assert client.get(f"/api/athena/projects/{project_id}", headers=auth).json() == project.json()
         allowed = client.post(
             f"/api/athena/projects/{project_id}/command",
             headers=auth,

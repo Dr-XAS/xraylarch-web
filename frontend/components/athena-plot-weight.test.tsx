@@ -171,6 +171,96 @@ describe("useAthenaPlotWeight", () => {
     expect(view.result.current.groups[0].result?.effective.kweight).toBe(0)
   })
 
+  it.each(["R", "q"] as const)("keeps completed %s products through organization revisions and uses the latest version for the next calculation", async space => {
+    serve()
+    const groups = [group(), group("Iron")]
+    const props = options({ groups, space, dataVersion: 4 })
+    const view = show(props)
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(2)
+    const oldSignal = api.mock.calls[0][3]!
+    const copperTransform = view.result.current.groups[0].result?.arrays.chir_mag
+
+    view.rerender({ ...props, version: 5, groups: [...groups].reverse() })
+    expect(view.result.current.loading).toBe(false)
+    expect(view.result.current.groups.map(item => item.id)).toEqual(["Iron", "Copper"])
+    expect(view.result.current.groups[1].result?.arrays.chir_mag).toBe(copperTransform)
+    expect(oldSignal.aborted).toBe(false)
+    await calculate()
+    view.rerender({ ...props, version: 6 })
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(view.result.current.loading).toBe(false)
+
+    view.rerender({ ...props, version: 6, kWeight: 1 })
+    expect(oldSignal.aborted).toBe(true)
+    expect(view.result.current.loading).toBe(true)
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(4)
+    expect(api).toHaveBeenLastCalledWith("/projects/p/groups/Iron/plot-transform", { version: 6, kweight: 1 }, "POST", expect.any(AbortSignal))
+    expect(view.result.current.groups.every(item => item.result?.effective.kweight === 1)).toBe(true)
+    const latestSignal = api.mock.calls[3][3]!
+    view.unmount()
+    expect(latestSignal.aborted).toBe(true)
+  })
+
+  it("invalidates completed products when the scientific revision changes even if metadata revisions were cached", async () => {
+    serve()
+    const props = options({ dataVersion: 4 })
+    const view = show(props)
+    await calculate()
+    const oldSignal = api.mock.calls[0][3]!
+    view.rerender({ ...props, version: 5 })
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(1)
+    const updated = group()
+    updated.result!.arrays.chi = [0, 4, -2, 2]
+    view.rerender({ ...props, version: 6, dataVersion: 6, groups: [updated] })
+    expect(oldSignal.aborted).toBe(true)
+    expect(view.result.current.groups[0]).toBe(updated)
+    expect(view.result.current.loading).toBe(true)
+    await calculate()
+    expect(api).toHaveBeenLastCalledWith("/projects/p/groups/Copper/plot-transform", { version: 6, kweight: 3 }, "POST", expect.any(AbortSignal))
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
+  it("restarts pending products after an organization revision and ignores late responses from the earlier version", async () => {
+    const previous = deferred(), next = deferred()
+    api.mockReturnValueOnce(previous.promise).mockReturnValueOnce(next.promise)
+    const props = options({ dataVersion: 4 })
+    const view = show(props)
+    await calculate()
+    const oldSignal = api.mock.calls[0][3]!
+    view.rerender({ ...props, version: 5 })
+    expect(oldSignal.aborted).toBe(true)
+    expect(view.result.current.loading).toBe(true)
+    await calculate()
+    expect(api).toHaveBeenLastCalledWith("/projects/p/groups/Copper/plot-transform", { version: 5, kweight: 3 }, "POST", expect.any(AbortSignal))
+    await act(async () => previous.resolve(transformed({ group_id: "wrong-group" })))
+    expect(view.result.current.loading).toBe(true)
+    expect(view.result.current.error).toBeNull()
+    expect(view.result.current.groups).toBe(props.groups)
+    await act(async () => next.resolve(transformed({ version: 5 })))
+    expect(view.result.current.loading).toBe(false)
+    expect(view.result.current.error).toBeNull()
+    expect(view.result.current.groups[0].result?.effective.kweight).toBe(3)
+  })
+
+  it("rejects stale server revisions on new requests even when the scientific cache revision is older", async () => {
+    api.mockResolvedValueOnce(transformed())
+    const props = options({ version: 5, dataVersion: 4 })
+    const view = show(props)
+    await calculate()
+    expect(api).toHaveBeenLastCalledWith("/projects/p/groups/Copper/plot-transform", { version: 5, kweight: 3 }, "POST", expect.any(AbortSignal))
+    expect(view.result.current.groups).toBe(props.groups)
+    expect(view.result.current.error).toMatch(/does not match/)
+    serve()
+    act(() => view.result.current.retry())
+    await calculate()
+    expect(view.result.current.error).toBeNull()
+    expect(view.result.current.groups[0].result?.effective.kweight).toBe(3)
+  })
+
   it.each(["projectId", "version"] as const)("reports a missing %s instead of displaying saved Fourier data under an explicit weight", async field => {
     const props = options({ [field]: undefined })
     const view = show(props)

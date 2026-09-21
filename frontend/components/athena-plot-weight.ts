@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { type AthenaGroup, type AthenaResult } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
 import type { PlotSpace } from "./athena-plot-range"
@@ -15,6 +15,8 @@ export interface PlotWeightResult extends AthenaResult {
 interface Options {
   projectId?: string
   version?: number
+  /** Scientific revision; unchanged only after acknowledged flags or organization edits. */
+  dataVersion?: number
   groups: AthenaGroup[]
   kWeight: number | null
   space: PlotSpace
@@ -50,17 +52,20 @@ function validTransform(data: PlotWeightResult, space: "R" | "q", weight: number
 }
 
 /** Display-only Fourier products; saved processing parameters and project groups stay untouched. */
-export function useAthenaPlotWeight({ projectId, version, groups, kWeight, space, pending = false }: Options) {
+export function useAthenaPlotWeight({ projectId, version, dataVersion = version, groups, kWeight, space, pending = false }: Options) {
   const athenaApi = useAthenaApi()
   const [attempt, setAttempt] = useState(0)
   const [response, setResponse] = useState<{
     key: string
-    signal: AbortSignal
+    version: number
+    abort: AbortController
     transforms?: Map<string, PlotWeightResult>
     error?: string
   } | null>(null)
   const retry = useCallback(() => setAttempt(value => value + 1), [])
-  const selection = JSON.stringify(groups.map(group => [group.id, usable(group)]))
+  // Fourier products belong to individual spectra, independent of display order.
+  const selection = JSON.stringify(groups.map(group => [group.id, usable(group)] as const)
+    .sort((left, right) => left[0].localeCompare(right[0])))
   const explicitTransform = kWeight !== null && (space === "R" || space === "q")
   const blockedGroup = explicitTransform ? groups.find(group => !usable(group) && hasSavedTransform(group, space)) : undefined
   const processingError = blockedGroup && !pending
@@ -69,14 +74,25 @@ export function useAthenaPlotWeight({ projectId, version, groups, kWeight, space
   const contextError = canTransform && !pending && (!projectId || version === undefined)
     ? "Open a saved project revision to calculate this k-weight." : null
   const ready = canTransform && !blockedGroup && !pending && !!projectId && version !== undefined
-  const key = JSON.stringify([projectId, version, kWeight, space, selection, pending, attempt])
+  const key = JSON.stringify([projectId, dataVersion, kWeight, space, selection, pending, ready, attempt])
+  const latest = useRef({ key, version })
+  latest.current = { key, version }
+  const requestAbort = useRef<AbortController | null>(null)
   // Aborting also invalidates a completed response. Returning from pending or Auto
   // must never briefly reveal a transform retained from the preceding request.
-  const current = ready && response?.key === key && !response.signal.aborted ? response : null
+  const current = ready && response?.key === key && !response.abort.signal.aborted &&
+    (response.transforms || response.version === version) ? response : null
+
+  useEffect(() => () => requestAbort.current?.abort(), [])
 
   useEffect(() => {
     if (!ready || !projectId || version === undefined || kWeight === null || (space !== "R" && space !== "q")) return
+    // Metadata-only revisions may reuse completed products, but unfinished
+    // requests must restart with the server's current concurrency version.
+    if (current?.transforms) return () => { if (latest.current.key !== key) current.abort.abort() }
     const abort = new AbortController()
+    requestAbort.current = abort
+    let completed = false
     const ids = (JSON.parse(selection) as [string, boolean][]).filter(([, eligible]) => eligible).map(([id]) => id)
     const timer = window.setTimeout(async () => {
       try {
@@ -90,13 +106,16 @@ export function useAthenaPlotWeight({ projectId, version, groups, kWeight, space
           }
           return [id, data] as const
         }))
-        if (!abort.signal.aborted) setResponse({ key, signal: abort.signal, transforms: new Map(entries) })
+        if (!abort.signal.aborted && latest.current.key === key && latest.current.version === version) {
+          completed = true
+          setResponse({ key, version, abort, transforms: new Map(entries) })
+        }
       } catch (error) {
-        if (!abort.signal.aborted) setResponse({ key, signal: abort.signal,
+        if (!abort.signal.aborted && latest.current.key === key && latest.current.version === version) setResponse({ key, version, abort,
           error: error instanceof Error ? error.message : "Could not calculate the plot transform." })
       }
     }, 150)
-    return () => { window.clearTimeout(timer); abort.abort() }
+    return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== key) abort.abort() }
   }, [key, ready, projectId, version, kWeight, space, selection])
 
   const transformedGroups = current?.transforms ? groups.map(group => {

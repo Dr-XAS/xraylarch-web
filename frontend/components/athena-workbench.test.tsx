@@ -1047,7 +1047,8 @@ describe("AthenaWorkbench data group folders", () => {
 
   it("creates a project-backed folder from marked spectra and collapses it without changing the active plot", async () => {
     const project = await openSaved()
-    fireEvent.click(screen.getByRole("button", { name: "Group spectra" }))
+    fireEvent.click(screen.getByRole("button", { name: /^Group$/ }))
+    fireEvent.click(screen.getByRole("button", { name: "Group spectra…" }))
     const dialog = screen.getByRole("dialog", { name: "Group spectra" })
     expect(within(dialog).getByRole("checkbox", { name: /Sample scan/ })).toBeChecked()
     expect(within(dialog).getByRole("checkbox", { name: /Oxide standard/ })).toBeChecked()
@@ -1174,6 +1175,453 @@ describe("AthenaWorkbench data group folders", () => {
     }))
     await waitFor(() => expect(screen.getByText("Moved Foil scan to position 2 of 2 in Pair.")).toBeVisible())
     expect(screen.getByRole("button", { name: "Reorder Oxide standard" })).toBeEnabled()
+  })
+})
+
+describe("AthenaWorkbench direct folder interactions", () => {
+  it("allows an empty group before any spectra are imported", async () => {
+    const project = await openSaved(projectFixture({ groups: [] }))
+    const create = screen.getByRole("button", { name: "Create empty group" })
+    expect(create).toBeEnabled()
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: AthenaProject["group_folders"] } }
+      return { ...project, version: project.version + 1, group_folders: request.options.group_folders }
+    })
+    fireEvent.click(create)
+    expect(await screen.findByRole("group", { name: "New group data group" })).toBeVisible()
+    expect(screen.queryByText("A place for every scan.")).not.toBeInTheDocument()
+  })
+
+  it("creates an empty project folder directly from Group", async () => {
+    const project = await openSaved()
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: AthenaProject["group_folders"] } }
+      return { ...project, version: project.version + 1, group_folders: request.options.group_folders }
+    })
+    fireEvent.click(screen.getByRole("button", { name: "Create empty group" }))
+    const folder = await screen.findByRole("group", { name: "New group data group" })
+    expect(screen.queryByRole("dialog", { name: "Group spectra" })).not.toBeInTheDocument()
+    expect(within(folder).getByRole("checkbox", { name: "Mark all spectra in New group" })).toBeDisabled()
+    expect(within(folder).getByRole("button", { name: "Edit New group group" })).toBeEnabled()
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "project", group_ids: [], options: {
+        group_folders: [{ id: expect.any(String), name: "New group", group_ids: [] }],
+      },
+    })
+    expect(plotProps().active?.id).toBe("foil")
+  })
+
+  it("groups multiple locally selected spectra from their right-click menu", async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole("button", { name: /^Sample scan/ }), { metaKey: true })
+    fireEvent.click(screen.getByRole("button", { name: /^Oxide standard/ }), { metaKey: true })
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: AthenaProject["group_folders"] } }
+      return { ...project, version: project.version + 1, group_folders: request.options.group_folders }
+    })
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^Sample scan/ }), { clientX: 40, clientY: 80 })
+    const menu = screen.getByRole("menu", { name: "Actions for Foil scan" })
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Group 2 selected spectra together" }))
+    const folder = await screen.findByRole("group", { name: "New group data group" })
+    expect(within(folder).getByRole("button", { name: /^Sample scan/ })).toBeVisible()
+    expect(within(folder).getByRole("button", { name: /^Oxide standard/ })).toBeVisible()
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "project", group_ids: [], options: {
+        group_folders: [{ id: expect.any(String), name: "New group", group_ids: ["sample", "oxide"] }],
+      },
+    })
+    expect(plotProps().active?.id).toBe("foil")
+  })
+
+  it("groups checkbox-marked spectra from the right-click menu", async () => {
+    const project = await openSaved()
+    api.mockImplementationOnce(async (_path, body) => {
+      const request = body as { options: { group_folders: AthenaProject["group_folders"] } }
+      return { ...project, version: project.version + 1, group_folders: request.options.group_folders }
+    })
+    fireEvent.contextMenu(screen.getByRole("button", { name: /^Sample scan/ }), { clientX: 40, clientY: 80 })
+    const menu = screen.getByRole("menu", { name: "Actions for Foil scan" })
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Group 2 selected spectra together" }))
+    await screen.findByRole("group", { name: "New group data group" })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "project", group_ids: [], options: {
+        group_folders: [{ id: expect.any(String), name: "New group", group_ids: ["sample", "oxide"] }],
+      },
+    })
+  })
+
+  function folderProject() {
+    return projectFixture({ group_folders: [
+      { id: "pair", name: "Pair", group_ids: ["foil", "unused"] },
+      { id: "source", name: "Source", group_ids: ["sample", "oxide"] },
+    ] })
+  }
+
+  function spectrumRow(id: string) {
+    return document.querySelector<HTMLElement>(`.ath-group[data-group-id="${id}"]`)!
+  }
+
+  function spectrumTitle(id: string) {
+    return spectrumRow(id).querySelector<HTMLButtonElement>(".ath-group-select")!
+  }
+
+  function pointer(type: string, clientX: number, clientY: number, pointerId = 31) {
+    const event = new Event(type, { bubbles: true, cancelable: true })
+    Object.defineProperties(event, {
+      button: { value: 0 }, clientX: { value: clientX }, clientY: { value: clientY },
+      isPrimary: { value: true }, pointerId: { value: pointerId }, pointerType: { value: "mouse" },
+    })
+    return event
+  }
+
+  function bounds(element: Element, top: number, bottom: number) {
+    vi.spyOn(element, "getBoundingClientRect").mockReturnValue({
+      top, bottom, height: bottom - top, left: 0, right: 240, width: 240,
+      x: 0, y: top, toJSON: () => ({}),
+    })
+  }
+
+  function folderDragLayout() {
+    const list = screen.getByRole("list")
+    bounds(list, 0, 360)
+    Object.defineProperties(list, {
+      clientHeight: { configurable: true, value: 360 },
+      scrollHeight: { configurable: true, value: 360 },
+    })
+    const target = screen.getByRole("group", { name: "Pair data group" })
+    const source = screen.getByRole("group", { name: "Source data group" })
+    bounds(target, 0, 160)
+    bounds(target.querySelector(".ath-group-folder-heading")!, 0, 40)
+    bounds(source, 160, 320)
+    bounds(source.querySelector(".ath-group-folder-heading")!, 160, 200)
+    bounds(spectrumRow("foil"), 40, 100)
+    bounds(spectrumRow("unused"), 100, 160)
+    bounds(spectrumRow("sample"), 200, 260)
+    bounds(spectrumRow("oxide"), 260, 320)
+    return { list, target, source }
+  }
+
+  function markedResponse(project: AthenaProject, ids: string[], marked: boolean): AthenaSelectionUpdate {
+    return {
+      kind: "selection", id: project.id, name: project.name, base_version: project.version,
+      version: project.version + 1, updated: project.updated,
+      groups: project.groups.map(item => ({ id: item.id, marked: ids.includes(item.id) ? marked : item.marked, frozen: item.frozen })),
+      undo: [], redo: [], history: [], group_versions: Object.fromEntries(project.groups.map(item => [item.id, project.version + 1])),
+      last_operation: undefined, analyses: [],
+    }
+  }
+
+  it("marks every folder member from a mixed checkbox immediately, including collapsed and search-hidden spectra", async () => {
+    const project = projectFixture({ group_folders: [{ id: "pair", name: "Pair", group_ids: ["foil", "sample"] }] })
+    await openSaved(project)
+    const check = screen.getByRole("checkbox", { name: "Mark all spectra in Pair" })
+    expect(check).toBePartiallyChecked()
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Pair group" }))
+    expect(screen.queryByRole("checkbox", { name: "Mark Foil scan" })).not.toBeInTheDocument()
+    const response = deferred<AthenaSelectionUpdate>()
+    api.mockReturnValueOnce(response.promise)
+    fireEvent.click(check)
+    expect(check).toBeChecked()
+    expect(check).not.toBePartiallyChecked()
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "metadata", group_ids: ["foil", "sample"],
+      options: { marked: true }, response_mode: "selection",
+    }))
+    expect(api).toHaveBeenCalledTimes(2)
+    await act(async () => response.resolve(markedResponse(project, ["foil", "sample"], true)))
+    await waitForWorkbenchIdle()
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "sample" } })
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
+    expect(screen.queryByRole("checkbox", { name: "Mark Foil scan" })).not.toBeInTheDocument()
+    const saved = nextProject(project, { foil: { marked: true } })
+    const secondResponse = deferred<AthenaSelectionUpdate>()
+    api.mockReturnValueOnce(secondResponse.promise)
+    fireEvent.click(check)
+    expect(check).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).not.toBeChecked()
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: saved.version, action: "metadata", group_ids: ["foil", "sample"],
+      options: { marked: false }, response_mode: "selection",
+    }))
+    await act(async () => secondResponse.resolve(markedResponse(saved, ["foil", "sample"], false)))
+    await waitForWorkbenchIdle()
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "" } })
+    fireEvent.click(screen.getByRole("button", { name: "Expand Pair group" }))
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Oxide standard" })).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(3)
+  })
+
+  it("restores the folder's mixed selection when its optimistic marking request fails", async () => {
+    await openSaved(projectFixture({ group_folders: [{ id: "pair", name: "Pair", group_ids: ["foil", "sample"] }] }))
+    const check = screen.getByRole("checkbox", { name: "Mark all spectra in Pair" })
+    const response = deferred<AthenaSelectionUpdate>()
+    api.mockReturnValueOnce(response.promise)
+    fireEvent.click(check)
+    expect(check).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeChecked()
+    await act(async () => response.reject(new Error("Folder selection could not be saved.")))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Folder selection could not be saved.")
+    expect(check).toBePartiallyChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
+  })
+
+  it("keeps Cmd/Ctrl selection local and selects Shift ranges in the displayed folder order", async () => {
+    await openSaved(folderProject())
+    expect(listedGroupIds()).toEqual(["foil", "unused", "sample", "oxide"])
+    const active = plotProps().active
+    fireEvent.click(spectrumTitle("foil"), { metaKey: true })
+    fireEvent.click(spectrumTitle("sample"), { shiftKey: true })
+    for (const id of ["foil", "unused", "sample"]) {
+      expect(spectrumTitle(id)).toHaveAttribute("aria-pressed", "true")
+      expect(spectrumRow(id)).toHaveAttribute("data-move-selected", "true")
+    }
+    expect(spectrumTitle("oxide")).toHaveAttribute("aria-pressed", "false")
+    fireEvent.click(spectrumTitle("unused"), { ctrlKey: true })
+    expect(spectrumTitle("unused")).toHaveAttribute("aria-pressed", "false")
+    expect(spectrumRow("unused")).not.toHaveAttribute("data-move-selected", "true")
+    expect(plotProps().active).toBe(active)
+    expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("excludes collapsed and filtered rows from Shift selection", async () => {
+    await openSaved(projectFixture({ group_folders: [{ id: "pair", name: "Pair", group_ids: ["sample"] }] }))
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Pair group" }))
+    fireEvent.click(spectrumTitle("foil"), { ctrlKey: true })
+    fireEvent.click(spectrumTitle("oxide"), { shiftKey: true })
+    expect(spectrumTitle("foil")).toHaveAttribute("aria-pressed", "true")
+    expect(spectrumTitle("oxide")).toHaveAttribute("aria-pressed", "true")
+    fireEvent.click(screen.getByRole("button", { name: "Expand Pair group" }))
+    expect(spectrumTitle("sample")).toHaveAttribute("aria-pressed", "false")
+    fireEvent.keyDown(document, { key: "Escape" })
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "scan" } })
+    fireEvent.click(spectrumTitle("sample"), { ctrlKey: true })
+    fireEvent.click(spectrumTitle("foil"), { shiftKey: true })
+    fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "" } })
+    expect(spectrumTitle("unused")).toHaveAttribute("aria-pressed", "false")
+    expect(spectrumTitle("oxide")).toHaveAttribute("aria-pressed", "false")
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("moves the only ungrouped spectrum into a collapsed folder without pulling in unrelated marked spectra", async () => {
+    const project = await openSaved(projectFixture({
+      groups: [group("foil", "Foil scan"), group("sample", "Sample scan", true), group("oxide", "Oxide standard", true)],
+      group_folders: [{ id: "pair", name: "Pair", group_ids: ["sample", "oxide"] }],
+    }))
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Pair group" }))
+    const target = screen.getByRole("group", { name: "Pair data group" })
+    bounds(screen.getByRole("list"), 0, 300)
+    bounds(target, 0, 40)
+    bounds(target.querySelector(".ath-group-folder-heading")!, 0, 40)
+    bounds(spectrumRow("foil"), 40, 100)
+    const handle = screen.getByRole("button", { name: "Reorder Foil scan" })
+    expect(handle).toBeEnabled()
+    const response = deferred<AthenaProject>()
+    api.mockReturnValueOnce(response.promise)
+    fireEvent(handle, pointer("pointerdown", 15, 70))
+    fireEvent(handle, pointer("pointermove", 100, 20))
+    expect(target).toHaveAttribute("data-drop-folder", "true")
+    fireEvent(handle, pointer("pointerup", 100, 20))
+    const group_folders = [{ id: "pair", name: "Pair", group_ids: ["sample", "oxide", "foil"] }]
+    const group_order = ["sample", "oxide", "foil"]
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "project", group_ids: [], options: { group_folders, group_order },
+    }))
+    expect(api).toHaveBeenCalledTimes(2)
+    await act(async () => response.resolve({
+      ...project, version: project.version + 1, group_folders,
+      groups: group_order.map(id => project.groups.find(item => item.id === id)!),
+    }))
+    await waitForWorkbenchIdle()
+    expect(plotProps().active?.id).toBe("foil")
+  })
+
+  it("drags a mouse-selected batch into a folder immediately and sends one atomic project update", async () => {
+    const project = await openSaved(folderProject())
+    const { target } = folderDragLayout()
+    fireEvent.click(spectrumTitle("sample"), { metaKey: true })
+    fireEvent.click(spectrumTitle("oxide"), { metaKey: true })
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    fireEvent(handle, pointer("pointerdown", 15, 230))
+    fireEvent(handle, pointer("pointermove", 100, 20))
+    expect(target).toHaveAttribute("data-folder-id", "pair")
+    expect(target).toHaveAttribute("data-drop-folder", "true")
+    expect(spectrumRow("sample")).toHaveAttribute("data-dragging", "true")
+    expect(spectrumRow("oxide")).toHaveAttribute("data-dragging", "true")
+    const response = deferred<AthenaProject>()
+    api.mockReturnValueOnce(response.promise)
+    fireEvent(handle, pointer("pointerup", 100, 20))
+    expect(listedGroupIds(target)).toEqual(["foil", "unused", "sample", "oxide"])
+    const group_folders = [{ id: "pair", name: "Pair", group_ids: ["foil", "unused", "sample", "oxide"] }]
+    const group_order = ["foil", "unused", "sample", "oxide"]
+    await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "project", group_ids: [], options: { group_folders, group_order },
+    }))
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(document.querySelector("[data-dragging], [data-drop-folder]")).toBeNull()
+    await act(async () => response.resolve({
+      ...project, version: project.version + 1, group_folders,
+      groups: group_order.map(id => project.groups.find(item => item.id === id)!),
+    }))
+    await waitForWorkbenchIdle()
+    expect(listedGroupIds(target)).toEqual(group_order)
+    expect(plotProps().active?.id).toBe("foil")
+  })
+
+  it("allows title dragging, gives explicit mouse selection precedence over marks, and rolls back a failed drop", async () => {
+    await openSaved(folderProject())
+    const { target, source } = folderDragLayout()
+    fireEvent.click(spectrumTitle("sample"), { ctrlKey: true })
+    const title = spectrumTitle("sample")
+    fireEvent(title, pointer("pointerdown", 100, 230))
+    fireEvent(title, pointer("pointermove", 100, 20))
+    expect(spectrumRow("sample")).toHaveAttribute("data-dragging", "true")
+    expect(spectrumRow("oxide")).not.toHaveAttribute("data-dragging", "true")
+    const response = deferred<AthenaProject>()
+    api.mockReturnValueOnce(response.promise)
+    fireEvent(title, pointer("pointerup", 100, 20))
+    expect(listedGroupIds(target)).toEqual(["foil", "unused", "sample"])
+    expect(listedGroupIds(source)).toEqual(["oxide"])
+    await act(async () => response.reject(new Error("Folder move could not be saved.")))
+    expect(await screen.findByRole("alert")).toHaveTextContent("Folder move could not be saved.")
+    expect(listedGroupIds(target)).toEqual(["foil", "unused"])
+    expect(listedGroupIds(source)).toEqual(["sample", "oxide"])
+    expect(document.querySelector("[data-dragging], [data-drop-folder]")).toBeNull()
+    expect(plotProps().active?.id).toBe("foil")
+  })
+
+  it("falls back to marked spectra for a batch drag without rerendering plots or sending requests during hover", async () => {
+    const project = await openSaved(folderProject())
+    const { target } = folderDragLayout()
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    fireEvent(handle, pointer("pointerdown", 15, 230))
+    const plotRenders = plot.mock.calls.length
+    for (let x = 70; x <= 170; x += 10) fireEvent(handle, pointer("pointermove", x, 20))
+    expect(target).toHaveAttribute("data-drop-folder", "true")
+    expect(spectrumRow("sample")).toHaveAttribute("data-dragging", "true")
+    expect(spectrumRow("oxide")).toHaveAttribute("data-dragging", "true")
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(plot).toHaveBeenCalledTimes(plotRenders)
+    const group_folders = [{ id: "pair", name: "Pair", group_ids: ["foil", "unused", "sample", "oxide"] }]
+    const group_order = ["foil", "unused", "sample", "oxide"]
+    api.mockResolvedValueOnce({ ...project, version: project.version + 1, group_folders, groups: group_order.map(id => project.groups.find(item => item.id === id)!) })
+    fireEvent(handle, pointer("pointerup", 100, 20))
+    await waitForWorkbenchIdle()
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(listedGroupIds(target)).toEqual(group_order)
+  })
+
+  it("treats dropping selected spectra onto their current folder heading as a no-op", async () => {
+    await openSaved(folderProject())
+    const { target } = folderDragLayout()
+    fireEvent.click(spectrumTitle("foil"), { metaKey: true })
+    fireEvent.click(spectrumTitle("unused"), { metaKey: true })
+    const handle = screen.getByRole("button", { name: "Reorder Unused reference" })
+    fireEvent(handle, pointer("pointerdown", 15, 130))
+    fireEvent(handle, pointer("pointermove", 100, 20))
+    expect(target).not.toHaveAttribute("data-drop-folder")
+    expect(document.querySelector("[data-drop-position]")).toBeNull()
+    fireEvent(handle, pointer("pointerup", 100, 20))
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(listedGroupIds(target)).toEqual(["foil", "unused"])
+    expect(document.querySelector("[data-dragging], [data-drop-folder], [data-drop-position]")).toBeNull()
+  })
+
+  it("reorders a mouse-selected batch within its current folder as one ordered block", async () => {
+    const originalIds = ["foil", "sample", "oxide", "unused"]
+    const project = await openSaved(projectFixture({ group_folders: [{ id: "pair", name: "Pair", group_ids: originalIds }] }))
+    const target = screen.getByRole("group", { name: "Pair data group" })
+    bounds(screen.getByRole("list"), 0, 320)
+    bounds(target, 0, 280)
+    bounds(target.querySelector(".ath-group-folder-heading")!, 0, 40)
+    originalIds.forEach((id, index) => bounds(spectrumRow(id), 40 + index * 60, 100 + index * 60))
+    fireEvent.click(spectrumTitle("sample"), { ctrlKey: true })
+    fireEvent.click(spectrumTitle("oxide"), { ctrlKey: true })
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    fireEvent(handle, pointer("pointerdown", 15, 130))
+    fireEvent(handle, pointer("pointermove", 100, 270))
+    expect(spectrumRow("sample")).toHaveAttribute("data-dragging", "true")
+    expect(spectrumRow("oxide")).toHaveAttribute("data-dragging", "true")
+    expect(spectrumRow("unused")).toHaveAttribute("data-drop-position", "after")
+    expect(target).not.toHaveAttribute("data-drop-folder")
+    const ids = ["foil", "unused", "sample", "oxide"]
+    api.mockResolvedValueOnce({
+      ...project, version: project.version + 1,
+      groups: ids.map(id => project.groups.find(item => item.id === id)!),
+      group_folders: [{ id: "pair", name: "Pair", group_ids: ids }],
+    })
+    fireEvent(handle, pointer("pointerup", 100, 270))
+    await waitForCommand(project.id, { version: project.version, action: "reorder", group_ids: [], options: { ids } })
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(listedGroupIds(target)).toEqual(ids)
+    expect(plotProps().active?.id).toBe("foil")
+    expect(document.querySelector("[data-dragging], [data-drop-folder], [data-drop-position]")).toBeNull()
+  })
+
+  it("supports cross-folder dragging in Name order while keeping manual reordering disabled", async () => {
+    const project = await openSaved(folderProject())
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort spectra" }), { target: { value: "name" } })
+    const { target, source } = folderDragLayout()
+    bounds(spectrumRow("oxide"), 200, 260)
+    bounds(spectrumRow("sample"), 260, 320)
+    expect(listedGroupIds(source)).toEqual(["oxide", "sample"])
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    expect(handle).toBeEnabled()
+    fireEvent.keyDown(handle, { key: "ArrowUp" })
+    expect(api).toHaveBeenCalledTimes(1)
+    fireEvent.click(spectrumTitle("sample"), { ctrlKey: true })
+    fireEvent(handle, pointer("pointerdown", 15, 290))
+    fireEvent(handle, pointer("pointermove", 100, 210))
+    expect(document.querySelector("[data-drop-position]")).toBeNull()
+    fireEvent(handle, pointer("pointermove", 100, 20))
+    expect(target).toHaveAttribute("data-drop-folder", "true")
+    const group_folders = [
+      { id: "pair", name: "Pair", group_ids: ["foil", "unused", "sample"] },
+      { id: "source", name: "Source", group_ids: ["oxide"] },
+    ]
+    const group_order = ["foil", "oxide", "unused", "sample"]
+    api.mockResolvedValueOnce({
+      ...project, version: project.version + 1, group_folders,
+      groups: group_order.map(id => project.groups.find(item => item.id === id)!),
+    })
+    fireEvent(handle, pointer("pointerup", 100, 20))
+    await waitForCommand(project.id, { version: project.version, action: "project", group_ids: [], options: { group_folders, group_order } })
+    expect(screen.getByRole("combobox", { name: "Sort spectra" })).toHaveValue("name")
+    expect(listedGroupIds(target)).toEqual(["foil", "sample", "unused"])
+    expect(listedGroupIds(source)).toEqual(["oxide"])
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([[300, 20], [100, -20]])("rejects a drop outside the list at x=%s y=%s", async (x, y) => {
+    await openSaved(folderProject())
+    folderDragLayout()
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    fireEvent(handle, pointer("pointerdown", 15, 230))
+    fireEvent(handle, pointer("pointermove", 100, 20))
+    fireEvent(handle, pointer("pointermove", x, y))
+    expect(document.querySelector("[data-drop-folder]")).toBeNull()
+    fireEvent(handle, pointer("pointerup", x, y))
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(listedGroupIds()).toEqual(["foil", "unused", "sample", "oxide"])
+    expect(document.querySelector("[data-dragging], [data-drop-folder]")).toBeNull()
+  })
+
+  it.each(["Escape", "pointercancel"])("cleans up a pending folder drag on %s without saving", async cancellation => {
+    await openSaved(folderProject())
+    folderDragLayout()
+    const handle = screen.getByRole("button", { name: "Reorder Sample scan" })
+    fireEvent(handle, pointer("pointerdown", 15, 230))
+    fireEvent(handle, pointer("pointermove", 100, 20))
+    if (cancellation === "Escape") fireEvent.keyDown(document, { key: "Escape" })
+    else fireEvent(handle, pointer("pointercancel", 100, 20))
+    expect(document.querySelector("[data-dragging], [data-drop-folder]")).toBeNull()
+    fireEvent(handle, pointer("pointerup", 100, 20))
+    expect(api).toHaveBeenCalledTimes(1)
   })
 })
 
@@ -4886,7 +5334,8 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     const project = projectFixture({ groups: [missing, visible] })
     const original = JSON.stringify(project)
     await openSaved(project)
-    fireEvent.change(screen.getByRole('combobox', { name: 'Color legend' }), { target: { value: palette } })
+    fireEvent.click(screen.getByRole('combobox', { name: 'Color legend' }))
+    fireEvent.click(screen.getByRole('option', { name: new RegExp(`^${palette} ·`, 'i') }))
     const swatch = (label: string) => screen.getByRole('checkbox', { name: `Mark ${label}` })
       .closest('.ath-group')!.querySelector<HTMLElement>('.ath-swatch')!
     expect(swatch('Visible R').style.background).toBe(expectedColor)

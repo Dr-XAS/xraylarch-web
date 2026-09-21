@@ -106,7 +106,8 @@ test("real wavelet plots retain their grid through range drags, independent colo
     (element as HTMLElement & { data: { line: { color: string } }[] }).data.map(trace => trace.line.color),
   )
   const originalSpectrumColors = await spectrumColors()
-  await page.getByLabel("Color legend", { exact: true }).selectOption("viridis")
+  await page.getByRole("combobox", { name: "Color legend" }).click()
+  await page.getByRole("option", { name: "Viridis · purple–green–yellow" }).click()
   await expect.poll(spectrumColors).not.toEqual(originalSpectrumColors)
   expect((await spectrumColors())[0]).toBe("#440154")
   await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
@@ -114,9 +115,10 @@ test("real wavelet plots retain their grid through range drags, independent colo
   )).toEqual(plotlyColorscale("magma"))
 
   const waveletPalette = panel.getByLabel("Wavelet color legend", { exact: true })
-  await expect(waveletPalette).toHaveValue("magma")
-  await expect(waveletPalette.locator("option")).toHaveCount(11)
-  await waveletPalette.selectOption("turbo")
+  await expect(waveletPalette).toHaveAttribute("title", "Magma · black–purple–yellow")
+  await waveletPalette.click()
+  await expect(page.getByRole("listbox", { name: "Wavelet color legend" }).getByRole("option")).toHaveCount(11)
+  await page.getByRole("option", { name: "Turbo · blue–green–red" }).click()
   await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
     (element as HTMLElement & { data: { colorscale: [number, string][] }[] }).data[0].colorscale,
   )).toEqual(plotlyColorscale("turbo"))

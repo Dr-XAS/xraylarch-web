@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from "react"
 import { Box, Download, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
-import { ATHENA_COLORMAPS, DEFAULT_COLORMAP, isAthenaColormap, plotlyColorscale, type AthenaColormap } from "@/lib/athena-colormaps"
+import { colormapOptions, DEFAULT_COLORMAP, isAthenaColormap, type AthenaColormap } from "@/lib/athena-colormaps"
 import { WaveletFigure } from "./athena-wavelet-viewer"
 import { ResizablePlotCard } from "./athena-plot-card"
+import { AthenaColorLegendControl } from "./athena-color-legend-control"
 import styles from "./athena-wavelet.module.css"
 
 export const athenaWaveletHeightKey = "athena.wavelet.height.v1"
@@ -17,28 +18,17 @@ type WaveletColorSettings = { colormap: AthenaColormap; reversed: boolean }
 function WaveletColorLegend({ value, onChange }: {
   value: WaveletColorSettings; onChange: (value: WaveletColorSettings) => void
 }) {
-  const stops = plotlyColorscale(value.colormap, value.reversed)
-  const background = `linear-gradient(to right, ${stops.map(([position, color]) => `${color} ${position * 100}%`).join(", ")})`
-
   function update(next: WaveletColorSettings) {
     onChange(next)
     try { localStorage.setItem(athenaWaveletColorsKey, JSON.stringify(next)) }
     catch { /* Keep the in-memory preference when storage is unavailable. */ }
   }
 
-  return <div className={`ath-color-legend ${styles.colorLegend}`} role="group" aria-label="Wavelet colors">
-    <label className="ath-color-select">Color legend
-      <select aria-label="Wavelet color legend" value={value.colormap} onChange={event => {
-        if (isAthenaColormap(event.target.value)) update({ ...value, colormap: event.target.value })
-      }}>
-        {ATHENA_COLORMAPS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-      </select>
-    </label>
-    <div className="ath-color-preview" title="Colors map wavelet magnitude from low to high.">
-      <span>Low</span><span className="ath-color-ramp" style={{ background }} aria-hidden="true" /><span>High</span>
-    </div>
-    <label className="ath-check"><input type="checkbox" checked={value.reversed} onChange={event => update({ ...value, reversed: event.target.checked })} />Reverse</label>
-  </div>
+  return <AthenaColorLegendControl label="Wavelet colors" pickerLabel="Wavelet color legend" endpoints={["Low", "High"]}
+    title="Click the colorbar to choose colors for wavelet magnitude, from low to high."
+    className={styles.colorLegend} options={colormapOptions(value.reversed)} value={value.colormap} reversed={value.reversed}
+    onPaletteChange={colormap => update({ ...value, colormap })}
+    onReverseChange={reversed => update({ ...value, reversed })} />
 }
 
 export interface WaveletResult {

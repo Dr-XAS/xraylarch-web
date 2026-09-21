@@ -165,7 +165,9 @@ def _group_folders(value, group_ids, *, prune_missing=False):
             fail("A spectrum can belong to only one data-group folder.")
         folder_ids.add(ident)
         assigned.update(kept)
-        if kept:
+        # An intentionally empty folder is a project object in its own right.
+        # A folder emptied by pruning deleted or omitted spectra still goes away.
+        if kept or not members:
             output.append({"id": ident, "name": name.strip(), "group_ids": kept})
     return output
 
@@ -2739,6 +2741,17 @@ class AthenaStore:
             if action == "project":
                 p["name"] = str(options.get("name", p["name"]))[:200] or "Untitled project"
                 p["journal"] = str(options.get("journal", p["journal"]))[:50_000]
+                if "group_order" in options:
+                    ids = options["group_order"]
+                    by_id = {group["id"]: group for group in p["groups"]}
+                    if (not isinstance(ids, list) or len(ids) != len(by_id)
+                            or not all(isinstance(group_id, str) for group_id in ids)
+                            or set(ids) != set(by_id)):
+                        fail("Group order must include every spectrum exactly once.")
+                    # Apply order before membership validation so one organization
+                    # change preserves the destination folder's position and the
+                    # chosen order of its members, with one version and Undo step.
+                    p["groups"] = [by_id[group_id] for group_id in ids]
                 if "group_folders" in options:
                     p["group_folders"] = _group_folders(
                         options["group_folders"], (group["id"] for group in p["groups"])
@@ -3867,9 +3880,7 @@ class AthenaStore:
                  "group_ids": [idmap[group_id] for group_id in folder["group_ids"] if group_id in idmap]}
                 for folder in parsed["group_folders"]
             ]
-            p.setdefault("group_folders", []).extend(
-                folder for folder in imported_folders if folder["group_ids"]
-            )
+            p.setdefault("group_folders", []).extend(imported_folders)
             broken_links = set()
             for g in imported:
                 for key, label in (("reference_id", "Reference"), ("background_standard_id", "Background standard")):

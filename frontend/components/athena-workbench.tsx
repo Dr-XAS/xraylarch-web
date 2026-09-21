@@ -92,6 +92,7 @@ type ParameterSection = "all" | keyof typeof parameterSections
 type ParameterSelection = { section: ParameterSection } | { parameter: keyof Parameters }
 type AutoApplyPlan = { token: number; projectId: string; sourceId: string; mode: "current" | "marked"; targetIds: string[]; status: "queued" | "failed" }
 type GroupDropTarget = { id: string; position: "before" | "after" }
+type SpectrumDropTarget = GroupDropTarget | { folderId: string }
 type GroupReorderFocus = { id: string; handle: HTMLButtonElement }
 type GroupFolderDraft = { id: string | null; name: string; groupIds: string[] }
 type GroupSort = "manual" | "added" | "name" | "tag"
@@ -364,15 +365,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const registryReturn = useRef<ModalName>(null)
   const [search, setSearch] = useState("")
   const [groupSort, setGroupSort] = useState<GroupSort>("manual")
-  const [draggingGroupId, setDraggingGroupId] = useState<string | null>(null)
-  const [groupDropTarget, setGroupDropTarget] = useState<GroupDropTarget | null>(null)
+  const [moveSelection, setMoveSelection] = useState<Set<string>>(new Set())
+  const moveAnchorRef = useRef<string | null>(null)
+  const suppressGroupClickRef = useRef(false)
   const [reorderAnnouncement, setReorderAnnouncement] = useState("")
   const [collapsedGroupFolders, setCollapsedGroupFolders] = useState<Set<string>>(new Set())
   const [groupFolderDraft, setGroupFolderDraft] = useState<GroupFolderDraft>({ id: null, name: "", groupIds: [] })
   const [groupFolderError, setGroupFolderError] = useState("")
-  const groupDragRef = useRef<{ id: string; scope: string; pointerId: number; projectId: string; version: number } | null>(null)
-  const groupDropTargetRef = useRef<GroupDropTarget | null>(null)
-  const groupDragPointerYRef = useRef<number | null>(null)
+  const groupDragRef = useRef<{ id: string; ids: string[]; scope: string; pointerId: number; projectId: string; version: number; startX: number; startY: number; started: boolean; handle: HTMLButtonElement } | null>(null)
+  const groupDropTargetRef = useRef<SpectrumDropTarget | null>(null)
+  const groupDragPointerRef = useRef<{ x: number; y: number } | null>(null)
+  const groupDragBadgeRef = useRef<HTMLDivElement>(null)
   const groupDragScrollFrameRef = useRef<number | null>(null)
   const reorderFocusRef = useRef<GroupReorderFocus | null>(null)
   const [space, setSpace] = useState<Space>("E")
@@ -495,8 +498,25 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   useEffect(() => () => {
     if (groupDragScrollFrameRef.current !== null) cancelAnimationFrame(groupDragScrollFrameRef.current)
   }, [])
+  useEffect(() => { cancelGroupDrag() }, [project?.id, project?.version, busy, parameterUpdatePending, search, groupSort])
+  useEffect(() => { setMoveSelection(new Set()); moveAnchorRef.current = null }, [project?.id])
+  useEffect(() => {
+    const available = new Set(project?.groups.map(group => group.id))
+    setMoveSelection(previous => {
+      const next = new Set([...previous].filter(id => available.has(id)))
+      return next.size === previous.size ? previous : next
+    })
+    if (moveAnchorRef.current && !available.has(moveAnchorRef.current)) moveAnchorRef.current = null
+  }, [project?.groups])
+  useEffect(() => {
+    const cancel = (event: KeyboardEvent) => { if (event.key === "Escape") { cancelGroupDrag(); setMoveSelection(new Set()) } }
+    const blur = () => cancelGroupDrag()
+    document.addEventListener("keydown", cancel)
+    window.addEventListener("blur", blur)
+    return () => { document.removeEventListener("keydown", cancel); window.removeEventListener("blur", blur) }
+  }, [])
   const selectedGroups = useMemo(() => plotScope === "selected" ? marked : active ? [active] : [], [plotScope, marked, active])
-  const weightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, groups: selectedGroups,
+  const weightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, dataVersion: plotDataVersion, groups: selectedGroups,
     kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
   const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
     : weightedPlot.groups.map((group, index) => ({ group, index }))
@@ -698,11 +718,19 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (!project || !active || !parameters) return []
     const current = active, all = project.groups
     const reimportGroup = all.find(group => group.id === contextMenu?.invokedGroupId) ?? current
+    const invokedGroupId = contextMenu?.invokedGroupId
+    const selectedForFolder = invokedGroupId && moveSelection.size >= 2 && moveSelection.has(invokedGroupId)
+      ? all.filter(group => moveSelection.has(group.id)).map(group => group.id)
+      : invokedGroupId && marked.length >= 2 && marked.some(group => group.id === invokedGroupId)
+        ? marked.map(group => group.id) : []
     const item = (id: string, label: string, onSelect: () => void, extra: Partial<ContextMenuItem> = {}): ContextMenuItem => ({ id, label, onSelect, ...extra })
     if (target.kind === 'peak') return ['gaussian', 'lorentzian', 'voigt'].filter(kind => kind !== peaks[target.index]?.kind).map(kind => item(kind, kind[0].toUpperCase() + kind.slice(1), () => setPeaks(current => current.map((peak, index) => index === target.index ? { ...peak, kind } : peak))))
     const copy = (targets: AthenaGroup[], choice: { section: NativeSection } | { field: NativeField }) => { void contextParameterAction('copy', targets, choice) }
     if (target.kind === 'group') return [
       item('target', `Current group: ${current.label}`, () => {}, { disabled: true }),
+      ...(selectedForFolder.length >= 2
+        ? [item('group-selected', `Group ${selectedForFolder.length} selected spectra together`, () => createGroupFolder(selectedForFolder), { separatorBefore: true, disabled: !can('project') || parameterUpdatePending })]
+        : []),
       item('rename', 'Rename current group…', () => openTool('rename')),
       item('duplicate', 'Copy current group', () => act('duplicate', [current.id])),
       item('datatype', 'Change data type…', () => openTool('datatype')),
@@ -847,10 +875,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (projectRef.current?.id !== p.id || projectRef.current.version !== p.version) throw new Error("The active project changed while this operation was running. Its response was not loaded.")
     const selectionUpdate = "kind" in response && response.kind === "selection"
     if (selectionUpdate && !compact) throw new Error("Unexpected selection response. Reload the project before editing.")
-    const next = selectionUpdate ? mergeSelectionUpdate(p, response) : response as AthenaProject
+    let next = selectionUpdate ? mergeSelectionUpdate(p, response) : response as AthenaProject
+    const organizationOnly = action === "project" && "group_folders" in commandOptions &&
+      Object.keys(commandOptions).every(key => key === "group_folders" || key === "group_order")
+    if (organizationOnly) {
+      // Folder edits cannot change spectral data. Keep array identities and plot caches.
+      const saved = new Map(p.groups.map(group => [group.id, group]))
+      next = { ...next, groups: next.groups.map(group => saved.get(group.id) ?? group) }
+    }
     skippedCount.current = next.last_operation?.action === action ? next.last_operation.skipped_group_ids.length : 0
     if (next.last_operation?.action === action && next.last_operation.warnings) preferenceWarnings.current.push(...next.last_operation.warnings)
-    accept(next, selectionUpdate)
+    accept(next, selectionUpdate || organizationOnly)
     return next
   }
   function act(action: string, ids = active ? [active.id] : [], opts: Record<string, unknown> = {}) {
@@ -1398,6 +1433,76 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const query = search.toLowerCase()
     return current.groups.filter(group => groupFolderScope(current, group.id) === scope && group.label.toLowerCase().includes(query)).map(group => group.id)
   }
+  function selectGroupForMove(event: MouseEvent<HTMLButtonElement>, group: AthenaGroup) {
+    if (suppressGroupClickRef.current) { suppressGroupClickRef.current = false; return }
+    if (event.shiftKey || event.metaKey || event.ctrlKey) {
+      event.preventDefault()
+      const visible = Array.from(document.querySelectorAll<HTMLElement>("#athena-data-groups .ath-group[data-group-id]"), row => row.dataset.groupId!)
+      const anchor = moveAnchorRef.current ?? active?.id ?? group.id
+      const start = visible.indexOf(anchor), end = visible.indexOf(group.id)
+      setMoveSelection(previous => {
+        const next = event.metaKey || event.ctrlKey ? new Set(previous) : new Set<string>()
+        if (event.shiftKey && start >= 0 && end >= 0) {
+          for (const id of visible.slice(Math.min(start, end), Math.max(start, end) + 1)) next.add(id)
+        } else if (next.has(group.id)) next.delete(group.id)
+        else next.add(group.id)
+        return next
+      })
+      if (!event.shiftKey) moveAnchorRef.current = group.id
+      return
+    }
+    moveAnchorRef.current = group.id
+    setMoveSelection(new Set())
+    setActiveId(group.id)
+    setAnalysisVisible(false)
+  }
+  function markSpectra(ids: string[], value: boolean) {
+    const current = projectRef.current
+    if (!current || !ids.length || busy || !canCommand("metadata") || parameterActionBlocked()) return
+    const members = new Set(ids)
+    // Show the checkbox/plot selection immediately; command still uses the saved version.
+    setProject({ ...current, groups: current.groups.map(group => members.has(group.id) ? { ...group, marked: value } : group) })
+    void task(value ? "Mark spectra" : "Unmark spectra", async () => { await command("metadata", ids, { marked: value }) })
+      .then(succeeded => { if (!succeeded && projectRef.current === current) setProject(current) })
+  }
+  function moveSpectraIntoFolder(ids: string[], folderId: string) {
+    const current = projectRef.current
+    const target = current?.group_folders?.find(folder => folder.id === folderId)
+    if (!current || !target || busy || !can("project") || parameterActionBlocked()) return
+    const incoming = new Set(ids.filter(id => !target.group_ids.includes(id)))
+    if (!incoming.size) return
+    const moved = current.groups.filter(group => incoming.has(group.id))
+    const remaining = current.groups.filter(group => !incoming.has(group.id))
+    const lastMember = remaining.findLastIndex(group => target.group_ids.includes(group.id))
+    remaining.splice(lastMember + 1, 0, ...moved)
+    const folders = (current.group_folders ?? []).flatMap(folder => {
+      const retained = folder.id === folderId
+        ? remaining.filter(group => target.group_ids.includes(group.id) || incoming.has(group.id)).map(group => group.id)
+        : folder.group_ids.filter(id => !incoming.has(id))
+      return retained.length || !folder.group_ids.length ? [{ ...folder, group_ids: retained }] : []
+    })
+    setProject({ ...current, groups: remaining, group_folders: folders })
+    const wasCollapsed = collapsedGroupFolders.has(folderId)
+    setCollapsedGroupFolders(previous => { const next = new Set(previous); next.delete(folderId); return next })
+    const label = `${moved.length} ${moved.length === 1 ? "spectrum" : "spectra"}`
+    setReorderAnnouncement(`Moving ${label} into ${target.name}.`)
+    void task(`Move ${label} into ${target.name}`, async () => {
+      await command("project", [], { group_folders: folders, group_order: remaining.map(group => group.id) })
+      setCollapsedGroupFolders(previous => {
+        try { localStorage.setItem(`athena.group-folders.collapsed.v1:${current.id}`, JSON.stringify([...previous])) } catch { /* Keep the current expanded view. */ }
+        return previous
+      })
+      setReorderAnnouncement(`Moved ${label} into ${target.name}.`)
+    }).then(succeeded => {
+      if (!succeeded) {
+        if (projectRef.current === current) {
+          setProject(current)
+          if (wasCollapsed) setCollapsedGroupFolders(previous => new Set([...previous, folderId]))
+        }
+        setReorderAnnouncement(`Could not move ${label}. Groups unchanged.`)
+      }
+    })
+  }
   function toggleGroupFolder(folderId: string) {
     if (!project) return
     setCollapsedGroupFolders(previous => {
@@ -1417,18 +1522,39 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   function folderId() {
     return `folder-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
   }
+  function createGroupFolder(groupIds: string[] = []) {
+    const current = projectRef.current
+    if (!current || busy || parameterActionBlocked() || !can("project")) return
+    const members = new Set(groupIds)
+    const existingNames = new Set((current.group_folders ?? []).map(folder => folder.name.toLowerCase()))
+    let name = "New group", suffix = 2
+    while (existingNames.has(name.toLowerCase())) name = `New group ${suffix++}`
+    const id = folderId()
+    const nextFolders = (current.group_folders ?? [])
+      .flatMap(folder => {
+        const retained = folder.group_ids.filter(groupId => !members.has(groupId))
+        return retained.length || !folder.group_ids.length ? [{ ...folder, group_ids: retained }] : []
+      })
+    nextFolders.push({ id, name, group_ids: current.groups.filter(group => members.has(group.id)).map(group => group.id) })
+    void task(`Creating ${name}`, async () => {
+      await command("project", [], { group_folders: nextFolders })
+      setMoveSelection(new Set())
+      moveAnchorRef.current = null
+    })
+  }
   function saveGroupFolder() {
     const current = projectRef.current
     const name = groupFolderDraft.name.trim()
     const members = new Set(groupFolderDraft.groupIds)
     if (!current) return
     if (!name) { setGroupFolderError("Enter a group name."); return }
-    if (!members.size) { setGroupFolderError("Choose at least one spectrum."); return }
     const id = groupFolderDraft.id ?? folderId()
     const nextFolders = (current.group_folders ?? [])
       .filter(folder => folder.id !== groupFolderDraft.id)
-      .map(folder => ({ ...folder, group_ids: folder.group_ids.filter(groupId => !members.has(groupId)) }))
-      .filter(folder => folder.group_ids.length)
+      .flatMap(folder => {
+        const retained = folder.group_ids.filter(groupId => !members.has(groupId))
+        return retained.length || !folder.group_ids.length ? [{ ...folder, group_ids: retained }] : []
+      })
     nextFolders.push({ id, name, group_ids: current.groups.filter(group => members.has(group.id)).map(group => group.id) })
     void task(`Saving ${name} group`, async () => {
       await command("project", [], { group_folders: nextFolders })
@@ -1493,60 +1619,109 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     let cursor = 0
     submitGroupOrder(id, current.groups.map(group => visible.has(group.id) ? visibleIds[cursor++] : group.id))
   }
-  function moveGroupTo(id: string, target: GroupDropTarget) {
+  function moveGroupTo(id: string, target: GroupDropTarget, movingIds = [id]) {
     const current = projectRef.current
     if (groupSort !== "manual" || !current || id === target.id) return
     const visibleIds = visibleReorderIds(current, id)
     if (!visibleIds.includes(id) || !visibleIds.includes(target.id)) return
-    const reordered = visibleIds.filter(groupId => groupId !== id)
+    const moving = new Set(movingIds)
+    if (moving.has(target.id) || movingIds.some(groupId => !visibleIds.includes(groupId))) return
+    const reordered = visibleIds.filter(groupId => !moving.has(groupId))
     const targetIndex = reordered.indexOf(target.id)
-    reordered.splice(targetIndex + (target.position === "after" ? 1 : 0), 0, id)
+    reordered.splice(targetIndex + (target.position === "after" ? 1 : 0), 0, ...visibleIds.filter(groupId => moving.has(groupId)))
     const visible = new Set(reordered)
     let cursor = 0
     submitGroupOrder(id, current.groups.map(group => visible.has(group.id) ? reordered[cursor++] : group.id))
   }
+  function clearGroupDropIndicator() {
+    document.querySelectorAll<HTMLElement>("#athena-data-groups [data-drop-position], #athena-data-groups [data-drop-folder]").forEach(element => {
+      delete element.dataset.dropPosition
+      delete element.dataset.dropFolder
+    })
+    groupDropTargetRef.current = null
+  }
   function cancelGroupDrag() {
+    const drag = groupDragRef.current
+    groupDragRef.current = null
     if (groupDragScrollFrameRef.current !== null) cancelAnimationFrame(groupDragScrollFrameRef.current)
     groupDragScrollFrameRef.current = null
-    groupDragPointerYRef.current = null
-    groupDragRef.current = null
-    groupDropTargetRef.current = null
-    setDraggingGroupId(null)
-    setGroupDropTarget(null)
+    groupDragPointerRef.current = null
+    clearGroupDropIndicator()
+    document.querySelectorAll<HTMLElement>("#athena-data-groups [data-dragging]").forEach(row => delete row.dataset.dragging)
+    if (groupDragBadgeRef.current) groupDragBadgeRef.current.hidden = true
+    if (drag) {
+      try { if (drag.handle.hasPointerCapture(drag.pointerId)) drag.handle.releasePointerCapture(drag.pointerId) } catch { /* Capture may already be released. */ }
+    }
   }
   function beginGroupDrag(event: ReactPointerEvent<HTMLButtonElement>, group: AthenaGroup) {
+    suppressGroupClickRef.current = false
     const current = projectRef.current
-    const visibleCount = current ? visibleReorderIds(current, group.id).length : 0
-    if (groupSort !== "manual" || (typeof event.button === "number" && event.button !== 0) || event.isPrimary === false || !current || busy || parameterUpdatePending || !canCommand("reorder") || visibleCount < 2) return
-    event.preventDefault()
+    const canReorder = groupSort === "manual" && canCommand("reorder") && current && visibleReorderIds(current, group.id).length > 1
+    const canGroup = can("project") && !!current?.group_folders?.length
+    if ((!canReorder && !canGroup) || (typeof event.button === "number" && event.button !== 0) || event.isPrimary === false || !current || busy || parameterUpdatePending || event.shiftKey || event.metaKey || event.ctrlKey) return
+    const ids = moveSelection.has(group.id) ? current.groups.filter(item => moveSelection.has(item.id)).map(item => item.id)
+      : group.marked ? current.groups.filter(item => item.marked).map(item => item.id) : [group.id]
+    const isHandle = event.currentTarget.classList.contains("ath-group-drag-handle")
+    if (isHandle) event.preventDefault()
     event.currentTarget.focus()
     try { event.currentTarget.setPointerCapture(event.pointerId) } catch { /* Pointer capture is unavailable in some test/browser environments. */ }
-    groupDragRef.current = { id: group.id, scope: groupFolderScope(current, group.id), pointerId: event.pointerId, projectId: current.id, version: current.version }
-    groupDropTargetRef.current = null
-    setDraggingGroupId(group.id)
-    setGroupDropTarget(null)
-    setReorderAnnouncement(`Moving ${group.label}. Drag above or below another spectrum, then release.`)
+    groupDragRef.current = { id: group.id, ids, scope: groupFolderScope(current, group.id), pointerId: event.pointerId, projectId: current.id, version: current.version, startX: event.clientX || 0, startY: event.clientY, started: false, handle: event.currentTarget }
+    clearGroupDropIndicator()
   }
-  function updateGroupDropTarget(clientY: number) {
+  function updateGroupDropTarget(clientX: number, clientY: number) {
     const drag = groupDragRef.current
-    if (!drag) return
-    const rows = Array.from(document.querySelectorAll<HTMLElement>("#athena-data-groups .ath-group[data-group-id]"))
-      .filter(row => row.dataset.groupId !== drag.id && row.dataset.reorderScope === drag.scope)
-    if (!rows.length) return
-    const row = rows.find(candidate => clientY <= candidate.getBoundingClientRect().bottom) ?? rows.at(-1)!
-    const bounds = row.getBoundingClientRect()
-    const next: GroupDropTarget = { id: row.dataset.groupId!, position: clientY < bounds.top + bounds.height / 2 ? "before" : "after" }
+    const list = document.querySelector<HTMLElement>("#athena-data-groups .ath-group-list")
+    if (!drag || !drag.started || !list) return
+    const bounds = list.getBoundingClientRect()
+    if ((bounds.width > 0 && (clientX < bounds.left || clientX > bounds.right)) || (bounds.height > 0 && (clientY < bounds.top || clientY > bounds.bottom))) {
+      clearGroupDropIndicator(); return
+    }
+    const contains = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect()
+      return rect.height > 0 && clientY >= rect.top && clientY <= rect.bottom && (rect.width <= 0 || (clientX >= rect.left && clientX <= rect.right))
+    }
+    const folder = Array.from(list.querySelectorAll<HTMLElement>(".ath-group-folder[data-folder-id]")).find(contains)
+    let next: SpectrumDropTarget | null = null
+    let indicator: HTMLElement | undefined
+    if (folder && can("project")) {
+      const folderId = folder.dataset.folderId!
+      const currentFolder = projectRef.current?.group_folders?.find(item => item.id === folderId)
+      if (currentFolder && drag.ids.some(id => !currentFolder.group_ids.includes(id))) {
+        next = { folderId }; indicator = folder
+      }
+    }
+    const heading = folder?.querySelector<HTMLElement>(".ath-group-folder-heading")
+    if (!next && heading && contains(heading)) {
+      clearGroupDropIndicator(); return
+    }
+    if (!next && groupSort === "manual" && canCommand("reorder")) {
+      const allRows = Array.from(list.querySelectorAll<HTMLElement>(".ath-group[data-group-id]"))
+      const hit = allRows.find(contains)
+      // Crossing another folder must never silently reorder within the source folder.
+      if ((!folder || `folder:${folder.dataset.folderId}` === drag.scope) && (!hit || hit.dataset.reorderScope === drag.scope)) {
+        const rows = allRows.filter(row => !drag.ids.includes(row.dataset.groupId!) && row.dataset.reorderScope === drag.scope)
+        const row = hit && rows.includes(hit) ? hit : !hit ? rows.find(candidate => clientY <= candidate.getBoundingClientRect().bottom) ?? rows.at(-1) : undefined
+        if (row) {
+          const rect = row.getBoundingClientRect()
+          next = { id: row.dataset.groupId!, position: clientY < rect.top + rect.height / 2 ? "before" : "after" }; indicator = row
+        }
+      }
+    }
     const previous = groupDropTargetRef.current
-    if (previous?.id === next.id && previous.position === next.position) return
+    if (JSON.stringify(previous) === JSON.stringify(next)) return
+    clearGroupDropIndicator()
     groupDropTargetRef.current = next
-    setGroupDropTarget(next)
+    if (next && indicator) {
+      if ("folderId" in next) indicator.dataset.dropFolder = "true"
+      else indicator.dataset.dropPosition = next.position
+    }
   }
-  function scrollGroupListForDrag(clientY: number) {
+  function scrollGroupListForDrag(clientX: number, clientY: number) {
     const list = document.querySelector<HTMLElement>("#athena-data-groups .ath-group-list")
     if (!list) return false
     const bounds = list.getBoundingClientRect()
     const maxScroll = list.scrollHeight - list.clientHeight
-    if (bounds.height <= 0 || maxScroll <= 0) return false
+    if (bounds.height <= 0 || maxScroll <= 0 || (bounds.width > 0 && (clientX < bounds.left || clientX > bounds.right)) || clientY < bounds.top - 24 || clientY > bounds.bottom + 24) return false
     const edge = Math.min(48, bounds.height / 3)
     let intensity = 0
     if (clientY < bounds.top + edge) intensity = -Math.min(1.5, (bounds.top + edge - clientY) / edge)
@@ -1558,33 +1733,50 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     return true
   }
   function scheduleGroupDragScroll() {
-    if (groupDragScrollFrameRef.current !== null || groupDragPointerYRef.current === null) return
+    if (groupDragScrollFrameRef.current !== null || groupDragPointerRef.current === null) return
     groupDragScrollFrameRef.current = requestAnimationFrame(() => {
       groupDragScrollFrameRef.current = null
-      const clientY = groupDragPointerYRef.current
-      if (!groupDragRef.current || clientY === null || !scrollGroupListForDrag(clientY)) return
-      updateGroupDropTarget(clientY)
+      const pointer = groupDragPointerRef.current
+      if (!groupDragRef.current || pointer === null || !scrollGroupListForDrag(pointer.x, pointer.y)) return
+      updateGroupDropTarget(pointer.x, pointer.y)
       scheduleGroupDragScroll()
     })
   }
   function updateGroupDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = groupDragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
+    const x = event.clientX || 0, y = event.clientY
+    if (!drag.started) {
+      if (Math.hypot(x - drag.startX, y - drag.startY) < 5) return
+      drag.started = true
+      suppressGroupClickRef.current = true
+      const ids = new Set(drag.ids)
+      document.querySelectorAll<HTMLElement>("#athena-data-groups .ath-group[data-group-id]").forEach(row => {
+        if (ids.has(row.dataset.groupId!)) row.dataset.dragging = "true"
+      })
+      if (groupDragBadgeRef.current) {
+        groupDragBadgeRef.current.textContent = `${ids.size} ${ids.size === 1 ? "spectrum" : "spectra"}`
+        groupDragBadgeRef.current.hidden = false
+      }
+    }
     event.preventDefault()
-    groupDragPointerYRef.current = event.clientY
-    const scrolled = scrollGroupListForDrag(event.clientY)
-    updateGroupDropTarget(event.clientY)
+    // Pointer feedback stays out of React: moving the mouse must not redraw Plotly.
+    if (groupDragBadgeRef.current) groupDragBadgeRef.current.style.transform = `translate3d(${x + 14}px, ${y + 12}px, 0)`
+    groupDragPointerRef.current = { x, y }
+    const scrolled = scrollGroupListForDrag(x, y)
+    updateGroupDropTarget(x, y)
     if (scrolled) scheduleGroupDragScroll()
   }
   function finishGroupDrag(event: ReactPointerEvent<HTMLButtonElement>) {
     const drag = groupDragRef.current
     if (!drag || drag.pointerId !== event.pointerId) return
+    if (drag.started) updateGroupDropTarget(event.clientX || 0, event.clientY)
     const target = groupDropTargetRef.current
     const current = projectRef.current
-    try { if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId) } catch { /* No active pointer capture. */ }
     cancelGroupDrag()
-    if (!target || !current || busy || parameterUpdatePending || current.id !== drag.projectId || current.version !== drag.version) return
-    moveGroupTo(drag.id, target)
+    if (!drag.started || !target || !current || busy || parameterUpdatePending || current.id !== drag.projectId || current.version !== drag.version) return
+    if ("folderId" in target) moveSpectraIntoFolder(drag.ids, target.folderId)
+    else moveGroupTo(drag.id, target, drag.ids)
   }
   const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"] as const satisfies readonly Exclude<ModalName, null>[]
   const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as const satisfies readonly Exclude<ModalName, null>[]
@@ -1691,34 +1883,43 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   function renderDataGroup(group: AthenaGroup) {
     const measurementMode = measurementModeLabel(group)
     const isReference = importedAsReference(group) || linkedReferenceIds.has(group.id)
-    const dropPosition = groupDropTarget?.id === group.id ? groupDropTarget.position : undefined
     const folder = groupFolderByGroupId.get(group.id)
     const reorderCount = project ? visibleReorderIds(project, group.id).length : 0
-    return <div key={group.id} role="listitem" data-group-id={group.id} data-group-folder-id={folder?.id} data-reorder-scope={project ? groupFolderScope(project, group.id) : "root:ungrouped"} data-dragging={draggingGroupId === group.id || undefined} data-drop-position={dropPosition} className={`ath-group ${active?.id === group.id ? "selected" : ""}`}><button type="button" className="ath-group-drag-handle" aria-label={`Reorder ${group.label}`} aria-describedby="ath-group-reorder-help" aria-keyshortcuts="ArrowUp ArrowDown" title={groupSort !== "manual" ? "Switch to Manual order to reorder spectra" : folder ? `Drag to reorder within ${folder.name}; use the Up and Down arrow keys for precise movement` : "Drag to reorder ungrouped spectra; use the Up and Down arrow keys for precise movement"} disabled={groupSort !== "manual" || !!busy || parameterUpdatePending || !canCommand("reorder") || reorderCount < 2} onPointerDown={event => beginGroupDrag(event, group)} onPointerMove={updateGroupDrag} onPointerUp={finishGroupDrag} onPointerCancel={cancelGroupDrag} onLostPointerCapture={event => { if (groupDragRef.current?.pointerId === event.pointerId) cancelGroupDrag() }} onKeyDown={event => {
+    return <div key={group.id} role="listitem" data-group-id={group.id} data-group-folder-id={folder?.id} data-reorder-scope={project ? groupFolderScope(project, group.id) : "root:ungrouped"} data-move-selected={moveSelection.has(group.id) || undefined} className={`ath-group ${active?.id === group.id ? "selected" : ""}`}><button type="button" className="ath-group-drag-handle" aria-label={`Reorder ${group.label}`} aria-describedby="ath-group-reorder-help" aria-keyshortcuts="ArrowUp ArrowDown" title={groupSort !== "manual" && !groupFolders.length ? "Switch to Manual order to reorder spectra" : "Drag selected or marked spectra into a group. In Manual order, drag to reorder or use the Up and Down arrow keys."} disabled={!!busy || parameterUpdatePending || !((canCommand("reorder") && groupSort === "manual" && reorderCount > 1) || (can("project") && groupFolders.length > 0))} onPointerDown={event => beginGroupDrag(event, group)} onPointerMove={updateGroupDrag} onPointerUp={finishGroupDrag} onPointerCancel={cancelGroupDrag} onLostPointerCapture={event => { if (groupDragRef.current?.pointerId === event.pointerId) cancelGroupDrag() }} onKeyDown={event => {
       if (event.key === "Escape" && groupDragRef.current?.id === group.id) { event.preventDefault(); cancelGroupDrag(); return }
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
       event.preventDefault(); cancelGroupDrag(); moveGroupBy(group.id, event.key === "ArrowUp" ? -1 : 1)
-    }}><GripVertical size={14} /></button><input aria-label={`Mark ${group.label}`} type="checkbox" checked={group.marked} disabled={!!busy || parameterUpdatePending || !canCommand("metadata")} onChange={event => act("metadata", [group.id], { marked: event.target.checked })} /><button className="ath-group-select" disabled={!!busy} onClick={() => { setActiveId(group.id); setAnalysisVisible(false) }}><span className="ath-swatch" style={{ background: spectrumColors.get(group.id) ?? "var(--ath-line)" }} /><span><strong>{group.label}</strong><small>{isDifferenceGroup(group) ? (group.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(group)} · {group.energy.length.toLocaleString()} points{group.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" data-tag={measurementMode} title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{isReference && <span className="ath-measurement-tag" data-tag="ref" title="Reference">ref</span>}{group.frozen && <LockKeyhole size={12} />}{drafts[group.id] && !sameParameters(drafts[group.id], group.parameters) && <i title={autoApplyPlans[group.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[group.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button></div>
+    }}><GripVertical size={14} /></button><input aria-label={`Mark ${group.label}`} type="checkbox" checked={group.marked} disabled={!!busy || parameterUpdatePending || !canCommand("metadata")} onChange={event => markSpectra([group.id], event.target.checked)} /><button className="ath-group-select" disabled={!!busy} aria-pressed={moveSelection.has(group.id)} aria-describedby="ath-group-multiselect-help" onClick={event => selectGroupForMove(event, group)} onPointerDown={event => beginGroupDrag(event, group)} onPointerMove={updateGroupDrag} onPointerUp={finishGroupDrag} onPointerCancel={cancelGroupDrag} onLostPointerCapture={event => { if (groupDragRef.current?.pointerId === event.pointerId) cancelGroupDrag() }}><span className="ath-swatch" style={{ background: spectrumColors.get(group.id) ?? "var(--ath-line)" }} /><span><strong>{group.label}</strong><small>{isDifferenceGroup(group) ? (group.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(group)} · {group.energy.length.toLocaleString()} points{group.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" data-tag={measurementMode} title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{isReference && <span className="ath-measurement-tag" data-tag="ref" title="Reference">ref</span>}{group.frozen && <LockKeyhole size={12} />}{drafts[group.id] && !sameParameters(drafts[group.id], group.parameters) && <i title={autoApplyPlans[group.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[group.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button></div>
   }
   function renderDataGroupList() {
     const renderedFolders = new Set<string>()
     const rows: ReactNode[] = []
     const ungrouped = sortGroupsForDisplay(visibleGroups.filter(group => !groupFolderByGroupId.has(group.id)))
     let ungroupedIndex = 0
-    for (const group of visibleGroups) {
-      const folder = groupFolderByGroupId.get(group.id)
-      if (!folder) { rows.push(renderDataGroup(ungrouped[ungroupedIndex++])); continue }
-      if (renderedFolders.has(folder.id)) continue
-      renderedFolders.add(folder.id)
+    function renderFolder(folder: AthenaGroupFolder) {
       const members = sortGroupsForDisplay(visibleGroups.filter(candidate => groupFolderByGroupId.get(candidate.id)?.id === folder.id))
       const searchExpanded = !!search
       const expanded = searchExpanded || !collapsedGroupFolders.has(folder.id)
       const containsActive = folder.group_ids.includes(active?.id ?? "")
       const contentId = `ath-group-folder-${folder.id}`
-      rows.push(<section key={folder.id} className={`ath-group-folder${containsActive ? " contains-active" : ""}`} role="group" aria-label={`${folder.name} data group`}>
-        <div className="ath-group-folder-heading"><button type="button" className="ath-group-folder-toggle" aria-label={searchExpanded ? `${folder.name} group expanded for search` : `${expanded ? "Collapse" : "Expand"} ${folder.name} group`} aria-expanded={expanded} aria-controls={contentId} title={searchExpanded ? "Clear search to restore collapse controls" : undefined} disabled={searchExpanded} onClick={() => toggleGroupFolder(folder.id)}><ChevronRight size={14} aria-hidden="true" /><Folder size={15} aria-hidden="true" /><strong>{folder.name}</strong><span>{search ? `${members.length}/${folder.group_ids.length}` : folder.group_ids.length}</span></button><button type="button" className="ath-group-folder-edit" aria-label={`Edit ${folder.name} group`} title="Edit group" disabled={!!busy || parameterUpdatePending || !can("project")} onClick={() => openGroupFolderEditor(folder)}><Pencil size={13} /></button></div>
+      const memberIds = new Set(folder.group_ids)
+      const markedCount = project?.groups.filter(item => memberIds.has(item.id) && item.marked).length ?? 0
+      const allMarked = !!folder.group_ids.length && markedCount === folder.group_ids.length
+      const partlyMarked = markedCount > 0 && !allMarked
+      return <section key={folder.id} data-folder-id={folder.id} className={`ath-group-folder${containsActive ? " contains-active" : ""}`} role="group" aria-label={`${folder.name} data group`}>
+        <div className="ath-group-folder-heading"><input className="ath-group-folder-mark" type="checkbox" aria-label={`Mark all spectra in ${folder.name}`} aria-checked={partlyMarked ? "mixed" : allMarked} ref={element => { if (element) element.indeterminate = partlyMarked }} checked={allMarked} title={allMarked ? `Unmark all spectra in ${folder.name}` : `Mark all spectra in ${folder.name}`} disabled={!folder.group_ids.length || !!busy || parameterUpdatePending || !canCommand("metadata")} onChange={event => markSpectra(folder.group_ids, event.target.checked)} /><button type="button" className="ath-group-folder-toggle" aria-label={searchExpanded ? `${folder.name} group expanded for search` : `${expanded ? "Collapse" : "Expand"} ${folder.name} group`} aria-expanded={expanded} aria-controls={contentId} title={searchExpanded ? "Clear search to restore collapse controls" : undefined} disabled={searchExpanded} onClick={() => toggleGroupFolder(folder.id)}><ChevronRight size={14} aria-hidden="true" /><Folder size={15} aria-hidden="true" /><strong>{folder.name}</strong><span>{search ? `${members.length}/${folder.group_ids.length}` : folder.group_ids.length}</span></button><button type="button" className="ath-group-folder-edit" aria-label={`Edit ${folder.name} group`} title="Edit group" disabled={!!busy || parameterUpdatePending || !can("project")} onClick={() => openGroupFolderEditor(folder)}><Pencil size={13} /></button></div>
         {expanded && <div id={contentId} className="ath-group-folder-children">{members.map(renderDataGroup)}</div>}
-      </section>)
+      </section>
+    }
+    for (const group of visibleGroups) {
+      const folder = groupFolderByGroupId.get(group.id)
+      if (!folder) { rows.push(renderDataGroup(ungrouped[ungroupedIndex++])); continue }
+      if (renderedFolders.has(folder.id)) continue
+      renderedFolders.add(folder.id)
+      rows.push(renderFolder(folder))
+    }
+    if (!search) for (const folder of groupFolders) {
+      if (!renderedFolders.has(folder.id) && !folder.group_ids.length) rows.push(renderFolder(folder))
     }
     return rows
   }
@@ -1736,7 +1937,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
             <div className="ath-help-results">{!helpTerms.length ? <p className="ath-help-message">Type a keyword to find a menu command.</p> : !helpMatches.length ? <p className="ath-help-message" role="status">No menu commands found.</p> : <><span className="ath-sr-only" role="status">{helpMatches.length} menu command{helpMatches.length === 1 ? "" : "s"} found.</span>{helpMatches.map((command, index) => renderMenuCommand(command, index))}</>}</div>
           </div>}
         </div>
-      </nav><button className="ath-learn" onClick={() => openTool("learn")}><BookOpen size={16} />Learn Athena</button><ThemeToggle /><span className="ath-local"><i /> Local workspace</span></header>
+      </nav><ThemeToggle /><span className="ath-local"><i /> Local workspace</span></header>
     <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={!project?.undo.length || !!busy || parameterUpdatePending || !canCommand("undo")} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={!project?.redo.length || !!busy || parameterUpdatePending || !canCommand("redo")} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
     <section className="ath-edge-policy-bar" aria-label="Import edge policy"><span>Import edge enforcement: <strong>{edgePolicyDescription(edgePolicy)}</strong>. Applies to new raw-file samples. References use their own E₀ and can share the sample’s element.</span>{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}
@@ -1747,9 +1948,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>
         <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => { cancelGroupDrag(); setSearch(e.target.value) }} /></label>
         <div className="ath-group-sort-row"><label><ArrowUpDown size={13} aria-hidden="true" /><span>Sort</span><select aria-label="Sort spectra" aria-describedby="ath-group-sort-help" value={groupSort} onChange={event => changeGroupSort(event.target.value as GroupSort)}><option value="manual">Manual order</option><option value="added">Added order</option><option value="name">Name A–Z</option><option value="tag">Tag type</option></select></label><span id="ath-group-sort-help" className="ath-sr-only">Sorting changes only the view and keeps folders together. Added order is when each spectrum was added to or created in the project. Tag order is trans, fluo, ref, then untagged. Switch to Manual order to reorder spectra.</span></div>
-        <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy || !canCommand("metadata")} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => act("metadata", project!.groups.map(g => g.id), { marked: e.target.checked })} />{marked.length} marked</label><span className="ath-group-list-tools"><button type="button" aria-label="Group spectra" title={marked.length ? `Group ${marked.length} marked spectra` : "Group the current spectrum or choose spectra"} disabled={!project?.groups.length || !!busy || parameterUpdatePending || !can("project")} onClick={() => openGroupFolderEditor()}><FolderPlus size={13} />Group</button><span className="ath-reorder-hint" id="ath-group-reorder-help" title={groupSort === "manual" ? undefined : "Switch to Manual order to reorder spectra"}>{groupSort === "manual" ? <><GripVertical size={12} />Drag to reorder<span className="ath-sr-only"> within the same group. Use the Up and Down arrow keys for precise movement.</span></> : <><ArrowUpDown size={12} />Sorted view<span className="ath-sr-only">. Switch to Manual order to reorder spectra.</span></>}</span></span><span className="ath-sr-only" aria-live="polite">{reorderAnnouncement}</span></div>
+        <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy || !canCommand("metadata")} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => markSpectra(project!.groups.map(g => g.id), e.target.checked)} />{marked.length} marked</label><span className="ath-group-list-tools"><button type="button" aria-label="Create empty group" title="Create an empty group" disabled={!project || !!busy || parameterUpdatePending || !can("project")} onClick={() => createGroupFolder()}><FolderPlus size={13} />Group</button><span className="ath-reorder-hint" id="ath-group-reorder-help" title={groupSort === "manual" ? undefined : "Switch to Manual order to reorder spectra"}>{groupSort === "manual" ? <><GripVertical size={12} />Drag to reorder<span className="ath-sr-only"> within the same group, or drag into another group. Use the Up and Down arrow keys for precise movement.</span></> : <><ArrowUpDown size={12} />Sorted view<span className="ath-sr-only">. Switch to Manual order to reorder spectra.</span></>}</span></span><span className="ath-sr-only" aria-live="polite">{reorderAnnouncement}</span></div>
+        <p className="ath-multiselect-help" id="ath-group-multiselect-help">⌘/Ctrl-click to select · Shift-click for a range · Right-click selected spectra to group them · Drag into a group{moveSelection.size > 0 && <span>{moveSelection.size} selected for moving <button type="button" onClick={() => setMoveSelection(new Set())}>Clear</button></span>}</p>
+        <div ref={groupDragBadgeRef} className="ath-group-drag-badge" hidden aria-hidden="true" />
         <div className="ath-group-list" role="list" onContextMenu={event => showContext(event, { kind: "group" })} onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) showContext(event, { kind: "group" }) }}>{renderDataGroupList()}</div>
-        {!project?.groups.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
+        {!project?.groups.length && !groupFolders.length && <div className="ath-empty-groups"><Layers size={30} strokeWidth={1} /><p>A place for every scan.</p><span>Import files together to compare, align, and merge your spectra.</span></div>}
       </aside>}
       spectrum={<section id="athena-spectrum-viewer" className="ath-center">
         {parameterTab === "fitting" && <ArtemisFitResultViewer group={active} pending={!!busy || !!dirty || parameterUpdatePending} result={!dirty && !parameterUpdatePending && artemisResult?.project_id === project?.id && artemisResult?.version === project?.version && artemisResult?.group_id === active?.id ? artemisResult : null} />}
