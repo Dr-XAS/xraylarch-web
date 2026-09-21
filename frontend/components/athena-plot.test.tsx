@@ -20,6 +20,8 @@ type Handoff = {
     xaxis: { title: { text: string }; showgrid?: boolean; range?: Array<number | null>; autorange?: boolean | "min" | "max" }
     yaxis: { title: { text: string }; showgrid?: boolean }
     yaxis2?: { title: { text: string } }
+    showlegend: boolean
+    legend: { x: number; xanchor: string; y: number; yanchor: string }
     uirevision: string
   }
 }
@@ -137,6 +139,32 @@ describe("AthenaPlot redraw boundaries", () => {
 })
 
 describe("AthenaPlot display options", () => {
+  it("overlays a visible legend inside the plot by default without changing its traces", () => {
+    const sample = group()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space: "E", energyMode: "mu", component: "mag",
+      background: false, window: false, offset: 0, analysis: null, analysisVisible: false,
+      range: [null, null], showLegend: true,
+    }
+    const { rerender } = render(<AthenaPlot {...props} />)
+    const visible = handoff()
+    expect(visible.layout.showlegend).toBe(true)
+    expect(visible.layout.legend.x).toBeGreaterThanOrEqual(0)
+    expect(visible.layout.legend.x).toBeLessThan(1)
+    expect(visible.layout.legend.y).toBeGreaterThanOrEqual(0)
+    expect(visible.layout.legend.y).toBeLessThanOrEqual(1)
+    expect(visible.layout.legend).toMatchObject({ xanchor: "right", yanchor: "top" })
+
+    rerender(<AthenaPlot {...props} showLegend={false} />)
+    const hidden = handoff()
+    expect(hidden.layout.showlegend).toBe(false)
+    expect(hidden.data).toBe(visible.data)
+    expect(hidden.config).toBe(visible.config)
+    rerender(<AthenaPlot {...props} />)
+    expect(handoff().layout.showlegend).toBe(true)
+    expect(handoff().layout.legend).toMatchObject(visible.layout.legend)
+  })
+
   it("uses the spectrum-only PR palette settings", () => {
     const first = group("First")
     const second = group("Second")
