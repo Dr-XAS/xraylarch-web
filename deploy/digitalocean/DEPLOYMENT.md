@@ -3,7 +3,7 @@
 > Pre-rollout record: the release revision and verification results below
 > describe the instance that was live immediately before this master sync. The
 > source branch has since been synchronized through `origin/master` at
-> `e68110f80158acfe83625893f07ea9b70a27f0bf`; deploy and verify the local
+> `2e662cfa81e57f77ed7476849eddbdeb64dc4523`; deploy and verify the local
 > commit before replacing the historical values in this file.
 
 - Public URL: https://larch-web.dr-xas.org
@@ -32,22 +32,22 @@ Anonymous projects belong to the browser's signed cookie. Users should export im
 
 ## Pre-rollout source and release
 
-The live revision before this rollout was `3760afc1d14c55fd3dd79a721b9525663a5ec3a1`. It contains the public-deployment overlay on top of `origin/master` at `5f2791161605733e42ed62a740d97ff3c6ceab9f`, including the patched Next.js 16.3.5 runtime and the strict Artemis proxy allowlist. The release preserves master's Athena, Artemis, structure database, and integration code. The deployment overlay adds signed anonymous browser isolation (including Artemis), persistent per-browser preferences, safe session forwarding/recovery, and standalone packaging. Public mode rejects enabling the separate integration API.
+The live revision before this rollout was `a1fa477d5e8dbc0414c23dbbded76dd6037f8f09`. It contains the public-deployment overlay synchronized through `origin/master` at `e68110f80158acfe83625893f07ea9b70a27f0bf`, including the patched Next.js 16.3.5 runtime and the strict Artemis proxy allowlist. The release preserves master's Athena, Artemis, structure database, and integration code. The deployment overlay adds signed anonymous browser isolation (including Artemis), persistent per-browser preferences, safe session forwarding/recovery, and standalone packaging. Public mode rejects enabling the separate integration API.
 
-Pre-rollout release directory: `/opt/xraylarch-releases/3760afc1d14c55fd3dd79a721b9525663a5ec3a1`. The backend and frontend images carry that full commit as their tag and revision label. The backend's internal `/health` reports the exact release revision; the public proxy deliberately exposes only health status.
+Pre-rollout release directory: `/opt/xraylarch-releases/a1fa477d5e8dbc0414c23dbbded76dd6037f8f09`. The backend and frontend images carry that full commit as their tag and revision label. The backend's internal `/health` reports the exact release revision; the public proxy deliberately exposes only health status.
 
 For the next rollout, record the exact local `internal_testing` commit from `git rev-parse HEAD` in the release directory and image tags. Build the frontend with Node.js 24 and retain the 256-column backend default unless an explicit production limit is intended.
 
-## Pre-rollout verification — 2026-09-19
+## Pre-rollout verification — 2026-09-21
 
 - Both exact-commit images built successfully on the Linux server and carry the full release revision label.
 - Public/config/integration backend tests passed, covering public isolation, Athena/classic API, preferences, Artemis, FEFF jobs, configuration, and integration behavior.
-- All 1,162 frontend tests, TypeScript checking, the production frontend build, and dependency audits passed.
-- The full backend suite stopped after three existing alignment numerical comparisons failed (maximum observed difference about 3.4e-10). The same three tests also fail on untouched master in the same local environment; the scientific algorithms were not changed by the deployment overlay.
-- Active backend health reported `3760afc1d14c55fd3dd79a721b9525663a5ec3a1`; all three containers were healthy.
-- Public HTTPS smoke passed: signed cookies, private cache headers, cross-visitor read/write/export restrictions, three processed Cu spectra, project export, an actual Artemis fit, AMCSD lookup/details/attachment, and denied foreign FEFF access.
+- All 1,247 frontend tests, TypeScript checking, the production frontend build, and dependency audits passed.
+- The full backend suite had 4,130 passes and 79 known local-environment failures: three existing alignment numerical comparisons (maximum difference about 3.4e-10) and 76 XDI tests needing an x86_64-only library unavailable on the ARM64 Mac. The focused Athena/public/integration suite passed 299 tests.
+- Active backend health reported `a1fa477d5e8dbc0414c23dbbded76dd6037f8f09`; all three containers were healthy.
+- Public HTTPS smoke passed: signed cookies, private cache headers, cross-visitor read/write/export restrictions, four processed Cu/Cu₂O spectra, project export, an actual Artemis fit, AMCSD lookup/details/attachment, and denied foreign FEFF access.
 - Chrome displays the master Larch-Web interface and Artemis fitting panel; the previous example project still opens after the switch.
-- Pre-switch data backup: `/opt/xraylarch-backups/before-3760afc1d14c-20260920T042103Z-71232.tar.gz` (server-local, protected; provider automatic backups remain disabled).
+- Pre-switch data backup: `/opt/xraylarch-backups/before-a1fa477d5e8d-20260921T045851Z-294415.tar.gz` (server-local, protected; provider automatic backups remain disabled).
 
 The unmodified master AMCSD search with an element filter was slow on this instance (over 75 seconds for `copper` + `Cu`, stopped during an isolated check). Numeric-ID lookup and structure details worked. This baseline search behavior is outside the isolation patch.
 
