@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
-import { CifViewer } from "./cif-viewer"
+import { CifViewer } from "./artefact-viewers/cif-viewer"
 import type { AthenaProject } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"

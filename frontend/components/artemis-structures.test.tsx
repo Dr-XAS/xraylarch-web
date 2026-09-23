@@ -9,7 +9,7 @@ import type { AthenaProject } from "@/lib/athena"
 import { ArtemisStructures } from "./artemis-structures"
 
 vi.mock("@/lib/artemis", () => ({ artemisApi: vi.fn() }))
-vi.mock("./cif-viewer", () => ({
+vi.mock("./artefact-viewers/cif-viewer", () => ({
   CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} />,
 }))
 const api = vi.mocked(artemisApi)

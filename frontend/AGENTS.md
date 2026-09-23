@@ -10,6 +10,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 ## Shared viewer controls
 
+Results viewer components and their colocated styles/tests live in `components/artefact-viewers/`. Keep workbench orchestration and processing forms outside this folder; Single and Multiple spectra share `AthenaSpectrumViewer`, and EXAFS fit results use `ArtemisFitResultViewer`.
+
 Reuse existing viewer components for repeated controls rather than copying their markup or CSS. Spectrum and Wavelet color controls share `AthenaColorLegendControl` and `AthenaRampPicker`; continuous palette definitions and previews come from `lib/athena-colormaps.ts`. Keep viewer-specific labels, categorical options, state, and storage in their callers. Presentation-only changes must not trigger scientific recalculation.
 
 Use `ViewerDisplayControls` for controls below a plot, with Offset first, its spacing beside it, then display toggles, and ranges/actions last. Use `ViewerPanel` for collapsible headings and let title/actions wrap without overlap. Reuse `athena-processing-layout.module.css` for parallel processing dialogs. Prefer 6–8 px control gaps, 12 px panel insets, and 30–32 px control heights; retain the existing readable typography. Compact by grouping related controls and removing doubled margins, while allowing narrow panels to wrap.

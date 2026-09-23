@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url"
 import { expect, test, type Locator, type Page } from "@playwright/test"
 import type { AthenaProject } from "../../lib/athena"
 import { plotlyColorscale } from "../../lib/athena-colormaps"
-import type { PlotWeightResult } from "../../components/athena-plot-weight"
+import type { PlotWeightResult } from "../../components/artefact-viewers/athena-plot-weight"
 import type { ShortcutPlot } from "../../components/athena-special-plot"
 
 test.use({ actionTimeout: 15000 })

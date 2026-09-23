@@ -1,7 +1,7 @@
 "use client"
 
 import type { ReactNode } from "react"
-import styles from "./cif-viewer.module.css"
+import styles from "./artefact-viewers/cif-viewer.module.css"
 
 interface LocalStructureControlsProps {
   radius: number

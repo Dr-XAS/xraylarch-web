@@ -4,7 +4,7 @@ import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
-import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls } from './viewer-display-controls'
+import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls } from './artefact-viewers/viewer-display-controls'
 import styles from './athena-diagnostic-plot.module.css'
 
 type Options = { version: number; view: 'quad' | 'biquad' | 'kq'; group_ids: string[]; kweight: number | null; q_component: 're' | 'im' | 'mag' }

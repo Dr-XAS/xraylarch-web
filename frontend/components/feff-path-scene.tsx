@@ -9,8 +9,8 @@ import type { FeffPathEquivalents } from "@/lib/feff-path-equivalents"
 import { AtomLegend } from "./atom-legend"
 import { LocalStructureControls } from "./local-structure-controls"
 import { StructureDisplayLegend } from "./structure-display-legend"
-import structureStyles from "./cif-viewer.module.css"
-import pathStyles from "./feff-path-viewer.module.css"
+import structureStyles from "./artefact-viewers/cif-viewer.module.css"
+import pathStyles from "./artefact-viewers/feff-path-viewer.module.css"
 
 export const FEFF_LEG_COLORS = ["#AF2168", "#3285AD", "#8061B0", "#C27332", "#348778", "#BD4B53"]
 // 3Dmol 2.5.3 multiplies its opacity uniform twice in the fragment shader.
