@@ -34,6 +34,8 @@ export interface FeffStructureContext {
   availableRadius: number | null
   candidates: FeffStructureCandidate[]
   requiresSelection: boolean
+  /** A capped CIF preview cannot establish a complete equivalent-path family. */
+  truncated?: boolean
 }
 
 export interface FeffStructureContextOptions {
@@ -171,6 +173,7 @@ export function resolveFeffStructureContext(
     ...result, source: "cif", sourceLabel: chosen.candidate.label,
     attachmentId: chosen.candidate.attachmentId, siteIndex: chosen.candidate.siteIndex,
     atoms: contextAtoms(display),
+    ...(display.truncated ? { truncated: true } : {}),
     warnings: [...result.warnings, ...display.warnings],
   }
 }

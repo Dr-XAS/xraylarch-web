@@ -5,8 +5,10 @@ import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS } from "@/lib/cif-viewer"
 import { createCifRenderer } from "@/lib/cif-renderer"
-import { cifAtomStyle, cifElementColor } from "@/lib/cif-viewer-style"
+import { cifAtomStyle } from "@/lib/cif-viewer-style"
+import { AtomLegend } from "./atom-legend"
 import { LocalStructureControls } from "./local-structure-controls"
+import { StructureDisplayLegend } from "./structure-display-legend"
 import { ViewerPanel } from "./viewer-panel"
 import styles from "./cif-viewer.module.css"
 
@@ -101,6 +103,13 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
     {structureControls}
     <div className={styles.canvas}>
       <div ref={container} className={styles.surface} role="img" aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
+      {ready && !error && geometry.atoms.length > 0 && geometry.lattice && structure.sites.length > 0 && <div className={styles.legendCorner}>
+        <AtomLegend elements={elements} hiddenElements={hidden}
+          onToggle={element => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}
+          ariaLabel="Visible CIF elements" />
+        <StructureDisplayLegend bonds={bonds} onBondsChange={setBonds}
+          unitCell={{ checked: cell || mode === "cell", disabled: mode === "cell", onChange: setCell }} />
+      </div>}
       {!geometry.atoms.length ? <p className={styles.overlay}>A 3D preview is unavailable for this CIF.</p>
         : error ? <div className={styles.overlay} role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>Retry 3D viewer</button></div>
         : !ready ? <p className={styles.overlay} role="status">Loading 3D structure…</p> : null}
@@ -112,10 +121,8 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
         <label>Center site<select aria-label="CIF center site" value={center} onChange={event => setCenter(Number(event.target.value))}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
       </div>
       <LocalStructureControls radius={radius} min={CIF_VIEWER_MIN_RADIUS} max={CIF_VIEWER_MAX_RADIUS} onRadiusChange={setRadius}
-        radiusAriaLabel="CIF display radius" radiusDisabled={mode === "cell"} bonds={bonds} onBondsChange={setBonds} atomCount={visibleCount}>
-        <label><input type="checkbox" checked={cell || mode === "cell"} disabled={mode === "cell"} onChange={event => setCell(event.target.checked)} />Unit cell outline</label>
-      </LocalStructureControls>
-      <div className={styles.elements} aria-label="Visible CIF elements">{elements.map((element, index) => <button type="button" key={element} aria-label={`Show ${element} atoms`} aria-pressed={!hidden.includes(element)} onClick={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}><span style={{ backgroundColor: cifElementColor(index) }} />{element}</button>)}</div>
+        radiusAriaLabel="CIF display radius" radiusDisabled={mode === "cell"} bonds={bonds} onBondsChange={setBonds}
+        showBondsControl={false} atomCount={visibleCount} />
       <p className={styles.help}>Bonds are inferred from distances. Display settings do not change FEFF parameters.</p>
     </>}
     {geometry.warnings.map(warning => <p className={styles.warning} key={warning}>{warning}</p>)}

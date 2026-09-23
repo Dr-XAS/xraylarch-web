@@ -5,6 +5,32 @@ import { expect, test, type Locator, type Page } from "@playwright/test"
 test.use({ actionTimeout: 15000 })
 
 const filenames = ["feff0001.dat", "feff0003.dat", "feff0010.dat", "feff0012.dat"]
+type Point = { x: number; y: number; z: number }
+const absorber: Point = { x: 0, y: 0, z: 0 }
+const copperNeighbor: Point = { x: 0, y: -1.8016, z: 1.8016 }
+const copperTriangle: Point[] = [absorber, { x: 1.8016, y: -1.8016, z: 0 }, { x: 1.8016, y: 0, z: -1.8016 }, absorber]
+
+// Measure the actual arrow geometry against the original chemical-bond axis.
+// The arrow tips must stay between atom centers, with narrowly separated lanes.
+function expectArrowCorridor(arrows: { start: Point; end: Point }[], a: Point, b: Point, offset: number) {
+  const axis = { x: b.x - a.x, y: b.y - a.y, z: b.z - a.z }
+  const lengthSquared = axis.x ** 2 + axis.y ** 2 + axis.z ** 2
+  const lateral: Point[] = []
+  for (const arrow of arrows) {
+    for (const point of [arrow.start, arrow.end]) {
+      const projection = ((point.x - a.x) * axis.x + (point.y - a.y) * axis.y + (point.z - a.z) * axis.z) / lengthSquared
+      expect(projection).toBeGreaterThan(0)
+      expect(projection).toBeLessThan(1)
+      const displacement = { x: point.x - a.x - projection * axis.x, y: point.y - a.y - projection * axis.y, z: point.z - a.z - projection * axis.z }
+      expect(Math.hypot(displacement.x, displacement.y, displacement.z)).toBeCloseTo(offset, 5)
+      lateral.push(displacement)
+    }
+  }
+  // Reversed legs are centered together on the bond, rather than shifted aside.
+  for (const coordinate of ["x", "y", "z"] as const) {
+    expect(lateral.reduce((sum, point) => sum + point[coordinate], 0)).toBeCloseTo(0, 5)
+  }
+}
 
 async function loadPaths(page: Page, withMatchingCif = false) {
   await page.goto("/", { waitUntil: "domcontentloaded" })
@@ -221,9 +247,19 @@ async function modelState(panel: Locator) {
       fadedAtoms: styled.filter(item => isFaded(item.sphere)).map(item => key(item.atom)).sort(),
       opaqueBondSegments: bondSegments.filter(style => (style.opacity ?? 1) === 1).length,
       fadedBondSegments: bondSegments.filter(isFaded).length,
+      renderedBondSegments: bondSegments.map(style => ({ start: style.start!, end: style.end!, opacity: style.opacity ?? 1 })),
       drawnSticks: styled.filter(item => item.stick).length,
     }
   })
+}
+
+function renderedBondHalves(model: Awaited<ReturnType<typeof modelState>>, a: Point, b: Point) {
+  const middle = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, z: (a.z + b.z) / 2 }
+  const same = (left: Point, right: Point) => Math.hypot(left.x - right.x, left.y - right.y, left.z - right.z) < 1e-5
+  return model.renderedBondSegments.filter(segment => [a, b].some(endpoint =>
+    (same(segment.start, endpoint) && same(segment.end, middle)) ||
+    (same(segment.end, endpoint) && same(segment.start, middle)),
+  ))
 }
 
 test("renders real single, triangular, collinear, and repeated FEFF trajectories without rerunning science for presentation controls", async ({ page }, info) => {
@@ -241,6 +277,8 @@ test("renders real single, triangular, collinear, and repeated FEFF trajectories
   }))
   expect(directions[0].x * directions[1].x + directions[0].y * directions[1].y + directions[0].z * directions[1].z).toBeLessThan(0)
   expect(single.arrows[0].start).not.toEqual(single.arrows[1].end)
+  expectArrowCorridor(single.arrows, absorber, copperNeighbor, 0.07)
+  expect(single.arrows.map(arrow => arrow.radius)).toEqual([0.065, 0.065])
   await expectLegendInsideCanvas(panel)
   await panel.screenshot({ path: info.outputPath("feff-single-scattering-desktop.png") })
 
@@ -254,6 +292,7 @@ test("renders real single, triangular, collinear, and repeated FEFF trajectories
   await expect(panel.getByRole("button", { name: "Leg 1", exact: true })).toHaveAttribute("aria-pressed", "true")
   await expect(panel.getByText(/Leg 1: Cu A → Cu 1/)).toContainText("180.0° (backscattering)")
   await expect.poll(async () => (await sceneState(panel)).arrows.map(arrow => arrow.opacity)).toEqual([1, 0.3])
+  expect((await sceneState(panel)).arrows.map(arrow => arrow.radius)).toEqual([0.065, 0.045])
   expect((await sceneState(panel)).view).toEqual(single.view)
   await panel.getByLabel("Labels", { exact: true }).uncheck()
   await expect.poll(async () => (await sceneState(panel)).labels).toBe(0)
@@ -284,6 +323,8 @@ test("renders real single, triangular, collinear, and repeated FEFF trajectories
   await openCoordinates(panel)
   await expect(panel.getByRole("table").locator("tbody tr")).toHaveCount(4)
   await expect(panel.getByRole("table").getByRole("cell", { name: "120.0", exact: true })).toHaveCount(2)
+  const triangular = await sceneState(panel)
+  triangular.arrows.forEach((arrow, index) => expectArrowCorridor([arrow], copperTriangle[index], copperTriangle[index + 1], 0))
   await panel.screenshot({ path: info.outputPath("feff-triangle-desktop.png") })
 
   await selectPath(panel, "feff0010.dat")
@@ -330,7 +371,7 @@ test("shows a matching project CIF with the same elemental atom and bond styles,
   await page.setViewportSize({ width: 1600, height: 1100 })
   const panel = await loadPaths(page, true)
   const cifPanel = page.getByRole("region", { name: "CIF structure viewer", exact: true })
-  await expectScene(panel, 2, 2)
+  await expectScene(panel, 13, 2)
   await expect(panel.getByLabel("Local structure", { exact: true })).toBeChecked()
   await expect(panel.getByLabel("Bonds", { exact: true })).toBeChecked()
   await expect(cifPanel.getByRole("button", { name: "Reset view", exact: true })).toBeEnabled()
@@ -345,11 +386,12 @@ test("shows a matching project CIF with the same elemental atom and bond styles,
   expect(initial.stickColors).toEqual(crystal.stickColors)
   expect(initial.sphereRadii).toEqual(crystal.sphereRadii)
   expect(initial.stickRadii).toEqual(crystal.stickRadii)
-  expect(initial.highlightedAtoms).toHaveLength(2)
-  expect(initial.fadedAtoms).toHaveLength(11)
-  expect(initial.opaqueBondSegments).toBe(2)
-  expect(initial.fadedBondSegments).toBe(2 * initial.bonds.length - 2)
-  for (const arrow of (await sceneState(panel)).arrows) expect(arrow.radius).toBeLessThan(0.04)
+  expect(initial.highlightedAtoms).toHaveLength(13)
+  expect(initial.fadedAtoms).toHaveLength(0)
+  expect(initial.opaqueBondSegments).toBe(22)
+  expect(initial.fadedBondSegments).toBe(2 * initial.bonds.length - 24)
+  expect(renderedBondHalves(initial, absorber, copperNeighbor)).toHaveLength(0)
+  for (const arrow of (await sceneState(panel)).arrows) expect(arrow.radius).toBe(0.065)
 
   const radius = panel.getByRole("slider", { name: "FEFF display radius", exact: true })
   const cifRadius = cifPanel.getByRole("slider", { name: "CIF display radius", exact: true })
@@ -380,12 +422,12 @@ test("shows a matching project CIF with the same elemental atom and bond styles,
   expect((await sceneState(panel)).arrows).toHaveLength(2)
 
   await panel.getByLabel("Local structure", { exact: true }).uncheck()
-  await expect.poll(async () => (await modelState(panel)).atoms.length).toBeLessThanOrEqual(2)
-  await expectScene(panel, 2, 2)
+  await expect.poll(async () => (await modelState(panel)).atoms.length).toBe(13)
+  await expectScene(panel, 13, 2)
   await panel.getByLabel("Local structure", { exact: true }).check()
   await expect.poll(async () => (await modelState(panel)).atoms.length).toBe(19)
   await selectPath(panel, "feff0003.dat")
-  await expectScene(panel, 3, 3)
+  await expectScene(panel, 13, 3)
   await expect(panel.getByLabel("Local structure", { exact: true })).toBeChecked()
   await expect.poll(async () => (await modelState(panel)).atoms.length).toBeGreaterThan(3)
   await panel.screenshot({ path: info.outputPath("feff-triangle-local-structure-desktop.png") })
@@ -401,7 +443,7 @@ test("the in-canvas legend combines independently colored paths and allows every
   const triangle = legend.getByRole("button", { name: "Show feff0003.dat", exact: true })
   await expect(single).toHaveAttribute("aria-pressed", "true")
   await expect(triangle).toHaveAttribute("aria-pressed", "false")
-  await expectScene(panel, 2, 2)
+  await expectScene(panel, 13, 2)
   await expectLegendInsideCanvas(panel)
   const initialColor = (await sceneState(panel)).arrows[0].color
   const initialModel = await modelState(panel)
@@ -414,7 +456,7 @@ test("the in-canvas legend combines independently colored paths and allows every
   await expect(single).toHaveAttribute("aria-pressed", "true")
   await expect(triangle).toHaveAttribute("aria-pressed", "true")
   await expect(panel.getByRole("heading", { name: "feff0003.dat", exact: true })).toBeVisible()
-  await expectScene(panel, 4, 5)
+  await expectScene(panel, 13, 5)
   const combined = await sceneState(panel)
   const colors = [...new Set(combined.arrows.map(arrow => arrow.color))]
   expect(colors).toHaveLength(2)
@@ -423,10 +465,16 @@ test("the in-canvas legend combines independently colored paths and allows every
   expect(combined.arrows.filter(arrow => arrow.color === triangleColor)).toHaveLength(3)
   const union = await modelState(panel)
   expect(union.atoms).toEqual(initialModel.atoms)
-  expect(union.highlightedAtoms).toHaveLength(4)
-  expect(union.fadedAtoms).toHaveLength(9)
-  expect(union.opaqueBondSegments).toBe(8)
-  expect(union.fadedBondSegments).toBe(2 * union.bonds.length - 8)
+  expect(union.highlightedAtoms).toHaveLength(13)
+  expect(union.fadedAtoms).toHaveLength(0)
+  // The single route and the triangle have four distinct physical edges.
+  // All equivalent bonds remain opaque except those replaced by arrows.
+  expect(union.opaqueBondSegments).toBe(2 * union.bonds.length - 8)
+  expect(union.fadedBondSegments).toBe(0)
+  expect(renderedBondHalves(union, absorber, copperNeighbor)).toHaveLength(0)
+  for (let index = 0; index < 3; index++) {
+    expect(renderedBondHalves(union, copperTriangle[index], copperTriangle[index + 1])).toHaveLength(0)
+  }
   expect(union.sphereColors).toEqual(initialModel.sphereColors)
   expect(union.sphereRadii).toEqual(initialModel.sphereRadii)
   await panel.screenshot({ path: info.outputPath("feff-multiple-paths-legend-desktop.png") })
@@ -434,9 +482,9 @@ test("the in-canvas legend combines independently colored paths and allows every
   await single.click()
   await expect(single).toHaveAttribute("aria-pressed", "false")
   await expect(triangle).toHaveAttribute("aria-pressed", "true")
-  await expectScene(panel, 3, 3)
+  await expectScene(panel, 13, 3)
   expect((await sceneState(panel)).arrows.every(arrow => arrow.color === triangleColor)).toBe(true)
-  await expect.poll(async () => (await modelState(panel)).fadedAtoms.length).toBe(10)
+  await expect.poll(async () => (await modelState(panel)).fadedAtoms.length).toBe(0)
 
   await triangle.click()
   await expect(legend.getByRole("button", { pressed: true })).toHaveCount(0)
@@ -448,7 +496,68 @@ test("the in-canvas legend combines independently colored paths and allows every
   expect(none.opaqueBondSegments).toBe(0)
   expect(none.fadedBondSegments).toBe(2 * none.bonds.length)
   await legend.getByRole("button", { name: "Show feff0012.dat", exact: true }).click()
-  await expectScene(panel, 2, 4)
+  await expectScene(panel, 13, 4)
   await expect(panel.getByRole("heading", { name: "feff0012.dat", exact: true })).toBeVisible()
+  expect(scienceRequests).toEqual([])
+})
+
+
+test("the real Cu2O example highlights both degenerate first-shell oxygens but draws one representative route", async ({ page }, info) => {
+  test.setTimeout(150000)
+  await page.setViewportSize({ width: 1600, height: 1100 })
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
+  await page.locator(".ath-group-select").filter({ hasText: "Cu₂O · room temperature" }).last().click()
+  await page.getByRole("tab", { name: "EXAFS fitting", exact: true }).click()
+  await page.getByRole("button", { name: "Cu₂O example", exact: true }).click()
+  const panel = page.getByRole("region", { name: "FEFF path viewer", exact: true })
+  await expect(panel.getByRole("group", { name: "FEFF path legend" }).getByRole("button")).toHaveCount(4)
+  await expectScene(panel, 3, 2)
+  const first = await modelState(panel)
+  expect(first.highlightedAtoms.filter(atom => atom.startsWith("O:"))).toEqual([
+    "O:-1.06300,-1.06300,-1.06300", "O:1.06300,1.06300,1.06300",
+  ])
+  expect(first.opaqueBondSegments).toBe(2)
+  const representativeOxygen: Point = { x: -1.063, y: -1.063, z: -1.063 }
+  const equivalentOxygen: Point = { x: 1.063, y: 1.063, z: 1.063 }
+  // Inspect live cylinder geometry: the representative Cu–O bond is replaced
+  // by outgoing/return arrows, while the opposite equivalent Cu–O stays solid.
+  expect(renderedBondHalves(first, absorber, representativeOxygen)).toHaveLength(0)
+  const equivalentBond = renderedBondHalves(first, absorber, equivalentOxygen)
+  expect(equivalentBond).toHaveLength(2)
+  expect(equivalentBond.map(segment => segment.opacity)).toEqual([1, 1])
+  expectArrowCorridor((await sceneState(panel)).arrows, absorber, representativeOxygen, 0.07)
+  expect(first.fadedAtoms.length).toBeGreaterThan(0)
+  expect((await sceneState(panel)).labels).toBe(4) // Only representative atom/leg labels.
+  await expect(panel.getByText(/Equivalent paths were not expanded/)).toHaveCount(0)
+  const scienceRequests: string[] = []
+  page.on("request", request => {
+    if (/\/api\/artemis\/|\/command$|\/wavelet(?:\?|$)/.test(request.url())) scienceRequests.push(request.url())
+  })
+  await panel.screenshot({ path: info.outputPath("cuprite-arrows-replace-bonds.png") })
+  const canvas = panel.getByRole("img", { name: /^Interactive 3D scattering path/ }).locator("canvas")
+  await canvas.evaluate(element => {
+    const viewer = (element as HTMLCanvasElement & { _3dmol_viewer: { zoom: (factor: number) => void; render: () => void } })._3dmol_viewer
+    viewer.zoom(2)
+    viewer.render()
+  })
+  await canvas.locator("../..").screenshot({ path: info.outputPath("cuprite-arrows-detail.png") })
+  await panel.getByRole("button", { name: "Reset view", exact: true }).click()
+  await panel.getByRole("button", { name: "Leg 2", exact: true }).click()
+  await expectScene(panel, 3, 2)
+  expect((await modelState(panel)).opaqueBondSegments).toBe(2)
+  const radius = panel.getByRole("slider", { name: "FEFF display radius" })
+  await radius.press("Home")
+  await expect(radius).toHaveValue("1")
+  await expectScene(panel, 3, 2)
+  expect((await modelState(panel)).atoms).toHaveLength(3)
+  await panel.getByLabel("Local structure", { exact: true }).uncheck()
+  await expectScene(panel, 3, 2)
+  await panel.getByLabel("Local structure", { exact: true }).check()
+  await selectPath(panel, "feff0003.dat")
+  await expectScene(panel, 9, 3) // Includes reversed equivalent Cu–O–Cu routes.
+  await expect(panel.getByText(/Equivalent paths were not expanded/)).toHaveCount(0)
+  await selectPath(panel, "feff0001.dat")
+  await expectScene(panel, 3, 2)
   expect(scienceRequests).toEqual([])
 })

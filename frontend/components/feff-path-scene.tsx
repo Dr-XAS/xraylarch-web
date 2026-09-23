@@ -5,7 +5,10 @@ import type { GLViewer, Label, Vector2 } from "3dmol"
 import { createCifRenderer } from "@/lib/cif-renderer"
 import { CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS, cifElementColor } from "@/lib/cif-viewer-style"
 import type { FeffPathGeometry, FeffPathLeg } from "@/lib/feff-path-geometry"
+import type { FeffPathEquivalents } from "@/lib/feff-path-equivalents"
+import { AtomLegend } from "./atom-legend"
 import { LocalStructureControls } from "./local-structure-controls"
+import { StructureDisplayLegend } from "./structure-display-legend"
 import structureStyles from "./cif-viewer.module.css"
 import pathStyles from "./feff-path-viewer.module.css"
 
@@ -15,14 +18,14 @@ export const FEFF_LEG_COLORS = ["#AF2168", "#3285AD", "#8061B0", "#C27332", "#34
 export const FEFF_CONTEXT_OPACITY = Math.sqrt(0.3)
 type Point = { x: number; y: number; z: number }
 export type FeffContextAtom = Point & { atom: string }
-export interface FeffScenePath { id: string; filename: string; geometry: FeffPathGeometry; color: string }
+export interface FeffScenePath { id: string; filename: string; geometry: FeffPathGeometry; color: string; equivalents?: FeffPathEquivalents }
 type SceneAtom = FeffContextAtom & { participating: boolean; isAbsorber: boolean }
 const EMPTY_CONTEXT: FeffContextAtom[] = []
 const point = ({ x, y, z }: Point) => ({ x, y, z })
 const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z)
 const sameAtom = (a: FeffContextAtom, b: FeffContextAtom) => a.atom === b.atom && distance(a, b) < 0.005
 
-/** Parallel lanes distinguish travel directions without moving any atom. */
+/** Arrows replace bonds; compact centered lanes keep overlapping legs readable. */
 function arrowForLeg(leg: FeffPathLeg, allLegs: FeffPathLeg[], position: number) {
   const delta = { x: leg.to.x - leg.from.x, y: leg.to.y - leg.from.y, z: leg.to.z - leg.from.z }
   const unit = { x: delta.x / leg.length, y: delta.y / leg.length, z: delta.z / leg.length }
@@ -39,15 +42,29 @@ function arrowForLeg(leg: FeffPathLeg, allLegs: FeffPathLeg[], position: number)
     return cross < 1e-4 && lineDistance < 1e-4
   })
   const rank = parallel.findIndex(other => other.index === position)
-  // Keep every lane outside the chemical bond, including an unshared leg.
-  const lane = (Math.floor(rank / 2) + 1) * (rank % 2 === 0 ? 1 : -1)
-  const shift = Math.max(0.15, Math.min(0.18, ...parallel.map(({ other }) => other.length * 0.1))) * lane
+  // An unshared leg sits exactly on the bond axis. Shared/reversed legs form
+  // a symmetric bundle around it instead of floating outside a visible bond.
+  const lane = parallel.length % 2 === 0
+    ? (Math.floor(rank / 2) + 0.5) * (rank % 2 === 0 ? 1 : -1)
+    : rank === 0 ? 0 : Math.ceil(rank / 2) * (rank % 2 === 1 ? 1 : -1)
+  // Keep even long repeated paths within the atom/bond silhouette. The first
+  // five lanes retain their usual spacing; larger bundles become denser.
+  const outerLane = parallel.length % 2 === 0 ? (parallel.length - 1) / 2 : Math.floor(parallel.length / 2)
+  const shift = Math.min(0.14, 0.28 / Math.max(outerLane, 1)) * lane
   const at = (fraction: number) => ({
     x: leg.from.x + delta.x * fraction + perpendicular.x / norm * shift,
     y: leg.from.y + delta.y * fraction + perpendicular.y / norm * shift,
     z: leg.from.z + delta.z * fraction + perpendicular.z / norm * shift,
   })
-  return { start: at(0.14), end: at(0.86), label: at(0.5) }
+  // Keep each tip clear of the atom surface so its direction stays visible.
+  const inset = Math.min(0.45, (CIF_SPHERE_RADIUS + 0.05) / leg.length)
+  const label = at(0.55)
+  const labelShift = parallel.length === 1 ? 0.16 : Math.sign(lane || 1) * 0.16
+  return { start: at(inset), end: at(1 - inset), label: {
+    x: label.x + perpendicular.x / norm * labelShift,
+    y: label.y + perpendicular.y / norm * labelShift,
+    z: label.z + perpendicular.z / norm * labelShift,
+  } }
 }
 
 /** Also accepts neighboring paths when computing shared arrow lanes. */
@@ -81,10 +98,11 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
   const [bonds, setBonds] = useState(true)
   const atoms = useMemo(() => {
     const combined: SceneAtom[] = []
-    for (const path of paths) for (const atom of path.geometry.atoms) {
+    for (const path of paths) for (const atom of [...path.geometry.atoms, ...(path.equivalents?.atoms ?? [])]) {
+      const isAbsorber = sameAtom(atom, path.geometry.absorber)
       const existing = combined.find(other => sameAtom(atom, other))
-      if (existing) existing.isAbsorber ||= atom.isAbsorber
-      else combined.push({ ...point(atom), atom: atom.atom, participating: true, isAbsorber: atom.isAbsorber })
+      if (existing) existing.isAbsorber ||= isAbsorber
+      else combined.push({ ...point(atom), atom: atom.atom, participating: true, isAbsorber })
     }
     if (showContext) for (const atom of context) {
       if (!combined.some(other => sameAtom(atom, other))) combined.push({ ...atom, participating: false, isAbsorber: false })
@@ -153,9 +171,13 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
           for (const [index, atom] of inferred.entries()) for (const neighbor of atom.bonds ?? []) {
             if (neighbor <= index || !atoms[index] || !atoms[neighbor]) continue
             const left = atoms[index], right = atoms[neighbor]
+            // Suppress only bonds replaced by a representative arrow. Verified
+            // equivalent bonds without arrows retain their normal highlighting.
+            const matchesBond = (leg: { from: FeffContextAtom; to: FeffContextAtom }) =>
+              (sameAtom(leg.from, left) && sameAtom(leg.to, right)) || (sameAtom(leg.from, right) && sameAtom(leg.to, left))
+            if (paths.some(path => path.geometry.legs.some(matchesBond))) continue
             const middle = { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2, z: (left.z + right.z) / 2 }
-            const onPath = paths.some(path => path.geometry.legs.some(leg =>
-              (sameAtom(leg.from, left) && sameAtom(leg.to, right)) || (sameAtom(leg.from, right) && sameAtom(leg.to, left))))
+            const onPath = paths.some(path => path.equivalents?.bonds.some(matchesBond))
             for (const source of [left, right]) scene.addCylinder({
               start: point(source), end: middle, radius: CIF_BOND_RADIUS, color: CIF_BOND_COLOR,
               opacity: onPath ? 1 : FEFF_CONTEXT_OPACITY, fromCap: 0, toCap: 0,
@@ -177,7 +199,7 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
           },
           unhover_callback: () => { if (hoverLabel) scene.removeLabel(hoverLabel); hoverLabel = null; scene.render() },
         })
-        if (labels && atom.participating) {
+        if (labels && paths.some(path => path.geometry.atoms.some(site => sameAtom(site, atom)))) {
           const activeAtom = activePath?.geometry.atoms.find(other => sameAtom(atom, other))
           // Atom numbers refer to the active route; other paths may use a
           // different numbering for this same physical site.
@@ -193,8 +215,8 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
       for (const [index, { path, leg }] of directed.entries()) {
         const emphasized = path.id !== activePath?.id || selectedLeg === null || selectedLeg === leg.index
         const arrow = arrowForLeg(leg, allLegs, index)
-        scene.addArrow({ start: arrow.start, end: arrow.end, radius: emphasized ? 0.027 : 0.018, radiusRatio: 2.1,
-          midpos: -Math.min(0.17, leg.length * 0.08), color: path.color, opacity: emphasized ? 1 : 0.3 })
+        scene.addArrow({ start: arrow.start, end: arrow.end, radius: emphasized ? 0.065 : 0.045, radiusRatio: 2.2,
+          midpos: -Math.min(0.26, distance(arrow.start, arrow.end) * 0.3), color: path.color, opacity: emphasized ? 1 : 0.3 })
         if (labels && emphasized) scene.addLabel(String(leg.index), {
           position: { ...arrow.label, z: arrow.label.z + 0.12 }, fontSize: 11, fontColor: path.color, showBackground: false,
           backgroundOpacity: 0, borderThickness: 0, inFront: true,
@@ -219,6 +241,10 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
     {structureControls}
     <div className={`${structureStyles.canvas} ${pathStyles.sceneCanvas}`}>
       <div ref={host} className={`${structureStyles.surface} ${pathStyles.sceneSurface}`} role="img" aria-label={imageDescription} />
+      {ready && !error && elements.length > 0 && <div className={pathStyles.cornerLegend}>
+        <AtomLegend elements={elements} className={pathStyles.atomLegend} ariaLabel="Visible FEFF elements" />
+        <StructureDisplayLegend bonds={bonds} onBondsChange={setBonds} />
+      </div>}
       {error ? <div className={structureStyles.overlay} role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>Retry 3D viewer</button></div>
         : !ready ? <p className={structureStyles.overlay} role="status">Loading 3D scattering path…</p>
         : !atoms.length ? <p className={structureStyles.overlay}>Select a path to view its scattering trajectory.</p> : null}
@@ -227,7 +253,7 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
     <p className={structureStyles.help}>Drag to rotate · scroll or pinch to zoom · hover for atom details</p>
     <LocalStructureControls radius={radius} min={1} max={maxRadius} onRadiusChange={onRadiusChange ?? (() => {})}
       radiusAriaLabel="FEFF display radius" radiusDisabled={!contextLabel || !showContext}
-      bonds={bonds} onBondsChange={setBonds} atomCount={atoms.length}>
+      bonds={bonds} onBondsChange={setBonds} showBondsControl={false} atomCount={atoms.length}>
       <label><input type="checkbox" checked={labels} onChange={event => setLabels(event.target.checked)} />Labels</label>
       {contextLabel && <label><input type="checkbox" checked={showContext} onChange={event => setShowContext(event.target.checked)} />Local structure</label>}
     </LocalStructureControls>
