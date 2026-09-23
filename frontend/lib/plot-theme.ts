@@ -34,6 +34,8 @@ function colorbar(value: unknown) {
     outlinecolor: dark.border, bordercolor: dark.border, bgcolor: "rgba(0,0,0,0)" }
 }
 
+const canvasChannels = [23, 23, 28] // dark.canvas
+
 function luminance(rgb: number[]) {
   return rgb.map(channel => {
     const value = channel / 255
@@ -66,7 +68,7 @@ export function plotColorForTheme(value: unknown, theme: PlotTheme): unknown {
   if (theme === "light" || typeof value !== "string") return value
   const channels = channelsForColor(value)
   if (!channels) return value
-  const background = luminance([23, 23, 28])
+  const background = luminance(canvasChannels)
   if ((luminance(channels) + 0.05) / (background + 0.05) >= 3.5) return value
   let adjusted = channels
   for (let step = 1; step <= 20; step++) {
@@ -74,6 +76,23 @@ export function plotColorForTheme(value: unknown, theme: PlotTheme): unknown {
     if ((luminance(adjusted) + 0.05) / (background + 0.05) >= 3.5) break
   }
   return `#${adjusted.map(channel => channel.toString(16).padStart(2, "0")).join("")}`
+}
+
+// Pale fills (highlight bands, white marker halos) exist to sit just off the
+// light canvas. On the dark canvas the same job needs a faint tint above it,
+// keeping only the fill's hue offset; lifting them would paint bright slabs.
+function surfaceColorForTheme(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  const channels = channelsForColor(value)
+  if (!channels || luminance(channels) < 0.6) return value
+  const floor = Math.min(...channels)
+  return `#${channels.map((channel, index) => Math.min(255, canvasChannels[index] + 20 + channel - floor).toString(16).padStart(2, "0")).join("")}`
+}
+
+function halo(value: unknown) {
+  const original = object(value)
+  const pale = typeof original.color === "string" && (channelsForColor(original.color) ?? [0]).every(channel => channel >= 240)
+  return pale ? { ...original, color: dark.canvas } : mark(original)
 }
 
 function mark(value: unknown) {
@@ -87,7 +106,7 @@ export function plotDataForTheme(data: PlotObject[], theme: PlotTheme): PlotObje
     ...trace,
     ...(trace.line ? { line: mark(trace.line) } : {}),
     ...(trace.marker ? { marker: { ...mark(trace.marker),
-      ...(object(trace.marker).line ? { line: mark(object(trace.marker).line) } : {}) } } : {}),
+      ...(object(trace.marker).line ? { line: halo(object(trace.marker).line) } : {}) } } : {}),
     ...(trace.textfont ? { textfont: font(trace.textfont) } : {}),
     ...(trace.colorbar ? { colorbar: colorbar(trace.colorbar) } : {}),
   }))
@@ -120,7 +139,8 @@ export function plotLayoutForTheme(layout: PlotObject = {}, theme: PlotTheme): P
   })
   if (Array.isArray(layout.shapes)) result.shapes = layout.shapes.map(value => {
     const shape = object(value)
-    return { ...shape, ...(shape.line ? { line: mark(shape.line) } : {}) }
+    return { ...shape, ...(shape.line ? { line: mark(shape.line) } : {}),
+      ...(shape.fillcolor !== undefined ? { fillcolor: surfaceColorForTheme(shape.fillcolor) } : {}) }
   })
   return result
 }
