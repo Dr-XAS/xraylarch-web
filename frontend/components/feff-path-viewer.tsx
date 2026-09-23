@@ -5,7 +5,9 @@ import type { ArtemisPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { CIF_VIEWER_DEFAULT_RADIUS } from "@/lib/cif-viewer"
 import { resolveFeffMultipathContext } from "@/lib/feff-multipath-context"
+import { resolveFeffPathEquivalents } from "@/lib/feff-path-equivalents"
 import { buildFeffPathGeometry, type FeffPathGeometry } from "@/lib/feff-path-geometry"
+import { resolveFeffStructureContext, type FeffContextAtom } from "@/lib/feff-structure-context"
 import { FeffPathScene } from "./feff-path-scene"
 import { ViewerPanel } from "./viewer-panel"
 import styles from "./feff-path-viewer.module.css"
@@ -20,6 +22,9 @@ const PATH_COLORS = [
   "#916643", "#57576D", "#B53D35", "#366DB7", "#897934", "#526795",
   "#A25B79", "#377665", "#7E47B0", "#CF7025", "#64798A", "#8B586A",
 ]
+const clusterKey = (atoms: readonly FeffContextAtom[]) => atoms.map(atom =>
+  `${atom.atom}:${atom.ipot ?? "?"}:${atom.x.toFixed(5)},${atom.y.toFixed(5)},${atom.z.toFixed(5)}`,
+).sort().join(";")
 
 function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathSummary; color: string; selectedLeg: number | null; onSelectLeg: (leg: number | null) => void }) {
   const { geometry, error } = useMemo(() => buildFeffPathGeometry(path.metadata), [path.metadata])
@@ -53,7 +58,7 @@ function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathS
           ? <>Leg {leg.index}: {siteLabel(leg.from)} → {siteLabel(leg.to)} · {number(leg.length)} Å{leg.index === geometry.legs.length ? " · return to absorber" : ` · scattering angle β = ${leg.scatteringAngle.toFixed(1)}°${leg.scatteringAngle < 1 ? " (forward)" : leg.scatteringAngle > 179 ? " (backscattering)" : ""}`}</>
           : <>Total travel {number(geometry.totalLength)} Å · {geometry.legs.length} directed legs · returns to absorber A</>}</p>
       </div>
-      <p className={styles.note}>Each highlighted trajectory represents one FEFF path; N counts equivalent paths. Opposite or repeated arrows are offset for clarity. Path atoms remain visible outside the display radius.</p>
+      <p className={styles.note}>When verified, equivalent path atoms and bonds are also opaque. Arrows replace bonds along one representative trajectory per selected FEFF file; overlapping legs stay closely spaced for clarity. Path atoms remain visible outside the display radius.</p>
       <details className={styles.geometryDetails}>
         <summary>Coordinates and scattering angles</summary>
         <div className={styles.tableScroll}><table>
@@ -91,9 +96,36 @@ function PathWorkspace({ paths, attachments }: { paths: FeffPathSummary[]; attac
       radius, selectedAttachmentId: choice?.[0], selectedSiteIndex: choice?.[1],
     })
   }, [focused, selected, attachments, radius, structureChoice])
-  const scenePaths = useMemo(() => selected.flatMap(entry => entry.geometry ? [{
-    id: entry.path.id, filename: entry.path.filename, geometry: entry.geometry, color: entry.color,
-  }] : []), [selected])
+  // Equivalence must not depend on the display cutoff. Search the verified source
+  // out to every selected path's extent, while retaining the smaller local view.
+  const matchingContext = useMemo(() => {
+    const pathRadius = Math.max(1, ...selected.flatMap(entry => entry.geometry?.atoms.map(atom => Math.hypot(atom.x, atom.y, atom.z)) ?? [])) + 0.01
+    if (!context.source || (!context.truncated && context.radius >= pathRadius)) return context
+    const ordered = [focused, ...selected.filter(entry => entry !== focused)]
+    return resolveFeffMultipathContext(ordered.map(entry => entry.path.metadata), attachments, {
+      radius: pathRadius, selectedAttachmentId: context.attachmentId, selectedSiteIndex: context.siteIndex,
+    })
+  }, [context, focused, selected, attachments])
+  const scenePaths = useMemo(() => selected.flatMap(entry => {
+    if (!entry.geometry) return []
+    // One selected file must never borrow another file's FEFF cluster to infer
+    // its equivalents. A shared CIF is eligible only for paths without their
+    // own recorded FEFF source; multipath context already verifies those paths.
+    let sourceMatches = true
+    if (matchingContext.source === "feff.inp") {
+      const own = resolveFeffStructureContext(entry.path.metadata, [], { radius: matchingContext.radius })
+      sourceMatches = own.source === "feff.inp" && own.radius === matchingContext.radius &&
+        clusterKey(own.atoms) === clusterKey(matchingContext.atoms)
+    } else if (matchingContext.source === "cif" && entry.path.metadata.viewerCluster) {
+      sourceMatches = false
+    }
+    const equivalents = matchingContext.source && !matchingContext.truncated && sourceMatches
+      ? resolveFeffPathEquivalents(entry.geometry, entry.path.metadata.degen, matchingContext.atoms) : undefined
+    const equivalenceWarning = matchingContext.source && !matchingContext.truncated && !sourceMatches
+      ? "Equivalent paths were not expanded: this file's recorded source is unavailable or differs from the shared local structure. Showing its representative path."
+      : undefined
+    return [{ id: entry.path.id, filename: entry.path.filename, geometry: entry.geometry, color: entry.color, equivalents, equivalenceWarning }]
+  }), [selected, matchingContext])
   const toggle = (id: string) => {
     setSelection(selectedIds.includes(id) ? selectedIds.filter(item => item !== id) : [...selectedIds, id])
     if (!selectedIds.includes(id)) setFocusedId(id)
@@ -123,6 +155,9 @@ function PathWorkspace({ paths, attachments }: { paths: FeffPathSummary[]; attac
         </select>
       </label></div> : undefined} />
     {context.warnings.filter(warning => warning !== focused.error).map(warning => <p className={styles.note} key={warning}>{warning}</p>)}
+    {matchingContext.source && matchingContext.truncated && <p className={styles.note}>Equivalent paths were not expanded: the CIF preview is limited at the path extent. Showing representative paths.</p>}
+    {scenePaths.map(path => path.equivalents?.warning && <p className={styles.note} key={path.id}>{path.filename}: {path.equivalents.warning}</p>)}
+    {scenePaths.map(path => path.equivalenceWarning && <p className={styles.note} key={`${path.id}-source`}>{path.filename}: {path.equivalenceWarning}</p>)}
     {!context.source && !context.requiresSelection && <p className={styles.note}>Attach a matching project CIF or generate paths from a CIF to show the surrounding local structure. These files contain path atoms only.</p>}
     {!selected.length ? <p className={styles.note} role="status">Click a FEFF legend to show its path. You can display several paths together.</p> : <>
       {selected.length > 1 && <label className={styles.detailPicker}>Path details <select aria-label="Path details" value={focused.path.id} onChange={event => { setFocusedId(event.target.value); setSelectedLeg(null) }}>

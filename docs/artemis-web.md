@@ -439,11 +439,13 @@ Two legs describe single scattering (absorber → neighbor → absorber). Three 
 describe double scattering and form a triangle unless the three sites are
 collinear. Four or more legs can revisit the absorber or another atom, so they
 need not form a polygon with distinct vertices. Repeated visits are retained;
-arrows on overlapping lines use separate display lanes without moving the atoms.
+arrows on overlapping lines use tightly spaced lanes centered on the bond axis
+without moving the atoms. Unshared arrows sit directly on the axis, with their
+tips outside the atom surfaces.
 The coordinate table includes the final return and scattering angle β, measured
 between incoming and outgoing travel directions: 0° forward, 180° backward.
-`Reff` is half the total trajectory length; degeneracy counts equivalent paths,
-not additional atoms to reconstruct. See the official
+`Reff` is half the total trajectory length; degeneracy counts equivalent paths.
+See the official
 [FEFF path examples](https://feff.phys.washington.edu/feff/wiki/static/p/a/t/Paths.dat_%28FEFF_6.01%29_1d89.html)
 and [Larch path metadata](https://xraypy.github.io/xraylarch/xafs_feffpaths.html).
 
@@ -451,11 +453,27 @@ The local structure uses the same **3Dmol.js** engine, XYZ bond perception,
 element colors, atom and bond radii, default camera fitting, theme styles, radius
 slider, and **Bonds** controls as the CIF viewer. Atoms participating in any visible
 path remain opaque; other atoms retain their colors at 70% transparency
-(effective opacity 0.3). Inferred bonds are opaque only when they follow a visible
-path leg; all other bonds use the same transparency. Thin colored arrows distinguish the paths. Bond
-visibility is independent of scattering arrows: a scattering leg is not necessarily
-a chemical bond. Hover an atom for its element and distance from the absorber.
+(effective opacity 0.3). Bold colored arrows replace the inferred bonds along
+representative paths. Equivalent path bonds without arrows remain opaque;
+all other bonds use the same transparency. The **Bonds** control changes only
+the remaining chemical bonds; scattering arrows stay visible because a scattering
+leg is not necessarily a chemical bond. Hover an atom for its element and distance from the absorber.
 Path atoms remain visible when the display radius excludes their surrounding shell.
+
+Verified equivalent paths also contribute opaque atoms and bonds, while arrows
+and numbered labels still describe just one representative route per FEFF file.
+For example, the Cuprite first-shell path has degeneracy 2: both neighboring O
+atoms are opaque, one Cu–O connection uses an outgoing/return arrow pair, and
+the other retains its opaque chemical bond.
+Equivalents are found among actual source-cluster atoms by element, available
+FEFF potential indices, full path geometry, and repeated-site topology, including
+reversed routes. This follows FEFF's grouping of geometry and path reversal;
+see [FEFF path enumeration](https://feff.phys.washington.edu/feff/Docs/feff8/feff8web/node9.html).
+Expansion is used only when an exhaustive match agrees with the recorded
+degeneracy. If a cluster is incomplete, differs between selected paths, the
+match is ambiguous, or a search limit is reached, a note explains why only the
+representative path is highlighted.
+Changing the display radius does not remove verified equivalent path atoms.
 
 Paths added from a calculation in this browser retain its actual FEFF input
 cluster as optional display metadata. Otherwise, the viewer looks for an attached

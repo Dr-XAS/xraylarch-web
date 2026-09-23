@@ -1,0 +1,6 @@
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.item, .legend button { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 3px 4px; background: transparent; color: var(--ath-ink); font: inherit; font-size: var(--text-body); line-height: var(--leading-control); font-weight: 500; white-space: nowrap; }
+.legend button { cursor: pointer; }
+.legend button:hover { background: var(--ath-surface-muted); }
+.legend button[aria-pressed=false] { opacity: .45; }
+.swatch { flex: none; width: 10px; height: 10px; border-radius: 50%; border: 1px solid #8886; }

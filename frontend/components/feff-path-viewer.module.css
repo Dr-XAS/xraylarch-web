@@ -7,6 +7,9 @@
 .workspace { min-width: 0; margin-top: 12px; }
 .sceneCanvas { display: grid; grid-template-columns: minmax(0, 1fr) 154px; }
 .sceneSurface { grid-column: 1; grid-row: 1; min-width: 0; }
+.cornerLegend { position: relative; z-index: 1; grid-column: 1; grid-row: 1; align-self: start; justify-self: start; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; box-sizing: border-box; max-width: calc(100% - 20px); margin: 10px; padding: 4px 6px; border-radius: 6px; background: var(--ath-popover); pointer-events: none; }
+.cornerLegend > :last-child { pointer-events: auto; }
+.atomLegend { min-width: 0; pointer-events: none; }
 .pathLegend { position: relative; z-index: 1; grid-column: 2; grid-row: 1; align-self: start; min-width: 0; margin: 10px 10px 0 0; padding: 8px 9px; border: 1px solid var(--ath-line); border-radius: 6px; background: var(--ath-popover); }
 .legendHint { display: block; margin-bottom: 6px; color: var(--ath-muted); font-size: var(--text-caption); }
 .legendItems { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-height: 220px; overflow-y: auto; }

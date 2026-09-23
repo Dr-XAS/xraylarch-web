@@ -15,10 +15,7 @@
 .options label { display: inline-flex; align-items: center; gap: 5px; }
 .options input { margin: 0; accent-color: var(--ath-primary); }
 .options > span { color: var(--ath-muted); margin-left: auto; }
-.elements { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; }
-.elements button { display: inline-flex; gap: 6px; align-items: center; }
-.elements button[aria-pressed=false] { opacity: .45; }
-.elements button span { width: 10px; height: 10px; border-radius: 50%; border: 1px solid #8886; }
+.legendCorner { position: absolute; z-index: 1; top: 10px; left: 10px; max-width: calc(100% - 20px); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 6px; border-radius: 6px; background: var(--ath-popover); }
 .help, .warning { margin: 7px 12px 10px; font-size: var(--text-caption); line-height: var(--leading-body); color: var(--ath-muted); }
 .warning { color: var(--ath-warning-ink, #9a6700); }
 @media (max-width: 540px) { .canvas { height: 250px; } .controls { grid-template-columns: 1fr; } }

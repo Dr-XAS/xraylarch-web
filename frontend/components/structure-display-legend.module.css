@@ -1,0 +1,4 @@
+.legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.item { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px; color: var(--ath-ink); font-size: var(--text-body); line-height: var(--leading-control); font-weight: 500; white-space: nowrap; cursor: pointer; }
+.item input { flex: none; margin: 0; accent-color: var(--ath-primary); }
+.item:has(input:disabled) { cursor: default; }

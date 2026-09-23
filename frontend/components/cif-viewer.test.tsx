@@ -109,6 +109,11 @@ describe("CifViewer", () => {
   it("updates element visibility, bonds, and unit-cell outlines without recreating the renderer", async () => {
     render(<CifViewer structure={structure()} />)
     const instance = await ready()
+    const canvas = screen.getByRole("img", { name: "Interactive 3D crystal structure of Copper oxide" }).parentElement
+    expect(canvas).toContainElement(screen.getByRole("group", { name: "Visible CIF elements" }))
+    expect(canvas).toContainElement(screen.getByRole("checkbox", { name: "Bonds" }))
+    expect(canvas).toContainElement(screen.getByRole("checkbox", { name: "Unit cell outline" }))
+    expect(screen.getAllByRole("checkbox")).toHaveLength(2)
     expect(instance.addStyle).toHaveBeenCalledWith({ elem: "O" }, expect.objectContaining({ sphere: expect.any(Object), stick: expect.any(Object) }))
 
     instance.addStyle.mockClear()
