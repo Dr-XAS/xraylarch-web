@@ -129,12 +129,12 @@ test("real wavelet plots retain their grid through range drags, independent colo
   expect(await grid(heatmap)).toEqual(retained)
   expect(waveletRequests).toHaveLength(waveletRequestCount)
 
-  await page.getByRole("button", { name: "Switch to dark mode", exact: true }).click()
+  await page.getByRole("radio", { name: "Dark theme", exact: true }).click()
   await expect.poll(() => heatmap.locator(".js-plotly-plot").evaluate(element =>
     (element as HTMLElement & { layout: { paper_bgcolor: string } }).layout.paper_bgcolor,
   )).toBe("#17171c")
   expect(await grid(heatmap)).toEqual(retained)
-  await page.getByRole("button", { name: "Switch to light mode", exact: true }).click()
+  await page.getByRole("radio", { name: "Light theme", exact: true }).click()
 
   await panel.getByRole("button", { name: "3D surface", exact: true }).click()
   const surface = panel.getByLabel("3D wavelet surface", { exact: true })

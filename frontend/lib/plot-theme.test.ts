@@ -51,4 +51,15 @@ describe("scientific plot themes", () => {
     expect(plotColorForTheme("hsl(240, 58%, 40%)", "dark")).toMatch(/^#[\da-f]{6}$/)
     expect(plotColorForTheme("rgb(20, 20, 20)", "dark")).not.toBe("rgb(20, 20, 20)")
   })
+
+  it("sinks pale highlight fills and white marker halos into the dark canvas", () => {
+    const shapes = [{ type: "rect", fillcolor: "#d9e7df", line: { width: 0 } },
+      { type: "rect", fillcolor: "rgba(22, 115, 107, 0.12)" }, { type: "line", line: { color: "#1d1147" } }]
+    const result = plotLayoutForTheme({ shapes }, "dark").shapes as Record<string, unknown>[]
+    expect(result[0]).toMatchObject({ fillcolor: "#2b3936", line: { width: 0 } })
+    expect(result[1].fillcolor).toBe("rgba(22, 115, 107, 0.12)")
+    expect(result[2]).not.toHaveProperty("fillcolor")
+    const [trace] = plotDataForTheme([{ marker: { color: "#1d1147", line: { color: "#fff", width: 1 } } }], "dark")
+    expect(trace.marker).toMatchObject({ line: { color: "#17171c", width: 1 } })
+  })
 })

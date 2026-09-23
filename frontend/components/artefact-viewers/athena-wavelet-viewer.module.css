@@ -24,8 +24,8 @@
 .notice p { margin: 0; }
 .hint { margin: 0; padding: 6px 12px 8px; color: var(--ath-muted); font-size: var(--text-caption); }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
-:global(.dark) .selectedRange { background: #a78bfa; }
-:global(.dark) .marker { background: rgb(167 139 250 / 80%); }
+:global(html[data-theme="dark"]) .selectedRange { background: #a78bfa; }
+:global(html[data-theme="dark"]) .marker { background: rgb(167 139 250 / 80%); }
 @container (max-width: 850px) {
   .analysis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
   .companions { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: auto; gap: 8px; }
