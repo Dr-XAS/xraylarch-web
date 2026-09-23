@@ -288,3 +288,36 @@ final result: passed
 - `git diff --check`: passed after the final code and documentation updates.
 
 final result: passed
+
+# September 23, 2026 — consistent compact viewer and panel controls
+
+## Layout rules
+
+- Preserve the existing light/dark palette, readable type scale and plot heights.
+- Use shared `ViewerDisplayControls` under plots. Offset is first, spacing is
+  adjacent, display toggles follow, and range/export actions come last.
+- Keep Spectrum legend controls in the same place for current and selected
+  spectra. Spectrum and Wavelet continue to own separate palette state.
+- Use 12 px panel insets, 6–8 px row gaps and 30–32 px input heights. Results,
+  viewer k-weight and ordering share a row. Related controls wrap at narrow widths.
+- Share processing-dialog layout styles across Difference, Smoothing and MEE;
+  remove duplicate grid-field bottom margins. Pair related numeric parameters.
+
+## Coverage and visual checks
+
+- Source review: all five result viewers; processing and fitting editors;
+  diagnostic, difference, merge and shortcut plots; import, export, rebin,
+  dispersive, MEE, smoothing, beamline metadata and XDI dialogs.
+- Live copper-example project in temporary storage: Spectrum offset and legend,
+  Wavelet toolbar, desktop main layout, light/dark themes, Smooth data and Quad
+  diagnostic dialogs. Diagnostic legends remain readable after responsive resize.
+- Document width equals viewport width at 320, 390, 768, 1024, 1200 and 1440 px.
+  At 390 px, both checked dialogs also have equal client and scroll widths.
+- Browser regression: 15 of 16 initial scenarios passed (diagnostics, merge,
+  CIF/FEFF and workspace). Mobile fitting navigation exposed fractional clipping
+  at the top edge; an 8 px tab scroll margin fixed it, and the focused rerun passed.
+- Full frontend suite: 76 files / 1,396 tests passed. TypeScript and production
+  build passed. Shared control tests check remembered offset spacing and no
+  processing requests from offset toggles.
+- CSS dependency review retained the existing narrow-screen action layout for
+  five dialogs that still use `athena-smoothing.module.css`.
