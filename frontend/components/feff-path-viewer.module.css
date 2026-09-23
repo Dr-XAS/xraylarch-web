@@ -1,21 +1,60 @@
-.panel { margin-top: 24px; }
+.panel { margin-top: 24px; container-type: inline-size; }
 .content { padding: 14px 16px; font-size: var(--text-body); }
 .heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; }
 .heading span { color: var(--ath-muted); font-size: var(--text-label); }
 .heading strong { color: var(--ath-ink); font-weight: 600; }
-.heading button { border: 1px solid var(--ath-line); border-radius: 4px; background: var(--ath-surface); color: var(--ath-primary); padding: 6px 9px; cursor: pointer; }
-.selector { display: flex; align-items: center; gap: 10px; margin-top: 15px; color: var(--ath-muted); font-size: var(--text-label); }
-.selector select { min-width: 0; flex: 1; }
-.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
-.facts div { min-width: 0; border: 1px solid var(--ath-line); border-radius: 5px; padding: 10px; }
+.heading button, .legControls button { border: 1px solid var(--ath-line); border-radius: 5px; background: var(--ath-surface); color: var(--ath-primary); padding: 6px 9px; cursor: pointer; font: inherit; font-size: var(--text-caption); }
+.workspace { min-width: 0; margin-top: 12px; }
+.sceneCanvas { display: grid; grid-template-columns: minmax(0, 1fr) 154px; }
+.sceneSurface { grid-column: 1; grid-row: 1; min-width: 0; }
+.pathLegend { position: relative; z-index: 1; grid-column: 2; grid-row: 1; align-self: start; min-width: 0; margin: 10px 10px 0 0; padding: 8px 9px; border: 1px solid var(--ath-line); border-radius: 6px; background: var(--ath-popover); }
+.legendHint { display: block; margin-bottom: 6px; color: var(--ath-muted); font-size: var(--text-caption); }
+.legendItems { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; max-height: 220px; overflow-y: auto; }
+.legendItems button { display: inline-flex; align-items: center; gap: 5px; padding: 3px 0; background: transparent; border: 0; color: var(--ath-ink); font: inherit; font-size: var(--text-caption); cursor: pointer; }
+.legendItems button[aria-pressed=false] { opacity: .4; }
+.legendItems button[aria-pressed=false] i { background: transparent !important; border: 1px solid currentColor; }
+.legendItems button:hover { opacity: 1; }
+.legendItems button:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 2px; border-radius: 2px; }
+.legendItems i { display: inline-block; flex: none; width: 8px; height: 8px; border-radius: 50%; }
+.legendItems small { display: block; max-width: 115px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font: inherit; color: var(--ath-muted); }
+.detailPicker { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 12px 0; color: var(--ath-muted); font-size: var(--text-label); }
+.detailPicker select { max-width: 60%; }
+.detailPicker span { margin-left: auto; font-size: var(--text-caption); }
+.detail { min-width: 0; }
+.pathHeading { display: flex; align-items: start; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.pathHeading h3 { margin: 0; font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
+.pathHeading p { margin: 4px 0 0; font-size: var(--text-caption); color: var(--ath-muted); }
+.kind { border-radius: 5px; padding: 4px 7px; font-size: var(--text-caption); color: var(--ath-primary); background: color-mix(in srgb, var(--ath-primary) 8%, var(--ath-surface)); }
+.facts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.facts div { min-width: 0; border: 1px solid var(--ath-line); border-radius: 5px; padding: 8px; }
 .facts dt { color: var(--ath-muted); font-size: var(--text-caption); }
-.facts dd { margin: 5px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.facts dd { margin: 5px 0 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; font-size: var(--text-label); }
+.scattering { border: 1px solid var(--ath-line); border-radius: 6px; padding: 11px 12px; }
+.scattering > p:first-child { margin: 0 0 9px; font-size: var(--text-label); line-height: var(--leading-body); }
+.route { line-height: 1.9; font-size: var(--text-label); overflow-wrap: anywhere; }
+.route > span { display: inline-block; }
+.routeArrow { color: var(--ath-muted); }
+.absorber { font-weight: 600; color: var(--ath-primary); }
+.legControls { display: flex; gap: 6px; flex-wrap: wrap; margin: 9px 0 0; }
+.legControls button { display: inline-flex; align-items: center; gap: 5px; }
+.legControls button[aria-pressed=true] { border-color: var(--ath-primary); background: color-mix(in srgb, var(--ath-primary) 6%, var(--ath-surface)); color: var(--ath-ink); }
+.legDescription { margin: 9px 0 0; min-height: 2.5em; font-size: var(--text-caption); color: var(--ath-muted); line-height: 1.5; font-variant-numeric: tabular-nums; }
+.geometryDetails { margin-top: 13px; border-top: 1px solid var(--ath-line); padding-top: 12px; }
+.geometryDetails summary { cursor: pointer; font-size: var(--text-label); color: var(--ath-muted); }
 .tableScroll { overflow-x: auto; }
-.tableScroll table { width: 100%; border-collapse: collapse; text-align: left; font-variant-numeric: tabular-nums; }
-.tableScroll caption { text-align: left; padding: 8px 0; font-weight: 600; }
+.tableScroll table { width: 100%; border-collapse: collapse; text-align: left; font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.tableScroll caption { text-align: left; padding: 10px 0; font-weight: 600; }
 .tableScroll th, .tableScroll td { padding: 7px 9px; border-bottom: 1px solid var(--ath-line); white-space: nowrap; }
 .tableScroll th { font-weight: 500; }
 .empty, .note { color: var(--ath-muted); line-height: var(--leading-body); }
 .empty { margin: 15px 0 2px; }
 .note { font-size: var(--text-caption); margin: 12px 0 0; }
-@media (max-width: 620px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 650px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container (max-width: 450px) {
+  .content { padding: 12px; }
+  .sceneCanvas.sceneCanvas { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: 250px auto; }
+  .pathLegend { grid-column: 1; grid-row: 2; justify-self: start; margin: 0 10px 10px; padding: 6px 8px; }
+  .legendItems { max-height: 150px; }
+}
+
+.legControls i { width: 8px; height: 8px; display: inline-block; border-radius: 50%; flex: none; }

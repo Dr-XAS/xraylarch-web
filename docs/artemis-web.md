@@ -407,3 +407,59 @@ The implementation draws on the official
 [legacy user guide](https://bruceravel.github.io/demeter/artug/index.html),
 [data/transform controls](https://bruceravel.github.io/demeter/documents/Artemis/data.html),
 and [model validation](https://bruceravel.github.io/demeter/documents/Artemis/fit/sanity.html).
+
+## FEFF path viewer
+
+The **FEFF path viewer** shows a clickable **FEFF0001**, **FEFF0002**, etc. legend
+inside its 3D canvas, including paths excluded from fitting. Toggle any combination
+of paths to overlay their representative trajectories. Each path has a distinct
+arrow color that matches its legend; numbered arrows follow the FEFF geometry
+order back to the absorber. Shared atoms are drawn once. Select **Path details**
+to inspect one visible path, then **Leg 1**, **Leg 2**, etc. to emphasize a
+direction, or **All legs** to show its complete route. Drag to rotate, scroll to
+zoom, and use **Reset view** to refit the structure while retaining its rotation,
+as in the CIF viewer. These controls do not
+run FEFF or refit the spectrum.
+
+Two legs describe single scattering (absorber → neighbor → absorber). Three legs
+describe double scattering and form a triangle unless the three sites are
+collinear. Four or more legs can revisit the absorber or another atom, so they
+need not form a polygon with distinct vertices. Repeated visits are retained;
+arrows on overlapping lines use separate display lanes without moving the atoms.
+The coordinate table includes the final return and scattering angle β, measured
+between incoming and outgoing travel directions: 0° forward, 180° backward.
+`Reff` is half the total trajectory length; degeneracy counts equivalent paths,
+not additional atoms to reconstruct. See the official
+[FEFF path examples](https://feff.phys.washington.edu/feff/wiki/static/p/a/t/Paths.dat_%28FEFF_6.01%29_1d89.html)
+and [Larch path metadata](https://xraypy.github.io/xraylarch/xafs_feffpaths.html).
+
+The local structure uses the same **3Dmol.js** engine, XYZ bond perception,
+element colors, atom and bond radii, default camera fitting, theme styles, radius
+slider, and **Bonds** controls as the CIF viewer. Atoms participating in any visible
+path remain opaque; other atoms retain their colors at 70% transparency
+(effective opacity 0.3). Inferred bonds are opaque only when they follow a visible
+path leg; all other bonds use the same transparency. Thin colored arrows distinguish the paths. Bond
+visibility is independent of scattering arrows: a scattering leg is not necessarily
+a chemical bond. Hover an atom for its element and distance from the absorber.
+Path atoms remain visible when the display radius excludes their surrounding shell.
+
+Paths added from a calculation in this browser retain its actual FEFF input
+cluster as optional display metadata. Otherwise, the viewer looks for an attached
+project CIF whose absorber-centered Cartesian coordinates match every path atom
+(element and position, within 0.005 Å rounding tolerance). Multiple distinct
+matches require a source selection. Matching does not rotate or distort a path
+to force agreement with a different structure. Background atoms can be hidden
+with **Local structure**; their bonds are inferred from the same distance rules
+as the CIF viewer.
+
+When several paths are visible, all of them must match the same chosen cluster
+before it is used as their shared structure. If that match cannot be verified,
+the viewer shows their absorber-centered path coordinates with an explicit note
+and omits the unverified surrounding cluster.
+
+A standalone `feffNNNN.dat` contains only its representative path. If there is
+no matching CIF or retained FEFF cluster, the viewer requests a matching structure
+and displays the available path atoms. It never reconstructs neighbors from
+degeneracy. Model reimport reinspects `.dat` files, losing optional FEFF input
+context but still allowing context from a matching attached CIF. Invalid geometry
+or unavailable WebGL is reported; header values remain accessible.

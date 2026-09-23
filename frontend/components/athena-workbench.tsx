@@ -2102,7 +2102,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           : viewer === "cif" ? <ProjectCifViewer key={project?.id} attachments={project?.artemis_structures}
           selectedId={cifSelection?.projectId === project?.id ? cifSelection?.attachmentId : undefined}
           onSelect={attachmentId => setCifSelection({ projectId: project?.id, attachmentId })} />
-          : viewer === "feff" ? <FeffPathViewer paths={currentFeffPaths} groupLabel={active?.label} onOpenModel={openFittingFromResults} />
+          : viewer === "feff" ? <FeffPathViewer paths={currentFeffPaths} groupLabel={active?.label} onOpenModel={openFittingFromResults} attachments={project?.artemis_structures} />
           : <ArtemisFitResultViewer group={active} pending={!!busy || !!dirty || parameterUpdatePending} result={currentFitResult} />}
         </div>)}</div>
         <div className="ath-center-note"><BookOpen size={15} /><span>Familiar Athena workflows. Scientific calculations by Larch.</span><button onClick={() => openTool("learn")}>Tutorials & reference <ExternalLink size={12} /></button></div>
