@@ -8,7 +8,7 @@ import { isSelectionCommand, mergeSelectionUpdate, type AthenaSelectionUpdate } 
 import { AthenaProvider, useAthenaApi, useAthenaTransport } from "@/lib/athena-context"
 import { clearIntegrationReturnSelection, saveReturnSelection } from "@/lib/integration-session"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
-import { defaultPlotColors, spectrumColors as plotSpectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
+import { spectrumColors as plotSpectrumColors } from "@/lib/athena-plot-colors"
 import { parameterHelp, additionalParameterHelp } from "@/lib/athena-parameter-help"
 import { ParameterHelp } from "./parameter-help"
 import { ThemeToggle } from "./theme-toggle"
@@ -29,6 +29,7 @@ import { ProjectCifViewer } from "./project-cif-viewer"
 import { FeffPathViewer, type FeffPathSummary } from "./feff-path-viewer"
 import { orderViewers, viewerIds, viewerLabels, type ViewerId, type ViewerSort } from "@/lib/athena-viewer-order"
 import { useAthenaPlotWeight } from "./athena-plot-weight"
+import { useSpectrumViewerState } from "./athena-spectrum-viewer-state"
 import { AthenaProjectImport, type ProjectPreview } from "./athena-project-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
 import { AthenaReimportColumns } from "./athena-reimport-columns"
@@ -66,7 +67,8 @@ import "@/app/athena-controls.css"
 import "@/app/athena-context-controls.css"
 
 const viewerIcons = {
-  spectrum: Activity,
+  single: Activity,
+  multiple: Layers,
   wavelet: WavesHorizontal,
   cif: Atom,
   feff: Route,
@@ -391,7 +393,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const groupDragBadgeRef = useRef<HTMLDivElement>(null)
   const groupDragScrollFrameRef = useRef<number | null>(null)
   const reorderFocusRef = useRef<GroupReorderFocus | null>(null)
-  const [space, setSpace] = useState<Space>("E")
+  const singleSpectrum = useSpectrumViewerState("current")
+  const multipleSpectra = useSpectrumViewerState("selected")
+  const { space, setSpace, energyMode, component, plotScope, setRange } = singleSpectrum
   const [chosenParameterTab, setParameterTab] = useState<ParameterTab>("processing")
   const parameterTab: ParameterTab = integrated ? "processing" : chosenParameterTab
   const [artemisResult, setArtemisResult] = useState<ArtemisFitResult | null>(null)
@@ -404,25 +408,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const firstViewerEvents = useRef(new Set<string>())
   const feffPathIds = useRef(new Map<string, string>())
   const seenFitResults = useRef(new Set<ArtemisFitResult>())
-  const [energyMode, setEnergyMode] = useState("mu")
-  const [rComponent, setRComponent] = useState("mag")
-  const [qComponent, setQComponent] = useState("re")
-  const component = space === "q" ? qComponent : rComponent
-  const setComponent = space === "q" ? setQComponent : setRComponent
-  const [plotScope, setPlotScope] = useState<"selected" | "current">("current")
-  const [background, setBackground] = useState(true)
-  const [preEdge, setPreEdge] = useState(true)
-  const [postEdge, setPostEdge] = useState(true)
-  const [showWindow, setShowWindow] = useState(false)
-  const [showLegend, setShowLegend] = useState(false)
-  const [showGrid, setShowGrid] = useState(true)
-  const [showDataPoints, setShowDataPoints] = useState(false)
   const [viewerKWeight, setViewerKWeight] = useState<number | null>(null)
-  const [plotColors, setPlotColors] = useState<PlotColorSettings>(defaultPlotColors)
-  const [offset, setOffset] = useState(0)
-  const previousStackOffset = useRef(0.1)
-  const [range, setRange] = useState<[number | null, number | null]>([null, null])
-  const [rangeRelativeToE0, setRangeRelativeToE0] = useState(true)
   const [drafts, setDrafts] = useState<Record<string, Parameters>>({})
   const [autoApplyPlans, setAutoApplyPlans] = useState<Record<string, AutoApplyPlan>>({})
   const autoApplySerial = useRef(0)
@@ -515,7 +501,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       })
     }
   }
-  const availableViewers: ViewerId[] = integrated ? ["spectrum", "wavelet"] : [...viewerIds]
+  const availableViewers: ViewerId[] = integrated ? ["single", "multiple", "wavelet"] : [...viewerIds]
   const cifAttachedTimes = project?.artemis_structures?.map(item => Date.parse(item.attached_at)).filter(Number.isFinite) ?? []
   const latestCifTime = cifAttachedTimes.length ? Math.max(...cifAttachedTimes) : undefined
   const activityKey = JSON.stringify([project?.id, active?.id])
@@ -550,7 +536,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       return next.size === previous.size ? previous : next
     })
   }, [groupFolders, project?.id])
-  const plotEnergyMode = active?.data_type === "detector" ? "mu" : energyMode
   const parameters = active && (drafts[active.id] ?? active.parameters)
   const dirty = active && parameters && !sameParameters(parameters, active.parameters)
   const activeAutoApplyPlan = active ? autoApplyPlans[active.id] : undefined
@@ -593,32 +578,27 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     window.addEventListener("blur", blur)
     return () => { document.removeEventListener("keydown", cancel); window.removeEventListener("blur", blur) }
   }, [])
-  const selectedGroups = useMemo(() => plotScope === "selected" ? marked : active ? [active] : [], [plotScope, marked, active])
-  const weightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, dataVersion: plotDataVersion, groups: selectedGroups,
+  const singleGroups = useMemo(() => active ? [active] : [], [active])
+  const singleWeightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, dataVersion: plotDataVersion, groups: singleGroups,
     kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
-  const displayedSpectrumGroups = weightedPlot.loading || weightedPlot.error || (analysis && analysisVisible) ? []
-    : weightedPlot.groups.map((group, index) => ({ group, index }))
-      .filter(({ group }) => spectrumTraceCoordinates(group, space, plotEnergyMode, component, viewerKWeight))
-  // Match AthenaPlot's palette positions before unavailable traces are filtered.
-  const displayedColors = plotSpectrumColors(weightedPlot.groups.length, plotColors)
+  const multipleWeightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, dataVersion: plotDataVersion, groups: marked,
+    kWeight: viewerKWeight, space: multipleSpectra.space, pending: parameterUpdatePending || !!dirty })
+  const multipleDetectorOnly = marked.length > 0 && marked.every(group => group.data_type === "detector")
+  const multipleEnergyMode = multipleDetectorOnly ? "mu" : multipleSpectra.energyMode
+  const displayedSpectrumGroups = multipleWeightedPlot.loading || multipleWeightedPlot.error ? []
+    : multipleWeightedPlot.groups.map((group, index) => ({ group, index }))
+      .filter(({ group }) => spectrumTraceCoordinates(group, multipleSpectra.space, multipleEnergyMode, multipleSpectra.component, viewerKWeight))
+  // Sidebar swatches follow the comparison viewer, including unavailable traces.
+  const displayedColors = plotSpectrumColors(multipleWeightedPlot.groups.length, multipleSpectra.plotColors)
   const spectrumColors = new Map(displayedSpectrumGroups.map(({ group, index }) =>
     [group.id, plotColorForTheme(displayedColors[index], theme)]))
   const savedPlotWeight = (group: AthenaGroup) => {
     const effective = group.result?.effective.kweight
     return typeof effective === "number" && Number.isFinite(effective) ? effective : group.parameters.kweight
   }
-  const automaticWeights = [...new Set(selectedGroups.map(savedPlotWeight))]
+  const automaticWeights = [...new Set([...marked, ...singleGroups].map(savedPlotWeight))]
   const savedViewerWeight = automaticWeights.length > 1 ? null : automaticWeights[0] ?? (active ? savedPlotWeight(active) : 2)
   const displayedViewerWeight = viewerKWeight ?? savedViewerWeight ?? ""
-  const overlayArrays = space === "E" && plotEnergyMode === "mu" && !analysisVisible && active &&
-    !["detector", "chi"].includes(active.data_type) && !isDifferenceGroup(active) &&
-    selectedGroups.some(group => group.id === active.id) ? active.result?.arrays : undefined
-  const hasOverlay = (key: string) => !!overlayArrays?.energy?.length &&
-    overlayArrays.mu?.length === overlayArrays.energy.length && overlayArrays[key]?.length === overlayArrays.energy.length
-  const canShowPreEdge = plotScope === "current" && hasOverlay("pre_edge")
-  const canShowPostEdge = plotScope === "current" && hasOverlay("post_edge")
-  const canShowBackground = hasOverlay("bkg")
-  const automaticRange = automaticPlotRange(weightedPlot.groups, space, plotEnergyMode, component, analysis, analysisVisible, viewerKWeight)
   const parameterTargets = parameterTarget === "all" ? project?.groups ?? [] : parameterTarget === "marked" ? marked : active ? [active] : []
   const backgroundStandard = active ? standardDrafts[active.id] ?? active.background_standard_id ?? "" : ""
   const backgroundStandards = project?.groups.filter(g => g.id !== active?.id && !!g.result?.arrays.chi?.length) ?? []
@@ -629,12 +609,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const combinationReady = marked.length >= 2 && (combineArray === "chi" ? canCombineChi : combineArray === "norm" ? canCombineNorm : combineArray === "mu" ? canCombineMu : true)
   const referenceE0 = parameters?.e0 ?? active?.result?.effective.e0
   const draftE0 = typeof referenceE0 === "number" && Number.isFinite(referenceE0) ? referenceE0 : null
-  const relativeRange = space === "E" && !analysisVisible && rangeRelativeToE0 && draftE0 !== null
-  const displayedRange = range.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
-  const displayedAutomaticRange = automaticRange.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
-  const absoluteRangeValue = (value: number | null) => energyRangeValue(value, draftE0, relativeRange, 1)
   function pickContext(plotSpace = space, showAnalysis = analysisVisible) {
-    return JSON.stringify([project?.id, project?.version, active?.id, active?.frozen, plotSpace, showAnalysis, energyMode, component, plotScope, viewerKWeight, selectedGroups.map(g => g.id), modal, busy, parameters])
+    return JSON.stringify([project?.id, project?.version, active?.id, active?.frozen, plotSpace, showAnalysis, energyMode, component, plotScope, viewerKWeight, singleGroups.map(g => g.id), modal, busy, parameters])
   }
   const context = pickContext()
   const contextRef = useRef(context)
@@ -692,6 +668,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const relative = splineEnergy || nativeRelative
     if (relative && draftE0 === null) { setError("Set E₀ or reprocess the spectrum before picking a relative energy."); return }
     const next: PlotPick = { key, label, space: pickSpace, relative, splineEnergy, e0: draftE0, context: pickContext(pickSpace, false) }
+    setShownViewers(previous => new Set([...previous, "single"]))
     setError(""); setSpace(pickSpace); setAnalysisVisible(false); setRange([null, null])
     pickRef.current = next; setPick(next)
   }
@@ -871,25 +848,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     })
   }
 
-  function selectPlotScope(nextPlotScope: "selected" | "current") {
-    const showSingleSpectrumDefaults = nextPlotScope === "current"
-    setPlotScope(nextPlotScope)
-    setEnergyMode(showSingleSpectrumDefaults ? "mu" : "norm")
-    setBackground(showSingleSpectrumDefaults)
-    setPreEdge(showSingleSpectrumDefaults)
-    setPostEdge(showSingleSpectrumDefaults)
-    setShowLegend(!showSingleSpectrumDefaults)
-    setAnalysisVisible(false)
-  }
-
   function accept(p: AthenaProject, preservePlotData = false) {
     if (!preservePlotData) setPlotDataVersion(p.version)
     if (p.import_preferences_warning && !preferenceWarnings.current.includes(p.import_preferences_warning)) preferenceWarnings.current.push(p.import_preferences_warning)
     const previous = projectRef.current
-    if (previous?.id !== p.id || previous.groups.length !== p.groups.length) {
-      const nextPlotScope = p.groups.length > 1 ? "selected" : "current"
-      selectPlotScope(nextPlotScope)
-    }
+    if (previous?.id !== p.id || previous.groups.length !== p.groups.length) setAnalysisVisible(false)
     if (previous?.id !== p.id) {
       setStandardDrafts({}); setDrafts({}); setAutoApplyPlans({})
     } else {
@@ -1423,6 +1386,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         if (modal === "peaks") opts.peaks = peaks
         if (modal === "log_ratio") Object.assign(opts, { kmin: options.kmin, kmax: options.kmax, phase_offset: options.phase_offset, fit_cumulants: true, max_cumulant: options.max_cumulant })
         const result = await athenaApi<Analysis>(`/projects/${p.id}/analyze`, { version: p.version, action: modal, group_ids: modal === "peaks" ? [active.id] : modal === "log_ratio" ? [active.id, options.reference_id] : fitSelection, options: opts })
+        setShownViewers(previous => new Set([...previous, "single"]))
         setAnalysis(result); setAnalysisVisible(true)
         const updated = { ...p, analyses: [...(p.analyses ?? []), result].slice(-50) }
         projectRef.current = updated; setProject(updated)
@@ -1460,13 +1424,14 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     })
   }
   function changeSpace(value: Space) { cancelPick(); setSpace(value); setRange([null, null]); setAnalysisVisible(false) }
-  function specialPlotShortcut(value: Space) {
+  function specialPlotShortcut(value: Space, scope: "selected" | "current" = "current") {
     if (!active || busy) return
-    const kind: AthenaSpecialPlotKind | null = plotScope === "selected"
+    const kind: AthenaSpecialPlotKind | null = scope === "selected"
       ? value === 'E' ? 'i0' : value === 'q' ? 'biquad' : null
       : value === 'E' ? 'i0sig' : value === 'k' ? 'k123' : value === 'R' ? 'r123' : null
     if (kind) { cancelPick(); setSpecialPlot(kind); setModal('special_plot') }
-    else changeSpace(value)
+    else if (scope === "current") changeSpace(value)
+    else { multipleSpectra.setSpace(value); multipleSpectra.setRange([null, null]) }
   }
   function groupFolderScope(current: AthenaProject, groupId: string) {
     const folderId = current.group_folders?.find(folder => folder.group_ids.includes(groupId))?.id
@@ -2004,6 +1969,69 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     return rows
   }
 
+  const shortcutSettings = ["i0", "e00", "normscaled", "biquad"].includes(specialPlot) ? multipleSpectra : singleSpectrum
+
+  function renderSpectrumViewer(viewer: "single" | "multiple") {
+    const state = viewer === "single" ? singleSpectrum : multipleSpectra
+    const { space, setSpace, energyMode, setEnergyMode, component, setComponent, plotScope,
+      background, setBackground, preEdge, setPreEdge, postEdge, setPostEdge,
+      showWindow, setShowWindow, showLegend, setShowLegend, showGrid, setShowGrid,
+      showDataPoints, setShowDataPoints, plotColors, setPlotColors, offset, setOffset,
+      previousStackOffset, range, setRange, rangeRelativeToE0, setRangeRelativeToE0 } = state
+    const weightedPlot = viewer === "single" ? singleWeightedPlot : multipleWeightedPlot
+    const selectedGroups = viewer === "single" ? singleGroups : marked
+    const showingAnalysis = viewer === "single" && analysisVisible
+    const detectorOnly = viewer === "single" ? active?.data_type === "detector" : multipleDetectorOnly
+    const plotEnergyMode = detectorOnly ? "mu" : energyMode
+    const overlayArrays = viewer === "single" && space === "E" && plotEnergyMode === "mu" && !showingAnalysis && active &&
+      !["detector", "chi"].includes(active.data_type) && !isDifferenceGroup(active) ? active.result?.arrays : undefined
+    const hasOverlay = (key: string) => !!overlayArrays?.energy?.length &&
+      overlayArrays.mu?.length === overlayArrays.energy.length && overlayArrays[key]?.length === overlayArrays.energy.length
+    const canShowPreEdge = hasOverlay("pre_edge"), canShowPostEdge = hasOverlay("post_edge"), canShowBackground = hasOverlay("bkg")
+    const automaticRange = automaticPlotRange(weightedPlot.groups, space, plotEnergyMode, component, analysis, showingAnalysis, viewerKWeight)
+    const relativeRange = space === "E" && !showingAnalysis && rangeRelativeToE0 && draftE0 !== null
+    const displayedRange = range.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
+    const displayedAutomaticRange = automaticRange.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
+    const absoluteRangeValue = (value: number | null) => energyRangeValue(value, draftE0, relativeRange, 1)
+    return <ViewerPanel title={viewerLabels[viewer]}><ResizablePlotCard storageKey={`athena.plot.${viewer}.height.v1`} resizeLabel={`Resize ${viewer === "single" ? "single spectrum" : "multiple spectra"} plot height`} controlsId={`athena-${viewer}-spectrum-viewer`}><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !showingAnalysis} onContextMenu={event => { event.preventDefault(); if (canOpen("special_plot")) specialPlotShortcut(s, plotScope) }} title="Right-click for Athena’s special plot" onClick={() => { if (viewer === "single") changeSpace(s); else { setSpace(s); setRange([null, null]) } }}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div></div>
+          {plotScope === "selected" && <div className="ath-plot-scope"><span className="ath-plot-scope-note">{marked.length} checked {marked.length === 1 ? "group" : "groups"}</span></div>}
+          <div className="ath-plot-controls">{space === "E" ? plotScope === "current" && <>
+            <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background</label>
+            <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
+            <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>
+          </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<AthenaColorLegend storageKey={viewer === "single" ? "athena.plot-colors.single" : "athena.plot-colors"} value={plotColors} onChange={setPlotColors} disabled={showingAnalysis} />
+          {space === "E" && plotScope === "current" && plotEnergyMode !== "mu" && <p className="ath-plot-overlay-hint">For pre-/post-edge lines, choose μ(E) · raw.</p>}
+          </div>
+          {viewer === "single" && pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes process automatically.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
+          {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
+            {(detectorOnly ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${detectorOnly ? " disabled" : ""}`} key={option.value}><input type="radio" name={`ath-energy-plot-${viewer}`} value={option.value} checked={plotEnergyMode === option.value} disabled={detectorOnly} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
+          </div>}
+          {plotScope === "current" && <div className="ath-plot-current-spectrum"><div className="ath-plot-current-spectrum-name" title={active?.label}><span>Current spectrum</span><strong>{active?.label ?? "None selected"}</strong></div></div>}
+          {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
+            : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
+            : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={showingAnalysis} range={range} picking={viewer === "single" && !!pick} onPickX={viewer === "single" ? (x, pickedSpace) => pluck(x, pickedSpace, pick) : undefined} />}
+          <ViewerDisplayControls label="Spectrum plot display options">
+            <ViewerControlGroup label="Spectrum display" className="ath-plot-display-controls">
+              <ViewerToggle label="Offset plot" checked={offset !== 0} disabled={plotScope === "current"}
+                title="Separate selected spectra vertically without changing their data"
+                onChange={enabled => setOffset(enabled ? previousStackOffset.current : 0)} />
+              <ViewerControlField label="Spacing" title="Vertical separation between selected spectra">
+                <input aria-label="Stack offset" type="number" step="0.1" value={offset} disabled={plotScope === "current"} onChange={event => {
+                  const next = Number(event.target.value)
+                  if (Number.isFinite(next)) {
+                    if (next !== 0) previousStackOffset.current = next
+                    setOffset(next)
+                  }
+                }} />
+              </ViewerControlField>
+              <ViewerToggle label="Show legend" checked={showLegend} onChange={setShowLegend} />
+            </ViewerControlGroup>
+            <span className="ath-plot-summary">{showingAnalysis ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span>
+            <ViewerControlGroup label="Spectrum plot range" align="end">{space === "E" && <ViewerToggle label="Relative to E₀" title={draftE0 === null ? "E₀ is unavailable for the current spectrum" : `Use the current spectrum’s E₀ (${draftE0} eV) as zero`} checked={relativeRange} disabled={showingAnalysis || draftE0 === null} onChange={setRangeRelativeToE0} />}<ViewerControlField label="Range"><PlotRangeInput label="Plot minimum" value={showingAnalysis ? null : displayedRange[0]} automatic={displayedAutomaticRange[0]} disabled={showingAnalysis || automaticRange[0] === null} onChange={value => setRange([absoluteRangeValue(value), range[1]])} /></ViewerControlField><span>to</span><PlotRangeInput label="Plot maximum" value={showingAnalysis ? null : displayedRange[1]} automatic={displayedAutomaticRange[1]} disabled={showingAnalysis || automaticRange[1] === null} onChange={value => setRange([range[0], absoluteRangeValue(value)])} />{viewer === "single" && active && project && can("export") && <button title="Export current group data" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/groups/${active.id}/export?space=${space}`, `${active.label}.csv`) }}><Download size={14} />CSV</button>}</ViewerControlGroup>
+          </ViewerDisplayControls>
+        </ResizablePlotCard></ViewerPanel>
+  }
+
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><DrXasLogo /><div><h1>Larch-Web</h1><p>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</p></div></div>
       <nav aria-label="Main menu">
@@ -2058,60 +2086,16 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
               </button>
             })}
           </div>
-          {viewerSort === "process" && <p className="ath-viewer-order-hint">Spectrum stays first; saved CIF attachment and this spectrum’s recorded wavelet, path-list, and fit events follow oldest first. Missing events keep default order.</p>}
+          {viewerSort === "process" && <p className="ath-viewer-order-hint">Single and multiple spectra stay first; saved CIF attachment and this spectrum’s recorded wavelet, path-list, and fit events follow oldest first. Missing events keep default order.</p>}
         </section>
         {!availableViewers.some(id => shownViewers.has(id)) && <p className="ath-viewer-empty" role="status">No viewers selected. Choose one above to show its results.</p>}
-        <div className="ath-viewer-stack">{orderedViewerIds.map(viewer => <div key={viewer} data-viewer-id={viewer} hidden={!shownViewers.has(viewer)}>
-        {viewer === "spectrum" ? <>
+        <div className="ath-viewer-stack">{orderedViewerIds.map(viewer => <div key={viewer} id={viewer === "single" || viewer === "multiple" ? `athena-${viewer}-spectrum-viewer` : undefined} data-viewer-id={viewer} hidden={!shownViewers.has(viewer)}>
+        {viewer === "single" ? <>
         {active && <section className="ath-group-identity" aria-label="Current absorber and edge"><span onContextMenu={event => showContext(event, { kind: "section", section: "group" })}>Absorber / edge: <strong>{edgeIdentityDescription(active)}</strong></span><button disabled={active.frozen || !!busy || !canOpen("edge_identity")} onClick={openEdgeIdentity}>Edit absorber and edge…</button></section>}
-        <ViewerPanel title="Spectrum viewer"><ResizablePlotCard><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !analysisVisible} onContextMenu={event => { event.preventDefault(); if (canOpen("special_plot")) specialPlotShortcut(s) }} title="Right-click for Athena’s special plot" onClick={() => changeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div></div>
-          <div className="ath-plot-scope" role="radiogroup" aria-label="Plot spectra">
-            <span className="ath-plot-scope-label">Plot</span>
-            {([{ value: "selected", label: "All selected", hint: "Plot the checked data groups" }, { value: "current", label: "Current spectrum", hint: "Plot only the highlighted data group" }] as const).map(option =>
-              <label key={option.value} className={`ath-plot-scope-option${plotScope === option.value ? " selected" : ""}`} title={option.hint}>
-                <input type="radio" name="ath-plot-scope" value={option.value} checked={plotScope === option.value} onChange={() => selectPlotScope(option.value)} />
-                <span>{option.label}</span>
-              </label>)}
-            <span className="ath-plot-scope-note">{plotScope === "selected" ? `${marked.length} checked ${marked.length === 1 ? "group" : "groups"}` : "Highlighted group"}</span>
-          </div>
-          <div className="ath-plot-controls">{space === "E" ? plotScope === "current" && <>
-            <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background</label>
-            <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
-            <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>
-          </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<AthenaColorLegend value={plotColors} onChange={setPlotColors} disabled={analysisVisible} />
-          {space === "E" && (plotScope !== "current" || plotEnergyMode !== "mu") && <p className="ath-plot-overlay-hint">For pre-/post-edge lines, choose Current spectrum and μ(E).</p>}
-          </div>
-          {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes process automatically.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
-          {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
-            {(active?.data_type === "detector" ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${active?.data_type === "detector" ? " disabled" : ""}`} key={option.value}><input type="radio" name="ath-energy-plot" value={option.value} checked={plotEnergyMode === option.value} disabled={active?.data_type === "detector"} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
-          </div>}
-          {plotScope === "current" && <div className="ath-plot-current-spectrum"><div className="ath-plot-current-spectrum-name" title={active?.label}><span>Current spectrum</span><strong>{active?.label ?? "None selected"}</strong></div></div>}
-          {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
-            : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
-            : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />}
-          <ViewerDisplayControls label="Spectrum plot display options">
-            <ViewerControlGroup label="Spectrum display" className="ath-plot-display-controls">
-              <ViewerToggle label="Offset plot" checked={offset !== 0} disabled={plotScope === "current"}
-                title="Separate selected spectra vertically without changing their data"
-                onChange={enabled => setOffset(enabled ? previousStackOffset.current : 0)} />
-              <ViewerControlField label="Spacing" title="Vertical separation between selected spectra">
-                <input aria-label="Stack offset" type="number" step="0.1" value={offset} disabled={plotScope === "current"} onChange={event => {
-                  const next = Number(event.target.value)
-                  if (Number.isFinite(next)) {
-                    if (next !== 0) previousStackOffset.current = next
-                    setOffset(next)
-                  }
-                }} />
-              </ViewerControlField>
-              <ViewerToggle label="Show legend" checked={showLegend} onChange={setShowLegend} />
-            </ViewerControlGroup>
-            <span className="ath-plot-summary">{analysisVisible ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span>
-            <ViewerControlGroup label="Spectrum plot range" align="end">{space === "E" && <ViewerToggle label="Relative to E₀" title={draftE0 === null ? "E₀ is unavailable for the current spectrum" : `Use the current spectrum’s E₀ (${draftE0} eV) as zero`} checked={relativeRange} disabled={analysisVisible || draftE0 === null} onChange={setRangeRelativeToE0} />}<ViewerControlField label="Range"><PlotRangeInput label="Plot minimum" value={analysisVisible ? null : displayedRange[0]} automatic={displayedAutomaticRange[0]} disabled={analysisVisible || automaticRange[0] === null} onChange={value => setRange([absoluteRangeValue(value), range[1]])} /></ViewerControlField><span>to</span><PlotRangeInput label="Plot maximum" value={analysisVisible ? null : displayedRange[1]} automatic={displayedAutomaticRange[1]} disabled={analysisVisible || automaticRange[1] === null} onChange={value => setRange([range[0], absoluteRangeValue(value)])} />{active && project && can("export") && <button title="Export current group data" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/groups/${active.id}/export?space=${space}`, `${active.label}.csv`) }}><Download size={14} />CSV</button>}</ViewerControlGroup>
-          </ViewerDisplayControls>
-        </ResizablePlotCard></ViewerPanel>
+        {renderSpectrumViewer("single")}
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
         {analysis && <section className="ath-analysis-result"><header><h3>{toolTitles[analysis.kind]}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><p className="ath-hint">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</p><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
-        </> : viewer === "wavelet" ? <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} onComplete={(projectId, groupId) => { if (projectRef.current?.id === projectId && active?.id === groupId) recordViewerActivity("wavelet", projectId, groupId, true) }} />
+        </> : viewer === "multiple" ? renderSpectrumViewer("multiple") : viewer === "wavelet" ? <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} onComplete={(projectId, groupId) => { if (projectRef.current?.id === projectId && active?.id === groupId) recordViewerActivity("wavelet", projectId, groupId, true) }} />
           : viewer === "cif" ? <ProjectCifViewer key={project?.id} attachments={project?.artemis_structures}
           selectedId={cifSelection?.projectId === project?.id ? cifSelection?.attachmentId : undefined}
           onSelect={attachmentId => setCifSelection({ projectId: project?.id, attachmentId })} />
@@ -2194,7 +2178,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     {modal === "plugins" && <Modal title="Plugin registry" close={closePluginRegistry}><div className="ath-modal-body"><AthenaPluginRegistry onPendingChange={setRegistryPending} /><div className="ath-modal-actions"><button disabled={registryPending} onClick={closePluginRegistry}>{registryReturn.current === "import" ? "Return to import" : "Close registry"}</button></div></div></Modal>}
     {modal === "context_report" && contextReport && <Modal title={contextReport.title} wide close={() => setModal(null)}><div className="ath-modal-body"><AthenaContextReport key={`${contextReport.project.id}:${contextReport.project.version}:${contextReport.kind}:${contextReport.groups.map(g => g.id).join()}`} {...contextReport} /><div className="ath-modal-actions"><button onClick={() => setModal(null)}>Close report</button></div></div></Modal>}
     {modal === "rename" && active && <Modal title="Rename current group" close={() => { if (!busy) setModal(null) }}><form className="ath-modal-body" onSubmit={event => { event.preventDefault(); void task('Renaming group', async () => { await command('metadata', [active.id], { label: String(options.label).trim() }); setModal(null) }) }}><p>{active.label}</p>{optionText('label', 'New group label')}{error && <p role="alert" className="ath-error">{error}</p>}<div className="ath-modal-actions"><button type="button" disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="ath-primary" disabled={!!busy || !String(options.label ?? '').trim()}>Rename group</button></div></form></Modal>}
-    {modal === "special_plot" && project && active && <Modal title="Athena plot shortcuts" wide close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Plot shortcut</span><select aria-label="Plot shortcut" value={specialPlot} onChange={event => setSpecialPlot(event.target.value as AthenaSpecialPlotKind)}>{Object.entries(athenaSpecialPlotLabels).map(([kind, label]) => <option value={kind} key={kind}>{label}</option>)}</select></label><AthenaSpecialPlot kind={specialPlot} groups={project.groups} active={active} projectId={project.id} version={project.version} energyMode={energyMode} component={rComponent} offset={offset} selectGroup={setActiveId} /><div className="ath-modal-actions"><button onClick={() => setModal(null)}>Close plot shortcuts</button></div></div></Modal>}
+    {modal === "special_plot" && project && active && <Modal title="Athena plot shortcuts" wide close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Plot shortcut</span><select aria-label="Plot shortcut" value={specialPlot} onChange={event => setSpecialPlot(event.target.value as AthenaSpecialPlotKind)}>{Object.entries(athenaSpecialPlotLabels).map(([kind, label]) => <option value={kind} key={kind}>{label}</option>)}</select></label><AthenaSpecialPlot kind={specialPlot} groups={project.groups} active={active} projectId={project.id} version={project.version} energyMode={shortcutSettings.energyMode} component={shortcutSettings.rComponent} offset={shortcutSettings.offset} selectGroup={setActiveId} /><div className="ath-modal-actions"><button onClick={() => setModal(null)}>Close plot shortcuts</button></div></div></Modal>}
     {contextMenu && <AthenaContextMenu key={`${contextMenu.groupId}:${JSON.stringify(contextMenu.target)}:${contextMenu.anchor.x}:${contextMenu.anchor.y}`} label={`Actions for ${active?.label}`} items={contextItems(contextMenu.target)} anchor={contextMenu.anchor} returnFocus={contextMenu.trigger} onClose={() => setContextMenu(null)} />}
     {modal === "e0" && <E0Dialog key={`${project?.id}:${active?.id}`} project={project} active={active} busy={!!busy} error={error} clearError={() => setError("")} selectGroup={id => { setActiveId(id); setAnalysisVisible(false) }} close={() => setModal(null)} apply={applySelectedE0} />}
     {modal === "group_folder" && project && <Modal title={groupFolderDraft.id ? "Edit spectrum group" : "Group spectra"} close={() => { if (!busy) setModal(null) }}><form className="ath-modal-body ath-group-folder-form" onSubmit={event => { event.preventDefault(); saveGroupFolder() }}>

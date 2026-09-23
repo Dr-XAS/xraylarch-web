@@ -4,10 +4,8 @@ import { useEffect } from "react"
 import { isPlotPalette, plotPaletteOptions, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { AthenaColorLegendControl } from "./athena-color-legend-control"
 
-const storageKey = "athena.plot-colors"
-
-export function AthenaColorLegend({ value, onChange, disabled = false }: {
-  value: PlotColorSettings; onChange: (value: PlotColorSettings) => void; disabled?: boolean
+export function AthenaColorLegend({ value, onChange, disabled = false, storageKey = "athena.plot-colors" }: {
+  value: PlotColorSettings; onChange: (value: PlotColorSettings) => void; disabled?: boolean; storageKey?: string
 }) {
   useEffect(() => {
     try {
@@ -16,7 +14,7 @@ export function AthenaColorLegend({ value, onChange, disabled = false }: {
         onChange({ palette: saved.palette, reversed: saved.reversed })
       }
     } catch { /* Unavailable storage should not prevent plotting. */ }
-  }, [onChange])
+  }, [onChange, storageKey])
 
   function update(next: PlotColorSettings) {
     onChange(next)

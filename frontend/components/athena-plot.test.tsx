@@ -360,7 +360,7 @@ describe("AthenaPlot range overrides", () => {
   it("explains an empty selection when a highlighted spectrum is available", () => {
     show({ groups: [], active: group(), plotScope: "selected" })
     expect(screen.getByRole("heading", { name: "No spectra selected" })).toBeInTheDocument()
-    expect(screen.getByText("Check data groups or choose Current spectrum to plot the highlighted group.")).toBeInTheDocument()
+    expect(screen.getByText("Check data groups to compare spectra. The Single spectrum viewer shows the highlighted group.")).toBeInTheDocument()
     expect(plotly).not.toHaveBeenCalled()
   })
 })

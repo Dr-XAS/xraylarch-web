@@ -101,12 +101,12 @@ test("real wavelet plots retain their grid through range drags, independent colo
   await expectCompanions(panel, await dragged.json(), draggedMin, draggedMax)
   expect(await grid(heatmap)).toEqual(retained)
 
-  const spectrumPlot = page.getByLabel("E-space spectrum plot", { exact: true }).locator(".js-plotly-plot")
+  const spectrumPlot = page.getByRole('region', { name: 'Multiple spectra viewer', exact: true }).getByLabel("E-space spectrum plot", { exact: true }).locator(".js-plotly-plot")
   const spectrumColors = () => spectrumPlot.evaluate(element =>
     (element as HTMLElement & { data: { line: { color: string } }[] }).data.map(trace => trace.line.color),
   )
   const originalSpectrumColors = await spectrumColors()
-  await page.getByRole("combobox", { name: "Color legend" }).click()
+  await page.getByRole('region', { name: 'Multiple spectra viewer', exact: true }).getByRole("combobox", { name: "Color legend" }).click()
   await page.getByRole("option", { name: "Viridis · purple–green–yellow" }).click()
   await expect.poll(spectrumColors).not.toEqual(originalSpectrumColors)
   expect((await spectrumColors())[0]).toBe("#440154")

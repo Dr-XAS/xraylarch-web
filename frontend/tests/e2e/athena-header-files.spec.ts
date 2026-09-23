@@ -79,8 +79,9 @@ for (const reader of ['B18','BM23']) {
     group.mu.forEach((v: number,i: number) => expect(Math.abs(v-y[i])).toBeLessThan(1e-12))
     if (reader === 'B18') expect(group.source.file_plugin.conversion.decimated).toBe(false)
     for (const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
-      await page.getByRole('tab', { name: tab, exact: true }).click()
-      await expect.poll(() => curve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
+      await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('tab', { name: tab, exact: true }).click()
+      if (space === 'E') await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('radio', { name: 'μ(E) · normalized', exact: true }).check()
+      await expect.poll(() => curve(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
     const downloading = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save project', exact: true }).click()
@@ -91,7 +92,7 @@ for (const reader of ['B18','BM23']) {
     await page.getByRole('button', { name: 'Import all groups', exact: true }).click()
     const result = await (await restoring).json(); expect(result.groups).toHaveLength(2)
     expect(result.groups[1].source).toEqual(group.source); expect(result.groups[1].result.arrays).toEqual(group.result.arrays)
-    await page.reload(); await expect(page.getByRole('heading', { name: 'Data groups 2', exact: true })).toBeVisible()
+    await page.reload(); await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
     expect(errors).toEqual([])
   })
 }

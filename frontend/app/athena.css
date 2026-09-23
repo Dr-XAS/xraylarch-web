@@ -154,7 +154,8 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-app .ath-viewer-picker-heading select { width: auto; min-width: 140px; min-height: 30px; padding: 5px 8px; }
 .ath-viewer-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .ath-app .ath-viewer-chip { min-height: 34px; padding: 5px 10px; gap: 6px; border: 1px solid var(--ath-line); border-radius: 999px; background: var(--ath-surface); color: var(--ath-muted); white-space: normal; text-align: left; line-height: 1.2; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
-.ath-viewer-chip[data-viewer-theme="spectrum"] { --viewer-accent: #48305f; --viewer-ink: #48305f; --viewer-soft: #f5f0f8; --viewer-border: #d6c3df; }
+.ath-viewer-chip[data-viewer-theme="single"],
+.ath-viewer-chip[data-viewer-theme="multiple"] { --viewer-accent: #48305f; --viewer-ink: #48305f; --viewer-soft: #f5f0f8; --viewer-border: #d6c3df; }
 .ath-viewer-chip[data-viewer-theme="wavelet"] { --viewer-accent: #a35f9c; --viewer-ink: #813678; --viewer-soft: #fbf1f9; --viewer-border: #e8c9e1; }
 .ath-viewer-chip[data-viewer-theme="cif"] { --viewer-accent: #be3ea3; --viewer-ink: #942c7d; --viewer-soft: #fff0f9; --viewer-border: #edc1df; }
 .ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #ea7e63; --viewer-ink: #9d3f2d; --viewer-soft: #fff2ee; --viewer-border: #f1c1b4; }
@@ -168,7 +169,8 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-app .ath-viewer-all { padding: 5px 10px; border-style: dashed; }
 .ath-app .ath-viewer-all[aria-pressed="true"] { background: var(--ath-surface-muted); color: var(--ath-ink); }
 .ath-app .ath-viewer-all:hover:not(:disabled) { border-color: var(--ath-muted); background: var(--ath-surface-muted); }
-html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="spectrum"] { --viewer-accent: #b99ad1; --viewer-ink: #e5c9ef; --viewer-soft: #2d2435; --viewer-border: #675371; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="single"],
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="multiple"] { --viewer-accent: #b99ad1; --viewer-ink: #e5c9ef; --viewer-soft: #2d2435; --viewer-border: #675371; }
 html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="wavelet"] { --viewer-accent: #d49acb; --viewer-ink: #f0cfe9; --viewer-soft: #312330; --viewer-border: #76546f; }
 html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="cif"] { --viewer-accent: #e784c1; --viewer-ink: #f8cce7; --viewer-soft: #372331; --viewer-border: #814d70; }
 html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #f19b83; --viewer-ink: #ffd6ca; --viewer-soft: #382722; --viewer-border: #865447; }
@@ -177,7 +179,7 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-viewer-empty { padding: 26px 16px; border: 1px dashed var(--ath-line); border-radius: 7px; color: var(--ath-muted); background: var(--ath-surface); text-align: center; }
 .ath-viewer-stack { display: flex; flex-direction: column; gap: var(--ath-panel-gap); }
 .ath-viewer-stack > [hidden] { display: none; }
-.ath-center .ath-viewer-stack > [data-viewer-id]:not([data-viewer-id="spectrum"]) > * { margin-top: 0; margin-bottom: 0; }
+.ath-center .ath-viewer-stack > [data-viewer-id]:not([data-viewer-id="single"]) > * { margin-top: 0; margin-bottom: 0; }
 .ath-plot-card { background: var(--ath-surface); border: 1px solid var(--ath-line); border-radius: 7px; box-shadow: 0 2px 5px rgb(24 24 27 / 3%); overflow: hidden; }
 .ath-plot-card[data-plot-height] .ath-plot, .ath-plot-card[data-plot-height] .ath-no-plot { height: var(--ath-plot-height); min-height: 0; max-height: none; }
 .ath-plot-card[data-plot-height] .ath-plot-loading { height: 100%; min-height: 0; }

@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test"
+import type { AthenaProject } from "../../lib/athena"
 
 async function width(locator: Locator) {
   return (await locator.boundingBox())!.width
@@ -83,7 +84,7 @@ test("selects and orders result viewers after loading copper examples", async ({
   await page.goto("/", { waitUntil: "domcontentloaded" })
   const controls = page.getByRole("group", { name: "Choose viewers" })
   const stack = page.locator(".ath-viewer-stack")
-  const defaultOrder = ["spectrum", "wavelet", "cif", "feff", "fit"]
+  const defaultOrder = ["single", "multiple", "wavelet", "cif", "feff", "fit"]
   const viewerOrder = () => stack.locator(":scope > [data-viewer-id]").evaluateAll(elements => elements.map(element => element.getAttribute("data-viewer-id")))
 
   await expect(controls.getByRole("button", { name: "All viewers" })).toHaveAttribute("aria-pressed", "true")
@@ -93,12 +94,13 @@ test("selects and orders result viewers after loading copper examples", async ({
   await controls.getByRole("button", { name: "All viewers" }).click()
   await expect(stack.locator('[data-viewer-id="wavelet"]')).toBeVisible()
   await page.getByRole("combobox", { name: "Sort viewers" }).selectOption("process")
-  await expect(page.getByText(/Spectrum stays first; saved CIF attachment/)).toBeVisible()
+  await expect(page.getByText(/Single and multiple spectra stay first; saved CIF attachment/)).toBeVisible()
 
   await page.getByRole("button", { name: "Load copper examples" }).click()
   await expect(page.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("default")
   expect(await viewerOrder()).toEqual(defaultOrder)
-  await expect(stack.locator('[data-viewer-id="spectrum"]')).toBeVisible()
+  await expect(stack.locator('[data-viewer-id="single"]')).toBeVisible()
+  await expect(stack.locator('[data-viewer-id="multiple"]')).toBeVisible()
   await expect(stack.locator('[data-viewer-id="fit"]')).toBeVisible()
   await page.locator(".ath-group-select").filter({ hasText: "Cu₂O · room temperature" }).last().click()
   await page.getByRole("tab", { name: "EXAFS fitting" }).click()
@@ -110,4 +112,87 @@ test("selects and orders result viewers after loading copper examples", async ({
   await feff.getByText("Coordinates and scattering angles", { exact: true }).click()
   await expect(feff.getByRole("table")).toContainText("Cu")
   await page.locator("#athena-spectrum-viewer").screenshot({ path: info.outputPath("result-viewers.png") })
+})
+
+test("keeps current and marked spectra in independent viewer panels", async ({ page }, info) => {
+  test.setTimeout(60000)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  const loading = page.waitForResponse(response => response.url().endsWith("/command") &&
+    response.request().postDataJSON().action === "example")
+  await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
+  const response = await loading
+  expect(response.ok()).toBe(true)
+  const project = await response.json() as AthenaProject
+  const [first, second] = project.groups
+  const single = page.getByRole("region", { name: "Single spectrum viewer", exact: true })
+  const multiple = page.getByRole("region", { name: "Multiple spectra viewer", exact: true })
+  const singlePlot = single.getByLabel("E-space spectrum plot", { exact: true })
+  const multiplePlot = multiple.getByLabel("E-space spectrum plot", { exact: true })
+  const names = (panel: Locator) => panel.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { data: { name: string }[] }).data.map(trace => trace.name))
+
+  await expect(singlePlot.locator(".js-line").first()).toBeAttached()
+  await expect(multiplePlot.locator(".js-line").first()).toBeAttached()
+  await expect.poll(() => names(single)).toContain(first.label)
+  await expect.poll(() => names(multiple)).toEqual(project.groups.map(group => group.label))
+  await expect(page.getByRole("radio", { name: "Current spectrum", exact: true })).toHaveCount(0)
+  await expect(single.getByRole("checkbox", { name: "Offset plot", exact: true })).toBeDisabled()
+  await expect(multiple.getByRole("checkbox", { name: "Offset plot", exact: true })).toBeEnabled()
+
+  const marking = page.waitForResponse(result => result.url().endsWith("/command") &&
+    result.request().postDataJSON().action === "metadata")
+  await page.getByLabel(`Mark ${first.label}`, { exact: true }).uncheck()
+  expect((await marking).ok()).toBe(true)
+  await expect.poll(() => names(multiple)).toEqual(project.groups.slice(1).map(group => group.label))
+  await expect.poll(() => names(single)).toContain(first.label)
+  await page.locator(".ath-group-select").filter({ hasText: second.label }).click()
+  await expect.poll(() => names(single)).toContain(second.label)
+  await expect.poll(() => names(multiple)).toEqual(project.groups.slice(1).map(group => group.label))
+
+  const singleLegend = single.getByRole("checkbox", { name: "Show legend", exact: true })
+  const multipleLegend = multiple.getByRole("checkbox", { name: "Show legend", exact: true })
+  await expect(singleLegend).not.toBeChecked()
+  await expect(multipleLegend).toBeChecked()
+  await singleLegend.check()
+  await multipleLegend.uncheck()
+  await expect(singleLegend).toBeChecked()
+  await expect.poll(() => single.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { layout: { showlegend: boolean } }).layout.showlegend)).toBe(true)
+  await expect.poll(() => multiple.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { layout: { showlegend: boolean } }).layout.showlegend)).toBe(false)
+
+  await single.getByRole("tab", { name: "k EXAFS", exact: true }).click()
+  await expect(single.getByLabel("k-space spectrum plot", { exact: true })).toBeVisible()
+  await expect(multiple.getByRole("tab", { name: "E Energy", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(multiplePlot).toBeVisible()
+  await single.getByRole("button", { name: "Collapse Single spectrum viewer", exact: true }).click()
+  await expect(single.getByLabel("k-space spectrum plot", { exact: true })).toBeHidden()
+  await expect(multiplePlot).toBeVisible()
+  await single.getByRole("button", { name: "Expand Single spectrum viewer", exact: true }).click()
+
+  const chooser = page.getByRole("group", { name: "Choose viewers", exact: true })
+  await chooser.getByRole("button", { name: "Single spectrum viewer", exact: true }).click()
+  await expect(single).toBeHidden()
+  await expect(multiplePlot).toBeVisible()
+  await chooser.getByRole("button", { name: "Single spectrum viewer", exact: true }).click()
+  await expect(single.getByRole("tab", { name: "k EXAFS", exact: true })).toHaveAttribute("aria-selected", "true")
+  await expect(singleLegend).toBeChecked()
+  await expect(multipleLegend).not.toBeChecked()
+  const capturePanels = async (viewport: string) => {
+    for (const [name, panel] of [["single", single], ["multiple", multiple]] as const) {
+      await panel.scrollIntoViewIfNeeded()
+      await panel.screenshot({ path: info.outputPath(`${name}-spectrum-viewer-${viewport}.png`) })
+    }
+    await page.getByRole("region", { name: "Results viewers", exact: true }).screenshot({
+      path: info.outputPath(`spectrum-viewer-chooser-${viewport}.png`),
+    })
+  }
+  await capturePanels("desktop")
+  await page.setViewportSize({ width: 390, height: 844 })
+  await single.scrollIntoViewIfNeeded()
+  await expect(single.getByLabel("k-space spectrum plot", { exact: true })).toBeVisible()
+  await expect(multiplePlot).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  await capturePanels("narrow")
 })
