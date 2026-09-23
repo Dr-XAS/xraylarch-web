@@ -27,7 +27,7 @@ interface PreviewTrace {
 }
 interface Props {
   getProject: () => AthenaProject | null
-  onImported: (project: AthenaProject) => void
+  onImported: (project: AthenaProject, wholeProject: boolean) => void
   onComplete: () => void
   onBusyChange: (label: string) => void
   disabled?: boolean
@@ -113,7 +113,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
         const imported = await athenaApi<AthenaProject>(`/projects/${destination.id}/restore-upload`, {
           version: destination.version, upload_id: current.upload_id, group_ids: selection,
         })
-        onImported(imported)
+        onImported(imported, wholeBatch)
         pending = pending.slice(1); setFiles(pending); setPreview(null); setTrace(null)
         if (!pending.length) { onComplete(); return }
         if (!isAthenaProjectFile(pending[0]) && onRemainingFiles) {

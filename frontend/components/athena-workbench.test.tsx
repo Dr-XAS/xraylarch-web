@@ -613,8 +613,65 @@ describe("AthenaWorkbench EXAFS fitting", () => {
     expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].group?.id).toBe("sample")
     fireEvent.click(screen.getByRole("tab", { name: "Processing" }))
     expect(screen.getByRole("heading", { name: "Processing parameters" })).toBeVisible()
-    expect(screen.queryByTestId("artemis-results")).toBeNull()
+    expect(screen.getByTestId("artemis-results")).toBeVisible()
     expect(api.mock.calls.length).toBe(initialCalls)
+  })
+})
+
+describe("AthenaWorkbench viewer selection", () => {
+  const viewerOrder = () => Array.from(document.querySelectorAll<HTMLElement>(".ath-viewer-stack > [data-viewer-id]"), node => node.dataset.viewerId)
+
+  it("shows all five viewers in the requested project order and lets each be hidden independently", async () => {
+    await openSaved()
+    expect(viewerOrder()).toEqual(["spectrum", "wavelet", "cif", "feff", "fit"])
+    const controls = screen.getByRole("group", { name: "Choose viewers" })
+    for (const label of ["Spectrum viewer", "Wavelet plotter", "CIF viewer", "FEFF path viewer", "EXAFS fit viewer"]) {
+      expect(within(controls).getByRole("button", { name: label })).toHaveAttribute("aria-pressed", "true")
+    }
+    const initialCalls = api.mock.calls.length
+    fireEvent.click(within(controls).getByRole("button", { name: "Wavelet plotter" }))
+    expect(document.querySelector('[data-viewer-id="wavelet"]')).toHaveAttribute("hidden")
+    expect(screen.getByTestId("athena-wavelet")).toBeInTheDocument()
+    expect(document.querySelector('[data-viewer-id="spectrum"]')).not.toHaveAttribute("hidden")
+    expect(api).toHaveBeenCalledTimes(initialCalls)
+
+    fireEvent.click(within(controls).getByRole("button", { name: "All viewers" }))
+    expect(document.querySelector('[data-viewer-id="wavelet"]')).not.toHaveAttribute("hidden")
+    fireEvent.click(within(controls).getByRole("button", { name: "All viewers" }))
+    expect(screen.getByText("No viewers selected. Choose one above to show its results.")).toBeVisible()
+    fireEvent.click(within(controls).getByRole("button", { name: "FEFF path viewer" }))
+    expect(document.querySelector('[data-viewer-id="feff"]')).not.toHaveAttribute("hidden")
+    expect(document.querySelector('[data-viewer-id="spectrum"]')).toHaveAttribute("hidden")
+  })
+
+  it("orders recorded processing events and resets the layout when another project loads", async () => {
+    const original = await openSaved()
+    const fitting = vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)![0]
+    const metadata = { absorber: "Cu", edge: "K", reff: 2.56, degen: 12, nleg: 2, kmin: 0, kmax: 15,
+      geometry: [{ atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 }] }
+    act(() => fitting.onPathsChange?.([], original.id, "foil"))
+    act(() => fitting.onPathsChange?.([{ id: "path", filename: "feff0001.dat", label: "Cu path", enabled: true, metadata }], original.id, "foil"))
+    act(() => vi.mocked(AthenaWavelet).mock.calls.at(-1)![0].onComplete?.(original.id, "foil"))
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "process" } })
+    expect(viewerOrder()).toEqual(["spectrum", "feff", "wavelet", "cif", "fit"])
+    selectGroup("Sample scan")
+    expect(viewerOrder()).toEqual(["spectrum", "wavelet", "cif", "feff", "fit"])
+    selectGroup("Foil scan")
+    expect(viewerOrder()).toEqual(["spectrum", "feff", "wavelet", "cif", "fit"])
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "default" } })
+    expect(viewerOrder()).toEqual(["spectrum", "wavelet", "cif", "feff", "fit"])
+
+    fireEvent.click(screen.getByRole("button", { name: "FEFF path viewer", pressed: true }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "process" } })
+    const loaded = projectFixture({ id: "project-fe", name: "Iron study" })
+    api.mockResolvedValueOnce([{ id: loaded.id, name: loaded.name, updated: loaded.updated, count: loaded.groups.length }])
+    api.mockResolvedValueOnce(loaded)
+    fireEvent.click(screen.getByRole("button", { name: /^Open project$/i }))
+    const dialog = await screen.findByRole("dialog", { name: /open.*project/i })
+    fireEvent.click(await within(dialog).findByRole("button", { name: new RegExp(loaded.name) }))
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("default"))
+    expect(viewerOrder()).toEqual(["spectrum", "wavelet", "cif", "feff", "fit"])
+    expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "FEFF path viewer" })).toHaveAttribute("aria-pressed", "true")
   })
 })
 
@@ -1060,6 +1117,8 @@ describe("AthenaWorkbench data group sorting", () => {
 describe("AthenaWorkbench data group folders", () => {
   it("keeps the example loader at the top and activates the first newly loaded spectrum by identity", async () => {
     const project = await openSaved()
+    fireEvent.click(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "process" } })
     const button = screen.getByRole("button", { name: "Load copper examples" })
     const openProject = screen.getByRole("button", { name: "Open project" })
     expect(button.compareDocumentPosition(openProject) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
@@ -1086,6 +1145,8 @@ describe("AthenaWorkbench data group folders", () => {
       version: project.version, action: "example", group_ids: [], options: {},
     }))
     await waitFor(() => expect(plotProps().active?.id).toBe("example-10k"))
+    expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("default")
+    expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "Collapse Temperature series group" })).toBeVisible()
     expect(screen.getByRole("button", { name: "Collapse reference group" })).toBeVisible()
   })
@@ -2463,7 +2524,7 @@ describe("AthenaWorkbench import edge policy", () => {
     await waitFor(() => expect(panelProps().disabled).toBe(false))
     const restored = importedProject(project, "Native enforced foil")
     restored.groups.at(-1)!.source.edge_policy = { element: "Zn", edge: "L3", fraction: 0.7 }
-    act(() => { panelProps().onImported(restored); panelProps().onComplete() })
+    act(() => { panelProps().onImported(restored, true); panelProps().onComplete() })
     expect(dialog).not.toBeInTheDocument()
     expect(policyBar()).toHaveTextContent(enabled ? "Cu K · fraction 0.5" : "Off")
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/projects"]])
@@ -4087,7 +4148,7 @@ describe("AthenaWorkbench project loading", () => {
     })
 
     const loaded = projectFixture({ id: "project-fe", name: "Iron study", version: 3 })
-    act(() => projectImport.mock.calls.at(-1)![0].onImported(loaded))
+    act(() => projectImport.mock.calls.at(-1)![0].onImported(loaded, true))
     expect(localStorage.getItem(storageKey)).toBe(loaded.id)
     expect(screen.getByRole("button", { name: loaded.name })).toBeVisible()
 
@@ -4124,6 +4185,8 @@ describe("AthenaWorkbench project import integration", () => {
 
   it("passes the latest accepted project to the panel and guards closing while imports are busy", async () => {
     const project = await openSaved()
+    fireEvent.click(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Spectrum viewer" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "process" } })
     api.mockResolvedValueOnce([])
     fireEvent.click(screen.getByRole("button", { name: /^Open project$/ }))
     const dialog = await screen.findByRole("dialog", { name: "Open a project" })
@@ -4137,8 +4200,14 @@ describe("AthenaWorkbench project import integration", () => {
     fireEvent(dialog, escape)
     expect(escape.defaultPrevented).toBe(true)
     expect(dialog).toBeInTheDocument()
-    const accepted = importedProject(project, "Imported foil")
-    act(() => panelProps().onImported(accepted))
+    const partial = importedProject(project, "Partial import")
+    act(() => panelProps().onImported(partial, false))
+    expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("process")
+    expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Spectrum viewer" })).toHaveAttribute("aria-pressed", "false")
+    const accepted = importedProject(partial, "Imported foil")
+    act(() => panelProps().onImported(accepted, true))
+    expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("default")
+    expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Spectrum viewer" })).toHaveAttribute("aria-pressed", "true")
     expect(panelProps().getProject()).toBe(accepted)
     expect(plotProps().active!.id).toBe("Imported foil")
     act(() => { panelProps().onBusyChange(""); panelProps().onComplete() })

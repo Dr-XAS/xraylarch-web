@@ -12,6 +12,7 @@ import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { ArtemisStructures } from "./artemis-structures"
+import type { FeffPathSummary } from "./feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
@@ -27,6 +28,7 @@ interface PanelProps {
   group?: AthenaGroup
   pending?: boolean
   onFitResult?: (result: ArtemisFitResult | null) => void
+  onPathsChange?: (paths: FeffPathSummary[], projectId?: string, groupId?: string) => void
   onProjectChange?: (project: AthenaProject) => void
   onViewStructure?: (attachmentId: string) => void
 }
@@ -128,7 +130,7 @@ export function ArtemisFittingPanel(props: PanelProps) {
   return <FittingEditor key={key} {...props} initial={cache.current.get(key)} onSave={saved => cache.current.set(key, saved)} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onProjectChange, onViewStructure, initial, onSave }: PanelProps & {
+function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, initial, onSave }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft) => void
 }) {
   const [draft, setDraft] = useState<Draft>(() => initial?.draft ?? newDraft())
@@ -139,8 +141,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const controller = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const modelInputRef = useRef<HTMLInputElement>(null)
-  const callbacks = useRef({ onFitResult, onSave })
-  callbacks.current = { onFitResult, onSave }
+  const callbacks = useRef({ onFitResult, onPathsChange, onSave })
+  callbacks.current = { onFitResult, onPathsChange, onSave }
   const reason = !projectId || !group ? "Select a spectrum to build an EXAFS fit."
     : pending ? "Waiting for spectrum processing…"
     : group.processing_error ? "Resolve this spectrum’s processing error before fitting."
@@ -156,6 +158,9 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     callbacks.current.onSave({ draft, result })
     callbacks.current.onFitResult?.(currentResult)
   }, [draft, result, currentResult])
+  useEffect(() => {
+    callbacks.current.onPathsChange?.(draft.paths.map(({ id, label, filename, enabled, metadata }) => ({ id, label, filename, enabled, metadata })), projectId, group?.id)
+  }, [draft.paths, projectId, group?.id])
   useEffect(() => {
     controller.current?.abort()
     setBusy(null)
