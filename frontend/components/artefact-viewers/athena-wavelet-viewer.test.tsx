@@ -18,7 +18,7 @@ type PlotProps = {
   onRelayout?: (event: Record<string, unknown>) => void
 }
 const plots = vi.hoisted(() => new WeakMap<HTMLElement, PlotProps>())
-vi.mock("./themed-plot", () => ({
+vi.mock("../themed-plot", () => ({
   ThemedPlot: (props: PlotProps) => <div data-testid="wavelet-plot" ref={node => { if (node) plots.set(node, props) }} />,
 }))
 vi.mock("@/lib/athena", () => ({ athenaApi: vi.fn() }))

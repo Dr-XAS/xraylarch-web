@@ -7,8 +7,8 @@ import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Pa
 import { ApiRequestError } from "@/lib/backend-client"
 import type { AthenaSelectionUpdate } from "@/lib/athena-selection"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
-import { AthenaPlot } from "./athena-plot"
-import { AthenaWavelet } from "./athena-wavelet"
+import { AthenaPlot } from "./artefact-viewers/athena-plot"
+import { AthenaWavelet } from "./artefact-viewers/athena-wavelet"
 import { ArtemisFittingPanel } from "./artemis-fitting"
 import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
@@ -44,16 +44,16 @@ vi.mock('@/lib/athena-preferences', () => ({
 }))
 
 // Observe the workbench's data handoff without loading Plotly or testing its internals.
-vi.mock("./athena-plot", () => ({
+vi.mock("./artefact-viewers/athena-plot", () => ({
   AthenaPlot: vi.fn(() => <div data-testid="athena-plot" />),
 }))
 // Wavelet requests and mode switching have dedicated panel tests.
-vi.mock("./athena-wavelet", () => ({ AthenaWavelet: vi.fn(() => <div data-testid="athena-wavelet" />) }))
+vi.mock("./artefact-viewers/athena-wavelet", () => ({ AthenaWavelet: vi.fn(() => <div data-testid="athena-wavelet" />) }))
 // Fitting interactions have dedicated tests; verify the current spectrum handoff here.
 vi.mock("./artemis-fitting", () => ({
   ArtemisFittingPanel: vi.fn(() => <div data-testid="artemis-panel" />),
-  ArtemisFitResultViewer: () => <div data-testid="artemis-results" />,
 }))
+vi.mock("./artefact-viewers/artemis-fit-result-viewer", () => ({ ArtemisFitResultViewer: () => <div data-testid="artemis-results" /> }))
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // Live arithmetic and stale-response behavior have dedicated preview tests.
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div data-testid="column-preview" /> }))

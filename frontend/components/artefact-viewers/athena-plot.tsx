@@ -1,10 +1,10 @@
 "use client"
 
-import { ThemedPlot as Plot } from "./themed-plot"
+import { ThemedPlot as Plot } from "../themed-plot"
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 import { defaultPlotColors, spectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
-import { AthenaContextMenu } from "./athena-context-menu"
+import { AthenaContextMenu } from "../athena-context-menu"
 import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 export type Space = PlotSpace

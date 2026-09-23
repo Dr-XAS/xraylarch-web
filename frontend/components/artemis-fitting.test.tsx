@@ -6,7 +6,8 @@ import { useState } from "react"
 import type { AthenaGroup, AthenaProject, Parameters } from "@/lib/athena"
 import { artemisApi, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
-import { ArtemisFittingPanel, ArtemisFitResultViewer } from "./artemis-fitting"
+import { ArtemisFittingPanel } from "./artemis-fitting"
+import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 
 type PlotProps = { data: { x: number[]; y: number[]; name: string; visible?: boolean | "legendonly"; customdata: number[][]; hovertemplate: string; line: { color: string } }[]; layout: { xaxis: { title: { text: string } }; yaxis: { title: { text: string } }; shapes: { x0: number; x1: number }[]; uirevision: string }; onError: () => void }
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="fit-plot" />))

@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest"
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { FeffPathViewer, type FeffPathSummary } from "./feff-path-viewer"
-import { feffArrow } from "./feff-path-scene"
+import { feffArrow } from "../feff-path-scene"
 import { buildFeffPathGeometry } from "@/lib/feff-path-geometry"
 
 const { createViewer } = vi.hoisted(() => ({ createViewer: vi.fn() }))
