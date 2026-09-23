@@ -25,6 +25,8 @@ def _error_response(error: ErrorEnvelope, status_code: int) -> JSONResponse:
 def _domain_status(error: WebInputError) -> int:
     if error.code == "stale_revision":
         return 409
+    if error.code == "artemis_example_unavailable":
+        return 503
     if error.code in _NOT_FOUND_CODES:
         return 404
     return 400

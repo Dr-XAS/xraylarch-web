@@ -11,6 +11,7 @@ import {
 import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
+import { parseFeffCluster } from "@/lib/feff-cluster"
 import { ArtemisStructures } from "./artemis-structures"
 import type { FeffPathSummary } from "./feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
@@ -226,14 +227,42 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     finally { if (!abort.signal.aborted) setBusy(null) }
   }
   async function loadExample() {
+    if (!projectId || version === undefined || !group || !onProjectChange || draft.paths.length) return
     const abort = begin("example")
     const requestContext = context
     try {
-      const example = await artemisApi<ArtemisExample>("/examples/copper", undefined, abort.signal)
+      const example = await artemisApi<ArtemisExample>("/examples/cuprite", undefined, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
-      setDraft(previous => ({ revision: previous.revision + 1, paths: [pathDraft(example.path)],
-        parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }))
-      setNotice(example.description)
+      if (example.amcsd_id !== 15851 || !/^[0-9a-f]{64}$/.test(example.cif_sha256) ||
+        !Array.isArray(example.paths) || example.paths.length !== 4 ||
+        example.paths.some((path, index) => path.filename !== `feff${String(index + 1).padStart(4, "0")}.dat`)) {
+        throw new Error("The Cu₂O example does not contain the expected Cuprite structure and four FEFF paths.")
+      }
+      // The attach operation can commit even if the selected spectrum changes.
+      // Always receive its response so the workbench learns the new project version.
+      const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/structures`,
+        { version, amcsd_id: example.amcsd_id })
+      if (updated.id !== projectId || updated.version < version) {
+        throw new Error("The saved CIF response does not match this project. Reload the project and try again.")
+      }
+      const applyToGroup = !abort.signal.aborted && contextRef.current === requestContext
+      const attachment = updated.artemis_structures?.find(item => item.amcsd_id === example.amcsd_id)
+      if (!attachment || attachment.sha256 !== example.cif_sha256) {
+        onProjectChange(updated)
+        if (!applyToGroup) return
+        throw new Error("The attached CIF does not match the Cu₂O FEFF calculation. Reload the project and try again.")
+      }
+      if (applyToGroup) {
+        const viewerCluster = parseFeffCluster(example.feff_input)
+        const paths = example.paths.map(path => ({ ...pathDraft(path),
+          label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
+          metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata }))
+        setDraft(previous => ({ revision: previous.revision + 1, paths,
+          parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }))
+        setNotice(example.description)
+      }
+      onProjectChange(updated)
+      if (applyToGroup) onViewStructure?.(attachment.id)
     } catch (error) { if (!abort.signal.aborted) setError(errorText(error)) }
     finally { if (!abort.signal.aborted) setBusy(null) }
   }
@@ -286,6 +315,15 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const freeCount = draft.parameters.filter(parameter => parameter.kind === "guess").length
   return <section className={styles.editor} aria-label="Artemis EXAFS fitting setup">
     <header className={styles.intro}><h3><FlaskConical size={16} />EXAFS fitting</h3><p>Artemis-style path models · Larch fitting core</p></header>
+    <div className={styles.actions}>
+      {error && <p className={styles.error} role="alert">{error}</p>}
+      <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
+      <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
+      <p className={styles.help}>Fit runs only when requested. Drafts stay in this workspace session; use model JSON to keep them after reload. Athena project exports do not include fitting models.</p>
+    </div>
+    {notice && <p className={styles.message} role="status">{notice}</p>}
+    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : "Loading Cu₂O CIF and FEFF paths…"}</p>}
+    {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} disabled={disabled} existingPaths={draft.paths}
@@ -302,11 +340,11 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <legend>FEFF paths <span>{draft.paths.filter(path => path.enabled).length} included</span></legend>
       <div className={styles.toolbar}>
         <button type="button" onClick={() => inputRef.current?.click()}><Upload size={13} />Add feff*.dat</button>
-        <button type="button" onClick={loadExample} disabled={draft.paths.length > 0} title={draft.paths.length ? "Remove existing paths to load the copper starter model." : "Load a Cu–Cu first-shell model for copper foil."}>Cu first-shell example</button>
+        <button type="button" onClick={loadExample} disabled={draft.paths.length > 0 || !projectId || version === undefined || !group || !onProjectChange} title={draft.paths.length ? "Remove existing paths to load the Cu₂O example." : "Attach Cuprite AMCSD 0015851 and load four precomputed Cu K-edge FEFF paths."}>Cu₂O example</button>
         <input ref={inputRef} className={styles.fileInput} type="file" multiple accept=".dat" aria-label="Upload FEFF path files"
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
       </div>
-      {draft.paths.length === 0 && <p className={styles.help}>Add calculated FEFF scattering paths. Use the Cu example with a copper foil spectrum.</p>}
+      {draft.paths.length === 0 && <p className={styles.help}>Add calculated FEFF scattering paths, or load the Cuprite CIF and its first four precomputed paths with the Cu₂O example.</p>}
       {draft.paths.map((path, i) => <div className={styles.path} key={path.id}>
         <div className={styles.pathHeader}>
           <label className={styles.check}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /><span>{path.filename}</span></label>
@@ -358,15 +396,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
       <p className={styles.help}>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</p>
     </fieldset>
-    {notice && <p className={styles.message} role="status">{notice}</p>}
-    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : "Loading Cu example…"}</p>}
-    {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
-    <div className={styles.actions}>
-    {error && <p className={styles.error} role="alert">{error}</p>}
-    <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
-    <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
-    <p className={styles.help}>Fit runs only when requested. Drafts stay in this workspace session; use model JSON to keep them after reload. Athena project exports do not include fitting models.</p>
-    </div>
   </section>
 }
 

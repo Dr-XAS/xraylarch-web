@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from larch import Group
 from larch.xafs import feffpath, ff2chi, find_exe
 
+from xraylarch_web.artemis import copper_example
 from xraylarch_web.athena import AthenaStore
 from xraylarch_web.config import Settings
 from xraylarch_web.main import create_app
@@ -55,7 +56,7 @@ def test_amcsd_generated_path_fits_known_structure_without_changing_spectrum(tmp
         store.storage.write_json(project["id"], "project.json", project)
         project_url = f"/api/athena/projects/{project['id']}"
         before = client.get(project_url).json()
-        example = client.get("/api/artemis/examples/copper").json()
+        example = copper_example()
         response = client.post(f"/api/artemis/projects/{project['id']}/groups/{group['id']}/fit", json={
             "version": project["version"], "parameters": example["parameters"],
             "transform": example["transform"],

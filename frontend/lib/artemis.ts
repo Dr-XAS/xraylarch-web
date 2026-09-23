@@ -48,7 +48,10 @@ export interface ArtemisPath extends ArtemisInspectedPath {
   sigma2: string
 }
 export interface ArtemisExample {
-  path: ArtemisInspectedPath
+  amcsd_id: number
+  cif_sha256: string
+  feff_input: string
+  paths: ArtemisInspectedPath[]
   parameters: ArtemisParameter[]
   transform: ArtemisTransform
   description: string
