@@ -1,0 +1,110 @@
+* FEFF8 input file generated 2026-09-22 22:48:33
+*   larixite  2026.1.0
+*   pymatgetn 2026.8.30
+
+TITLE Formula: Cu2O
+TITLE SpaceGroup: Pn-3m
+TITLE AMCSD structure 15851
+
+*
+* crystallographic sites:
+*    To change the absorber site, re-run using `absorber_site`
+*    with the corresponding site index (counting from 1)
+* site    X       Y       Z     Wyckoff  species
+*   1   0.25000 0.25000 0.25000     4b   Cu   <- absorber
+*   2   0.00000 0.00000 0.00000     2a   O 
+*
+
+*  <central> <edge> edge energy = <eedge> eV
+EDGE      K
+S02       1.0
+
+*         pot    xsph   fms    paths  genfmt ff2chi
+CONTROL   1      1      1      1      1      1
+PRINT     1      0      0      0      0      3
+
+** Exchange: energy-dependent exchange correlation potential
+** ixc = 0 means to use Hedin-Lundqvist, 1 to use Dirac-Hara
+** vr = added (real) energy shift
+** vi = added imaginary energy shift (broadening)
+*         ixc   vr  vi
+EXCHANGE  0     0.0  0.0
+
+RPATH     4.000
+EXAFS     20
+NLEG      4
+
+*  POLARIZATION  0 0 0
+
+** SCF: self-consisent field for atomic potentials
+** r_scf = radius for self-consistent pots (2 shells is a good choice)
+** l_scf = 0 for a solid, 1 for a molecule
+** n_scf = max number of iterations to run. 0 for non-SCF, usually 10 is sufficient
+** ca = convergence factor (between 0 and 1). 1 is unstable, 0.2 is typical, lower values are more stable.
+**         r_scf  [ l_scf   n_scf   ca ]
+*SCF       5.0
+
+** LDOS: local density of electronic states
+** emin, emax = energy range for DOS calculation, relative  to Ethreshold
+** eimag = imaginary energy for broadening
+*LDOS      -30   20     0.1
+
+** XANES: calculate XANES
+** kmax = upper limit of XANES calculation
+** delta_k = step in k [Ang^-1] to use
+** delta_e = step in energy [eV] to use.
+**         kmax   [ delta_k  delta_e ]
+* XANES     4.0
+
+** FMS: full multiple scattering
+** r_fms = radius for full multiple scattering
+** l_fms = 0 for a solid, 1 for a molecule
+**        r_fms  l_fms
+* FMS     4.0     0
+
+POTENTIALS
+** l_scf - max l (ang momentum number) for SCF calculation, -1 for 'auto'
+** l_fms - max l (ang momentum number) for FMS calculation, -1 for 'auto'
+** stoichiometry = number of atoms with this ipot in unit cell (use 0.01 for ipot 0)
+**  ipot    z    tag    l_scf  l_fms   stoichiometry
+     0    29    Cu      -1     -1       0.01
+     1     8     O      -1     -1
+     2    29    Cu      -1     -1
+
+ATOMS
+*     x          y          z     ipot tag   distance site_info  index
+    0.00000    0.00000    0.00000  0   Cu    0.00000  * Cu_1        0
+   -1.06300   -1.06300   -1.06300  1   O     1.84117  * O_2         1
+    1.06300    1.06300    1.06300  1   O     1.84117  * O_2         2
+   -2.12600   -2.12600   -0.00000  2   Cu    3.00662  * Cu_1        3
+   -2.12600    0.00000   -2.12600  2   Cu    3.00662  * Cu_1        4
+   -2.12600    0.00000    2.12600  2   Cu    3.00662  * Cu_1        5
+    0.00000   -2.12600   -2.12600  2   Cu    3.00662  * Cu_1        6
+    2.12600   -2.12600    0.00000  2   Cu    3.00662  * Cu_1        7
+    0.00000   -2.12600    2.12600  2   Cu    3.00662  * Cu_1        8
+   -0.00000    2.12600   -2.12600  2   Cu    3.00662  * Cu_1        9
+    2.12600    0.00000   -2.12600  2   Cu    3.00662  * Cu_1       10
+   -0.00000    2.12600    2.12600  2   Cu    3.00662  * Cu_1       11
+    2.12600    0.00000    2.12600  2   Cu    3.00662  * Cu_1       12
+   -2.12600    2.12600    0.00000  2   Cu    3.00662  * Cu_1       13
+    2.12600    2.12600    0.00000  2   Cu    3.00662  * Cu_1       14
+   -1.06300   -1.06300    3.18900  1   O     3.52557  * O_2        15
+   -3.18900    1.06300    1.06300  1   O     3.52557  * O_2        16
+    3.18900   -1.06300   -1.06300  1   O     3.52557  * O_2        17
+    1.06300   -3.18900    1.06300  1   O     3.52557  * O_2        18
+    1.06300    1.06300   -3.18900  1   O     3.52557  * O_2        19
+   -1.06300    3.18900   -1.06300  1   O     3.52557  * O_2        20
+    0.00000    0.00000    4.25200  2   Cu    4.25200  * Cu_1       21
+   -4.25200    0.00000   -0.00000  2   Cu    4.25200  * Cu_1       22
+    0.00000   -4.25200   -0.00000  2   Cu    4.25200  * Cu_1       23
+    0.00000    0.00000   -4.25200  2   Cu    4.25200  * Cu_1       24
+    4.25200    0.00000    0.00000  2   Cu    4.25200  * Cu_1       25
+   -0.00000    4.25200    0.00000  2   Cu    4.25200  * Cu_1       26
+    3.18900   -1.06300    3.18900  1   O     4.63351  * O_2        27
+   -3.18900   -3.18900    1.06300  1   O     4.63351  * O_2        28
+   -3.18900    1.06300   -3.18900  1   O     4.63351  * O_2        29
+   -1.06300    3.18900    3.18900  1   O     4.63351  * O_2        30
+    1.06300   -3.18900   -3.18900  1   O     4.63351  * O_2        31
+    3.18900    3.18900   -1.06300  1   O     4.63351  * O_2        32
+
+* END

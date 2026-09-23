@@ -1,6 +1,8 @@
 """Native FEFF recovery, scientific guards, and read-only Artemis HTTP lifecycle."""
 import copy
+import hashlib
 import math
+from shutil import copytree
 
 import numpy as np
 import pytest
@@ -10,7 +12,7 @@ from larch.fitting import param, param_group
 from larch.xafs import feffit, feffit_dataset, feffit_transform, feffpath, ff2chi
 from pydantic import ValidationError
 
-from xraylarch_web import artemis
+from xraylarch_web import artemis, artemis_structures
 from xraylarch_web.artemis import FitRequest, FitTransform, PathInput, copper_example, fit_group, inspect_path
 from xraylarch_web.athena import AthenaStore
 from xraylarch_web.config import Settings
@@ -248,11 +250,69 @@ def client(tmp_path):
         yield client, AthenaStore(settings)
 
 
+def test_cuprite_example_has_matching_cif_and_first_four_generated_paths(client):
+    client, _ = client
+    response = client.get("/api/artemis/examples/cuprite")
+    assert response.status_code == 200, response.text
+    example = response.json()
+    structure = artemis_structures.structure_details(15851)
+    assert (structure["mineral"], structure["formula"], structure["space_group"], structure["year"]) == (
+        "Cuprite", "Cu2 O", "P n 3 m", 1930)
+    assert example["amcsd_id"] == structure["id"] == 15851
+    assert example["cif_sha256"] == hashlib.sha256(structure["cif"].encode()).hexdigest()
+    expected_hashes = {
+        "source.cif": "3211a84a3d7bd18a72d171ee0b4e1cb6615c6770979db0ae04252b51e2d0c994",
+        "feff.inp": "6f44c00340b6f5e745552c322bb3d033e2c25dd58b24a7d95c39cdf972e994e4",
+        "feff0001.dat": "4a8f3aec51d3574656f82ecfcb4e9118e33ccd1b70571c61b4be2e5c191036cd",
+        "feff0002.dat": "b6b3ff362105459a8d120458baeadf5b30f8d4c9dc88efe77e0a8e96b2e16937",
+        "feff0003.dat": "4ba837f299673304b411d26a4d9b7cf0d1031812acc98179a17b7490b807c75e",
+        "feff0004.dat": "0156612dee62d0242f161c0e4c920a168ef2dff829ff8411a20ece25556aea6b",
+    }
+    assert artemis._CUPRITE_RESOURCE_SHA256 == expected_hashes
+    assert {name: hashlib.sha256((artemis._CUPRITE_EXAMPLE / name).read_bytes()).hexdigest()
+            for name in expected_hashes} == expected_hashes
+    assert (artemis._CUPRITE_EXAMPLE / "source.cif").read_text() == structure["cif"]
+    assert example["feff_input"] == (artemis._CUPRITE_EXAMPLE / "feff.inp").read_text()
+    assert "AMCSD structure 15851" in example["feff_input"]
+    assert "RPATH     4.000" in example["feff_input"] and "NLEG      4" in example["feff_input"]
+    assert [path["filename"] for path in example["paths"]] == [f"feff{index:04d}.dat" for index in range(1, 5)]
+    for path in example["paths"]:
+        assert path["content"] == (artemis._CUPRITE_EXAMPLE / path["filename"]).read_text()
+        assert path == inspect_path(PathInput(filename=path["filename"], content=path["content"]))
+        assert (path["metadata"]["absorber"], path["metadata"]["edge"]) == ("Cu", "K")
+    assert [(path["metadata"]["reff"], path["metadata"]["degen"], path["metadata"]["nleg"])
+            for path in example["paths"]] == [(1.8412, 2, 2), (3.0066, 12, 2), (3.3445, 12, 3), (3.5256, 6, 2)]
+    assert example["transform"]["rmax"] == 4
+    assert client.get("/api/artemis/examples/copper").status_code == 404
+
+
+def test_cuprite_example_rejects_mismatched_bundled_cif(client, monkeypatch):
+    client, _ = client
+    original = artemis_structures.structure_details
+    monkeypatch.setattr(artemis_structures, "structure_details",
+                        lambda ident: original(ident) | {"cif": original(ident)["cif"] + "\n# changed"})
+    response = client.get("/api/artemis/examples/cuprite")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "artemis_example_unavailable"
+    assert "does not match" in response.json()["error"]["message"]
+
+
+def test_cuprite_example_rejects_changed_feff_resource(client, monkeypatch, tmp_path):
+    client, _ = client
+    modified = tmp_path / "cuprite"
+    copytree(artemis._CUPRITE_EXAMPLE, modified)
+    path = modified / "feff0001.dat"
+    path.write_text(path.read_text().replace("Formula: Cu2O", "Formula: CuO ", 1))
+    monkeypatch.setattr(artemis, "_CUPRITE_EXAMPLE", modified)
+    response = client.get("/api/artemis/examples/cuprite")
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "artemis_example_unavailable"
+    assert "feff0001.dat" in response.json()["error"]["message"]
+
+
 def test_api_real_example_fit_readonly_and_stale_revision(client):
     client, store = client
-    example = client.get("/api/artemis/examples/copper")
-    assert example.status_code == 200
-    example = example.json()
+    example = copper_example()
     inspected = client.post("/api/artemis/paths/inspect", json={key: example["path"][key] for key in ("filename", "content")})
     assert inspected.status_code == 200 and inspected.json() == example["path"]
     project = client.post("/api/athena/projects").json()

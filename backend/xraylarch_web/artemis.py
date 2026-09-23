@@ -6,6 +6,7 @@ snapshots of processed Athena chi(k); no processing recipe is changed.
 from __future__ import annotations
 
 import ast
+import hashlib
 import keyword
 import math
 import tempfile
@@ -24,6 +25,15 @@ from .errors import WebInputError
 
 _LARCH_LOCK = threading.RLock()
 _EXAMPLE = Path(__file__).parent / "resources" / "artemis" / "feffcu01.dat"
+_CUPRITE_EXAMPLE = Path(__file__).parent / "resources" / "artemis" / "cuprite_15851"
+_CUPRITE_RESOURCE_SHA256 = {
+    "source.cif": "3211a84a3d7bd18a72d171ee0b4e1cb6615c6770979db0ae04252b51e2d0c994",
+    "feff.inp": "6f44c00340b6f5e745552c322bb3d033e2c25dd58b24a7d95c39cdf972e994e4",
+    "feff0001.dat": "4a8f3aec51d3574656f82ecfcb4e9118e33ccd1b70571c61b4be2e5c191036cd",
+    "feff0002.dat": "b6b3ff362105459a8d120458baeadf5b30f8d4c9dc88efe77e0a8e96b2e16937",
+    "feff0003.dat": "4ba837f299673304b411d26a4d9b7cf0d1031812acc98179a17b7490b807c75e",
+    "feff0004.dat": "0156612dee62d0242f161c0e4c920a168ef2dff829ff8411a20ece25556aea6b",
+}
 _FUNCTIONS = {name: getattr(math, name) for name in ("sqrt", "exp", "log", "sin", "cos", "tan")}
 _FUNCTIONS["abs"] = abs
 _CONSTANTS = {"pi": math.pi, "e": math.e}
@@ -290,6 +300,41 @@ def copper_example() -> dict:
                 description="Cu metal first shell from Larch examples/feffit/feffcu01.dat: 12 Cu neighbors at Reff = 2.5478 Å. Use with a Cu K-edge spectrum.")
 
 
+def cuprite_example() -> dict:
+    """A fixed FEFF8L calculation for the bundled Cuprite AMCSD 15851 CIF."""
+    from .artemis_structures import structure_details
+
+    try:
+        resources = {name: (_CUPRITE_EXAMPLE / name).read_bytes() for name in _CUPRITE_RESOURCE_SHA256}
+    except OSError as exc:
+        raise WebInputError("artemis_example_unavailable", "A bundled Cuprite example resource is unavailable.",
+                            recovery="Restore the Cuprite example resources and retry.") from exc
+    for name, expected in _CUPRITE_RESOURCE_SHA256.items():
+        if hashlib.sha256(resources[name]).hexdigest() != expected:
+            raise WebInputError("artemis_example_unavailable", f"The bundled Cuprite example {name} failed its provenance check.",
+                                recovery="Restore the Cuprite example resources and retry.")
+    source_hash = _CUPRITE_RESOURCE_SHA256["source.cif"]
+    bundled_hash = hashlib.sha256(structure_details(15851)["cif"].encode("utf-8")).hexdigest()
+    if bundled_hash != source_hash:
+        raise WebInputError("artemis_example_unavailable", "The Cuprite example CIF does not match the bundled AMCSD 15851 structure.",
+                            recovery="Restore the bundled AMCSD database and Cuprite example resources, then retry.")
+
+    paths = [inspect_path(PathInput(filename=f"feff{index:04d}.dat",
+                                    content=resources[f"feff{index:04d}.dat"].decode("utf-8")))
+             for index in range(1, 5)]
+    parameters = [
+        FitParameter(name="amp", value=1, min=0, max=2),
+        FitParameter(name="del_e0", value=0, min=-30, max=30),
+        FitParameter(name="del_r", value=0, min=-0.2, max=0.2),
+        FitParameter(name="sig2", value=0.008, min=0, max=0.05),
+    ]
+    return dict(amcsd_id=15851, cif_sha256=source_hash,
+                feff_input=resources["feff.inp"].decode("utf-8"), paths=paths,
+                parameters=[item.model_dump() for item in parameters],
+                transform=FitTransform(kmin=3, kmax=12, dk=1, rmin=1, rmax=4).model_dump(),
+                description="Cuprite Cu₂O (AMCSD 0015851), Cu K edge, site 1: the first four FEFF8L paths calculated from the attached crystal structure.")
+
+
 def _processed_data(group: dict, options: FitTransform):
     arrays = (group.get("result") or {}).get("arrays") or {}
     if group.get("data_type") in ("detector", "xanes") or group.get("processing_error"):
@@ -443,9 +488,9 @@ def build_artemis_router(store) -> APIRouter:
     def inspect(source: PathInput):
         return inspect_path(source)
 
-    @router.get("/examples/copper")
+    @router.get("/examples/cuprite")
     def example():
-        return copper_example()
+        return cuprite_example()
 
     @router.post("/projects/{ident}/groups/{group_id}/fit")
     def fit(ident: str, group_id: str, request: FitRequest):

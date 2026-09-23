@@ -1,6 +1,6 @@
-/* Keep long fit models scrollable even when the spectrum and wavelet plots stretch the workspace. */
-.editor { flex: 1 1 0px; height: 0; box-sizing: border-box; min-width: 0; padding: 16px; min-height: 400px; max-height: calc(100dvh - 280px); overflow-y: auto; scrollbar-gutter: stable; overscroll-behavior: contain; font-size: var(--text-body); color: var(--ath-ink, #24362c); }
-.actions { position: sticky; bottom: -16px; margin: 15px -16px -16px; padding: 12px 16px 10px; background: var(--ath-surface, #fff); border-top: 1px solid var(--ath-line, #dce5dc); box-shadow: 0 -6px 12px hsl(150 10% 25% / .035); }
+.editor { flex: 1 1 0px; display: flex; flex-direction: column; height: 0; box-sizing: border-box; min-width: 0; padding: 16px; min-height: 400px; overflow-y: auto; scrollbar-gutter: stable; font-size: var(--text-body); color: var(--ath-ink, #24362c); }
+.editor > * { flex-shrink: 0; }
+.actions { position: sticky; top: 0; z-index: 1; margin: 0 -16px 16px; padding: 12px 16px 10px; background: var(--ath-surface, #fff); border-bottom: 1px solid var(--ath-line, #dce5dc); box-shadow: 0 6px 12px hsl(150 10% 25% / .035); }
 .actions .help { margin-bottom: 0; }
 .actions .error { margin-top: 0; max-height: 96px; overflow-y: auto; }
 .editor h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-section); font-weight: 600; line-height: var(--leading-heading); }
@@ -74,4 +74,4 @@
 .report { padding: 12px; background: var(--ath-canvas, #f5f8f5); max-height: 500px; overflow: auto; font-size: var(--text-label); line-height: var(--leading-body); }
 .warnings { margin: 0 0 15px; padding-left: 18px; color: var(--ath-warning-ink, #815713); font-size: var(--text-body); line-height: var(--leading-body); }
 @media(max-width:620px) { .statistics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .resultHeader, .resultControls, .results { padding-left: 12px; padding-right: 12px; } }
-@media(max-width:950px) { .editor { flex: none; height: auto; min-height: 0; max-height: none; overflow-y: visible; scrollbar-gutter: auto; } .actions { position: static; box-shadow: none; } }
+@media(max-width:950px) { .editor { flex: none; height: auto; min-height: 0; overflow-y: visible; scrollbar-gutter: auto; } .actions { position: static; box-shadow: none; } }

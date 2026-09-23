@@ -31,11 +31,25 @@ a path removes it from that sum. The fit concerns the current spectrum;
 selecting several spectra for Athena plotting does not create a simultaneous
 multi-dataset fit.
 
-For a quick start, load an Athena copper-foil spectrum, then choose **Cu
-first-shell example**. This supplies Larch's `feffcu01.dat`, a four-parameter
-model, and initial fit ranges. It represents 12 Cu neighbors at `Reff = 2.5478 Å`
-and is intended for Cu K-edge data. Inspect the spectrum's usable k range before
-fitting. The example button is available when the path list is empty.
+For a Cu₂O model, use **Load copper examples** in Athena and select the
+**Cu₂O · room temperature** spectrum, or select another processed Cu K-edge
+spectrum. Then choose **Cu₂O example**. One click attaches the Cuprite CIF
+(AMCSD 0015851, 1930) to the current project and loads the first four
+precomputed Cu K-edge FEFF paths from its Cu site 1. The paths include Cu–O
+and Cu–Cu scattering; the example does
+not supply or change the experimental spectrum. Review the path parameters and
+fit ranges for the selected data before fitting. The button is available when
+the path list is empty and a local project and spectrum are selected.
+
+The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
+and up to four legs. The first four files in FEFF order are:
+
+| File | Legs | Reff (Å) | Degeneracy |
+| --- | ---: | ---: | ---: |
+| `feff0001.dat` | 2 | 1.8412 | 2 |
+| `feff0002.dat` | 2 | 3.0066 | 12 |
+| `feff0003.dat` | 3 | 3.3445 | 12 |
+| `feff0004.dat` | 2 | 3.5256 | 6 |
 
 ## Fitted path plots
 
@@ -226,7 +240,7 @@ the R bounds do not filter that residual, although Larch still uses them in its
 independent-point estimate. R space is the usual choice for isolating a shell.
 Select ranges justified by the measured signal and the structural model.
 
-The supported k weights are 0, 1, 2, and 3. New models and the copper example
+The supported k weights are 0, 1, 2, and 3. New models and the Cu₂O example
 select all four by default; imported models retain their saved selections.
 They emphasize different parts of the same data and do not multiply
 the number of independent observations. Fit weights belong to the fit model;
@@ -316,7 +330,7 @@ The numerical references are the checked-out
 [FEFF-path documentation](https://xraypy.github.io/xraylarch/xafs_feffpaths.html).
 
 The API exposes `POST /api/artemis/paths/inspect`,
-`GET /api/artemis/examples/copper`, and
+`GET /api/artemis/examples/cuprite`, and
 `POST /api/artemis/projects/{project_id}/groups/{group_id}/fit`. The fit request
 contains the project version, GDS parameters, FEFF-file contents and path
 expressions, and transform settings. It checks the project version both before
