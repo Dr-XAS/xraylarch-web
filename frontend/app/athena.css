@@ -158,12 +158,26 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-viewer-picker-heading label { display: flex; align-items: center; gap: 7px; color: var(--ath-muted); font-size: var(--text-label); }
 .ath-app .ath-viewer-picker-heading select { width: auto; min-width: 140px; min-height: 30px; padding: 5px 8px; }
 .ath-viewer-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.ath-app .ath-viewer-chip { min-height: 38px; padding: 8px 13px; border: 1px solid var(--ath-line); border-radius: 18px; background: var(--ath-surface-muted); color: var(--ath-muted); white-space: normal; text-align: left; line-height: 1.2; }
-.ath-app .ath-viewer-chip[aria-pressed=true] { border-color: var(--ath-primary-line); background: var(--ath-primary-soft); color: var(--ath-primary); }
-.ath-app .ath-viewer-chip:hover { border-color: var(--ath-primary-line); }
-.ath-viewer-chip-mark { display: none; flex-shrink: 0; font-size: 14px; font-weight: 700; }
-.ath-viewer-chip[aria-pressed=true] .ath-viewer-chip-mark { display: inline; }
-.ath-app .ath-viewer-all { border-style: dashed; }
+.ath-app .ath-viewer-chip { min-height: 42px; padding: 8px 13px; gap: 9px; border: 1px solid var(--ath-line); border-radius: 999px; background: var(--ath-surface); color: var(--ath-muted); white-space: normal; text-align: left; line-height: 1.2; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
+.ath-viewer-chip[data-viewer-theme="spectrum"] { --viewer-accent: #48305f; --viewer-ink: #48305f; --viewer-soft: #f5f0f8; --viewer-border: #d6c3df; }
+.ath-viewer-chip[data-viewer-theme="wavelet"] { --viewer-accent: #a35f9c; --viewer-ink: #813678; --viewer-soft: #fbf1f9; --viewer-border: #e8c9e1; }
+.ath-viewer-chip[data-viewer-theme="cif"] { --viewer-accent: #be3ea3; --viewer-ink: #942c7d; --viewer-soft: #fff0f9; --viewer-border: #edc1df; }
+.ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #ea7e63; --viewer-ink: #9d3f2d; --viewer-soft: #fff2ee; --viewer-border: #f1c1b4; }
+.ath-viewer-chip[data-viewer-theme="fit"] { --viewer-accent: #a66d1b; --viewer-ink: #795011; --viewer-soft: #fff8e9; --viewer-border: #ead2a4; }
+.ath-viewer-chip-icon { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; color: var(--ath-muted); }
+.ath-app .ath-viewer-chip[data-viewer-theme][aria-pressed="true"] { border-color: var(--viewer-border); background: var(--viewer-soft); color: var(--viewer-ink); box-shadow: 0 1px 3px rgb(30 20 35 / 5%); font-weight: 600; }
+.ath-viewer-chip[data-viewer-theme][aria-pressed="true"] .ath-viewer-chip-icon { color: var(--viewer-accent); }
+.ath-app .ath-viewer-chip[data-viewer-theme]:hover:not(:disabled) { background: var(--ath-surface-muted); box-shadow: 0 2px 7px rgb(30 20 35 / 8%); }
+.ath-app .ath-viewer-chip[data-viewer-theme][aria-pressed="true"]:hover:not(:disabled) { border-color: var(--viewer-accent); background: var(--viewer-soft); }
+.ath-app .ath-viewer-chip[data-viewer-theme]:focus-visible { outline-color: var(--viewer-accent); }
+.ath-app .ath-viewer-all { padding: 8px 13px; border-style: dashed; }
+.ath-app .ath-viewer-all[aria-pressed="true"] { background: var(--ath-surface-muted); color: var(--ath-ink); }
+.ath-app .ath-viewer-all:hover:not(:disabled) { border-color: var(--ath-muted); background: var(--ath-surface-muted); }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="spectrum"] { --viewer-accent: #b99ad1; --viewer-ink: #e5c9ef; --viewer-soft: #2d2435; --viewer-border: #675371; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="wavelet"] { --viewer-accent: #d49acb; --viewer-ink: #f0cfe9; --viewer-soft: #312330; --viewer-border: #76546f; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="cif"] { --viewer-accent: #e784c1; --viewer-ink: #f8cce7; --viewer-soft: #372331; --viewer-border: #814d70; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #f19b83; --viewer-ink: #ffd6ca; --viewer-soft: #382722; --viewer-border: #865447; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-accent: #efc978; --viewer-ink: #ffe3ad; --viewer-soft: #382e20; --viewer-border: #806d48; }
 .ath-viewer-order-hint { margin: 10px 0 0; color: var(--ath-muted); font-size: var(--text-caption); }
 .ath-viewer-empty { padding: 26px 16px; border: 1px dashed var(--ath-line); border-radius: 7px; color: var(--ath-muted); background: var(--ath-surface); text-align: center; }
 .ath-viewer-stack { display: flex; flex-direction: column; gap: 24px; }
@@ -216,9 +230,11 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-energy-plot-option.selected { color: var(--ath-primary); border-color: var(--ath-primary-line); background: var(--ath-primary-soft); }
 .ath-energy-plot-option.disabled { opacity: .45; cursor: not-allowed; }
 .ath-energy-plot-option.disabled:hover { background: var(--ath-primary-soft); }
-.ath-plot-current-spectrum { display: flex; flex-wrap: wrap; min-width: 0; gap: 5px 9px; padding: 12px 18px; background: var(--ath-canvas); font-size: var(--text-label); }
-.ath-plot-current-spectrum > span { color: var(--ath-muted); }
-.ath-plot-current-spectrum strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.ath-plot-current-spectrum { display: flex; align-items: center; min-width: 0; gap: 12px; padding: 12px 18px; background: var(--ath-canvas); font-size: var(--text-label); }
+.ath-plot-current-spectrum-name { display: flex; align-items: center; flex: 1 1 auto; min-width: 0; gap: 9px; }
+.ath-plot-current-spectrum-name > span { flex: none; color: var(--ath-muted); }
+.ath-plot-current-spectrum-name strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.ath-plot-current-spectrum > .ath-check { flex: none; margin-left: auto; white-space: nowrap; }
 .ath-no-plot, .ath-plot-loading { min-height: 380px; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 45px; text-align: center; }
 .ath-no-plot > span { font-family: Georgia, serif; font-size: var(--text-illustration); color: var(--ath-primary-line); margin-bottom: 20px; font-style: italic; }
 .ath-no-plot h3 { color: var(--ath-ink); font-size: var(--text-title); font-family: var(--font-sans); font-weight: 500; }
