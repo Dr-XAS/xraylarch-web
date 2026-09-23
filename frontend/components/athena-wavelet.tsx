@@ -136,9 +136,9 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
       resizeLabel="Resize wavelet plot height" controlsId="athena-wavelet-viewer">
       <div className={styles.controls}>
         <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
+        <WaveletColorLegend value={colors} onChange={setColors} />
         <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button>
       </div>
-      <WaveletColorLegend value={colors} onChange={setColors} />
       <div id="athena-wavelet-viewer" className={styles.viewport}>
         {reason ? <div data-wavelet-placeholder className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>
           : current?.error ? <div data-wavelet-placeholder className={styles.empty} role="alert"><p>{current.error}</p><button type="button" onClick={() => setRetry(value => value + 1)}>Try again</button></div>

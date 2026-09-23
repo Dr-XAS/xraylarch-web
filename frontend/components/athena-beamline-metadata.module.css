@@ -1,7 +1,9 @@
-.metadata { border: 1px solid var(--ath-line); border-radius: 5px; padding: 12px; margin-top: 14px; font-size: var(--text-body); overflow-wrap: anywhere; }
-.metadata p { margin: 7px 0; }
-.metadata summary { cursor: pointer; margin-top: 10px; }
-.scroll { max-height: 300px; overflow: auto; margin-top: 10px; }
+.metadata { border: 1px solid var(--ath-line); border-radius: 6px; padding: 12px; margin-top: 12px; font-size: var(--text-body); overflow-wrap: anywhere; }
+.metadata p { margin: 8px 0; }
+.metadata p:first-child { margin-top: 0; }
+.metadata p:last-child { margin-bottom: 0; }
+.metadata summary { cursor: pointer; margin-top: 8px; }
+.scroll { max-height: 300px; overflow: auto; margin-top: 8px; }
 .scroll table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--text-label); }
 .scroll caption { text-align: left; font-weight: 600; margin-bottom: 8px; }
 .scroll th, .scroll td { text-align: left; vertical-align: top; padding: 6px; border-bottom: 1px solid var(--ath-line); white-space: pre-wrap; }

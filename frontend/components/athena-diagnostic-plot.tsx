@@ -4,6 +4,7 @@ import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
+import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls } from './viewer-display-controls'
 import styles from './athena-diagnostic-plot.module.css'
 
 type Options = { version: number; view: 'quad' | 'biquad' | 'kq'; group_ids: string[]; kweight: number | null; q_component: 're' | 'im' | 'mag' }
@@ -22,17 +23,19 @@ function DiagnosticPanel({ panel, context, groupIds }: { panel: Panel; context: 
     <div className={styles.figure} aria-label={`${panel.title} diagnostic figure`}>
       <Plot data={panel.curves.map((c, i) => ({ name: c.name, x: c.x, y: c.y, type: 'scatter', mode: 'lines',
         line: { width: 1.8, color: colors[groupIds.length === 2 ? groupIds.indexOf(c.group_id) : i] } }))}
-        layout={{ autosize: true, margin: { l: 65, r: 12, t: 90, b: 55 },
-          legend: { orientation: 'h', y: 1.05, yanchor: 'bottom' },
+        layout={{ autosize: true, margin: { l: 65, r: 12, t: 24, b: 55 },
+          legend: { orientation: 'h', x: 0, y: 1.02, yanchor: 'bottom', maxheight: 0.24 },
           xaxis: { title: { text: panel.x_label }, ...(valid && (min !== null || max !== null) ? { range: [min, max] } : {}) },
           yaxis: { title: { text: panel.y_label } }, uirevision: `${context}:${panel.id}:${min}:${max}` }}
         config={{ responsive: true, displaylogo: false }} style={{ width: '100%', height: '100%' }} useResizeHandler />
     </div>
-    <div className={styles.range}>
-      <label>From <input aria-label={`${panel.title} plot minimum`} type="number" step="any" value={minimum} placeholder={String(panel.x_range?.[0] ?? 'Auto')} onChange={e => setMinimum(e.target.value)} /></label>
-      <label>To <input aria-label={`${panel.title} plot maximum`} type="number" step="any" value={maximum} placeholder={String(panel.x_range?.[1] ?? 'Auto')} onChange={e => setMaximum(e.target.value)} /></label>
-      <button onClick={() => { setMinimum(''); setMaximum('') }}>Reset range</button>
-    </div>
+    <ViewerDisplayControls label={`${panel.title} plot display options`}>
+      <ViewerControlGroup label={`${panel.title} plot range`}>
+        <ViewerControlField label="From"><input aria-label={`${panel.title} plot minimum`} aria-invalid={!valid} type="number" step="any" value={minimum} placeholder={String(panel.x_range?.[0] ?? 'Auto')} onChange={e => setMinimum(e.target.value)} /></ViewerControlField>
+        <ViewerControlField label="To"><input aria-label={`${panel.title} plot maximum`} aria-invalid={!valid} type="number" step="any" value={maximum} placeholder={String(panel.x_range?.[1] ?? 'Auto')} onChange={e => setMaximum(e.target.value)} /></ViewerControlField>
+        <button onClick={() => { setMinimum(''); setMaximum('') }}>Reset range</button>
+      </ViewerControlGroup>
+    </ViewerDisplayControls>
     {!valid && <p role="alert" className="ath-error">Enter finite limits with From below To.</p>}
   </section>
 }
@@ -82,7 +85,7 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, reason, retry])
   return <div className={`ath-modal-body ${styles.body}`}>
-    <p>Compare energy, EXAFS and Fourier-filtered spectra using the saved processing parameters. Display choices leave your project unchanged.</p>
+    <p className={styles.intro}>Compare energy, EXAFS and Fourier-filtered spectra using the saved processing parameters. Display choices leave your project unchanged.</p>
     <fieldset className={styles.controls}>
       <label className="ath-field"><span>Diagnostic plot</span><select aria-label="Diagnostic plot" value={view} onChange={e => setView(e.target.value as Options['view'])}>
         <option value="quad">Quad · current group</option><option value="biquad">Bi-Quad · two marked groups</option><option value="kq">k / q · current group</option>
@@ -94,8 +97,10 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
       </select></label>}
       <button disabled={!!reason || loading} onClick={() => { setData(null); setError(''); setRetry(v => v + 1) }}>Replot diagnostics</button>
     </fieldset>
-    <p className="ath-hint">{groups.map(g => g.label).join(' · ')}{view === 'biquad' ? ` · ${groups.length} marked` : ''}</p>
-    <p role="status">{reason || (current ? `${current.result.panels.length} diagnostic panels · k weight ${current.result.kweight} · project revision ${current.version}.` : loading ? 'Preparing diagnostic plots…' : 'Waiting for diagnostic plots.')}</p>
+    <div className={styles.summary}>
+      <p className="ath-hint">{groups.map(g => g.label).join(' · ')}{view === 'biquad' ? ` · ${groups.length} marked` : ''}</p>
+      <p role="status">{reason || (current ? `${current.result.panels.length} diagnostic panels · k weight ${current.result.kweight} · project revision ${current.version}.` : loading ? 'Preparing diagnostic plots…' : 'Waiting for diagnostic plots.')}</p>
+    </div>
     {error && <p role="alert" className="ath-error">{error}</p>}
     {current && <div className={view === 'kq' ? styles.single : styles.grid}>{current.result.panels.map(p => <DiagnosticPanel key={`${key}:${p.id}`} panel={p} context={key} groupIds={ids} />)}</div>}
     {current?.result.notes.map((note, i) => <p className="ath-hint" key={i}>{note}</p>)}

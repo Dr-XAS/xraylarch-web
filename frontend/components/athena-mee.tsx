@@ -4,8 +4,7 @@ import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
-import styles from './athena-difference.module.css'
-import meeStyles from './athena-mee.module.css'
+import styles from './athena-processing-layout.module.css'
 
 type Space = 'E' | 'k' | 'R'
 type Options = { method: 'reflection' | 'arctangent'; shift: number; amplitude: number; width: number }
@@ -101,8 +100,11 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
       <fieldset className={styles.controls} disabled={disabled}>
         <label className="ath-field"><span>Source group</span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
         <label className="ath-field"><span>Algorithm</span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Options['method'] }))}><option value="reflection">Reflection</option><option value="arctangent">Arctangent</option></select></label>
-        {(['shift', 'amplitude', 'width'] as const).map((field, i) => <label className="ath-field" key={field}><span>{['Energy shift (eV)', 'Scale by (edge-step fraction)', 'Broadening (eV)'][i]}</span><input type="number" step="any" value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value }))} /></label>)}
-        <button type="button" disabled={!pickable} aria-pressed={picking} onClick={() => setPicking(v => !v)}>{picking ? 'Cancel energy-shift pick' : 'Pick energy shift'}</button>
+        <div className={styles.pickField}>
+          <label className="ath-field"><span>Energy shift (eV)</span><input type="number" step="any" value={draft.shift} onChange={e => setDraft(d => ({ ...d, shift: e.target.value }))} /></label>
+          <button type="button" disabled={!pickable} aria-label={picking ? 'Cancel energy-shift pick' : 'Pick energy shift'} title={picking ? 'Cancel energy-shift pick' : 'Pick energy shift from the plot'} aria-pressed={picking} onClick={() => setPicking(v => !v)}>{picking ? 'Cancel pick' : 'Pick'}</button>
+        </div>
+        <div className="ath-fields">{(['amplitude', 'width'] as const).map((field, i) => <label className="ath-field" key={field}><span>{['Scale by (edge-step fraction)', 'Broadening (eV)'][i]}</span><input type="number" step="any" value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value }))} /></label>)}</div>
         <p className="ath-hint">Primary E₀: {typeof e0 === 'number' ? `${e0.toFixed(3)} eV` : 'unavailable'}. Pick an E or k point to set the excitation energy above E₀. Broadening uses a Lorentzian HWHM; values below 0.01 eV become 0.01. Negative scale becomes zero.</p>
         <p className="ath-hint">The corrected group keeps the source recipe and is processed again. Frozen sources can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</p>
       </fieldset>
@@ -125,6 +127,6 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
         {error && <div className="ath-error" role="alert">{error}</div>}
       </section>
     </div>
-    <div className={`ath-modal-actions ${meeStyles.actions}`}><button disabled={disabled} onClick={close}>Close MEE tool</button><button disabled={disabled || !canCalculate || loading} onClick={() => { setPreview(null); setRetry(v => v + 1) }}>Preview again</button><button className="ath-primary" disabled={disabled || !current || loading} onClick={() => { void save() }}>Make group from MEE-corrected data</button></div>
+    <div className={`ath-modal-actions ${styles.actions}`}><button disabled={disabled} onClick={close}>Close MEE tool</button><button disabled={disabled || !canCalculate || loading} onClick={() => { setPreview(null); setRetry(v => v + 1) }}>Preview again</button><button className="ath-primary" disabled={disabled || !current || loading} onClick={() => { void save() }}>Make group from MEE-corrected data</button></div>
   </div>
 }

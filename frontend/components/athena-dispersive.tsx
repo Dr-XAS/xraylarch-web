@@ -153,8 +153,10 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
         <details><summary>Pixel normalization for initial guess</summary><div className="ath-fields">{Object.entries(normalization).map(([field,value])=><label className="ath-field" key={field}><span>{({pre1:'Pixel pre-edge start',pre2:'Pixel pre-edge end',norm1:'Pixel post-edge start',norm2:'Pixel post-edge end',nnorm:'Pixel polynomial degree'} as Record<string,string>)[field]}</span><input type="number" value={value} placeholder="Auto" onChange={e=>setNormalization(n=>({...n,[field]:e.target.value}))} /></label>)}</div></details>
       </>}
       <h3>E = offset + linear × pixel + quadratic × pixel²</h3>
-      <div className="ath-fields">{coefficientKeys.map(field=><label className="ath-field" key={field}><span>{field[0].toUpperCase()+field.slice(1)} coefficient</span><input type="number" step="any" value={coefficients[field]} onChange={e=>{setCoefficients(c=>({...c,[field]:e.target.value}));setHasCalibration(true)}} /></label>)}</div>
-      <label className="ath-field"><span>Derivative smoothing passes</span><input type="number" min={0} max={10} step={1} value={nsmooth} onChange={e=>setNsmooth(e.target.value)} /></label>
+      <div className="ath-fields">
+        {coefficientKeys.map(field=><label className="ath-field" key={field}><span>{field[0].toUpperCase()+field.slice(1)} coefficient</span><input type="number" step="any" value={coefficients[field]} onChange={e=>{setCoefficients(c=>({...c,[field]:e.target.value}));setHasCalibration(true)}} /></label>)}
+        <label className="ath-field"><span>Derivative smoothing passes</span><input type="number" min={0} max={10} step={1} value={nsmooth} onChange={e=>setNsmooth(e.target.value)} /></label>
+      </div>
       <div className={styles.actions}>
         <button disabled={!inspection||!standard||!valid||!pixel||!defaults} onClick={()=>{void calibrate('guess')}}>Estimate initial coefficients</button>
         <button disabled={!inspection||!standard||!valid||!pixel||!defaults} onClick={()=>{void calibrate('guess',true)}}>Reset parameters</button>

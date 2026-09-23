@@ -56,11 +56,11 @@ export function AthenaDifferencePlot({ preview, view, labels, standardLabel, pic
     {!data.length ? <p>No k-space preview is available. The energy difference and integral remain available.</p> : <Plot data={data} onClick={event => {
       const x = event.points?.[0]?.x
       if (canPick && typeof x === "number" && Number.isFinite(x)) onPick(x)
-    }} layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: view === "area" ? 120 : 100 },
+    }} layout={{ autosize: true, margin: { l: 75, r: 20, t: 24, b: view === "area" ? 72 : 55 },
       xaxis: { title: { text: view === "area" ? "DATA group (list order)" : view === "k" ? "k (Å⁻¹)" : "Energy (eV)" },
         ...(view === "area" ? { tickmode: "array", tickvals: results.map((_, index) => index + 1), ticktext: results.map(result => labels[result.group_id] ?? result.label), automargin: true } : {}) },
       yaxis: { title: { text: yTitle }, automargin: true, zeroline: true }, hovermode: "closest",
-      legend: { orientation: "h", y: -0.25 }, shapes: bounds ? [bounds.lower, bounds.upper].map(x => ({ type: "line", x0: x, x1: x, y0: 0, y1: 1, yref: "paper", line: { color: "#8c938b", dash: "dot", width: 1 } })) : [],
+      legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24 }, shapes: bounds ? [bounds.lower, bounds.upper].map(x => ({ type: "line", x0: x, x1: x, y0: 0, y1: 1, yref: "paper", line: { color: "#8c938b", dash: "dot", width: 1 } })) : [],
       uirevision: `${preview.version}:${view}:${results.map(result => result.group_id).join()}:${JSON.stringify(preview.options)}`,
     }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { format: "svg", filename: "athena-difference" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }} useResizeHandler style={{ width: "100%", height: "100%" }} />}
   </div>

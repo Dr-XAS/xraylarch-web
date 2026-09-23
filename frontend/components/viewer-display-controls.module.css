@@ -1,0 +1,86 @@
+.controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 7px 12px;
+  border-top: 1px solid var(--ath-line, #dce5dc);
+  color: var(--ath-muted, #647669);
+  background: var(--ath-surface-muted, #f7f9f6);
+  font-size: var(--text-label, 12px);
+  line-height: var(--leading-control, 1.4);
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 6px 10px;
+}
+
+.end { margin-left: auto; }
+
+.controls .toggle, .controls .field {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: var(--ath-control-height, 28px);
+  margin: 0;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.toggle { white-space: nowrap; cursor: pointer; }
+.field { flex-wrap: wrap; }
+.field > span { white-space: nowrap; }
+.toggle:has(input:disabled) { cursor: default; opacity: .5; }
+
+.controls input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  min-height: 0;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--ath-primary, #268553);
+}
+
+.controls input[type="number"], .controls input[type="text"], .controls select {
+  width: 76px;
+  min-height: var(--ath-control-height, 28px);
+  border: 1px solid var(--ath-line, #dce5dc);
+  border-radius: 4px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: var(--text-input, 12px);
+  color: var(--ath-ink, #30483c);
+  background: var(--ath-surface, #fff);
+}
+
+.controls select { width: auto; max-width: 100%; }
+.controls input[aria-invalid="true"] { border-color: var(--ath-error-line, #bd6549); }
+.controls input:disabled { opacity: .5; }
+
+.controls button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: var(--ath-control-height, 28px);
+  border: 1px solid var(--ath-line, #dce5dc);
+  border-radius: 4px;
+  padding: 3px 7px;
+  font: inherit;
+  color: inherit;
+  background: var(--ath-surface, #fff);
+  cursor: pointer;
+}
+
+.controls button:hover:not(:disabled) { color: var(--ath-primary, #268553); background: var(--ath-primary-soft, #edf7ef); }
+.controls :is(input, select, button):focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+
+@media (max-width: 620px) {
+  .controls { gap: 5px 10px; padding: 6px 10px; }
+  .end { margin-left: 0; }
+}

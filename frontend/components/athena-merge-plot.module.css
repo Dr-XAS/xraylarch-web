@@ -1,0 +1,14 @@
+.body, .results { min-width: 0; }
+.intro { margin: 0 0 10px; color: var(--ath-muted); font-size: var(--text-caption); line-height: var(--leading-body); }
+.controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 12px; min-width: 0; margin: 0; padding: 10px; border: 1px solid var(--ath-line); border-radius: 6px; background: var(--ath-canvas); }
+.controls > label:global(.ath-field) { flex: 1 1 180px; min-width: 0; margin: 0; }
+.controls > label:global(.ath-check) { align-self: center; }
+.body .controls > button { flex: 0 0 auto; border-color: var(--ath-line); background: var(--ath-surface); }
+.summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 4px 16px; margin: 8px 0; color: var(--ath-muted); font-size: var(--text-caption); }
+.summary p { margin: 0; }
+.plot { height: 390px; min-width: 0; border: 1px solid var(--ath-line); border-radius: 6px; background: var(--ath-surface); overflow: hidden; }
+.plot > p { padding: 20px; }
+.results > p { margin: 8px 0 0; }
+.actions { flex-wrap: wrap; gap: 8px; }
+.actions a { margin-right: auto; }
+@media (max-width: 620px) { .controls > label:global(.ath-field) { flex-basis: 100%; } .plot { height: 340px; } }

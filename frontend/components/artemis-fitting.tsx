@@ -10,6 +10,7 @@ import {
 } from "@/lib/artemis"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
+import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls, ViewerToggle } from "./viewer-display-controls"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { ArtemisStructures } from "./artemis-structures"
@@ -391,7 +392,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         {([
           ["kmin", "k min (Å⁻¹)"], ["kmax", "k max (Å⁻¹)"], ["rmin", "R min (Å)"], ["rmax", "R max (Å)"], ["dk", "k taper dk (Å⁻¹)"],
         ] as const).map(([field, label]) => <label key={field}>{label}<input aria-label={label} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
-        <label className={styles.fullField}>k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
+        <label>k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
       </div>
       <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
       <p className={styles.help}>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</p>
@@ -439,17 +440,12 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
   }) : []
-  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" className={styles.viewer} actions={<div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>}>
+  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" className={styles.viewer} actions={<div className={styles.resultActions}>
+    <div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>
+    {visible && space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}
+  </div>}>
     <ResizablePlotCard storageKey="artemis.fit.height.v1" defaultHeight={380} plotSelector="#artemis-fit-plot" resizeLabel="Resize EXAFS fit plot height" controlsId="artemis-fit-plot">
-      {visible && <div className={styles.resultControls}><span>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</span>{space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}</div>}
-      {visible && <div className={styles.plotOptions} role="group" aria-label="Fit plot display options">
-        <label title={pathsAvailable ? "Display the individual FEFF paths evaluated at the fitted parameters." : "Run the fit again to include individual path curves in its results."}><input type="checkbox" checked={pathsShown} disabled={!pathsAvailable} onChange={event => setShowPaths(event.target.checked)} />Show paths</label>
-        <label><input type="checkbox" checked={offsetPlot} onChange={event => setOffsetPlot(event.target.checked)} />Offset plot</label>
-        {offsetPlot && <label className={styles.offsetSpacing}>Offset spacing<input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
-          onChange={event => setOffsetDraft({ result: visible, space, component, value: event.target.value })} /><button type="button" onClick={() => setOffsetDraft(null)} title="Use automatic spacing for the visible curves">Auto</button></label>}
-        {!pathsAvailable && <span className={styles.optionHint}>Run the fit again to include path curves.</span>}
-        {offsetPlot && !validSpacing && <span className={styles.optionHint} role="status">Enter a finite, nonnegative spacing. Automatic spacing is shown until the value is valid.</span>}
-      </div>}
+      {visible && <p className={styles.resultSummary}>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</p>}
       <div id="artemis-fit-plot" className={styles.plot}>
         {!visible || !series ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : "Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model."}</p>
           : plotError ? <p className={styles.empty} role="alert">Could not render the fit plot. The numerical results and report remain available below.</p>
@@ -463,6 +459,21 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
                   x1: space === "k" ? visible.transform.kmax : visible.transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }],
               }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-fit-${space}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}
       </div>
+      {visible && <ViewerDisplayControls label="Fit plot display options">
+        <ViewerControlGroup>
+          <ViewerToggle label="Offset plot" checked={offsetPlot} onChange={setOffsetPlot} />
+          {offsetPlot && <>
+            <ViewerControlField label="Spacing"><input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
+              onChange={event => setOffsetDraft({ result: visible, space, component, value: event.target.value })} /></ViewerControlField>
+            <button type="button" onClick={() => setOffsetDraft(null)} title="Use automatic spacing for the visible curves">Auto</button>
+          </>}
+        </ViewerControlGroup>
+        <ViewerControlGroup>
+          <ViewerToggle label="Show paths" checked={pathsShown} disabled={!pathsAvailable} onChange={setShowPaths} title={pathsAvailable ? "Display the individual FEFF paths evaluated at the fitted parameters." : "Run the fit again to include individual path curves in its results."} />
+          {!pathsAvailable && <span className={styles.optionHint}>Run the fit again to include path curves.</span>}
+        </ViewerControlGroup>
+        {offsetPlot && !validSpacing && <span className={styles.optionHint} role="status">Enter a finite, nonnegative spacing. Automatic spacing is shown until the value is valid.</span>}
+      </ViewerDisplayControls>}
       {visible && <p className={styles.plotNote}>{space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {visible.k.weight}; fit weights {visible.transform.kweight.join(", ")}.</p>}
     </ResizablePlotCard>
     {visible && <div className={styles.results}>
