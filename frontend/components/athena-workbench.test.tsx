@@ -5640,8 +5640,10 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps().plotScope).toBe(scope)
     expect(plotProps().showLegend).toBe(showLegend)
     for (const line of ['Background', 'Pre-edge line', 'Post-edge line']) {
-      expect(screen.getByRole('checkbox', { name: line })).toHaveProperty('checked', showLines)
+      if (scope === 'selected') expect(screen.queryByRole('checkbox', { name: line })).not.toBeInTheDocument()
+      else expect(screen.getByRole('checkbox', { name: line })).toHaveProperty('checked', showLines)
     }
+    if (scope === 'selected') expect(screen.getByText('For pre-/post-edge lines, choose Current spectrum and μ(E).')).toBeInTheDocument()
     expect(plotProps()).toMatchObject({ energyMode, background: showLines, preEdge: showLines, postEdge: showLines })
   })
 
@@ -5656,6 +5658,8 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(currentSpectrum()).toBeInTheDocument()
     expect(within(currentSpectrum()!).getByText('Current spectrum')).toBeVisible()
     expect(within(currentSpectrum()!).getByText('Foil scan')).toBeVisible()
+    expect(within(currentSpectrum()!).getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
+    expect(screen.getByRole('spinbutton', { name: 'Stack offset' }).closest('.ath-plot-display-controls')).not.toContainElement(screen.getByRole('checkbox', { name: 'Show legend' }))
 
     selectGroup('Unused reference')
     expect(within(currentSpectrum()!).getByText('Unused reference')).toBeVisible()
@@ -5670,6 +5674,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
     expect(currentSpectrum()).not.toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Stack offset' }).closest('.ath-plot-display-controls')).toContainElement(screen.getByRole('checkbox', { name: 'Show legend' }))
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
     expect(screen.getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
   })
@@ -5750,15 +5755,15 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
   it('defaults Current spectrum to raw with every processing line and preserves manual choices within the scope', async () => {
     await openSaved(processedProject())
+    for (const line of ['Pre-edge line', 'Post-edge line', 'Background']) {
+      expect(screen.queryByRole('checkbox', { name: line })).not.toBeInTheDocument()
+    }
+    expect(screen.getByText('For pre-/post-edge lines, choose Current spectrum and μ(E).')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
     const pre = screen.getByRole('checkbox', { name: 'Pre-edge line' })
     const post = screen.getByRole('checkbox', { name: 'Post-edge line' })
     const background = screen.getByRole('checkbox', { name: 'Background' })
-    for (const control of [pre, post, background]) {
-      expect(control).not.toBeChecked()
-      expect(control).toBeDisabled()
-    }
-
-    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
     expect(screen.getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
     for (const control of [pre, post, background]) {
       expect(control).toBeEnabled()
@@ -5787,14 +5792,14 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
     fireEvent.click(screen.getByRole('radio', { name: 'All selected' }))
     expect(screen.getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
-    for (const control of [pre, post, background]) {
-      expect(control).toBeDisabled()
-      expect(control).not.toBeChecked()
+    for (const line of ['Pre-edge line', 'Post-edge line', 'Background']) {
+      expect(screen.queryByRole('checkbox', { name: line })).not.toBeInTheDocument()
     }
+    expect(screen.getByText('For pre-/post-edge lines, choose Current spectrum and μ(E).')).toBeInTheDocument()
     expect(plotProps()).toMatchObject({ preEdge: false, postEdge: false, background: false })
     fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
     expect(screen.getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
-    for (const control of [pre, post, background]) {
+    for (const control of ['Pre-edge line', 'Post-edge line', 'Background'].map(line => screen.getByRole('checkbox', { name: line }))) {
       expect(control).toBeEnabled()
       expect(control).toBeChecked()
     }

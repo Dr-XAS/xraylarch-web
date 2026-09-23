@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { Activity, ArrowUpDown, BookOpen, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
+import { Activity, ArrowUpDown, Atom, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, LockKeyhole, Pencil, Plus, Redo2, Route, Search, Settings2, Trash2, Undo2, Upload, WavesHorizontal, X } from "lucide-react"
 import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
 import { isSelectionCommand, mergeSelectionUpdate, type AthenaSelectionUpdate } from "@/lib/athena-selection"
@@ -63,6 +63,14 @@ import { AthenaDispersive } from './athena-dispersive'
 import { RebinDefaultsControls, useRebinDefaults } from './athena-rebin-defaults'
 import "@/app/athena-controls.css"
 import "@/app/athena-context-controls.css"
+
+const viewerIcons = {
+  spectrum: Activity,
+  wavelet: WavesHorizontal,
+  cif: Atom,
+  feff: Route,
+  fit: ChartNoAxesCombined,
+} satisfies Record<ViewerId, typeof Activity>
 
 // hbar² / (2 m_e), in eV Å²; same constant as larch.xafs.xafsutils.KTOE.
 const ktoe = 3.8099821109685847
@@ -1994,6 +2002,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     return rows
   }
 
+  const legendToggle = <label className="ath-check"><input type="checkbox" checked={showLegend} onChange={e => setShowLegend(e.target.checked)} />Show legend</label>
+
   return <main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><DrXasLogo /><div><h1>Larch-Web</h1><p>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</p></div></div>
       <nav aria-label="Main menu">
@@ -2045,7 +2055,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           <div className="ath-viewer-picker-heading"><h3>Results</h3><label>Order <select aria-label="Sort viewers" value={viewerSort} onChange={event => setViewerSort(event.target.value as ViewerSort)}><option value="default">Default order</option><option value="process">Process order (this session)</option></select></label></div>
           <div className="ath-viewer-chips" role="group" aria-label="Choose viewers">
             <button type="button" className="ath-viewer-chip ath-viewer-all" aria-pressed={availableViewers.every(id => shownViewers.has(id))} onClick={() => setShownViewers(previous => availableViewers.every(id => previous.has(id)) ? new Set() : new Set(availableViewers))}>All viewers</button>
-            {availableViewers.map(id => <button type="button" key={id} className="ath-viewer-chip" aria-pressed={shownViewers.has(id)} onClick={() => setShownViewers(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })}><span className="ath-viewer-chip-mark" aria-hidden="true">✓</span>{viewerLabels[id]}</button>)}
+            {availableViewers.map(id => {
+              const Icon = viewerIcons[id]
+              return <button type="button" key={id} className="ath-viewer-chip" data-viewer-theme={id} aria-pressed={shownViewers.has(id)} onClick={() => setShownViewers(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })}>
+                <span className="ath-viewer-chip-icon" aria-hidden="true"><Icon size={20} strokeWidth={2} /></span>
+                {viewerLabels[id]}
+              </button>
+            })}
           </div>
           {viewerSort === "process" && <p className="ath-viewer-order-hint">Spectrum stays first; saved CIF attachment and this spectrum’s recorded wavelet, path-list, and fit events follow oldest first. Missing events keep default order.</p>}
         </section>
@@ -2063,18 +2079,18 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
               </label>)}
             <span className="ath-plot-scope-note">{plotScope === "selected" ? `${marked.length} checked ${marked.length === 1 ? "group" : "groups"}` : "Highlighted group"}</span>
           </div>
-          <div className="ath-plot-controls">{space === "E" ? <>
+          <div className="ath-plot-controls">{space === "E" ? plotScope === "current" && <>
             <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background</label>
             <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
             <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>
-          </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<div className="ath-plot-display-controls"><label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} disabled={plotScope === "current"} onChange={e => setOffset(Number(e.target.value))} /></label><label className="ath-check"><input type="checkbox" checked={showLegend} onChange={e => setShowLegend(e.target.checked)} />Show legend</label></div></div>
+          </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}<div className="ath-plot-display-controls"><label className="ath-inline-input">Stack offset <input aria-label="Stack offset" type="number" step="0.1" value={offset} disabled={plotScope === "current"} onChange={e => setOffset(Number(e.target.value))} /></label>{plotScope !== "current" && legendToggle}</div></div>
           {space === "E" && (plotScope !== "current" || plotEnergyMode !== "mu") && <p className="ath-plot-overlay-hint">For pre-/post-edge lines, choose Current spectrum and μ(E).</p>}
           {pick && <div className="ath-pick-prompt" aria-live="polite"><span>Picking <strong>{pick.label}</strong> for {active?.label}. Click a spectrum in the {pick.space} plot{pick.relative && `; E − E₀ uses ${pick.e0} eV`}. You can also type the field value. Changes process automatically.</span><button onClick={cancelPick}>Cancel pick <kbd>Esc</kbd></button></div>}
           <AthenaColorLegend value={plotColors} onChange={setPlotColors} disabled={analysisVisible} />
           {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
             {(active?.data_type === "detector" ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${active?.data_type === "detector" ? " disabled" : ""}`} key={option.value}><input type="radio" name="ath-energy-plot" value={option.value} checked={plotEnergyMode === option.value} disabled={active?.data_type === "detector"} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
           </div>}
-          {plotScope === "current" && <div className="ath-plot-current-spectrum" title={active?.label}><span>Current spectrum</span><strong>{active?.label ?? "None selected"}</strong></div>}
+          {plotScope === "current" && <div className="ath-plot-current-spectrum"><div className="ath-plot-current-spectrum-name" title={active?.label}><span>Current spectrum</span><strong>{active?.label ?? "None selected"}</strong></div>{legendToggle}</div>}
           {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
             : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
             : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={analysisVisible} range={range} picking={!!pick} onPickX={(x, pickedSpace) => pluck(x, pickedSpace, pick)} />}
