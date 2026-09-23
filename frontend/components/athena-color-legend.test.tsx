@@ -39,6 +39,19 @@ describe("AthenaColorLegend", () => {
     expect(localStorage.getItem("athena.plot-colors")).toBe(JSON.stringify({ palette: "viridis", reversed: false }))
   })
 
+  it("restores and saves the single viewer palette without overwriting the multiple viewer", () => {
+    const multiple = { palette: "viridis", reversed: true }
+    const single = { palette: "plasma" as const, reversed: false }
+    localStorage.setItem("athena.plot-colors", JSON.stringify(multiple))
+    localStorage.setItem("athena.plot-colors.single", JSON.stringify(single))
+    const onChange = vi.fn()
+    render(<AthenaColorLegend value={single} onChange={onChange} storageKey="athena.plot-colors.single" />)
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(single)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Reverse" }))
+    expect(localStorage.getItem("athena.plot-colors.single")).toBe(JSON.stringify({ ...single, reversed: true }))
+    expect(localStorage.getItem("athena.plot-colors")).toBe(JSON.stringify(multiple))
+  })
+
   it("supports keyboard selection and dismisses the preview menu", () => {
     const onChange = vi.fn()
     render(<AthenaColorLegend value={{ palette: "classic", reversed: false }} onChange={onChange} />)

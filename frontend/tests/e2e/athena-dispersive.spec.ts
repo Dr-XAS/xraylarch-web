@@ -85,10 +85,10 @@ test('ESRF Cu: live pixel columns, fitted calibration, native settings, make, un
   expect(g.energy).toEqual(fitted.calibrated.x);expect(g.mu).toEqual(y)
   expect(g.source.calibration).toEqual(fitted.coefficients);expect(g.processing_error).toBeNull()
   await panel.getByRole('button',{name:'Close dialog',exact:true}).click()
-  await page.getByRole('radio',{name:'Current spectrum',exact:true}).check()
   for(const [tab,space,xkey,ykey] of [['E Energy','E','energy','norm'],['k EXAFS','k','k','weighted_chi'],['R Fourier','R','r','chir_mag'],['q Back transform','q','q','chiq_re']]) {
-    await page.getByRole('tab',{name:tab,exact:true}).click()
-    await signal(page.getByLabel(`${space}-space spectrum plot`,{exact:true}),g.result.arrays[xkey],g.result.arrays[ykey])
+    await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('tab',{name:tab,exact:true}).click()
+    if (space === 'E') await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('radio', { name: 'μ(E) · normalized', exact: true }).check()
+    await signal(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`,{exact:true}),g.result.arrays[xkey],g.result.arrays[ykey])
   }
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 1',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 2',exact:true})).toBeVisible()

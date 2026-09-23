@@ -66,13 +66,14 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
       ['E Energy', 'E', 'energy', 'norm'], ['k EXAFS', 'k', 'k', 'weighted_chi'],
       ['R Fourier', 'R', 'r', 'chir_mag'], ['q Back transform', 'q', 'q', 'chiq_re'],
     ]) {
-      await page.getByRole('tab', { name, exact: true }).click()
+      await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('tab', { name, exact: true }).click()
+      if (space === 'E') await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('radio', { name: 'μ(E) · normalized', exact: true }).check()
       // Applying a zero display offset turns -0 into +0; both represent the
       // same plotted coordinate. All nonzero values must still match exactly.
-      await expect.poll(() => firstCurve(page.getByLabel(`${space}-space spectrum plot`, { exact: true })))
+      await expect.poll(() => firstCurve(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[x], y: group.result.arrays[y].map((v: number) => v === 0 ? 0 : v) })
       if (space === 'q') {
-        const plot = page.getByLabel('q-space spectrum plot', { exact: true }).locator('.js-plotly-plot')
+        const plot = page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel('q-space spectrum plot', { exact: true }).locator('.js-plotly-plot')
         await expect.poll(() => plot.evaluate(node => {
           const traces = (node as HTMLElement & { data: { x: number[]; y: number[] }[] }).data
           return traces.map(trace => ({ x: [...trace.x], y: [...trace.y] }))

@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest"
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { AthenaProject, Parameters } from "@/lib/athena"
 import { AthenaProvider } from "@/lib/athena-context"
@@ -101,7 +101,9 @@ describe("AthenaWorkbench integrated request gating", () => {
     }} />)
 
     await screen.findAllByRole("button", { name: /EXAFS sample/ })
-    fireEvent.click(screen.getByRole("tab", { name: /Fourier/ }))
+    for (const name of ["Single spectrum viewer", "Multiple spectra viewer"]) {
+      fireEvent.click(within(screen.getByRole("region", { name })).getByRole("tab", { name: /Fourier/ }))
+    }
     const viewerWeight = screen.getByRole("combobox", { name: "Viewer k-weight" })
     expect(viewerWeight).toBeDisabled()
     fireEvent.change(viewerWeight, { target: { value: "3" } })

@@ -78,10 +78,11 @@ web metadata but do not include fitting models.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
-In the spectrum viewer, **All selected** plots the checked data groups;
-**Current spectrum** plots only the highlighted group, independently of its
-checkbox. For an individual **μ(E)** plot, use **Pre-edge line** and
-**Post-edge line** to show either fitted normalization line. **Background**
+The **Single spectrum viewer** plots the highlighted group, independently of
+its checkbox. The **Multiple spectra viewer** plots the checked data groups.
+Both panels can stay open together and keep independent plot spaces, ranges,
+colors, legends, and heights. For an individual **μ(E)** plot, use
+**Pre-edge line** and **Post-edge line** to show either fitted normalization line. **Background**
 separately shows the fitted μ₀(E) background when available.
 Each normalization-line toggle also marks its interval's start and end on
 μ(E). Hover a marker to see its energy and offset from E₀.
@@ -97,11 +98,11 @@ The spectrum's **Color legend** selector offers classic categorical colors and
 viridis, plasma, inferno, cividis, and coolwarm gradients, with a **Reverse**
 option. These spectrum settings are independent of the wavelet's magma scale.
 
-The **Results** chooser above the viewers shows Spectrum, Wavelet, CIF, FEFF
-path, and EXAFS fit in that default order when a project opens. Each chip can
-show or hide its viewer; **All viewers** toggles them together. **Process
-order (this session)** keeps Spectrum first, then places derived viewers with
-recorded events from oldest to newest (saved CIF
+The **Results** chooser above the viewers shows Single spectrum, Multiple
+spectra, Wavelet, CIF, FEFF path, and EXAFS fit in that default order when a
+project opens. Each chip can show or hide its viewer; **All viewers** toggles them together. **Process
+order (this session)** keeps both spectrum viewers first, then places derived
+viewers with recorded events from oldest to newest (saved CIF
 attachment time and the current spectrum's wavelet, FEFF path, or fit activity
 in the workspace). Viewers without a recorded event retain their default order.
 These display choices do not change project data or recalculate results.

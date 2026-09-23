@@ -31,8 +31,8 @@ for (const example of examples) {
     expect(original.groups.every((g: { processing_error: unknown }) => g.processing_error === null)).toBeTruthy()
     await expect(dialog).toHaveCount(0)
     for (const [name, space] of [["E Energy", "E"], ["k EXAFS", "k"], ["R Fourier", "R"], ["q Back transform", "q"]]) {
-      await page.getByRole("tab", { name, exact: true }).click()
-      await expect(page.getByLabel(`${space}-space spectrum plot`, { exact: true }).locator(".js-line").first()).toBeVisible()
+      await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole("tab", { name, exact: true }).click()
+      await expect(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`, { exact: true }).locator(".js-line").first()).toBeVisible()
     }
     const downloadPromise = page.waitForEvent("download")
     await page.getByRole("button", { name: "Save project", exact: true }).click()

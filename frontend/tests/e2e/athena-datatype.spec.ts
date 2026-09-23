@@ -15,7 +15,7 @@ async function openTypes(page: Page) {
   return page.getByRole('dialog', { name: 'Change data type', exact: true })
 }
 async function energyCurve(page: Page) {
-  const plot = page.getByLabel('E-space spectrum plot', { exact: true })
+  const plot = page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel('E-space spectrum plot', { exact: true })
   await expect(plot.locator('.js-line').first()).toBeAttached()
   return plot.locator('.js-plotly-plot').evaluate(node => {
     const curve = (node as HTMLElement & { data: { x: number[]; y: number[] }[] }).data[0]
@@ -29,7 +29,6 @@ test('real copper type correction: current, frozen, marked, all, drafts and plot
   await page.goto('/')
   const initial = await command(page, () => page.getByRole('button', { name: 'Load copper examples', exact: true }).click())
   const [first, second, third, reference] = initial.groups
-  await page.getByRole('radio', { name: 'Current spectrum', exact: true }).check()
   await page.getByRole('spinbutton', { name: /^Rbkg/ }).fill('1.9')
   await command(page, () => page.getByRole('button', { name: 'Freeze group', exact: true }).click())
   let panel = await openTypes(page)
@@ -68,6 +67,7 @@ test('real copper type correction: current, frozen, marked, all, drafts and plot
   expect(saved.groups.map((g: { data_type: string }) => g.data_type)).toEqual(['mu', 'mu', 'mu', 'mu'])
   expect(saved.groups[0].result.arrays.chi).toEqual(first.result.arrays.chi)
   await panel.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('radio', { name: 'μ(E) · normalized', exact: true }).check()
   await expect.poll(() => energyCurve(page)).toEqual({ x: first.result.arrays.energy, y: first.result.arrays.norm })
   await expect(page.getByRole('spinbutton', { name: /^Rbkg/ })).toHaveValue('1.9')
   expect(errors).toEqual([])
@@ -99,7 +99,6 @@ test('normalized XANES survives downloaded .prj and reopened plots', async ({ pa
   expect(actual.data_type).toBe('xanes'); expect(actual.is_normalized).toBe(true)
   expect(actual.result.arrays.norm).toEqual(saved.groups[0].mu)
   await page.reload()
-  await page.getByRole('radio', { name: 'Current spectrum', exact: true }).check()
   await expect(page.getByRole('button', { name: 'Data type: Normalized XANES', exact: true })).toBeVisible()
   await expect.poll(() => energyCurve(page)).toEqual({ x: actual.result.arrays.energy, y: saved.groups[0].mu })
 })

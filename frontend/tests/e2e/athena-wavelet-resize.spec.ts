@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from "@playwright/test"
 import type { AthenaProject } from "../../lib/athena"
 
 const waveletHeightKey = "athena.wavelet.height.v1"
-const spectrumHeightKey = "athena.plot.height.v1"
+const spectrumHeightKey = "athena.plot.single.height.v1"
 
 async function height(locator: Locator) {
   return Math.round((await locator.boundingBox())!.height)
@@ -42,7 +42,7 @@ test("wavelet plots follow drag resizing, retain their size across modes and res
   await page.addInitScript(() => {
     if (sessionStorage.getItem("athena-wavelet-resize-initialized")) return
     localStorage.removeItem("athena.wavelet.height.v1")
-    localStorage.setItem("athena.plot.height.v1", "640")
+    localStorage.setItem("athena.plot.single.height.v1", "640")
     sessionStorage.setItem("athena-wavelet-resize-initialized", "true")
   })
   const errors: string[] = []
@@ -62,7 +62,7 @@ test("wavelet plots follow drag resizing, retain their size across modes and res
   const panel = page.getByRole("region", { name: "Wavelet plotter", exact: true })
   const viewer = page.locator("#athena-wavelet-viewer [data-wavelet-main-plot]")
   const grip = panel.getByRole("separator", { name: "Resize wavelet plot height", exact: true })
-  const spectrumGrip = page.getByRole("separator", { name: "Resize spectrum plot height", exact: true })
+  const spectrumGrip = page.getByRole("separator", { name: "Resize single spectrum plot height", exact: true })
   const spectrumPlot = page.locator(".ath-plot-card").filter({ has: spectrumGrip }).locator(".ath-plot")
   await expectPlotHeight(viewer, 430)
   await expect(grip).toHaveAttribute("aria-controls", "athena-wavelet-viewer")
