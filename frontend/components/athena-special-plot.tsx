@@ -105,10 +105,14 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
   if (!projectId || version === undefined) return <p role="status">Open a saved project to prepare this diagnostic plot.</p>
   if (quad) return <AthenaDiagnosticPlot key={kind} initialView={kind} project={{ id: projectId, version, groups }} groupId={active?.id ?? ids[0]} selectGroup={selectGroup ?? (() => {})} />
   const r = current?.result
-  return <section aria-label={athenaSpecialPlotLabels[kind]}>
-    <p role="status">{r ? `${r.curves.length} shortcut curves · project revision ${current.version}.` : loading ? 'Preparing Athena shortcut curves…' : 'Shortcut plot unavailable.'}</p>
-    <button disabled={loading} onClick={() => { setRemote(null); setError(''); setRetry(n => n + 1) }}>Replot shortcut</button>
-    {!!r?.curves.length && <button disabled={exporting || hidden.length === r.curves.length} onClick={() => { void download() }}>{exporting ? 'Exporting plot…' : 'Download shortcut SVG'}</button>}
+  return <section className={styles.viewer} aria-label={athenaSpecialPlotLabels[kind]}>
+    <div className={styles.toolbar}>
+      <p role="status">{r ? `${r.curves.length} shortcut curves · project revision ${current.version}.` : loading ? 'Preparing Athena shortcut curves…' : 'Shortcut plot unavailable.'}</p>
+      <div className={styles.actions}>
+        <button disabled={loading} onClick={() => { setRemote(null); setError(''); setRetry(n => n + 1) }}>Replot shortcut</button>
+        {!!r?.curves.length && <button disabled={exporting || hidden.length === r.curves.length} onClick={() => { void download() }}>{exporting ? 'Exporting plot…' : 'Download shortcut SVG'}</button>}
+      </div>
+    </div>
     {error && <p role="alert" className="ath-error">{error}</p>}
     {r && r.curves.length > 0 && <div ref={figure} className={styles.plot} aria-label="Athena shortcut figure"><Plot data={r.curves.map((c, i) => ({ x: c.x, y: c.y, name: c.name, visible: !hidden.includes(i), type: 'scatter', mode: 'lines', line: { color: colors[i % colors.length], width: 1.8 } }))}
       layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: 60 }, font: { color: '#586661' },

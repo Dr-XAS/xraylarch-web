@@ -5,7 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import { SmoothingDefaults, useSmoothingPreferences } from './athena-smoothing-defaults'
-import styles from './athena-difference.module.css'
+import styles from './athena-processing-layout.module.css'
 import smoothingStyles from './athena-smoothing.module.css'
 
 type Space = 'E' | 'k' | 'R'
@@ -119,7 +119,7 @@ export function AthenaSmoothing({ project, activeId, selectGroup, setBusy, saved
         <label className="ath-field"><span>Algorithm</span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Method }))}>
           <option value="boxcar">Boxcar average</option><option value="gaussian">Gaussian filter</option><option value="savitzky_golay">Savitzky–Golay</option><option value="three_point">Three-point smoothing</option>
         </select></label>
-        {fields.map(field => <label className="ath-field" key={field}><span>{names[field]}</span><input type="number" min={field === 'order' ? 9 : 0} max={field === 'order' || field === 'sgWindow' ? 39 : undefined} step={field === 'sigma' ? 'any' : 1} value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value, ...((field === 'sgWindow' || field === 'order') ? {sgEdited: true} : {}) }))} /></label>)}
+        <div className="ath-fields">{fields.map(field => <label className="ath-field" key={field}><span>{names[field]}</span><input type="number" min={field === 'order' ? 9 : 0} max={field === 'order' || field === 'sgWindow' ? 39 : undefined} step={field === 'sigma' ? 'any' : 1} value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value, ...((field === 'sgWindow' || field === 'order') ? {sgEdited: true} : {}) }))} /></label>)}</div>
         <p className="ath-hint">{draft.method === 'boxcar' || draft.method === 'gaussian' ? 'Even kernel sizes become the next odd size. Athena trims the filter boundaries; the preview reports how many points remain.' : draft.method === 'savitzky_golay' ? 'Uses Larch’s Savitzky–Golay filter and endpoint padding. Athena’s effective defaults are a 31-sample window and order 9. The preference ranges are window 0–39 and order 9–39; Larch may adjust their relationship.' : 'Repeats Athena’s three-point kernel: half the centre sample plus one quarter of each neighbour. Repetitions share the kernel-size control used by boxcar and Gaussian.'}</p>
         {draft.method === 'savitzky_golay' && <details open={preferencesOpen} onToggle={e => setPreferencesOpen(e.currentTarget.open)}>
           <summary>Session and saved SG preferences</summary>
@@ -145,6 +145,6 @@ export function AthenaSmoothing({ project, activeId, selectGroup, setBusy, saved
         {error && <div className="ath-error" role="alert">{error}</div>}
       </section>
     </div>
-    <div className={`ath-modal-actions ${smoothingStyles.actions}`}><button disabled={disabled} onClick={close}>Close smoothing tool</button><button disabled={disabled || !canCalculate || loading} onClick={() => { setPreview(null); setRetry(v => v + 1) }}>Plot data and smoothed</button><button className="ath-primary" disabled={disabled || !current || loading} onClick={() => { void save() }}>Make smoothed group</button></div>
+    <div className={`ath-modal-actions ${styles.actions}`}><button disabled={disabled} onClick={close}>Close smoothing tool</button><button disabled={disabled || !canCalculate || loading} onClick={() => { setPreview(null); setRetry(v => v + 1) }}>Plot data and smoothed</button><button className="ath-primary" disabled={disabled || !current || loading} onClick={() => { void save() }}>Make smoothed group</button></div>
   </div>
 }

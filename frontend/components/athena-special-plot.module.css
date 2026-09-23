@@ -1,5 +1,10 @@
+.viewer { min-width: 0; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; margin-bottom: 6px; }
+.toolbar p { margin: 0; color: var(--ath-muted); font-size: var(--text-caption); }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.viewer .actions > button { border-color: var(--ath-line); background: var(--ath-surface); }
 .plot { height: 430px; min-width: 0; }
-.legend { list-style: none; padding: 0; margin: 0 0 12px; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.legend { list-style: none; padding: 6px 10px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 2px 16px; max-height: 144px; overflow-y: auto; border-top: 1px solid var(--ath-line); background: var(--ath-canvas); }
 .legend li { min-width: 0; max-width: 100%; }
 .legend li button { display: flex; align-items: baseline; gap: 6px; max-width: 100%; border: 0; padding: 4px 0; background: none; color: var(--ath-muted); text-align: left; font: inherit; font-size: var(--text-label); cursor: pointer; line-height: var(--leading-control); }
 .legend button > span:first-child { width: 24px; height: 2px; flex: 0 0 24px; align-self: center; }
@@ -10,6 +15,6 @@
 .panel { min-width: 0; border: 1px solid var(--ath-line); border-radius: 6px; overflow: hidden; }
 .panel h4 { margin: 12px 16px 0; color: var(--ath-ink); font-size: var(--text-section); font-weight: 500; line-height: var(--leading-heading); }
 .panel :global(.ath-plot) { height: 340px; min-height: 340px; }
-.note, .notes { color: var(--ath-muted); font-size: var(--text-caption); line-height: var(--leading-body); }
+.note, .notes { margin-top: 6px; margin-bottom: 6px; color: var(--ath-muted); font-size: var(--text-caption); line-height: var(--leading-body); }
 .notes { padding-left: 20px; }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }

@@ -1,0 +1,16 @@
+.layout { display: grid; grid-template-columns: minmax(248px, 300px) minmax(0, 1fr); align-items: start; gap: 16px; }
+.controls { min-width: 0; border: 0; padding: 0; margin: 0; }
+.results { min-width: 0; }
+.plot { height: 390px; min-width: 0; border: 1px solid var(--ath-line); border-radius: 6px; background: var(--ath-surface); overflow: hidden; }
+.plot > p { padding: 16px; }
+.views { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.views button { min-height: 32px; }
+.views button[aria-pressed="true"] { background: var(--ath-primary-soft); border-color: var(--ath-primary); }
+.pick { border: 1px solid var(--ath-primary-line); border-radius: 6px; padding: 8px 12px; margin: 8px 0; background: var(--ath-primary-soft); font-size: var(--text-body); }
+.pickField { display: flex; align-items: end; gap: 8px; margin-bottom: 12px; }
+.controls .pickField > :global(.ath-field) { flex: 1; min-width: 0; margin: 0; }
+.pickField > button { flex: none; min-height: 32px; }
+.actions { flex-wrap: wrap; }
+.actions button { max-width: 100%; white-space: normal; }
+@media (max-width: 780px) { .layout { grid-template-columns: minmax(0, 1fr); } .plot { height: 340px; } }
+@media (max-width: 520px) { .actions { align-items: stretch; } .actions button { flex: 1 1 180px; margin: 0; } }

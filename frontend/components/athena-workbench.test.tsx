@@ -4513,7 +4513,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
     expect(selector).toHaveValue("2")
     expect(plotProps().kWeight).toBeNull()
     expect(within(selector).getAllByRole("option").map(option => option.textContent)).toEqual(["0", "1", "2", "3", "4"])
-    expect(document.querySelector(".ath-center-heading")).toContainElement(selector)
+    expect(document.querySelector(".ath-viewer-picker-heading")).toContainElement(selector)
     expect(screen.queryByRole("combobox", { name: "Wavelet k-weight" })).not.toBeInTheDocument()
     for (const value of ["3", "0", "2"]) {
       fireEvent.change(selector, { target: { value } })
@@ -5640,14 +5640,17 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps()).toMatchObject({ space: 'k', showGrid: false, showDataPoints: true })
   })
 
-  it('shows only the Show legend checkbox with the plot display controls', async () => {
+  it('keeps offset and legend together beneath the spectrum plot', async () => {
     await openSaved()
     const legend = screen.getByRole('checkbox', { name: 'Show legend' })
     const stackOffset = screen.getByRole('spinbutton', { name: 'Stack offset' })
+    const offsetToggle = screen.getByRole('checkbox', { name: 'Offset plot' })
     const controls = legend.closest('.ath-plot-display-controls')
     const plotTop = screen.getByRole('tablist', { name: 'Plot space' }).closest('.ath-plot-top') as HTMLElement
     expect(controls).toBeInTheDocument()
-    expect(Array.from(controls!.children)).toEqual([stackOffset.closest('label'), legend.closest('label')])
+    expect(Array.from(controls!.children)).toEqual([offsetToggle.closest('label'), stackOffset.closest('label'), legend.closest('label')])
+    const footer = screen.getByRole('group', { name: 'Spectrum plot display options' })
+    expect(screen.getByTestId('athena-plot').compareDocumentPosition(footer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(plotTop).not.toContainElement(legend)
     expect(screen.queryByRole('checkbox', { name: 'Overlay legend on plot' })).not.toBeInTheDocument()
     expect(within(plotTop).queryByRole('button', { name: 'Plot shortcuts…' })).not.toBeInTheDocument()
@@ -5656,6 +5659,27 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps().showLegend).toBe(false)
     fireEvent.click(legend)
     expect(plotProps().showLegend).toBe(true)
+  })
+
+  it('restores stack spacing across offset toggles without a processing request', async () => {
+    await openSaved()
+    const toggle = screen.getByRole('checkbox', { name: 'Offset plot' })
+    const spacing = screen.getByRole('spinbutton', { name: 'Stack offset' })
+    expect(toggle).not.toBeChecked()
+    expect(plotProps().offset).toBe(0)
+    fireEvent.click(toggle)
+    expect(plotProps().offset).toBe(0.1)
+    fireEvent.change(spacing, { target: { value: '-0.75' } })
+    expect(toggle).toBeChecked()
+    expect(plotProps().offset).toBe(-0.75)
+    fireEvent.click(toggle)
+    expect(plotProps().offset).toBe(0)
+    fireEvent.click(toggle)
+    expect(plotProps().offset).toBe(-0.75)
+    fireEvent.click(screen.getByRole('radio', { name: 'Current spectrum' }))
+    expect(toggle).toBeDisabled()
+    expect(spacing).toBeDisabled()
+    expect(api).toHaveBeenCalledTimes(1)
   })
 
   it.each([
@@ -5691,8 +5715,8 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(currentSpectrum()).toBeInTheDocument()
     expect(within(currentSpectrum()!).getByText('Current spectrum')).toBeVisible()
     expect(within(currentSpectrum()!).getByText('Foil scan')).toBeVisible()
-    expect(within(currentSpectrum()!).getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
-    expect(screen.getByRole('spinbutton', { name: 'Stack offset' }).closest('.ath-plot-display-controls')).not.toContainElement(screen.getByRole('checkbox', { name: 'Show legend' }))
+    expect(within(currentSpectrum()!).queryByRole('checkbox', { name: 'Show legend' })).not.toBeInTheDocument()
+    expect(screen.getByRole('spinbutton', { name: 'Stack offset' }).closest('.ath-plot-display-controls')).toContainElement(screen.getByRole('checkbox', { name: 'Show legend' }))
 
     selectGroup('Unused reference')
     expect(within(currentSpectrum()!).getByText('Unused reference')).toBeVisible()

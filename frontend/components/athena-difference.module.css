@@ -1,17 +1,15 @@
 .dialog { width: min(1120px, calc(100vw - 30px)); }
-.layout { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 24px; }
-.controls { border: 0; padding: 0; margin: 0; min-width: 0; }
-.results { min-width: 0; }
-.plot { height: 390px; min-width: 0; border: 1px solid var(--ath-line); border-radius: 5px; background: var(--ath-surface); }
-.plot > p { padding: 20px; }
-.views, .downloads { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.views button[aria-pressed="true"] { background: var(--ath-primary-soft); border-color: var(--ath-primary); }
+.layout { composes: layout from "./athena-processing-layout.module.css"; }
+.controls { composes: controls from "./athena-processing-layout.module.css"; }
+.results { composes: results from "./athena-processing-layout.module.css"; }
+.plot { composes: plot from "./athena-processing-layout.module.css"; }
+.views { composes: views from "./athena-processing-layout.module.css"; }
+.downloads { composes: views from "./athena-processing-layout.module.css"; }
 .bounds { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
 .bounds > label { margin-bottom: 0 !important; }
-.bounds > button { align-self: center; }
+.bounds > button { align-self: end; min-height: 32px; }
 .targets { max-height: 130px; overflow: auto; padding-left: 20px; font-size: var(--text-label); }
-.empty { padding: 40px 20px; border: 1px dashed var(--ath-line); border-radius: 5px; }
-.table { width: 100%; border-collapse: collapse; font-size: var(--text-label); margin: 16px 0; }
+.empty { padding: 24px 16px; border: 1px dashed var(--ath-line); border-radius: 6px; }
+.table { width: 100%; border-collapse: collapse; font-size: var(--text-label); margin: 12px 0; }
 .table th, .table td { text-align: left; padding: 8px; border-bottom: 1px solid var(--ath-line); overflow-wrap: anywhere; }
-.pick { border: 1px solid var(--ath-primary-line); padding: 10px; margin: 12px 0; background: var(--ath-primary-soft); font-size: var(--text-body); }
-@media (max-width: 780px) { .layout { grid-template-columns: minmax(0, 1fr); }.plot { height: 340px; } }
+.pick { composes: pick from "./athena-processing-layout.module.css"; }

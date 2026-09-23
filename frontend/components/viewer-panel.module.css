@@ -1,13 +1,13 @@
 .panel { min-width: 0; overflow: hidden; background: var(--ath-surface); border: 1px solid var(--ath-line); border-radius: 7px; box-shadow: 0 2px 5px hsl(240 10% 3.9% / 0.024); }
-.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; min-height: 52px; padding: 8px 12px; border-bottom: 1px solid var(--ath-line); }
+.heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; min-height: 44px; padding: 4px 12px; border-bottom: 1px solid var(--ath-line); }
 .panel[data-collapsed=true] .heading { border-bottom: 0; }
-.heading h3 { flex: 1; margin: 0; min-width: 0; font-size: var(--text-section); font-weight: 500; }
-.panel .heading .toggle { display: inline-flex; align-items: center; justify-content: flex-start; gap: 8px; width: 100%; padding: 6px 4px; border: 0; background: transparent; color: var(--ath-ink); text-align: left; font: inherit; line-height: var(--leading-heading); }
+.heading h3 { flex: 1 1 auto; margin: 0; min-width: 0; font-size: var(--text-section); font-weight: 500; }
+.panel .heading .toggle { display: inline-flex; align-items: center; justify-content: flex-start; gap: 6px; width: 100%; min-height: 32px; padding: 4px 0; border: 0; background: transparent; color: var(--ath-ink); text-align: left; font: inherit; line-height: var(--leading-heading); }
 .panel .heading .toggle:hover { color: var(--ath-primary); background: transparent; }
 .panel .heading .toggle:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 2px; border-radius: 4px; }
 .triangle { flex-shrink: 0; color: var(--ath-muted); transition: transform 140ms ease; }
 .toggle[aria-expanded=true] .triangle { transform: rotate(90deg); }
-.actions { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; max-width: 100%; }
 .content { min-width: 0; }
 .content[hidden], .actions[hidden] { display: none; }
 .content > :global(.ath-plot-card) { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
