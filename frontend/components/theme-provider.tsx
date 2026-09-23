@@ -1,11 +1,12 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { isTheme, themeStorageKey, type Theme } from "@/lib/theme"
+import { resolveTheme, systemDarkQuery, themePreference, themeStorageKey, type Theme, type ThemePreference } from "@/lib/theme"
 
-const ThemeContext = createContext<{ theme: Theme; toggleTheme: () => void }>({
+const ThemeContext = createContext<{ theme: Theme; preference: ThemePreference; setPreference: (next: ThemePreference) => void }>({
   theme: "light",
-  toggleTheme: () => {},
+  preference: "system",
+  setPreference: () => {},
 })
 
 function applyTheme(theme: Theme) {
@@ -14,36 +15,54 @@ function applyTheme(theme: Theme) {
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [preference, setPreferenceState] = useState<ThemePreference>("system")
   const [theme, setTheme] = useState<Theme>("light")
 
-  useEffect(() => {
-    let initial: Theme = document.documentElement.dataset.theme === "dark" ? "dark" : "light"
-    try {
-      const saved = localStorage.getItem(themeStorageKey)
-      initial = isTheme(saved) ? saved : "light"
-    } catch { /* Keep the initial theme when browser storage is unavailable. */ }
-    applyTheme(initial)
-    setTheme(initial)
+  function show(next: ThemePreference) {
+    const resolved = resolveTheme(next)
+    applyTheme(resolved)
+    setPreferenceState(next)
+    setTheme(resolved)
+  }
 
+  useEffect(() => {
+    let initial: ThemePreference = document.documentElement.dataset.theme === "dark" ? "dark" : "system"
+    try {
+      initial = themePreference(localStorage.getItem(themeStorageKey))
+    } catch { /* Keep the page theme when browser storage is unavailable. */ }
+    show(initial)
+  }, [])
+
+  // Follow the operating system while the reader has chosen "system".
+  useEffect(() => {
+    if (preference !== "system") return
+    let media: MediaQueryList
+    try { media = window.matchMedia(systemDarkQuery) } catch { return }
+    const follow = () => show("system")
+    media.addEventListener("change", follow)
+    return () => media.removeEventListener("change", follow)
+  }, [preference])
+
+  useEffect(() => {
     function syncTheme(event: StorageEvent) {
       if (event.key !== themeStorageKey && event.key !== null) return
       try { if (event.storageArea !== localStorage) return } catch { return }
-      const next = isTheme(event.newValue) ? event.newValue : "light"
-      applyTheme(next)
-      setTheme(next)
+      show(themePreference(event.newValue))
     }
     window.addEventListener("storage", syncTheme)
     return () => window.removeEventListener("storage", syncTheme)
   }, [])
 
-  function toggleTheme() {
-    const next = theme === "dark" ? "light" : "dark"
-    applyTheme(next)
-    setTheme(next)
-    try { localStorage.setItem(themeStorageKey, next) } catch { /* The toggle still works for this visit. */ }
+  function setPreference(next: ThemePreference) {
+    show(next)
+    try {
+      // No saved choice already means "system", so that choice clears it.
+      if (next === "system") localStorage.removeItem(themeStorageKey)
+      else localStorage.setItem(themeStorageKey, next)
+    } catch { /* The choice still applies for this visit. */ }
   }
 
-  return <ThemeContext.Provider value={{ theme, toggleTheme }}>{children}</ThemeContext.Provider>
+  return <ThemeContext.Provider value={{ theme, preference, setPreference }}>{children}</ThemeContext.Provider>
 }
 
 export function useTheme() {

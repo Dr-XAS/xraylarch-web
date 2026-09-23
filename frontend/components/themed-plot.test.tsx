@@ -14,8 +14,8 @@ beforeEach(() => {
 afterEach(cleanup)
 
 function Toggle() {
-  const { toggleTheme } = useTheme()
-  return <button onClick={toggleTheme}>Toggle theme</button>
+  const { theme, setPreference } = useTheme()
+  return <button onClick={() => setPreference(theme === "dark" ? "light" : "dark")}>Toggle theme</button>
 }
 
 it("updates an already mounted plot when the application theme changes", () => {

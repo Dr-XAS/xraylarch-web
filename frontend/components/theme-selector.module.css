@@ -1,0 +1,34 @@
+.selector {
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--ath-line);
+  border-radius: 999px;
+  background: var(--ath-surface-muted);
+}
+
+.selector .choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ath-muted);
+}
+
+.selector .choice:hover:not([aria-checked="true"]) {
+  color: var(--ath-ink);
+  background: transparent;
+}
+
+.selector .choice[aria-checked="true"],
+.selector .choice[aria-checked="true"]:hover {
+  background: var(--ath-surface);
+  color: var(--ath-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 14%);
+}
