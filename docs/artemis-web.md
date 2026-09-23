@@ -263,7 +263,11 @@ input yet. Reported error bars do not include systematic model errors.
 
 ## Results and state
 
-The plot panel compares data, model, and residual in k or R space. R plots offer
+The Results area keeps its EXAFS fit viewer available alongside Spectrum,
+Wavelet, CIF, and a separate FEFF path viewer, regardless of which processing
+tab is open. The FEFF viewer shows the current model's path metadata and atom
+geometry; add or edit paths in the EXAFS fitting tab. The fit plot compares
+data, model, and residual in k or R space. R plots offer
 magnitude, real, and imaginary components. The magnitude residual is
 `abs(FT(data - model))`, not the difference between the data and model magnitudes.
 Plots use the first selected fit k weight; the optimizer uses all selected

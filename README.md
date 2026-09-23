@@ -97,7 +97,16 @@ The spectrum's **Color legend** selector offers classic categorical colors and
 viridis, plasma, inferno, cividis, and coolwarm gradients, with a **Reverse**
 option. These spectrum settings are independent of the wavelet's magma scale.
 
-The **Wavelet plotter** beneath the spectrum follows the highlighted group’s
+The **Results** chooser above the viewers shows Spectrum, Wavelet, CIF, FEFF
+path, and EXAFS fit in that default order when a project opens. Each chip can
+show or hide its viewer; **All viewers** toggles them together. **Process
+order (this session)** keeps Spectrum first, then places derived viewers with
+recorded events from oldest to newest (saved CIF
+attachment time and the current spectrum's wavelet, FEFF path, or fit activity
+in the workspace). Viewers without a recorded event retain their default order.
+These display choices do not change project data or recalculate results.
+
+The **Wavelet plotter** follows the highlighted group’s
 processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
 both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
 6 Å without phase correction. The Dr.XAS-style 2D viewer adds draggable k-range

@@ -43,6 +43,7 @@ interface Props {
   /** May stay stable only when a confirmed project update leaves scientific data unchanged. */
   dataVersion?: number
   kWeight: number | null
+  onComplete?: (projectId: string, groupId: string) => void
 }
 
 function validGrid(data: WaveletResult) {
@@ -69,7 +70,7 @@ function exportWavelet(data: WaveletResult) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight }: Props) {
+export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight, onComplete }: Props) {
   const athenaApi = useAthenaApi()
   const [mode, setMode] = useState<"2d" | "3d">("2d")
   const [colors, setColors] = useState<WaveletColorSettings>({ colormap: DEFAULT_COLORMAP, reversed: false })
@@ -85,8 +86,8 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
     : !arrays?.k?.length || arrays.k.length !== arrays.chi?.length ? "Wavelets require processed EXAFS χ(k). Select an EXAFS spectrum to begin."
     : ""
   const key = JSON.stringify([projectId, dataVersion, group?.id, selectedWeight, retry, reason])
-  const latest = useRef({ key, version })
-  latest.current = { key, version }
+  const latest = useRef({ key, version, onComplete })
+  latest.current = { key, version, onComplete }
   const current = response?.key === key && !response.abort.signal.aborted && !reason ? response : null
   const groupId = group?.id
 
@@ -116,6 +117,7 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
           data.kweight !== selectedWeight || !validGrid(data)) throw new Error("The wavelet data does not match this spectrum. Try again.")
         completed = true
         setResponse({ key, abort, data })
+        latest.current.onComplete?.(projectId, groupId)
       } catch (error) {
         if (!abort.signal.aborted && latest.current.key === key && latest.current.version === version) setResponse({ key, abort, error: error instanceof Error ? error.message : "Could not calculate the wavelet transform." })
       }

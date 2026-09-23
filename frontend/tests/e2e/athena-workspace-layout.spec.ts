@@ -69,4 +69,41 @@ test("stacks panes in reading order without splitters or overflow on mobile", as
     "athena-spectrum-viewer",
   ])
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  await page.getByRole("region", { name: "FEFF path viewer" }).getByRole("button", { name: "Open EXAFS fitting" }).click()
+  const fittingTab = page.getByRole("tab", { name: "EXAFS fitting" })
+  await expect(fittingTab).toHaveAttribute("aria-selected", "true")
+  await expect.poll(() => fittingTab.evaluate(element => {
+    const bounds = element.getBoundingClientRect()
+    return document.activeElement === element && bounds.top >= 0 && bounds.bottom <= window.innerHeight
+  })).toBe(true)
+})
+
+test("selects and orders result viewers after loading copper examples", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  const controls = page.getByRole("group", { name: "Choose viewers" })
+  const stack = page.locator(".ath-viewer-stack")
+  const defaultOrder = ["spectrum", "wavelet", "cif", "feff", "fit"]
+  const viewerOrder = () => stack.locator(":scope > [data-viewer-id]").evaluateAll(elements => elements.map(element => element.getAttribute("data-viewer-id")))
+
+  await expect(controls.getByRole("button", { name: "All viewers" })).toHaveAttribute("aria-pressed", "true")
+  expect(await viewerOrder()).toEqual(defaultOrder)
+  await controls.getByRole("button", { name: "Wavelet plotter" }).click()
+  await expect(stack.locator('[data-viewer-id="wavelet"]')).toBeHidden()
+  await controls.getByRole("button", { name: "All viewers" }).click()
+  await expect(stack.locator('[data-viewer-id="wavelet"]')).toBeVisible()
+  await page.getByRole("combobox", { name: "Sort viewers" }).selectOption("process")
+  await expect(page.getByText(/Spectrum stays first; saved CIF attachment/)).toBeVisible()
+
+  await page.getByRole("button", { name: "Load copper examples" }).click()
+  await expect(page.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("default")
+  expect(await viewerOrder()).toEqual(defaultOrder)
+  await expect(stack.locator('[data-viewer-id="spectrum"]')).toBeVisible()
+  await expect(stack.locator('[data-viewer-id="fit"]')).toBeVisible()
+  await page.getByRole("tab", { name: "EXAFS fitting" }).click()
+  await page.getByRole("button", { name: "Cu first-shell example" }).click()
+  const feff = page.getByRole("region", { name: "FEFF path viewer" })
+  await expect(feff.getByRole("combobox", { name: "Viewed FEFF path" })).toBeVisible()
+  await expect(feff.getByRole("table")).toContainText("Cu")
+  await page.locator("#athena-spectrum-viewer").screenshot({ path: info.outputPath("result-viewers.png") })
 })

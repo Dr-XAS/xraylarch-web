@@ -20,7 +20,7 @@ function preview(name = "first", ids = ["a", "b", "c"]) {
 function setup(extra: Partial<ComponentProps<typeof AthenaProjectImport>> = {}) {
   let current: AthenaProject = {id: "workspace", version: 0, name: "Existing project", groups: [],
     journal: "Keep", updated: "2026-09-07", history: [], undo: [], redo: []}
-  const imported = vi.fn((next: AthenaProject) => { current = next })
+  const imported = vi.fn((next: AthenaProject, _wholeProject: boolean) => { current = next })
   const complete = vi.fn(), busy = vi.fn()
   const result = (version: number) => ({...current, version})
   render(<StrictMode><AthenaProjectImport getProject={() => current} onImported={imported} onComplete={complete} onBusyChange={busy} {...extra} /></StrictMode>)
@@ -53,6 +53,7 @@ describe("Athena project preview and selection", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import all groups" }))
     await waitFor(() => expect(state.imported).toHaveBeenCalledOnce())
     expect(imports()).toHaveLength(1)
+    expect(state.imported.mock.calls[0][1]).toBe(true)
   })
 
   it("consumes a batch forwarded from Import data exactly once in StrictMode", async () => {
@@ -111,6 +112,7 @@ describe("Athena project preview and selection", () => {
     fireEvent.click(screen.getByRole("button", {name: "Import 2 selected groups"}))
     await waitFor(() => expect(state.complete).toHaveBeenCalledOnce())
     expect(imports()[0][1]).toEqual({version: 0, upload_id: "upload-first", group_ids: ["a", "c"]})
+    expect(state.imported.mock.calls[0][1]).toBe(false)
   })
 
   it("implements all, none and invert with explicit empty-selection-imports-all wording", async () => {
