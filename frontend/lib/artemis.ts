@@ -1,4 +1,5 @@
 import { decodeApiError } from "./backend-client"
+import type { FeffViewerCluster } from "./feff-cluster"
 
 export type ArtemisParameterKind = "guess" | "set" | "def"
 export interface ArtemisParameter {
@@ -27,6 +28,8 @@ export interface ArtemisPathMetadata {
   absorber: string
   edge: string
   geometry: { atom: string; x: number; y: number; z: number; ipot: number }[]
+  /** Actual FEFF input atoms, retained only for the browser's structure preview. */
+  viewerCluster?: FeffViewerCluster
   kmin: number
   kmax: number
 }

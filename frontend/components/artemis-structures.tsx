@@ -5,6 +5,7 @@ import { Search, X } from "lucide-react"
 import { CifViewer } from "./cif-viewer"
 import type { AthenaProject } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
+import { parseFeffCluster } from "@/lib/feff-cluster"
 import {
   downloadArtemisText, sameFeffRequest, type ArtemisFeffJob, type ArtemisFeffRequest, type ArtemisGeneratedPath,
   type ArtemisStructure, type ArtemisStructureSearchResult, type ArtemisStructureAttachment, type ArtemisProjectStructures,
@@ -294,10 +295,11 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   function addPaths() {
     if (!job || job.status !== "complete" || disabled || !selected.length) return
     if (selected.length > availableSlots) { setError(`This model has room for ${availableSlots} more path${availableSlots === 1 ? "" : "s"}. Select fewer paths or remove existing ones.`); return }
+    const viewerCluster = parseFeffCluster(job.provenance?.feff_input)
     const paths = job.paths.filter(path => selected.includes(path.id) && !addedIds.includes(path.id)).map(path => {
       const suffix = ` · ${amcsdLabel(job.provenance.structure.id)} · ${job.request.absorber} site ${job.request.site_index} · ${path.filename}`
       const mineral = job.provenance.structure.mineral || job.provenance.structure.formula || "Structure"
-      return { filename: path.filename, content: path.content, metadata: path.metadata, label: mineral.slice(0, Math.max(0, 120 - suffix.length)) + suffix }
+      return { filename: path.filename, content: path.content, metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata, label: mineral.slice(0, Math.max(0, 120 - suffix.length)) + suffix }
     })
     const error = callback.current(paths)
     if (error) { setError(error); return }

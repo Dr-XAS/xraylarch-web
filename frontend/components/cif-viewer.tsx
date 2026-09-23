@@ -5,10 +5,11 @@ import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS } from "@/lib/cif-viewer"
 import { createCifRenderer } from "@/lib/cif-renderer"
+import { cifAtomStyle, cifElementColor } from "@/lib/cif-viewer-style"
+import { LocalStructureControls } from "./local-structure-controls"
 import { ViewerPanel } from "./viewer-panel"
 import styles from "./cif-viewer.module.css"
 
-const colors = ["#225ea8", "#e5bf46", "#41b6c4", "#a1dab4", "#875ba6", "#e58255"]
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z })
 
 export function CifViewer({ structure, collapsible = false, structureControls }: {
@@ -72,10 +73,7 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
       instance.setStyle({}, {})
       for (const [index, element] of elements.entries()) {
         if (hidden.includes(element)) continue
-        instance.addStyle({ elem: element }, {
-          sphere: { radius: 0.36, color: colors[index % colors.length] },
-          ...(bonds ? { stick: { radius: 0.08, color: "#8a8f98" } } : {}),
-        })
+        instance.addStyle({ elem: element }, cifAtomStyle(index, bonds))
       }
       if (cell || mode === "cell") {
         for (const [start, end] of geometry.cellEdges) instance.addLine({ start: point(start), end: point(end), color: "#92949e" })
@@ -113,13 +111,11 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
         <label>View<select aria-label="CIF view mode" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="cluster">Local cluster</option><option value="cell">Unit cell</option></select></label>
         <label>Center site<select aria-label="CIF center site" value={center} onChange={event => setCenter(Number(event.target.value))}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
       </div>
-      <label className={styles.radius}>Display radius <output>{radius.toFixed(1)} Å</output><input aria-label="CIF display radius" type="range" min={CIF_VIEWER_MIN_RADIUS} max={CIF_VIEWER_MAX_RADIUS} step="0.1" value={radius} disabled={mode === "cell"} onChange={event => setRadius(Number(event.target.value))} /></label>
-      <div className={styles.options}>
-        <label><input type="checkbox" checked={bonds} onChange={event => setBonds(event.target.checked)} />Bonds</label>
+      <LocalStructureControls radius={radius} min={CIF_VIEWER_MIN_RADIUS} max={CIF_VIEWER_MAX_RADIUS} onRadiusChange={setRadius}
+        radiusAriaLabel="CIF display radius" radiusDisabled={mode === "cell"} bonds={bonds} onBondsChange={setBonds} atomCount={visibleCount}>
         <label><input type="checkbox" checked={cell || mode === "cell"} disabled={mode === "cell"} onChange={event => setCell(event.target.checked)} />Unit cell outline</label>
-        <span>{visibleCount} atom{visibleCount === 1 ? "" : "s"} shown</span>
-      </div>
-      <div className={styles.elements} aria-label="Visible CIF elements">{elements.map((element, index) => <button type="button" key={element} aria-label={`Show ${element} atoms`} aria-pressed={!hidden.includes(element)} onClick={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}><span style={{ backgroundColor: colors[index % colors.length] }} />{element}</button>)}</div>
+      </LocalStructureControls>
+      <div className={styles.elements} aria-label="Visible CIF elements">{elements.map((element, index) => <button type="button" key={element} aria-label={`Show ${element} atoms`} aria-pressed={!hidden.includes(element)} onClick={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}><span style={{ backgroundColor: cifElementColor(index) }} />{element}</button>)}</div>
       <p className={styles.help}>Bonds are inferred from distances. Display settings do not change FEFF parameters.</p>
     </>}
     {geometry.warnings.map(warning => <p className={styles.warning} key={warning}>{warning}</p>)}

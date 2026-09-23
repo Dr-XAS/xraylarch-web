@@ -274,6 +274,24 @@ describe("ArtemisStructures", () => {
     expect(api.mock.calls.filter(([url]) => url === "/feff/jobs")).toHaveLength(1)
   })
 
+  it("retains the completed calculation's real FEFF atom cluster when adding paths", async () => {
+    const { onAddPaths } = setup()
+    await findAndSelect()
+    const completed = job()
+    completed.provenance.feff_input = "TITLE Copper\nPOTENTIALS\n0 29 Cu\n1 29 Cu\nATOMS\n0 0 0 0 Cu\n2.55 0 0 1 Cu\n-2.55 0 0 1 Cu\nEND"
+    api.mockResolvedValueOnce(completed)
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    await click("Add selected paths (1)")
+    expect(onAddPaths.mock.calls[0][0][0].metadata.viewerCluster).toEqual({ source: "feff.inp", atoms: [
+      { atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 },
+      { atom: "Cu", x: 2.55, y: 0, z: 0, ipot: 1 },
+      { atom: "Cu", x: -2.55, y: 0, z: 0, ipot: 1 },
+    ] })
+    expect(onAddPaths.mock.calls[0][0][0].metadata.degen).toBe(12)
+    expect(completed.paths[0].metadata).not.toHaveProperty("viewerCluster")
+  })
+
   it("recovers from polling failure without restarting FEFF, then ignores a late status after context changes", async () => {
     const { rerender, onAddPaths } = setup()
     await findAndSelect()
