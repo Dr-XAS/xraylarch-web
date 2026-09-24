@@ -14,7 +14,7 @@ export function ProjectCifViewer({ attachments = [], selectedId, onSelect }: {
   // Attachments are immutable, content-addressed snapshots. Ordinary project
   // refreshes must not rebuild the same geometry and reset the user's camera.
   const structure = useMemo(() => selected?.structure, [selected?.id, selected?.sha256])
-  if (!selected || !structure) return <ViewerPanel title="CIF structure viewer" className="ath-project-cif-viewer">
+  if (!selected || !structure) return <ViewerPanel title="CIF structure viewer" viewerId="cif" className="ath-project-cif-viewer">
     <p className="ath-cif-empty">Attach a CIF in the EXAFS fitting tab to view its structure here.</p>
   </ViewerPanel>
 

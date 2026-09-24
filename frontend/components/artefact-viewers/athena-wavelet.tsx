@@ -125,7 +125,7 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
     return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== key) abort.abort() }
   }, [key, projectId, version, groupId, selectedWeight, reason])
 
-  return <ViewerPanel title="Wavelet plotter" className={styles.panel} actions={
+  return <ViewerPanel title="Wavelet plotter" viewerId="wavelet" className={styles.panel} actions={
     <div className={styles.modes} role="group" aria-label="Wavelet view">
       <button type="button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}><Grid2X2 size={14} />2D heatmap</button>
       <button type="button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}><Box size={14} />3D surface</button>

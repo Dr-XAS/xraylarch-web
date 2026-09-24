@@ -128,7 +128,7 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
     {geometry.warnings.map(warning => <p className={styles.warning} key={warning}>{warning}</p>)}
   </>
   return collapsible
-    ? <ViewerPanel title="CIF structure viewer" actions={resetButton} className={styles.docked}>{content}</ViewerPanel>
+    ? <ViewerPanel title="CIF structure viewer" viewerId="cif" actions={resetButton} className={styles.docked}>{content}</ViewerPanel>
     : <section className={styles.viewer} aria-label="CIF structure viewer">
       <div className={styles.heading}><h4>CIF structure viewer</h4>{resetButton}</div>
       {content}

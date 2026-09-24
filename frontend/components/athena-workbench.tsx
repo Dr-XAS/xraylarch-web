@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { Activity, ArrowUpDown, Atom, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, LockKeyhole, Pencil, Plus, Redo2, Route, Search, Settings2, Trash2, Undo2, Upload, WavesHorizontal, X } from "lucide-react"
+import { Activity, ArrowUpDown, BookOpen, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
 import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -20,6 +20,7 @@ import type { Space } from "./artefact-viewers/athena-plot"
 import { AthenaSpectrumViewer } from "./artefact-viewers/athena-spectrum-viewer"
 import { spectrumTraceCoordinates } from "./artefact-viewers/athena-plot-range"
 import { ResizableAthenaWorkspace } from "./athena-workspace"
+import { viewerIcons } from "./athena-viewer-icons"
 import { AthenaWavelet } from "./artefact-viewers/athena-wavelet"
 import { AthenaParameterTabs, type ParameterTab } from "./athena-parameter-tabs"
 import { ArtemisFittingPanel, type ArtemisFitResult } from "./artemis-fitting"
@@ -64,15 +65,6 @@ import { AthenaDispersive } from './athena-dispersive'
 import { RebinDefaultsControls, useRebinDefaults } from './athena-rebin-defaults'
 import "@/app/athena-controls.css"
 import "@/app/athena-context-controls.css"
-
-const viewerIcons = {
-  single: Activity,
-  multiple: Layers,
-  wavelet: WavesHorizontal,
-  cif: Atom,
-  feff: Route,
-  fit: ChartNoAxesCombined,
-} satisfies Record<ViewerId, typeof Activity>
 
 // hbar² / (2 m_e), in eV Å²; same constant as larch.xafs.xafsutils.KTOE.
 const ktoe = 3.8099821109685847
