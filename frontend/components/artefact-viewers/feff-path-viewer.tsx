@@ -175,7 +175,7 @@ export function FeffPathViewer({ paths, groupLabel, onOpenModel, attachments = N
   onOpenModel: () => void
   attachments?: ArtemisStructureAttachment[]
 }) {
-  return <ViewerPanel title="FEFF path viewer" className={styles.panel}>
+  return <ViewerPanel title="FEFF path viewer" viewerId="feff" className={styles.panel}>
     <div className={styles.content}>
       <div className={styles.heading}><span>Current spectrum <strong>{groupLabel ?? "None selected"}</strong></span><button type="button" onClick={onOpenModel}>{paths.length ? "Edit paths" : "Open EXAFS fitting"}</button></div>
       {!paths.length ? <p className={styles.empty}>Add or generate FEFF paths in the EXAFS fitting tab to inspect their geometry here.</p>

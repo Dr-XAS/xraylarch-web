@@ -50,7 +50,7 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
   }) : []
-  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" className={styles.viewer} actions={<div className={styles.resultActions}>
+  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" viewerId="fit" className={styles.viewer} actions={<div className={styles.resultActions}>
     <div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>
     {visible && space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}
   </div>}>
