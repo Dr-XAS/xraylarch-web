@@ -22,11 +22,17 @@ from .workspace import WorkspaceStore
 from .sessions import request_settings
 
 _UPLOAD_CHUNK_BYTES = 1024 * 1024
-async def _read_bounded_upload(file: UploadFile, max_bytes: int) -> bytes:
+def _read_bounded_upload(file: UploadFile, max_bytes: int) -> bytes:
+    """Read a parsed multipart file from a sync route.
+
+    Upload routes are plain ``def`` so FastAPI runs them, and the parsing and
+    Larch processing that follow, in its threadpool. An ``async def`` route
+    would run that work on the event loop and stall every other request.
+    """
     chunks: list[bytes] = []
     size = 0
     try:
-        while chunk := await file.read(_UPLOAD_CHUNK_BYTES):
+        while chunk := file.file.read(_UPLOAD_CHUNK_BYTES):
             size += len(chunk)
             if size > max_bytes:
                 raise WebInputError(
@@ -37,7 +43,7 @@ async def _read_bounded_upload(file: UploadFile, max_bytes: int) -> bytes:
                 )
             chunks.append(chunk)
     finally:
-        await file.close()
+        file.file.close()
     return b"".join(chunks)
 
 
@@ -78,8 +84,8 @@ def build_api_router(store: WorkspaceStore, settings: Settings) -> APIRouter:
         "/workspaces/{workspace_id}/uploads/inspect",
         response_model=InspectionResponse,
     )
-    async def inspect_upload(workspace_id: str, file: UploadFile = File(...), store: WorkspaceStore = Depends(current_store)) -> InspectionResponse:
-        source_bytes = await _read_bounded_upload(file, settings.max_upload_bytes)
+    def inspect_upload(workspace_id: str, file: UploadFile = File(...), store: WorkspaceStore = Depends(current_store)) -> InspectionResponse:
+        source_bytes = _read_bounded_upload(file, settings.max_upload_bytes)
         parsed = parse_upload(
             source_bytes,
             file.filename or "upload.dat",
