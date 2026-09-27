@@ -4810,6 +4810,48 @@ describe("AthenaWorkbench group selection and drafts", () => {
     })
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
+
+  it("loads the newer project after another tab saves, keeps the draft, and retries against it", async () => {
+    const project = await openSaved()
+    const changedElsewhere = nextProject(project, { foil: { label: "Foil scan (edited elsewhere)" } })
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockResolvedValueOnce(changedElsewhere)
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(api).toHaveBeenNthCalledWith(3, `/projects/${project.id}`)
+    expect(screen.getByRole("alert")).toHaveTextContent("latest version is now loaded")
+    expect(screen.getAllByText("Foil scan (edited elsewhere)").length).toBeGreaterThan(0)
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(api).toHaveBeenCalledTimes(3)
+
+    const saved = nextProject(changedElsewhere, { foil: { parameters: { ...parameters, rbkg: 2.4 } } })
+    api.mockResolvedValueOnce(saved)
+    fireEvent.click(screen.getByRole("button", { name: "Retry processing" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: changedElsewhere.version, action: "parameters", group_ids: ["foil"], options: { rbkg: 2.4 },
+    })
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("keeps the backend conflict message when the newer project cannot be loaded", async () => {
+    await openSaved()
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockRejectedValueOnce(new TypeError("offline"))
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(screen.getByRole("alert")).toHaveTextContent("This project changed in another tab. Reload it before editing.")
+  })
 })
 
 describe("AthenaWorkbench single-parameter patches", () => {
