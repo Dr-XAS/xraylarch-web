@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import io
 import json
+import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
@@ -63,6 +64,7 @@ def fail(message: str, code: str = "athena_invalid"):
 
 
 _MAX_SAFE_ADDED_ORDER = (1 << 53) - 1
+_SNAPSHOT_FILE = re.compile(r"(?:undo|redo)-\d+\.json")
 
 
 def _group_added_orders(value, group_ids, *, prune_missing=False):
@@ -1033,7 +1035,21 @@ class AthenaStore:
         p["updated"] = now()
         p["history"] = (old["history"] + [{"time": now(), "message": message}])[-200:]
         self.storage.write_json(p["id"], "project.json", p)
+        self._prune_snapshots(p)
         return p
+
+    def _prune_snapshots(self, project: dict) -> None:
+        """Delete undo/redo snapshots the committed project no longer lists.
+
+        Each snapshot is a full project copy, and only the stored project's own
+        stacks refer to one. Callers hold the workspace lock and have already
+        replaced project.json, so an interruption can leave an orphan (removed
+        by the next save) but never a dangling reference.
+        """
+        keep = set(project["undo"]) | set(project["redo"])
+        for path in self.storage.workspace_dir(project["id"]).iterdir():
+            if _SNAPSHOT_FILE.fullmatch(path.name) and path.name not in keep:
+                path.unlink(missing_ok=True)
 
     @staticmethod
     def _stamp_group_revisions(p: dict, old: dict) -> None:
@@ -2743,6 +2759,7 @@ class AthenaStore:
                 restore["version"] = old["version"] + 1
                 restore["updated"] = now()
                 self.storage.write_json(ident, "project.json", restore)
+                self._prune_snapshots(restore)
                 return restore
             if action == "project":
                 p["name"] = str(options.get("name", p["name"]))[:200] or "Untitled project"
@@ -3928,7 +3945,10 @@ class AthenaStore:
                 try:
                     self.storage.write_json(ident, "analyses.json", {"analyses": p["analyses"]})
                 except OSError:
-                    self.storage.write_json(ident, "project.json", old)
+                    # save() already removed the snapshots only `old` listed.
+                    kept = set(saved["undo"])
+                    self.storage.write_json(ident, "project.json", old | {
+                        "undo": [name for name in old["undo"] if name in kept], "redo": []})
                     raise
             return saved
 
