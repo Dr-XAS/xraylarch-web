@@ -16,29 +16,31 @@ class _UploadBodyTooLarge(MultiPartException):
 
 
 class UploadBodyLimitMiddleware:
-    """Cap upload bodies before Starlette parses or spools multipart data."""
+    """Cap multipart upload bodies before Starlette parses them.
+
+    Starlette spools a whole multipart body to a temporary file before a route
+    runs, so a route's own byte check cannot stop an oversized upload from
+    filling the disk first. Every route that accepts a file is listed here.
+    """
 
     def __init__(self, app: ASGIApp, *, max_body_bytes: int) -> None:
         self.app = app
         self.max_body_bytes = max_body_bytes
 
     @staticmethod
-    def _is_inspect_upload(scope: Scope) -> bool:
-        parts = scope["path"].split("/")
+    def _is_capped_upload(scope: Scope) -> bool:
         if scope["method"] != "POST":
             return False
-        return (
-            (len(parts) == 6
-             and parts[1:4] == ["api", "athena", "projects"]
-             and parts[5] in {"inspect", "restore", "preview-project"})
-            or scope["path"] == "/api/athena/preferences/plugins/import"
-            or (
-            len(parts) == 6
-            and parts[1] == "api"
-            and parts[2] == "workspaces"
-            and parts[4] == "uploads"
-            and parts[5] == "inspect"
-            )
+        parts = scope["path"].split("/")[1:]
+        if len(parts) == 5 and parts[:2] == ["api", "workspaces"]:
+            return parts[3:] == ["uploads", "inspect"]
+        if len(parts) == 5 and parts[:3] == ["api", "athena", "projects"]:
+            return parts[4] in {"inspect", "restore", "preview-project"}
+        if len(parts) == 6 and parts[:3] == ["api", "athena", "projects"]:
+            return parts[4:] == ["dispersive", "inspect"]
+        return parts in (
+            ["api", "athena", "preferences", "plugins", "import"],
+            ["api", "athena", "preferences", "dispersive", "import"],
         )
 
     @staticmethod
@@ -79,7 +81,7 @@ class UploadBodyLimitMiddleware:
         await send({"type": "http.response.body", "body": body})
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not self._is_inspect_upload(scope):
+        if scope["type"] != "http" or not self._is_capped_upload(scope):
             await self.app(scope, receive, send)
             return
 
