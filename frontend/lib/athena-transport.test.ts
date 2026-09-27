@@ -82,11 +82,56 @@ describe("Athena transport", () => {
     expect(retire).toHaveBeenCalledOnce()
   })
 
-  it.each([403, 404, 500])("does not retire integrated authority for an ambiguous project failure (%s)", async status => {
+  it.each([403, 500])("does not retire integrated authority for a non-authority failure (%s)", async status => {
     const retire = vi.fn()
     const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status }))
     await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1")).rejects.toMatchObject({ status })
     expect(retire).not.toHaveBeenCalled()
+    expect(fetcher).toHaveBeenCalledOnce()
+  })
+
+  it("keeps integrated authority when a 404 was only a refused operation", async () => {
+    const retire = vi.fn()
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 404 }))
+      .mockResolvedValueOnce(new Response("{}", { status: 200 }))
+    await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1/plots/special", { method: "POST" })).rejects.toMatchObject({ status: 404 })
+    expect(retire).not.toHaveBeenCalled()
+    const [probeUrl, probeInit] = fetcher.mock.calls[1]
+    expect(probeUrl).toMatch(/\/api\/backend\/api\/athena\/projects\/p1$/)
+    expect((probeInit.headers as Headers).get("X-XrayLarch-Project-Capability")).toBe("browser-capability")
+    expect(probeInit.method).toBeUndefined()
+  })
+
+  it("retires integrated authority when the project itself can no longer be read", async () => {
+    const retire = vi.fn()
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status: 404 }))
+    await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1/command", { method: "POST" })).rejects.toMatchObject({ status: 404 })
+    expect(retire).toHaveBeenCalledOnce()
+  })
+
+  it("shares one probe across simultaneous 404s", async () => {
+    const retire = vi.fn()
+    const fetcher = vi.fn().mockImplementation(() => Promise.resolve(new Response("{}", { status: 404 })))
+    const transport = createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire })
+    await Promise.allSettled([transport.api("/api/athena/projects/p1/plots/special"), transport.api("/api/athena/projects/p1/plots/shortcut")])
+    expect(fetcher).toHaveBeenCalledTimes(3)
+    expect(retire).toHaveBeenCalledTimes(2)
+  })
+
+  it("does not retire integrated authority when the probe cannot reach the backend", async () => {
+    const retire = vi.fn()
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response("{}", { status: 404 }))
+      .mockRejectedValueOnce(new TypeError("network"))
+    await expect(createAthenaTransport(integrated(), fetcher, { onAuthorizationFailure: retire }).api("/api/athena/projects/p1/command")).rejects.toMatchObject({ status: 404 })
+    expect(retire).not.toHaveBeenCalled()
+  })
+
+  it("never probes for legacy projects", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}", { status: 404 }))
+    await expect(createAthenaTransport({ mode: "legacy" }, fetcher).api("/api/athena/projects/p1")).rejects.toMatchObject({ status: 404 })
+    expect(fetcher).toHaveBeenCalledOnce()
   })
 
   it("does not add a capability to legacy requests", async () => {

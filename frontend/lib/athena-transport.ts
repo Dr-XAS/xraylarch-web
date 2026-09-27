@@ -74,9 +74,33 @@ function attachmentFilename(value: string | null, fallback: string) {
 
 export function createAthenaTransport(session: AthenaSession, fetcher: Fetcher = fetch, options: AthenaTransportOptions = {}): AthenaTransport {
   const href = (path: string) => backendUrl(safePath(session, path))
+  let probing: Promise<boolean> | null = null
+  // The backend answers 404 both for a revoked or expired capability and for
+  // an operation this session may not use. A live session can always read its
+  // own project, so one re-read tells the two apart without guessing.
+  const probeProject = async () => {
+    if (session.mode !== "integration") return false
+    try {
+      const probe = await fetcher(href(`/api/athena/projects/${encodeURIComponent(session.projectId)}`), request(session))
+      return probe.status === 401 || probe.status === 404
+    } catch {
+      return false
+    }
+  }
+  const authorityRevoked = (status: number) => {
+    if (session.mode !== "integration" || (status !== 401 && status !== 404)) return Promise.resolve(false)
+    if (status === 401) return Promise.resolve(true)
+    // Failures that arrive together share one probe.
+    if (!probing) {
+      const current = probeProject()
+      probing = current
+      void current.finally(() => { if (probing === current) probing = null })
+    }
+    return probing
+  }
   const fetchBound = async (path: string, init: RequestInit = {}) => {
     const response = await fetcher(href(path), request(session, init))
-    if (session.mode === "integration" && response.status === 401) {
+    if (await authorityRevoked(response.status)) {
       options.onAuthorizationFailure?.()
     }
     return response
