@@ -852,9 +852,28 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "") + (preferenceWarnings.current.length ? ' · ' + preferenceWarnings.current.join(' ') : ''))
       return true
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The operation failed."); setMessage("Action needs attention")
+      const reloaded = e instanceof ApiRequestError && e.code === "stale_revision" && await reloadChangedProject()
+      setError(reloaded
+        ? "This project changed in another tab or window. Its latest version is now loaded, with your unsaved parameter changes kept; review it and retry."
+        : e instanceof Error ? e.message : "The operation failed.")
+      setMessage("Action needs attention")
       return false
     } finally { setBusy("") }
+  }
+  // Every command sends the version it was based on, so after another tab
+  // saves, each retry would repeat the conflict until the page reloads.
+  // accept() rebases unsaved parameter drafts onto the newer groups.
+  async function reloadChangedProject() {
+    const stale = projectRef.current
+    if (!stale) return false
+    try {
+      const latest = await athenaApi<AthenaProject>(`/projects/${stale.id}`)
+      if (projectRef.current !== stale || latest.id !== stale.id || latest.version <= stale.version) return false
+      accept(latest)
+      return true
+    } catch {
+      return false
+    }
   }
   useEffect(() => {
     if (init.current) return
