@@ -26,3 +26,22 @@ describe("BackendClient", () => {
     expect(nativeStyleFetch).toHaveBeenCalledWith("/api/backend/api/workspaces", { method: "POST" })
   })
 })
+
+describe("decodeApiError", () => {
+  it("keeps the backend's error envelope", async () => {
+    const { decodeApiError } = await import("./backend-client")
+    const error = decodeApiError(409, { error: { code: "stale_revision", message: "Changed elsewhere.", fields: ["version"], recovery: "Reload." } })
+    expect(error).toMatchObject({ status: 409, code: "stale_revision", message: "Changed elsewhere.", fields: ["version"], recovery: "Reload." })
+  })
+
+  it("shows a FastAPI HTTPException detail instead of the generic failure", async () => {
+    const { decodeApiError } = await import("./backend-client")
+    const error = decodeApiError(409, { detail: "Integration project byte quota is exhausted." })
+    expect(error).toMatchObject({ status: 409, code: "http_409", message: "Integration project byte quota is exhausted." })
+  })
+
+  it.each([undefined, "plain text", { detail: ["loc"] }, { detail: "  " }, { error: "Not found" }])("falls back for an unrecognised body: %j", async body => {
+    const { decodeApiError } = await import("./backend-client")
+    expect(decodeApiError(500, body)).toMatchObject({ code: "api_request_failed", message: "The backend request could not be completed." })
+  })
+})
