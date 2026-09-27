@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 import json
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from .config import Settings
@@ -34,6 +34,15 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+async def _raw_body(request: Request) -> bytes:
+    """Read the exact signed bytes on the event loop.
+
+    Routes that take this dependency are plain ``def`` so FastAPI runs their
+    verification, storage and Larch work in its threadpool, not on the loop.
+    """
+    return await request.body()
+
+
 def _http_error(exc: Exception) -> HTTPException:
     if isinstance(exc, IntegrationAuthenticationError):
         return HTTPException(status_code=401, detail="Integration authentication failed.")
@@ -54,8 +63,7 @@ def build_integration_router(
     router = APIRouter(prefix="/api/integration/v1")
 
     @router.post("/bootstrap")
-    async def bootstrap(request: Request):
-        raw_body = await request.body()
+    def bootstrap(request: Request, raw_body: bytes = Depends(_raw_body)):
         service.storage.expire_due(_now())
         try:
             launch = service.bootstrap(
@@ -134,8 +142,10 @@ def build_integration_router(
 
     if settings.import_enabled:
         @router.post("/drafts/{draft_id}/import")
-        async def import_action(draft_id: str, request: Request, response: Response):
-            raw_body = await request.body()
+        def import_action(
+            draft_id: str, request: Request, response: Response,
+            raw_body: bytes = Depends(_raw_body),
+        ):
             try:
                 state = service.verified_import_action(
                     raw_body=raw_body, headers=request.headers, draft_id=draft_id, now=_now()
@@ -148,8 +158,10 @@ def build_integration_router(
             return state.model_dump(mode="json")
 
         @router.post("/drafts/{draft_id}/snapshot")
-        async def snapshot_draft(draft_id: str, request: Request, response: Response):
-            raw_body = await request.body()
+        def snapshot_draft(
+            draft_id: str, request: Request, response: Response,
+            raw_body: bytes = Depends(_raw_body),
+        ):
             try:
                 snapshot = service.verified_snapshot(
                     raw_body=raw_body, headers=request.headers, draft_id=draft_id, now=_now()
@@ -162,8 +174,10 @@ def build_integration_router(
             return snapshot.model_dump(mode="json")
 
         @router.post("/drafts/{draft_id}/export")
-        async def export_draft(draft_id: str, request: Request, response: Response):
-            raw_body = await request.body()
+        def export_draft(
+            draft_id: str, request: Request, response: Response,
+            raw_body: bytes = Depends(_raw_body),
+        ):
             service.storage.expire_due(_now())
             try:
                 sealed = service.verified_export(
@@ -198,8 +212,7 @@ def build_integration_router(
 
     v2 = APIRouter(prefix="/api/integration/v2")
 
-    async def signed(request: Request) -> tuple[bytes, str, datetime]:
-        raw = await request.body()
+    def signed(request: Request, raw: bytes) -> tuple[bytes, str, datetime]:
         try:
             nonce, timestamp = service.verify_v2_request(
                 method=request.method, path=request.url.path, raw_body=raw,
@@ -217,9 +230,9 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.post("/projects")
-    async def create_project(request: Request):
+    def create_project(request: Request, raw_body: bytes = Depends(_raw_body)):
         from .integration_contracts import ProjectBootstrapRequest
-        raw, nonce, timestamp = await signed(request)
+        raw, nonce, timestamp = signed(request, raw_body)
         try:
             payload = ProjectBootstrapRequest.model_validate_json(raw)
             claim(nonce, timestamp)
@@ -232,8 +245,8 @@ def build_integration_router(
                 "project": summary.model_dump(mode="json")}
 
     @v2.get("/projects/{project_id}")
-    async def project_summary(project_id: str, request: Request):
-        _, nonce, timestamp = await signed(request)
+    def project_summary(project_id: str, request: Request, raw_body: bytes = Depends(_raw_body)):
+        _, nonce, timestamp = signed(request, raw_body)
         capability = request.headers.get("X-XrayLarch-Project-Capability")
         if not capability:
             raise HTTPException(status_code=404, detail="Integration project was not found.")
@@ -248,8 +261,8 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.post("/projects/{project_id}/launch")
-    async def launch_project(project_id: str, request: Request):
-        raw, nonce, timestamp = await signed(request)
+    def launch_project(project_id: str, request: Request, raw_body: bytes = Depends(_raw_body)):
+        raw, nonce, timestamp = signed(request, raw_body)
         try:
             capability = json.loads(raw or b"{}")["capability"]
             service.storage.load_project(project_id, capability, now=_now())
@@ -273,8 +286,8 @@ def build_integration_router(
             return session
 
     @v2.patch("/projects/{project_id}")
-    async def rename_project(project_id: str, request: Request):
-        raw, nonce, timestamp = await signed(request)
+    def rename_project(project_id: str, request: Request, raw_body: bytes = Depends(_raw_body)):
+        raw, nonce, timestamp = signed(request, raw_body)
         try:
             payload = RenameProjectRequest.model_validate_json(raw)
             capability = request.headers.get("X-XrayLarch-Project-Capability")
@@ -289,8 +302,8 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.delete("/projects/{project_id}")
-    async def delete_project(project_id: str, request: Request):
-        _, nonce, timestamp = await signed(request)
+    def delete_project(project_id: str, request: Request, raw_body: bytes = Depends(_raw_body)):
+        _, nonce, timestamp = signed(request, raw_body)
         capability = request.headers.get("X-XrayLarch-Project-Capability")
         if not capability:
             raise HTTPException(status_code=404, detail="Integration project was not found.")
@@ -302,8 +315,8 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.post("/projects/{project_id}/capability/rotate")
-    async def rotate_capability(project_id: str, request: Request):
-        _, nonce, timestamp = await signed(request)
+    def rotate_capability(project_id: str, request: Request, raw_body: bytes = Depends(_raw_body)):
+        _, nonce, timestamp = signed(request, raw_body)
         capability = request.headers.get("X-XrayLarch-Project-Capability")
         if not capability:
             raise HTTPException(status_code=404, detail="Integration project was not found.")
@@ -315,9 +328,9 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.post("/projects/{project_id}/exports/groups")
-    async def export_group_science(project_id: str, request: Request):
+    def export_group_science(project_id: str, request: Request, raw_body: bytes = Depends(_raw_body)):
         from .integration_contracts import SelectedGroupExportRequest
-        raw, nonce, timestamp = await signed(request)
+        raw, nonce, timestamp = signed(request, raw_body)
         capability = request.headers.get("X-XrayLarch-Project-Capability")
         if not capability:
             raise HTTPException(status_code=404, detail="Integration project was not found.")
@@ -339,9 +352,12 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.post("/projects/{project_id}/exports/reservations/{reservation_id}")
-    async def reserve_export(project_id: str, reservation_id: str, request: Request):
+    def reserve_export(
+        project_id: str, reservation_id: str, request: Request,
+        raw_body: bytes = Depends(_raw_body),
+    ):
         from .integration_contracts import SelectedGroupExportRequest
-        raw, nonce, timestamp = await signed(request)
+        raw, nonce, timestamp = signed(request, raw_body)
         capability = request.headers.get("X-XrayLarch-Project-Capability")
         if not capability:
             raise HTTPException(status_code=404, detail="Integration project was not found.")
@@ -361,8 +377,11 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.post("/projects/{project_id}/exports/reservations/{reservation_id}/{action}")
-    async def complete_export(project_id: str, reservation_id: str, action: str, request: Request):
-        _, nonce, timestamp = await signed(request)
+    def complete_export(
+        project_id: str, reservation_id: str, action: str, request: Request,
+        raw_body: bytes = Depends(_raw_body),
+    ):
+        _, nonce, timestamp = signed(request, raw_body)
         if action not in {"commit", "abort"}:
             raise HTTPException(status_code=404, detail="Integration export reservation was not found.")
         capability = request.headers.get("X-XrayLarch-Project-Capability")
@@ -377,12 +396,12 @@ def build_integration_router(
             raise _http_error(exc)
 
     @v2.api_route("/{unmatched:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"])
-    async def v2_fallback(unmatched: str, request: Request):
+    def v2_fallback(unmatched: str, request: Request, raw_body: bytes = Depends(_raw_body)):
         if unmatched == "browser/consume" and not settings.browser_consume_enabled:
             raise HTTPException(status_code=404, detail="Integration project was not found.")
         # Authenticate any other v2-shaped request before reporting that its
         # route is absent, so a method/path substitution never becomes an oracle.
-        await signed(request)
+        signed(request, raw_body)
         raise HTTPException(status_code=404, detail="Integration project was not found.")
 
     root = APIRouter()

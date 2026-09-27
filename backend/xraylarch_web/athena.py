@@ -4124,8 +4124,8 @@ def build_athena_router(
                         headers={'Content-Disposition': 'attachment; filename="athena.plugin_registry"'})
 
     @router.post('/preferences/plugins/import')
-    async def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
-        data = await _read_bounded_upload(file, MAX_REGISTRY_BYTES)
+    def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
+        data = _read_bounded_upload(file, MAX_REGISTRY_BYTES)
         return guarded(lambda: registry_view(preferences.save_plugins(PluginRegistry(version=version, enabled=decode_registry(data)))))
     operation_aliases = {
         "inspect": "upload",
@@ -4222,18 +4222,18 @@ def build_athena_router(
         return store.load(ident)
 
     @router.post("/projects/{ident}/inspect")
-    async def inspect(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def inspect(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "upload")
-        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        data = _read_bounded_upload(file, settings.max_upload_bytes)
         mutation = lambda: guarded(lambda: store.inspect(ident, data, file.filename or "data.dat"))
         return integrated_mutation(
             ident, capability, "upload", authority, mutation, lock_workspace=True
         )
 
     @router.post('/projects/{ident}/dispersive/inspect')
-    async def inspect_dispersive(ident: str,file: UploadFile=File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def inspect_dispersive(ident: str,file: UploadFile=File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "upload")
-        data=await _read_bounded_upload(file,settings.max_upload_bytes)
+        data=_read_bounded_upload(file,settings.max_upload_bytes)
         mutation = lambda: guarded(lambda: store.inspect_dispersive(ident,data,file.filename or 'pixels.dat'))
         return integrated_mutation(
             ident, capability, "upload", authority, mutation, lock_workspace=True
@@ -4266,9 +4266,9 @@ def build_athena_router(
         return Response(content,media_type='application/x-yaml',headers={'Content-Disposition':'attachment; filename="athena.dxas"'})
 
     @router.post('/preferences/dispersive/import')
-    async def import_dispersive_defaults(version: int=Query(...,ge=0),file: UploadFile=File(...)):
+    def import_dispersive_defaults(version: int=Query(...,ge=0),file: UploadFile=File(...)):
         from .athena_dispersive import decode_calibration
-        data=await _read_bounded_upload(file,4096)
+        data=_read_bounded_upload(file,4096)
         return guarded(lambda: AthenaPreferences(settings).save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
 
     @router.post("/projects/{ident}/import")
@@ -4463,18 +4463,18 @@ def build_athena_router(
         return guarded(lambda: store.preview_smoothing(ident, request))
 
     @router.post("/projects/{ident}/restore")
-    async def restore(ident: str, version: int, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def restore(ident: str, version: int, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "restore")
-        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        data = _read_bounded_upload(file, settings.max_upload_bytes)
         return integrated_mutation(
             ident, capability, "restore", authority,
             lambda: guarded(lambda: store.restore(ident, version, data, file.filename or "project.prj")),
         )
 
     @router.post("/projects/{ident}/preview-project")
-    async def preview_project(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def preview_project(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "upload")
-        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        data = _read_bounded_upload(file, settings.max_upload_bytes)
         mutation = lambda: guarded(lambda: store.preview_project(ident, data, file.filename or "project.prj"))
         return integrated_mutation(ident, capability, "upload", authority, mutation)
 
