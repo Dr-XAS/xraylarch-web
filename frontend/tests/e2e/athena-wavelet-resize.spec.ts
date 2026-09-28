@@ -25,6 +25,37 @@ async function expectPlotHeight(viewer: Locator, expected: number) {
   await expect.poll(() => renderedHeight(viewer)).toEqual({ layout: expected, svg: expected })
 }
 
+type HeatmapRanges = { k: number[]; r: number[] }
+
+async function heatmapGeometry(viewer: Locator) {
+  return viewer.locator(".js-plotly-plot").evaluate(element => {
+    type Axis = { _length: number; range: number[] }
+    const plot = element as HTMLElement & {
+      data: { x: number[] }[]
+      _fullLayout: { xaxis: Axis; yaxis: Axis }
+    }
+    const { xaxis, yaxis } = plot._fullLayout
+    const k = plot.data[0].x
+    return {
+      width: xaxis._length,
+      height: yaxis._length,
+      ranges: { k: xaxis.range, r: yaxis.range },
+      kDomain: [k[0], k[k.length - 1]],
+    }
+  })
+}
+
+async function expectSquareHeatmapHeight(viewer: Locator, expected: number, ranges: HeatmapRanges) {
+  await expectPlotHeight(viewer, expected)
+  await expect.poll(async () => {
+    const geometry = await heatmapGeometry(viewer)
+    return {
+      square: geometry.width > 0 && geometry.height > 0 && Math.abs(geometry.width - geometry.height) <= 1,
+      ranges: geometry.ranges,
+    }
+  }).toEqual({ square: true, ranges })
+}
+
 async function camera(viewer: Locator) {
   return viewer.locator(".js-plotly-plot").evaluate(element => {
     const plot = element as HTMLElement & { _fullLayout?: { scene?: { camera?: unknown } } }
@@ -48,7 +79,7 @@ async function drag(page: Page, grip: Locator, movement: number) {
   await page.mouse.up()
 }
 
-test("combined wavelet views share data, preserve camera and resize responsively", async ({ page }, info) => {
+test("combined wavelet views share data, preserve camera and keep the heatmap square when resizing", async ({ page }, info) => {
   test.setTimeout(180000)
   await page.setViewportSize({ width: 1500, height: 1100 })
   await page.addInitScript(() => {
@@ -84,6 +115,8 @@ test("combined wavelet views share data, preserve camera and resize responsively
   const spectrumPlot = page.locator(".ath-plot-card").filter({ has: spectrumGrip }).locator(".ath-plot")
   await expect(combined).toHaveAttribute("aria-pressed", "true")
   await expectPlotHeight(heatmap, 430)
+  const ranges = { k: (await heatmapGeometry(heatmap)).kDomain, r: [0, 6] }
+  await expectSquareHeatmapHeight(heatmap, 430, ranges)
   await expectPlotHeight(surface, 430)
   const heatmapBox = (await heatmap.boundingBox())!
   const surfaceBox = (await surface.boundingBox())!
@@ -97,7 +130,7 @@ test("combined wavelet views share data, preserve camera and resize responsively
   expect(await height(spectrumPlot)).toBe(640)
 
   await drag(page, grip, 110)
-  await expectPlotHeight(heatmap, 540)
+  await expectSquareHeatmapHeight(heatmap, 540, ranges)
   await expectPlotHeight(surface, 540)
   await expect(grip).toHaveAttribute("aria-valuenow", "540")
   expect(await page.evaluate(key => localStorage.getItem(key), waveletHeightKey)).toBe("540")
@@ -141,42 +174,55 @@ test("combined wavelet views share data, preserve camera and resize responsively
   await surface.screenshot({ path: info.outputPath("wavelet-resized-3d.png") })
   await panel.getByRole("button", { name: "2D heatmap", exact: true }).click()
   await expect(surface).toHaveCount(0)
-  await expectPlotHeight(heatmap, 460)
+  await expectSquareHeatmapHeight(heatmap, 460, ranges)
+  await panel.screenshot({ path: info.outputPath("wavelet-desktop-2d-square.png") })
   await combined.click()
-  await expectPlotHeight(heatmap, 460)
+  await expectSquareHeatmapHeight(heatmap, 460, ranges)
   await expectPlotHeight(surface, 460)
   expect(waveletRequests).toHaveLength(initialWaveletRequests)
 
   await page.reload()
-  await expectPlotHeight(heatmap, 460)
+  await expectSquareHeatmapHeight(heatmap, 460, ranges)
   await expectPlotHeight(surface, 460)
   expect(await height(spectrumPlot)).toBe(640)
   await grip.dblclick()
-  await expectPlotHeight(heatmap, 430)
+  await expectSquareHeatmapHeight(heatmap, 430, ranges)
   await expectPlotHeight(surface, 430)
   expect(await page.evaluate(key => localStorage.getItem(key), waveletHeightKey)).toBeNull()
   expect(await height(spectrumPlot)).toBe(640)
 
   await page.setViewportSize({ width: 390, height: 844 })
-  await expectPlotHeight(heatmap, 350)
+  await expectSquareHeatmapHeight(heatmap, 350, ranges)
   await expectPlotHeight(surface, 350)
   const mobileHeatmapBox = (await heatmap.boundingBox())!
   const mobileSurfaceBox = (await surface.boundingBox())!
   expect(mobileSurfaceBox.y).toBeGreaterThanOrEqual(mobileHeatmapBox.y + mobileHeatmapBox.height)
   expect(Math.abs(mobileSurfaceBox.x - mobileHeatmapBox.x)).toBeLessThanOrEqual(1)
   await grip.press("ArrowDown")
-  await expectPlotHeight(heatmap, 366)
+  await expectSquareHeatmapHeight(heatmap, 366, ranges)
   await expectPlotHeight(surface, 366)
   await page.setViewportSize({ width: 1500, height: 1100 })
-  await expectPlotHeight(heatmap, 366)
+  await expectSquareHeatmapHeight(heatmap, 366, ranges)
   await expectPlotHeight(surface, 366)
   await page.setViewportSize({ width: 390, height: 844 })
   await grip.press("Enter")
-  await expectPlotHeight(heatmap, 350)
+  await expectSquareHeatmapHeight(heatmap, 350, ranges)
   await expectPlotHeight(surface, 350)
   expect(await page.evaluate(key => localStorage.getItem(key), waveletHeightKey)).toBeNull()
   expect(await height(spectrumPlot)).toBe(640)
   await expectNoOverflow(page, panel)
   await panel.screenshot({ path: info.outputPath("wavelet-mobile-combined.png") })
+  const mobileWaveletRequests = waveletRequests.length
+  await panel.getByRole("button", { name: "2D heatmap", exact: true }).click()
+  await expectSquareHeatmapHeight(heatmap, 350, ranges)
+  await drag(page, grip, -40)
+  await expectSquareHeatmapHeight(heatmap, 310, ranges)
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await expectSquareHeatmapHeight(heatmap, 310, ranges)
+  await expectNoOverflow(page, panel)
+  await combined.click()
+  await expectSquareHeatmapHeight(heatmap, 310, ranges)
+  await expectPlotHeight(surface, 310)
+  expect(waveletRequests).toHaveLength(mobileWaveletRequests)
   expect(errors).toEqual([])
 })

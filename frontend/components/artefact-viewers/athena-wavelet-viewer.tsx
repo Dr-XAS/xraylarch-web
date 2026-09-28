@@ -59,8 +59,8 @@ function validPreview(preview: PlotWeightResult, data: WaveletResult, range: Ran
     Math.abs(preview.effective.kmin - range.min) < 1e-6 && Math.abs(preview.effective.kmax - range.max) < 1e-6
 }
 
-function MeasuredPlot({ label, className, main = false, plotKey, ...props }: ComponentProps<typeof Plot> & {
-  label: string; className: string; main?: boolean; plotKey: string
+function MeasuredPlot({ label, className, main = false, square = false, plotKey, ...props }: ComponentProps<typeof Plot> & {
+  label: string; className: string; main?: boolean; square?: boolean; plotKey: string
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -77,10 +77,23 @@ function MeasuredPlot({ label, className, main = false, plotKey, ...props }: Com
     window.addEventListener("resize", measure)
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure) }
   }, [])
+  let margin = props.layout?.margin as { l?: number; r?: number; t?: number; b?: number; autoexpand?: boolean } | undefined
+  if (square && size.width > 0 && size.height > 0) {
+    // Keep the plotted k–R rectangle square, without equating the two axes'
+    // different physical units or changing their scientific ranges.
+    const { l = 0, r = 0, t = 0, b = 0 } = margin ?? {}
+    const width = Math.max(1, size.width - l - r)
+    const height = Math.max(1, size.height - t - b)
+    const side = Math.min(width, height)
+    const horizontalSpace = (width - side) / 2
+    const verticalSpace = (height - side) / 2
+    margin = { ...margin, l: l + horizontalSpace, r: r + horizontalSpace,
+      t: t + verticalSpace, b: b + verticalSpace, autoexpand: false }
+  }
   return <div ref={ref} className={className} aria-label={label} data-wavelet-main-plot={main || undefined}>
     {failedKey === plotKey ? <div className={styles.notice} role="alert">
       Could not render the {label.toLowerCase()}.{label === "3D wavelet surface" && " Try the 2D heatmap if 3D graphics are unavailable."}
-    </div> : <Plot {...props} layout={{ ...props.layout, autosize: true,
+    </div> : <Plot {...props} layout={{ ...props.layout, margin, autosize: true,
       ...(size.width > 0 ? { width: size.width } : {}), ...(size.height > 0 ? { height: size.height } : {}),
     }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setFailedKey(plotKey)} />}
   </div>
@@ -213,7 +226,7 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
           </div>
         </div>
       </fieldset>}
-      {!surfaceOnly && <MeasuredPlot key="heatmap" label="2D wavelet heatmap" main className={styles.mainPlot} plotKey={`${context}:2d`} data={[trace]}
+      {!surfaceOnly && <MeasuredPlot key="heatmap" label="2D wavelet heatmap" main square className={styles.mainPlot} plotKey={`${context}:2d`} data={[trace]}
         layout={{ ...baseLayout, title: { text: `Wavelet Transform (Cauchy, k-weight = ${data.kweight})` },
           margin: { l: leftMargin, r: rightMargin, t: 50, b: 55, autoexpand: false },
           xaxis: { ...axis("k (Å⁻¹)"), range: [domainMin, domainMax], fixedrange: true },
