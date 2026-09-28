@@ -4840,6 +4840,65 @@ describe("AthenaWorkbench group selection and drafts", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
 
+  it("pauses every queued parameter edit after a stale revision until each is retried", async () => {
+    const project = await openSaved()
+    const sample = project.groups.find(group => group.id === "sample")!
+    const changedElsewhere = nextProject(project, {
+      sample: { parameters: { ...sample.parameters, rbkg: 3.1 } },
+    })
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockResolvedValueOnce(changedElsewhere)
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    selectGroup("Sample scan")
+    editNumber(/^Rbkg/, 2.5)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(api).toHaveBeenNthCalledWith(2, `/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { rbkg: 2.4 },
+    })
+    expect(api).toHaveBeenNthCalledWith(3, `/projects/${project.id}`)
+    expect(screen.getByRole("alert")).toHaveTextContent("latest version is now loaded")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.5)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(api).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole("button", { name: "Retry processing" })).toBeEnabled()
+
+    const saved = nextProject(changedElsewhere, {
+      sample: { parameters: { ...sample.parameters, rbkg: 2.5 } },
+    })
+    api.mockResolvedValueOnce(saved)
+    fireEvent.click(screen.getByRole("button", { name: "Retry processing" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: changedElsewhere.version, action: "parameters", group_ids: ["sample"], options: { rbkg: 2.5 },
+    })
+  })
+
+  it("clears a paused edit when the newer project already has its value", async () => {
+    const project = await openSaved()
+    const changedElsewhere = nextProject(project, {
+      foil: { parameters: { ...project.groups[0].parameters, rbkg: 2.4 } },
+    })
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockResolvedValueOnce(changedElsewhere)
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(screen.queryByRole("button", { name: "Retry processing" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Copy \/ reset parameters/i })).toBeEnabled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(api).toHaveBeenCalledTimes(3)
+  })
+
   it("keeps the backend conflict message when the newer project cannot be loaded", async () => {
     await openSaved()
     api.mockRejectedValueOnce(new ApiRequestError({

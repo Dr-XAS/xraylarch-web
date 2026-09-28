@@ -852,7 +852,14 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "") + (preferenceWarnings.current.length ? ' · ' + preferenceWarnings.current.join(' ') : ''))
       return true
     } catch (e) {
-      const reloaded = e instanceof ApiRequestError && e.code === "stale_revision" && await reloadChangedProject()
+      const staleRevision = e instanceof ApiRequestError && e.code === "stale_revision"
+      if (staleRevision) {
+        // A second queued draft must not auto-save against the newer revision
+        // before the user has reviewed it and chosen to retry.
+        setAutoApplyPlans(current => Object.fromEntries(Object.entries(current).map(([id, plan]) =>
+          [id, plan.status === "queued" ? { ...plan, status: "failed" as const } : plan])))
+      }
+      const reloaded = staleRevision && await reloadChangedProject()
       setError(reloaded
         ? "This project changed in another tab or window. Its latest version is now loaded, with your unsaved parameter changes kept; review it and retry."
         : e instanceof Error ? e.message : "The operation failed.")
@@ -1127,6 +1134,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     }, parameterAutoApplyDelay)
     return () => window.clearTimeout(timer)
   }, [autoApplyPlans, busy, drafts, parameterFieldEditing, project]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!project) return
+    setAutoApplyPlans(current => {
+      const updated = Object.fromEntries(Object.entries(current).filter(([id, plan]) => {
+        if (plan.status !== "failed") return true
+        const group = project.groups.find(item => item.id === id)
+        return !!group && !!drafts[id] && !sameParameters(drafts[id], group.parameters)
+      }))
+      return Object.keys(updated).length === Object.keys(current).length ? current : updated
+    })
+  }, [project, drafts])
   function discardParameterChanges(id: string) {
     setDrafts(current => { const updated = { ...current }; delete updated[id]; return updated })
     setAutoApplyPlans(current => { const updated = { ...current }; delete updated[id]; return updated })
