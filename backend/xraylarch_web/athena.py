@@ -11,6 +11,7 @@ import gzip
 import hashlib
 import io
 import json
+import logging
 import re
 import secrets
 from datetime import datetime, timezone
@@ -65,6 +66,7 @@ def fail(message: str, code: str = "athena_invalid"):
 
 _MAX_SAFE_ADDED_ORDER = (1 << 53) - 1
 _SNAPSHOT_FILE = re.compile(r"(?:undo|redo)-\d+\.json")
+_LOGGER = logging.getLogger(__name__)
 
 
 def _group_added_orders(value, group_ids, *, prune_missing=False):
@@ -1009,7 +1011,7 @@ class AthenaStore:
         if p["version"] != version:
             fail("This project changed in another tab. Reload it before editing.", "stale_revision")
 
-    def save(self, p: dict, old: dict, message: str) -> dict:
+    def save(self, p: dict, old: dict, message: str, *, prune_snapshots: bool = True) -> dict:
         if len(p["groups"]) > 100:
             fail("A project can contain at most 100 groups.")
         _stamp_group_added_orders(p, old)
@@ -1029,7 +1031,8 @@ class AthenaStore:
         p["updated"] = now()
         p["history"] = (old["history"] + [{"time": now(), "message": message}])[-200:]
         self.storage.write_json(p["id"], "project.json", p)
-        self._prune_snapshots(p)
+        if prune_snapshots:
+            self._prune_snapshots(p)
         return p
 
     def _prune_snapshots(self, project: dict) -> None:
@@ -1041,9 +1044,16 @@ class AthenaStore:
         by the next save) but never a dangling reference.
         """
         keep = set(project["undo"]) | set(project["redo"])
-        for path in self.storage.workspace_dir(project["id"]).iterdir():
-            if _SNAPSHOT_FILE.fullmatch(path.name) and path.name not in keep:
-                path.unlink(missing_ok=True)
+        try:
+            for path in self.storage.workspace_dir(project["id"]).iterdir():
+                if _SNAPSHOT_FILE.fullmatch(path.name) and path.name not in keep:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        _LOGGER.warning("Could not remove unused Athena snapshot %s", path, exc_info=True)
+        except OSError:
+            # Cleanup can retry on the next save; the project was already committed.
+            _LOGGER.warning("Could not scan Athena snapshots for project %s", project["id"], exc_info=True)
 
     @staticmethod
     def _stamp_group_revisions(p: dict, old: dict) -> None:
@@ -3934,16 +3944,16 @@ class AthenaStore:
             if not keep_name or (not old["groups"] and old["name"] == "Untitled project"):
                 p["name"] = parsed["name"]
             p["journal"] = (p["journal"] + "\n" + parsed["journal"]).strip()[:50_000]
-            saved = self.save(p, old, f"Imported project {filename}: {len(imported)} groups")
+            # Keep prior snapshots until the separate analysis sidecar commits.
+            saved = self.save(p, old, f"Imported project {filename}: {len(imported)} groups", prune_snapshots=False)
             if imported_analyses:
                 try:
                     self.storage.write_json(ident, "analyses.json", {"analyses": p["analyses"]})
                 except OSError:
-                    # save() already removed the snapshots only `old` listed.
-                    kept = set(saved["undo"])
-                    self.storage.write_json(ident, "project.json", old | {
-                        "undo": [name for name in old["undo"] if name in kept], "redo": []})
+                    self.storage.write_json(ident, "project.json", old)
+                    self._prune_snapshots(old)
                     raise
+            self._prune_snapshots(saved)
             return saved
 
 
