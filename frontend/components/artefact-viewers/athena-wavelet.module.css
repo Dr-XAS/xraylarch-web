@@ -1,5 +1,5 @@
 .panel { margin-top: var(--ath-panel-gap); min-width: 0; overflow: hidden; background: var(--ath-surface); border: 1px solid var(--ath-line); border-radius: 7px; box-shadow: 0 2px 5px hsl(240 10% 3.9% / 0.024); }
-.modes { display: flex; padding: 3px; gap: 3px; border: 1px solid var(--ath-line); border-radius: 5px; background: var(--ath-surface-muted); }
+.modes { display: flex; flex-wrap: wrap; padding: 3px; gap: 3px; border: 1px solid var(--ath-line); border-radius: 5px; background: var(--ath-surface-muted); }
 .panel .modes button { padding: 4px 8px; font-size: var(--text-body); color: var(--ath-muted); line-height: var(--leading-control); }
 .panel .modes button[aria-pressed=true] { background: var(--ath-surface); border-color: var(--ath-primary-line); color: var(--ath-primary); box-shadow: 0 1px 3px hsl(240 10% 3.9% / 0.04); }
 .controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 12px; background: var(--ath-canvas); }

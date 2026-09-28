@@ -63,8 +63,9 @@ function handoff() {
   if (!props) throw new Error("No wavelet Plotly handoff")
   return props
 }
-function waveletHandoff() {
-  const props = plot.mock.calls.toReversed().map(call => call[0]).find(candidate => ["heatmap", "surface"].includes(candidate.data[0]?.type))
+function waveletHandoff(type?: "heatmap" | "surface") {
+  const props = plot.mock.calls.toReversed().map(call => call[0]).find(candidate =>
+    type ? candidate.data[0]?.type === type : ["heatmap", "surface"].includes(candidate.data[0]?.type))
   if (!props) throw new Error("No main wavelet Plotly handoff")
   return props
 }
@@ -98,7 +99,10 @@ describe("AthenaWavelet", () => {
     await calculate()
     expect(api).toHaveBeenCalledExactlyOnceWith("/projects/p/groups/Copper/wavelet", { version: 4, kweight: 3, rmax: 6 }, "POST", expect.any(AbortSignal))
     expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
-    expect(handoff().data[0].z).toEqual(result().magnitude)
+    expect(screen.getByLabelText("3D wavelet surface")).toBeVisible()
+    expect(screen.getByRole("button", { name: "2D + 3D" })).toHaveAttribute("aria-pressed", "true")
+    expect(waveletHandoff("heatmap").data[0].z).toEqual(result().magnitude)
+    expect(waveletHandoff("surface").data[0].z).toEqual(result().magnitude)
     expect(screen.getByText(/Cauchy wavelet.*k-weight 3/)).toBeVisible()
   })
 
@@ -124,7 +128,7 @@ describe("AthenaWavelet", () => {
     expect(localStorage.getItem(athenaWaveletColorsKey)).toBe(JSON.stringify({ colormap: "turbo", reversed: true }))
 
     fireEvent.click(screen.getByRole("button", { name: "3D surface" }))
-    expect(waveletHandoff().data[0]).toMatchObject({ type: "surface", colorscale: plotlyColorscale("turbo", true) })
+    expect(waveletHandoff("surface").data[0]).toMatchObject({ type: "surface", colorscale: plotlyColorscale("turbo", true) })
     expect(api).toHaveBeenCalledTimes(1)
 
     view.unmount()
@@ -199,33 +203,39 @@ describe("AthenaWavelet", () => {
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 2, rmax: 6 })
   })
 
-  it("switches the same grid and color range between 2D and 3D in one panel without recalculating", async () => {
+  it("retains the same grid and color range across combined, 2D and 3D views without recalculating", async () => {
     const data = result()
     api.mockResolvedValue(data)
     render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
-    const heatmap = handoff().data[0]
+    expect(screen.getAllByTestId("wavelet-plot")).toHaveLength(2)
+    const heatmap = waveletHandoff("heatmap").data[0]
     expect(heatmap).toMatchObject({ type: "heatmap", zmin: 0, zmax: 5 })
-    fireEvent.click(screen.getByRole("button", { name: "3D surface" }))
-    const surface = handoff().data[0]
+    const surface = waveletHandoff("surface").data[0]
     expect(surface).toMatchObject({ type: "surface", cmin: heatmap.zmin, cmax: heatmap.zmax })
     expect(surface.x).toEqual(heatmap.x)
     expect(surface.y).toEqual(heatmap.y)
     expect(surface.z).toEqual(heatmap.z)
     expect(surface.colorscale).toEqual(heatmap.colorscale)
+    fireEvent.click(screen.getByRole("button", { name: "3D surface" }))
     expect(screen.getAllByTestId("wavelet-plot")).toHaveLength(1)
     expect(screen.getByRole("button", { name: "3D surface" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.queryByLabelText("2D wavelet heatmap")).not.toBeInTheDocument()
-    const scene = handoff().layout.scene
+    const scene = waveletHandoff("surface").layout.scene
     for (const axis of [scene.xaxis, scene.yaxis, scene.zaxis]) {
       expect(axis.tickfont.family).not.toContain("var(")
       expect(axis.tickfont.size).toBeGreaterThanOrEqual(12)
     }
     // Plotly may mutate its inputs; mode changes must start from the retained result.
-    surface.z[1][1] = 999
+    waveletHandoff("surface").data[0].z[1][1] = 999
     expect(data.magnitude[1][1]).toBe(5)
     fireEvent.click(screen.getByRole("button", { name: "2D heatmap" }))
-    expect(handoff().data[0].z).toEqual(data.magnitude)
+    expect(screen.queryByLabelText("3D wavelet surface")).not.toBeInTheDocument()
+    expect(waveletHandoff("heatmap").data[0].z).toEqual(data.magnitude)
+    fireEvent.click(screen.getByRole("button", { name: "2D + 3D" }))
+    expect(screen.getAllByTestId("wavelet-plot")).toHaveLength(2)
+    expect(waveletHandoff("surface").data[0].z).toEqual(data.magnitude)
+    expect(screen.getByRole("button", { name: "2D + 3D" })).toHaveAttribute("aria-pressed", "true")
     await calculate()
     expect(api).toHaveBeenCalledTimes(1)
   })
@@ -303,7 +313,8 @@ describe("AthenaWavelet", () => {
     api.mockResolvedValueOnce(result()).mockReturnValueOnce(deferred().promise)
     const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     await calculate()
-    expect(screen.getByTestId("wavelet-plot")).toBeVisible()
+    expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
+    expect(screen.getByLabelText("3D wavelet surface")).toBeVisible()
     view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
     expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
     expect(screen.getByRole("status")).toHaveTextContent("Calculating")
@@ -399,7 +410,8 @@ describe("AthenaWavelet", () => {
     expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
     view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={5} group={group()} />)
     await calculate()
-    expect(screen.getByTestId("wavelet-plot")).toBeVisible()
+    expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
+    expect(screen.getByLabelText("3D wavelet surface")).toBeVisible()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 5, kweight: 3, rmax: 6 })
   })
 
@@ -412,7 +424,8 @@ describe("AthenaWavelet", () => {
     fireEvent.click(screen.getByRole("button", { name: "Try again" }))
     expect(screen.getByRole("status")).toHaveTextContent("Calculating")
     await calculate()
-    expect(screen.getByTestId("wavelet-plot")).toBeVisible()
+    expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
+    expect(screen.getByLabelText("3D wavelet surface")).toBeVisible()
     expect(api).toHaveBeenCalledTimes(2)
     expect(api.mock.calls[1].slice(0, 3)).toEqual(api.mock.calls[0].slice(0, 3))
   })

@@ -110,15 +110,17 @@ in the workspace). Viewers without a recorded event retain their default order.
 These display choices do not change project data or recalculate results.
 
 The **Wavelet plotter** follows the highlighted group’s
-processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
-both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
-6 Å without phase correction. The Dr.XAS-style 2D viewer adds draggable k-range
-handles and boundary lines alongside windowed χ(k) and Fourier |χ(R)| previews.
+processed χ(k). The default **2D + 3D** view places the heatmap beside the surface
+on wide panels and stacks them on narrow panels. **2D heatmap** and **3D surface**
+remain available individually. Both views share one result from Dr.XAS’s
+unwindowed Cauchy transform and one color scale, displaying R up to 6 Å without
+phase correction. Draggable k-range handles and heatmap boundary lines update
+the windowed χ(k) and Fourier |χ(R)| previews below the main plots.
 These previews use Larch with the spectrum’s applied window settings and the
 selected viewer k-weight; changing the range does not modify saved processing
 parameters or the wavelet matrix. **Export CSV** downloads the active wavelet
-grid. Both modes retain the resizable plot height, and the plot refreshes after
-spectrum processing.
+grid. Range dragging does not rebuild the 3D surface. All views retain the
+resizable plot height, and the plots refresh after spectrum processing.
 
 The Athena import dialog shows a live plot while selecting columns. It also
 recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`
