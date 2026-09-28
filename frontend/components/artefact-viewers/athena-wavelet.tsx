@@ -1,11 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Box, Download, Grid2X2, Waves } from "lucide-react"
+import { Box, Columns2, Download, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
 import { colormapOptions, DEFAULT_COLORMAP, isAthenaColormap, type AthenaColormap } from "@/lib/athena-colormaps"
-import { WaveletFigure } from "./athena-wavelet-viewer"
+import { WaveletFigure, type WaveletViewMode } from "./athena-wavelet-viewer"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { AthenaColorLegendControl } from "./athena-color-legend-control"
 import { ViewerPanel } from "./viewer-panel"
@@ -72,7 +72,7 @@ function exportWavelet(data: WaveletResult) {
 
 export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight, onComplete }: Props) {
   const athenaApi = useAthenaApi()
-  const [mode, setMode] = useState<"2d" | "3d">("2d")
+  const [mode, setMode] = useState<WaveletViewMode>("both")
   const [colors, setColors] = useState<WaveletColorSettings>({ colormap: DEFAULT_COLORMAP, reversed: false })
   const [retry, setRetry] = useState(0)
   const [response, setResponse] = useState<{ key: string; abort: AbortController; data?: WaveletResult; error?: string } | null>(null)
@@ -127,6 +127,7 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
 
   return <ViewerPanel title="Wavelet plotter" viewerId="wavelet" className={styles.panel} actions={
     <div className={styles.modes} role="group" aria-label="Wavelet view">
+      <button type="button" aria-pressed={mode === "both"} onClick={() => setMode("both")}><Columns2 size={14} />2D + 3D</button>
       <button type="button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}><Grid2X2 size={14} />2D heatmap</button>
       <button type="button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}><Box size={14} />3D surface</button>
     </div>

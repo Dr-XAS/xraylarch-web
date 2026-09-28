@@ -18,8 +18,12 @@ type PlotProps = {
   onRelayout?: (event: Record<string, unknown>) => void
 }
 const plots = vi.hoisted(() => new WeakMap<HTMLElement, PlotProps>())
+const plotRender = vi.hoisted(() => vi.fn())
 vi.mock("../themed-plot", () => ({
-  ThemedPlot: (props: PlotProps) => <div data-testid="wavelet-plot" ref={node => { if (node) plots.set(node, props) }} />,
+  ThemedPlot: (props: PlotProps) => {
+    plotRender(props)
+    return <div data-testid="wavelet-plot" ref={node => { if (node) plots.set(node, props) }} />
+  },
 }))
 vi.mock("@/lib/athena", () => ({ athenaApi: vi.fn() }))
 const api = vi.mocked(athenaApi)
@@ -80,13 +84,72 @@ function mainPlot() {
   return found
 }
 function lineTraces() { return currentPlots().flatMap(plot => plot.data).filter(trace => trace.type === "scatter") }
+function surfacePlot() {
+  const found = currentPlots().find(plot => plot.data[0]?.type === "surface")
+  if (!found) throw new Error("No 3D wavelet surface")
+  return found
+}
+function surfaceRenders() { return plotRender.mock.calls.filter(([props]) => props.data[0]?.type === "surface").length }
 function slider(name: string) { return screen.getByRole("slider", { name }) }
 async function calculate(ms = 200) { await act(async () => { await vi.advanceTimersByTimeAsync(ms) }) }
 
-beforeEach(() => { vi.useFakeTimers(); api.mockReset() })
+beforeEach(() => { vi.useFakeTimers(); api.mockReset(); plotRender.mockClear() })
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe("WaveletFigure", () => {
+  it("shows the same full wavelet and color range in both views with one set of Fourier companions", async () => {
+    serve()
+    const data = freeze(wavelet()), spectrum = freeze(group())
+    render(<WaveletFigure data={data} group={spectrum} mode="both" colormap="turbo" reverseColormap />)
+    expect(screen.getByLabelText("2D wavelet heatmap")).toBeVisible()
+    expect(screen.getByLabelText("3D wavelet surface")).toBeVisible()
+    const heatmap = currentPlots().find(plot => plot.data[0]?.type === "heatmap")!.data[0]
+    const surface = surfacePlot().data[0]
+    expect(heatmap).toMatchObject({ x: data.k, y: data.r, z: data.magnitude, zmin: 0, zmax: 5 })
+    expect(surface).toMatchObject({ x: data.k, y: data.r, z: data.magnitude, cmin: heatmap.zmin, cmax: heatmap.zmax })
+    expect(heatmap.colorscale).toEqual(plotlyColorscale("turbo", true))
+    expect(surface.colorscale).toEqual(heatmap.colorscale)
+    await calculate()
+    expect(api).toHaveBeenCalledExactlyOnceWith("/projects/p/groups/Copper/plot-transform",
+      { version: 4, kweight: 3, kmin: 3, kmax: 5 }, "POST", expect.any(AbortSignal))
+    expect(lineTraces()).toHaveLength(2)
+    expect(screen.getAllByLabelText("Selected k-range Fourier preview")).toHaveLength(1)
+
+    // Each Plotly instance can mutate its own inputs without changing its sibling or the scientific source.
+    surface.z![1][1] = 999
+    expect(heatmap.z![1][1]).toBe(5)
+    expect(data.magnitude[1][1]).toBe(5)
+    expect(spectrum.parameters.kweight).toBe(2)
+  })
+
+  it("does not rerender the surface during range changes or Fourier responses but updates its palette", async () => {
+    serve()
+    const data = freeze(wavelet()), spectrum = freeze(group())
+    const view = render(<WaveletFigure data={data} group={spectrum} mode="both" colormap="magma" />)
+    const initialRenders = surfaceRenders()
+    const surfaceGrid = surfacePlot().data[0].z
+    await calculate()
+    expect(surfaceRenders()).toBe(initialRenders)
+    fireEvent.change(slider("k minimum"), { target: { value: "1.5" } })
+    fireEvent.change(slider("k minimum"), { target: { value: "1.75" } })
+    act(() => { mainPlot().onRelayout?.({ "shapes[1].x0": 4, "shapes[1].x1": 4 }) })
+    expect(slider("k maximum")).toHaveValue("4")
+    expect(surfaceRenders()).toBe(initialRenders)
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 3, kmin: 1.75, kmax: 4 })
+    expect(surfaceRenders()).toBe(initialRenders)
+    expect(surfacePlot().data[0].z).toBe(surfaceGrid)
+    expect(surfaceGrid).toEqual(data.magnitude)
+
+    view.rerender(<WaveletFigure data={data} group={spectrum} mode="both" colormap="turbo" reverseColormap />)
+    expect(surfaceRenders()).toBeGreaterThan(initialRenders)
+    expect(surfacePlot().data[0].colorscale).toEqual(plotlyColorscale("turbo", true))
+    expect(surfacePlot().data[0].z).toEqual(data.magnitude)
+    await calculate()
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
   it("uses the server window and Fourier magnitude for side plots without changing saved processing or the wavelet grid", async () => {
     const data = freeze(wavelet()), spectrum = freeze(group()), response = freeze(transformed())
     api.mockResolvedValue(response)
