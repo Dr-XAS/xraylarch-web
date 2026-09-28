@@ -56,6 +56,18 @@ export interface ArtemisExample {
   transform: ArtemisTransform
   description: string
 }
+export interface ArtemisExampleSetup {
+  projectId: string
+  groupId: string
+  attachmentId: string
+  example: ArtemisExample
+}
+
+export function validCupriteExample(example: ArtemisExample) {
+  return example.amcsd_id === 15851 && /^[0-9a-f]{64}$/.test(example.cif_sha256) &&
+    Array.isArray(example.paths) && example.paths.length === 4 &&
+    example.paths.every((path, index) => path.filename === `feff${String(index + 1).padStart(4, "0")}.dat`)
+}
 export interface ArtemisFitRequest {
   version: number
   parameters: ArtemisParameter[]

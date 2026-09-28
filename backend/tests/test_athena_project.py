@@ -460,8 +460,78 @@ def test_example_import_uses_measured_copper_files_and_processes_all_groups(stor
     assert [folder["name"] for folder in p["group_folders"]] == ["Temperature series", "reference"]
     assert p["group_folders"][0]["group_ids"] == [group["id"] for group in p["groups"][:3]]
     assert p["group_folders"][1]["group_ids"] == [cu2o["id"]]
+    seed = p["last_operation"]["artemis_example"]
+    attachment, = p["artemis_structures"]
+    assert seed["group_id"] == cu2o["id"]
+    assert seed["attachment_id"] == attachment["id"]
+    assert seed["example"]["amcsd_id"] == attachment["amcsd_id"] == 15851
+    assert seed["example"]["cif_sha256"] == attachment["sha256"]
+    assert [path["filename"] for path in seed["example"]["paths"]] == [
+        "feff0001.dat", "feff0002.dat", "feff0003.dat", "feff0004.dat"]
+    assert len(seed["example"]["parameters"]) == 4
+    assert seed["example"]["transform"]["rmin"] == 1
+    assert store.load(p["id"])["last_operation"]["artemis_example"] == seed
     undone = command(store, p, "undo")
     assert undone["groups"] == [] and undone["group_folders"] == []
+    assert undone.get("artemis_structures", []) == []
+    redone = command(store, undone, "redo")
+    assert redone["groups"] == p["groups"]
+    assert redone["artemis_structures"] == p["artemis_structures"]
+    assert redone["last_operation"]["artemis_example"] == seed
+
+
+def test_copper_example_preserves_existing_data_and_reuses_cuprite_snapshot(store, two_groups):
+    from xraylarch_web.artemis_attachments import AttachRequest, attach_structure
+    original = attach_structure(store, two_groups["id"], AttachRequest(
+        version=two_groups["version"], amcsd_id=15851))
+    original = command(store, original, "project", name="My experiment")
+    result = command(store, original, "example")
+    assert result["name"] == "My experiment"
+    assert result["groups"][:2] == original["groups"]
+    assert len(result["groups"]) == 6
+    assert result["artemis_structures"] == original["artemis_structures"]
+    assert result["last_operation"]["artemis_example"]["attachment_id"] == original["artemis_structures"][0]["id"]
+    assert result["version"] == original["version"] + 1
+    undone = command(store, result, "undo")
+    assert undone["groups"] == original["groups"]
+    assert undone["artemis_structures"] == original["artemis_structures"]
+
+
+@pytest.mark.parametrize("failure", ["conflicting_cif", "attachment_limit", "example_provenance"])
+def test_copper_example_setup_failure_leaves_project_unchanged(store, monkeypatch, failure):
+    import hashlib
+    from xraylarch_web import artemis, artemis_attachments
+    from xraylarch_web.artemis_attachments import AttachRequest, attach_structure
+    original = store.create()
+    if failure in ("conflicting_cif", "attachment_limit"):
+        original = attach_structure(store, original["id"], AttachRequest(
+            version=original["version"], amcsd_id=15851 if failure == "conflicting_cif" else 13088))
+    if failure == "conflicting_cif":
+        record = original["artemis_structures"][0]
+        record["structure"]["cif"] += "\n# different saved snapshot\n"
+        record["sha256"] = hashlib.sha256(record["structure"]["cif"].encode()).hexdigest()
+        store.storage.write_json(original["id"], "project.json", original)
+    elif failure == "attachment_limit":
+        monkeypatch.setattr(artemis_attachments, "MAX_STRUCTURES", 1)
+    else:
+        monkeypatch.setattr(artemis, "_CUPRITE_RESOURCE_SHA256", {"source.cif": "0" * 64})
+    with pytest.raises(WebInputError):
+        command(store, original, "example")
+    assert store.load(original["id"]) == original
+
+
+def test_integration_copper_example_keeps_existing_spectra_only_workflow(store, monkeypatch):
+    from xraylarch_web import artemis
+    original = store.create()
+    original["integration"] = True
+    store.storage.write_json(original["id"], "project.json", original)
+    def no_artemis():
+        pytest.fail("Integration examples must not attach local-only Artemis structures")
+    monkeypatch.setattr(artemis, "cuprite_example", no_artemis)
+    result = command(store, original, "example")
+    assert len(result["groups"]) == 4
+    assert "artemis_structures" not in result
+    assert "artemis_example" not in result["last_operation"]
 
 
 def test_calibrate_updates_shifted_results_without_changing_measured_energy(store, two_groups):

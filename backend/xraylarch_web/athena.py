@@ -2784,6 +2784,20 @@ class AthenaStore:
                         options["group_folders"], (group["id"] for group in p["groups"])
                     )
             elif action == "example":
+                artemis_example = None
+                if p.get("integration") is not True:
+                    # Validate and attach the matching CIF before creating any
+                    # spectra, then commit the whole example in one Undo step.
+                    from .artemis import cuprite_example
+                    from .artemis_attachments import merge_attachments, structure_attachment
+                    artemis_example = cuprite_example()
+                    attachment = structure_attachment(artemis_example["amcsd_id"])
+                    if attachment["sha256"] != artemis_example["cif_sha256"]:
+                        fail("The Cuprite example does not match its attached CIF snapshot.")
+                    p["artemis_structures"] = merge_attachments(
+                        p.get("artemis_structures", []), [attachment])
+                    attachment = next(record for record in p["artemis_structures"]
+                                      if record["amcsd_id"] == artemis_example["amcsd_id"])
                 foil_ids = []
                 for filename, label in (("cu_10k.xmu", "Cu foil · 10 K"), ("cu_50k.xmu", "Cu foil · 50 K"), ("cu_rt01.xmu", "Cu foil · 300 K")):
                     path = Path(__file__).resolve().parents[2] / "examples" / "xafsdata" / filename
@@ -2808,6 +2822,11 @@ class AthenaStore:
                 ])
                 if p["name"] == "Untitled project":
                     p["name"] = "Copper examples · foils and reference"
+                if artemis_example is not None:
+                    operation_details["artemis_example"] = {
+                        "group_id": cu2o["id"], "attachment_id": attachment["id"],
+                        "example": artemis_example,
+                    }
             elif action == "reorder":
                 ids = options.get("ids", [])
                 if len(ids) != len(p["groups"]) or set(ids) != {g["id"] for g in p["groups"]}:

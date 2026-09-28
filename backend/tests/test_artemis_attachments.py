@@ -57,7 +57,7 @@ def test_full_and_subset_exchange_preserve_cif_snapshots_and_merge_destinations(
     assert len(restored["groups"]) == len(project["groups"])
     destination = attach(store, store.create(), 9994)
     merged = store.restore(destination["id"], destination["version"], payload, f"saved.{format}", [project["groups"][0]["id"]])
-    assert [record["amcsd_id"] for record in merged["artemis_structures"]] == [9994, 13088]
+    assert [record["amcsd_id"] for record in merged["artemis_structures"]] == [9994, 15851, 13088]
     assert len(merged["groups"]) == 1
     # Export only one spectrum; structure snapshots remain project-owned.
     subset = store.export_project(project["id"], format, [project["groups"][0]["id"]])
