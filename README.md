@@ -111,11 +111,13 @@ These display choices do not change project data or recalculate results.
 
 The **Wavelet plotter** follows the highlighted group’s
 processed χ(k). The default **2D + 3D** view places the heatmap beside the surface
-on wide panels and stacks them on narrow panels. **2D heatmap** and **3D surface**
-remain available individually. Both views share one result from Dr.XAS’s
-unwindowed Cauchy transform and one color scale, displaying R up to 6 Å without
-phase correction. Draggable k-range handles and heatmap boundary lines update
-the windowed χ(k) and Fourier |χ(R)| previews below the main plots.
+on wide panels and stacks them on narrow panels. The 2D plotting area stays square
+when the browser or plot height is resized, preserving the k and R ranges.
+**2D heatmap** and **3D surface** remain available individually. Both views share
+one result from Dr.XAS’s unwindowed Cauchy transform and one color scale,
+displaying R up to 6 Å without phase correction. Draggable k-range handles and
+heatmap boundary lines update the windowed χ(k) and Fourier |χ(R)| previews below
+the main plots.
 These previews use Larch with the spectrum’s applied window settings and the
 selected viewer k-weight; changing the range does not modify saved processing
 parameters or the wavelet matrix. **Export CSV** downloads the active wavelet
