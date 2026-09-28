@@ -102,6 +102,15 @@ reuses the saved snapshot without repeating the database search. The search,
 structure inspection, and FEFF controls stay inside the popup, which can be
 closed and reopened without discarding its calculation state.
 
+In the **CIF structure viewer**, **Local cluster** uses a display radius in Å
+around the chosen center site. Switching **View** to **Unit cell** replaces the
+radius slider with **Unit cell repeats** along the lattice **a**, **b**, and **c**
+directions (1–6 each). For example, 2 × 2 × 2 displays eight cells with their
+atoms and outlines, including non-orthogonal lattices. Each mode retains its
+display settings when switching views. Expansions beyond the 1,500-atom preview
+limit show a message to reduce the repeats. These controls do not modify the
+saved CIF or FEFF parameters.
+
 Select the absorber, absorption edge, and crystallographic absorber site before
 generating FEFF input. Sites are the symmetry-distinct choices returned by
 Larixite; their native indices are one-based across all unique sites in the

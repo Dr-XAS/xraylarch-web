@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
-import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS } from "@/lib/cif-viewer"
+import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS, type CifVector } from "@/lib/cif-viewer"
 import { createCifRenderer } from "@/lib/cif-renderer"
 import { cifAtomStyle } from "@/lib/cif-viewer-style"
 import { AtomLegend } from "../atom-legend"
@@ -13,6 +13,21 @@ import { ViewerPanel } from "./viewer-panel"
 import styles from "./cif-viewer.module.css"
 
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z })
+
+function CellRepeatInput({ axis, value, onChange }: { axis: string; value: number; onChange: (value: number) => void }) {
+  const [draft, setDraft] = useState<string | null>(null)
+  return <label>{axis}<input type="number" aria-label={`CIF repeats along ${axis}`} min={1} max={CIF_VIEWER_MAX_CELL_REPEATS} step={1}
+    value={draft ?? value} onChange={event => {
+      const text = event.target.value
+      setDraft(text)
+      const count = Number(text)
+      if (text !== "" && Number.isInteger(count) && count >= 1 && count <= CIF_VIEWER_MAX_CELL_REPEATS) onChange(count)
+    }} onBlur={event => {
+      const count = Number(event.target.value)
+      onChange(Number.isFinite(count) ? Math.min(CIF_VIEWER_MAX_CELL_REPEATS, Math.max(1, Math.floor(count))) : 1)
+      setDraft(null)
+    }} /></label>
+}
 
 export function CifViewer({ structure, collapsible = false, structureControls }: {
   structure: ArtemisStructure
@@ -25,13 +40,14 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
   const [error, setError] = useState("")
   const [attempt, setAttempt] = useState(0)
   const [radius, setRadius] = useState(CIF_VIEWER_DEFAULT_RADIUS)
+  const [cellRepeats, setCellRepeats] = useState<CifVector>([1, 1, 1])
   const [center, setCenter] = useState(structure.sites[0]?.index)
   const [mode, setMode] = useState<"cluster" | "cell">("cluster")
   const [hidden, setHidden] = useState<string[]>([])
   const [bonds, setBonds] = useState(true)
   const [cell, setCell] = useState(false)
   const centerSites = useMemo(() => structure.sites.filter((site, index, all) => all.findIndex(other => other.index === site.index) === index), [structure.sites])
-  const geometry = useMemo(() => buildCifGeometry(structure, { siteIndex: center, radius, mode }), [structure, center, radius, mode])
+  const geometry = useMemo(() => buildCifGeometry(structure, { siteIndex: center, radius, mode, cellRepeats }), [structure, center, radius, mode, cellRepeats])
   const elements = useMemo(() => [...new Set(geometry.atoms.map(atom => atom.element))].sort(), [geometry])
   const visibleCount = geometry.atoms.filter(atom => !hidden.includes(atom.element)).length
 
@@ -121,7 +137,12 @@ export function CifViewer({ structure, collapsible = false, structureControls }:
         <label>Center site<select aria-label="CIF center site" value={center} onChange={event => setCenter(Number(event.target.value))}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
       </div>
       <LocalStructureControls radius={radius} min={CIF_VIEWER_MIN_RADIUS} max={CIF_VIEWER_MAX_RADIUS} onRadiusChange={setRadius}
-        radiusAriaLabel="CIF display radius" radiusDisabled={mode === "cell"} bonds={bonds} onBondsChange={setBonds}
+        radiusAriaLabel="CIF display radius" bonds={bonds} onBondsChange={setBonds}
+        extentControl={mode === "cell" ? <div className={styles.cellRepeats} role="group" aria-label="Unit cell repetitions">
+          <span>Unit cell repeats</span>
+          <div className={styles.cellAxes}>{["a", "b", "c"].map((axis, index) => <CellRepeatInput key={axis} axis={axis}
+            value={cellRepeats[index]} onChange={repeat => setCellRepeats(previous => previous.map((count, i) => i === index ? repeat : count) as CifVector)} />)}</div>
+        </div> : undefined}
         showBondsControl={false} atomCount={visibleCount} />
       <p className={styles.help}>Bonds are inferred from distances. Display settings do not change FEFF parameters.</p>
     </>}

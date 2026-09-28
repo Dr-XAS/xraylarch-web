@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import type { ArtemisStructure } from "./artemis-structures"
-import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_RADIUS } from "./cif-viewer"
+import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, type CifVector } from "./cif-viewer"
 
 function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure {
   return {
@@ -81,6 +81,91 @@ describe("CIF viewer geometry", () => {
     expect(cluster.atoms[3].distance).toBeCloseTo(1.94772361, 7)
     expect(cluster.atoms[4].distance).toBeCloseTo(1.94772361, 7)
     expect(buildCifGeometry(tenorite, { radius: 3.5 }).atoms).toHaveLength(21)
+  })
+
+  it("repeats the complete symmetry-expanded basis independently along a, b, and c", () => {
+    const source = structure()
+    const before = JSON.stringify(source)
+    const cell = buildCifGeometry(source, { mode: "cell", cellRepeats: [2, 3, 1], radius: 1 })
+    expect(cell.warnings).toEqual([])
+    expect(cell.atoms).toHaveLength(24)
+    expect(cell.atoms.filter(atom => atom.isAbsorber)).toHaveLength(1)
+    expect(cell.atoms.every(atom => atom.element === "Cu" && atom.siteIndex === 1)).toBe(true)
+    expect(Math.max(...cell.atoms.map(atom => atom.x))).toBeCloseTo(1.5 * 3.63, 8)
+    expect(Math.max(...cell.atoms.map(atom => atom.y))).toBeCloseTo(2.5 * 3.63, 8)
+    expect(Math.max(...cell.atoms.map(atom => atom.z))).toBeCloseTo(.5 * 3.63, 8)
+    const fractionalPositions = new Set(cell.atoms.map(atom => [atom.x, atom.y, atom.z].map(value => Math.round(value / 3.63 * 2)).join(",")))
+    expect(fractionalPositions.size).toBe(24)
+    // The farthest cell contains all four FCC basis positions, despite radius=1.
+    for (const position of ["2,4,0", "2,5,1", "3,4,1", "3,5,0"]) expect(fractionalPositions.has(position)).toBe(true)
+    expect(JSON.stringify(source)).toBe(before)
+  })
+
+  it("translates repeated monoclinic cells along their oblique lattice vectors", () => {
+    const base = buildCifGeometry(tenorite, { mode: "cell", siteIndex: 2, absorber: "O" })
+    const expanded = buildCifGeometry(tenorite, { mode: "cell", cellRepeats: [2, 1, 3], siteIndex: 2, absorber: "O" })
+    const positionKey = (position: number[]) => position.map(value => Math.round(value * 1e6)).join(",")
+    const actualPositions = new Set(expanded.atoms.map(atom => `${atom.element}:${positionKey([atom.x, atom.y, atom.z])}`))
+    const beta = 99.48 * Math.PI / 180
+    expect(expanded.warnings).toEqual([])
+    expect(expanded.atoms).toHaveLength(48)
+    expect(expanded.atoms.filter(atom => atom.element === "Cu")).toHaveLength(24)
+    expect(expanded.atoms.filter(atom => atom.element === "O")).toHaveLength(24)
+    expect(expanded.atoms.filter(atom => atom.isAbsorber)).toHaveLength(1)
+    expect(expanded.center).toEqual(base.center)
+    for (let a = 0; a < 2; a++) for (let c = 0; c < 3; c++) {
+      for (const atom of base.atoms) {
+        const expected = [atom.x + 4.653 * a + 5.108 * Math.cos(beta) * c, atom.y, atom.z + 5.108 * Math.sin(beta) * c]
+        expect(actualPositions.has(`${atom.element}:${positionKey(expected)}`)).toBe(true)
+      }
+    }
+    const edgeVectors = expanded.cellEdges.map(([start, end]) => end.map((value, axis) => value - start[axis]))
+    const cEdges = edgeVectors.filter(vector => vector[2] > 1)
+    expect(cEdges).toHaveLength(18)
+    for (const edge of cEdges) {
+      expect(edge[0]).toBeCloseTo(5.108 * Math.cos(beta), 8)
+      expect(edge[2]).toBeCloseTo(5.108 * Math.sin(beta), 8)
+    }
+  })
+
+  it("outlines every constituent cell without duplicate shared edges", () => {
+    const cell = buildCifGeometry(structure(), { mode: "cell", cellRepeats: [2, 2, 1] })
+    const edgeKeys = cell.cellEdges.map(edge => edge.map(vertex => vertex.map(value => Math.round(value / 3.63)).join(",")).sort().join(";"))
+    // a edges: 2*3*2, b edges: 3*2*2, c edges: 3*3*1.
+    expect(cell.cellEdges).toHaveLength(33)
+    expect(new Set(edgeKeys).size).toBe(33)
+    expect(edgeKeys).toContain("1,1,0;1,1,1")
+    expect(edgeKeys).toContain("2,2,0;2,2,1")
+  })
+
+  it.each([
+    { repeats: [2.9, -2, Number.POSITIVE_INFINITY], expectedAtoms: 8 },
+    { repeats: [100, Number.NaN, 0], expectedAtoms: 4 * CIF_VIEWER_MAX_CELL_REPEATS },
+  ])("bounds and normalizes cell repeat counts: $repeats", ({ repeats, expectedAtoms }) => {
+    const geometry = buildCifGeometry(structure(), { mode: "cell", cellRepeats: repeats as CifVector })
+    expect(geometry.warnings).toEqual([])
+    expect(geometry.atoms).toHaveLength(expectedAtoms)
+  })
+
+  it("refuses incomplete cells when repeats exceed the atom limit", () => {
+    const allowed = buildCifGeometry(structure(), { mode: "cell", cellRepeats: [2, 3, 1], maxAtoms: 24 })
+    expect(allowed.atoms).toHaveLength(24)
+    expect(allowed.truncated).toBe(false)
+    const rejected = buildCifGeometry(structure(), { mode: "cell", cellRepeats: [2, 3, 1], maxAtoms: 23 })
+    expect(rejected.atoms).toEqual([])
+    expect(rejected.cellEdges).toEqual([])
+    expect(rejected.truncated).toBe(true)
+    expect(rejected.warnings[0]).toContain("24 atoms")
+    expect(rejected.warnings[0]).toContain("limit of 23")
+    expect(rejected.warnings[0]).toContain("Reduce the unit-cell repeats")
+    const single = buildCifGeometry(structure(), { mode: "cell", maxAtoms: 3 })
+    expect(single.atoms).toEqual([])
+    expect(single.warnings[0]).toContain("A complete unit cell cannot be shown")
+  })
+
+  it("ignores unit-cell repeats in radius-based cluster mode", () => {
+    expect(buildCifGeometry(tenorite, { radius: 3.5, cellRepeats: [6, 2, 3] }))
+      .toEqual(buildCifGeometry(tenorite, { radius: 3.5 }))
   })
 
   it("centers the chosen site without changing the source attachment", () => {
