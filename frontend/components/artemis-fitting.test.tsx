@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useState } from "react"
 import type { AthenaGroup, AthenaProject, Parameters } from "@/lib/athena"
-import { artemisApi, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
+import { artemisApi, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { ArtemisFittingPanel } from "./artemis-fitting"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
@@ -56,6 +56,12 @@ function example(): ArtemisExample {
       { name: "sig2", kind: "guess", value: 0.003, expression: "", min: 0, max: 0.1 },
     ], transform: { fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 } }
 }
+function exampleSetup(): ArtemisExampleSetup {
+  const model = example()
+  return { projectId: "p", groupId: "cuprite", attachmentId: cupriteAttachment.id,
+    example: { ...model, parameters: model.parameters.map(parameter => parameter.name === "amp" ? { ...parameter, value: 0.82 } : parameter),
+      transform: { ...model.transform, kmin: 2, kmax: 10, rmin: 1.2, rmax: 3.4 } } }
+}
 function fitResult(overrides: Partial<ArtemisFitResult> = {}): ArtemisFitResult {
   return { project_id: "p", group_id: "copper", group_label: "copper foil", version: 4, success: true, message: "Fit succeeded.", report: "[[Fit Statistics]]\nR-factor = 0.003", warnings: [],
     statistics: { n_varys: 4, n_independent: 12.5, n_data: 40, nfev: 25, chi_square: 50, reduced_chi_square: 5.8, r_factor: 0.003, aic: 20, bic: 25, errorbars: true },
@@ -103,6 +109,63 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe("ArtemisFittingPanel", () => {
+  it("prepares the supplied Cu₂O model while the foil stays selected, without requests or fitting", () => {
+    const setup = exampleSetup()
+    const onFitResult = vi.fn()
+    const onViewStructure = vi.fn()
+    const onPathsChange = vi.fn()
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup}
+      onFitResult={onFitResult} onPathsChange={onPathsChange} onViewStructure={onViewStructure} />)
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+
+    // A later command may clear the transient setup prop before Cu₂O is selected.
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("cuprite")}
+      onFitResult={onFitResult} onPathsChange={onPathsChange} onViewStructure={onViewStructure} />)
+    expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.82")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("2")
+    expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("10")
+    expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeEnabled()
+    expect(onPathsChange.mock.calls.at(-1)?.[0].map((item: { filename: string }) => item.filename)).toEqual(setup.example.paths.map(item => item.filename))
+    expect(onFitResult.mock.calls.every(([result]) => result === null)).toBe(true)
+    expect(onViewStructure).not.toHaveBeenCalled()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("does not replace an existing edited Cu₂O draft when a supplied setup arrives", () => {
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group("cuprite")} />)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.67" } })
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group()} exampleSetup={exampleSetup()} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("cuprite")} exampleSetup={exampleSetup()} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.67")
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("preserves model edits and removal of every supplied path across spectrum switches", () => {
+    const setup = exampleSetup()
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.71" } })
+    for (let remaining = 4; remaining > 0; remaining--) fireEvent.click(screen.getByRole("button", { name: "Remove path 1" }))
+    view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("cuprite")} exampleSetup={exampleSetup()} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.71")
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeDisabled()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("scopes supplied Cu₂O models to their project even when group IDs match", () => {
+    const setup = exampleSetup()
+    const view = render(<ArtemisFittingPanel projectId="other-project" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
+    view.rerender(<ArtemisFittingPanel projectId="other-project" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
+
   it("requires a processed spectrum and explicit fit action", async () => {
     const view = render(<ArtemisFittingPanel />)
     expect(screen.getByRole("status")).toHaveTextContent("Select a spectrum")

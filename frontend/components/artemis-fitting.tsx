@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 import type { AthenaGroup, AthenaProject } from "@/lib/athena"
 import {
-  artemisApi, validArtemisResult, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult,
+  artemisApi, validArtemisResult, validCupriteExample, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult,
   type ArtemisInspectedPath, type ArtemisParameter, type ArtemisPath, type ArtemisTransform,
 } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
@@ -22,6 +22,7 @@ type TransformDraft = Omit<ArtemisTransform, "kmin" | "kmax" | "dk" | "rmin" | "
 interface Draft { parameters: ParameterDraft[]; paths: ArtemisPath[]; transform: TransformDraft; revision: number }
 interface SavedDraft { draft: Draft; result: { revision: number; data: ArtemisFitResult } | null }
 interface PanelProps {
+  exampleSetup?: ArtemisExampleSetup
   projectId?: string
   version?: number
   group?: AthenaGroup
@@ -53,6 +54,13 @@ function newDraft(): Draft {
 }
 function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
   return { ...path, id: nextId(), label: path.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" }
+}
+function exampleDraft(example: ArtemisExample, revision = 0): Draft {
+  const viewerCluster = parseFeffCluster(example.feff_input)
+  return { revision, paths: example.paths.map(path => ({ ...pathDraft(path),
+    label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
+    metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata })),
+    parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }
 }
 function numberValue(value: string, label: string) {
   if (!value.trim() || !Number.isFinite(Number(value))) throw new Error(`${label} must be a finite number.`)
@@ -109,6 +117,13 @@ function importRequest(text: string): ArtemisFitRequest {
 /** The workbench keeps this wrapper mounted; drafts survive group and processing-tab changes. */
 export function ArtemisFittingPanel(props: PanelProps) {
   const cache = useRef(new Map<string, SavedDraft>())
+  const setup = props.exampleSetup
+  if (setup && setup.projectId === props.projectId) {
+    const exampleKey = `${setup.projectId}:${setup.groupId}`
+    // Prepare the Cu₂O model even while a foil is selected. Never replace a
+    // saved draft, including a model whose paths the user deliberately removed.
+    if (!cache.current.has(exampleKey)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
+  }
   const key = `${props.projectId ?? "none"}:${props.group?.id ?? "none"}`
   return <FittingEditor key={key} {...props} initial={cache.current.get(key)} onSave={saved => cache.current.set(key, saved)} />
 }
@@ -215,9 +230,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     try {
       const example = await artemisApi<ArtemisExample>("/examples/cuprite", undefined, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
-      if (example.amcsd_id !== 15851 || !/^[0-9a-f]{64}$/.test(example.cif_sha256) ||
-        !Array.isArray(example.paths) || example.paths.length !== 4 ||
-        example.paths.some((path, index) => path.filename !== `feff${String(index + 1).padStart(4, "0")}.dat`)) {
+      if (!validCupriteExample(example)) {
         throw new Error("The Cu₂O example does not contain the expected Cuprite structure and four FEFF paths.")
       }
       // The attach operation can commit even if the selected spectrum changes.
@@ -235,12 +248,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         throw new Error("The attached CIF does not match the Cu₂O FEFF calculation. Reload the project and try again.")
       }
       if (applyToGroup) {
-        const viewerCluster = parseFeffCluster(example.feff_input)
-        const paths = example.paths.map(path => ({ ...pathDraft(path),
-          label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
-          metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata }))
-        setDraft(previous => ({ revision: previous.revision + 1, paths,
-          parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }))
+        setDraft(previous => exampleDraft(example, previous.revision + 1))
         setNotice(example.description)
       }
       onProjectChange(updated)

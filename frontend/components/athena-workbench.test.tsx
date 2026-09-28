@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Parameters, type E0Method } from "@/lib/athena"
+import type { ArtemisExample } from "@/lib/artemis"
 import { ApiRequestError } from "@/lib/backend-client"
 import type { AthenaSelectionUpdate } from "@/lib/athena-selection"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
@@ -314,6 +315,33 @@ function projectFixture(overrides: Partial<AthenaProject> = {}): AthenaProject {
     journal: "Beamline notes", updated: "2026-09-07T12:00:00Z",
     undo: [], redo: [], history: [], ...overrides, groups,
     group_added_orders: overrides.group_added_orders ?? Object.fromEntries(groups.map((item, index) => [item.id, index])),
+  }
+}
+
+function copperExampleProject(project: AthenaProject): AthenaProject {
+  const added = [
+    group("example-10k", "Cu foil · 10 K"),
+    group("example-50k", "Cu foil · 50 K"),
+    group("example-300k", "Cu foil · 300 K"),
+    group("example-cu2o", "Cu₂O · room temperature"),
+  ]
+  const example: ArtemisExample = {
+    amcsd_id: 15851, cif_sha256: "a".repeat(64), feff_input: "TITLE Cuprite AMCSD 15851\nEDGE K",
+    description: "Cuprite starter model", parameters: [{ name: "amp", kind: "guess", value: 0.8, expression: "", min: 0, max: 2 }],
+    transform: { fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 },
+    paths: [1, 2, 3, 4].map(index => ({ filename: `feff000${index}.dat`, content: `Cuprite FEFF path ${index}`,
+      metadata: { reff: 1.85, degen: 2, nleg: 2, absorber: "Cu", edge: "K", geometry: [], kmin: 0, kmax: 20 } })),
+  }
+  return { ...project, version: project.version + 1, groups: [...project.groups, ...added], undo: ["Before copper examples"],
+    group_folders: [
+      { id: "example-foils", name: "Temperature series", group_ids: added.slice(0, 3).map(item => item.id) },
+      { id: "example-reference", name: "reference", group_ids: [added[3].id] },
+    ],
+    artemis_structures: [{ id: "example-cuprite-cif", amcsd_id: 15851, attached_at: "2026-09-28T00:00:00Z", sha256: example.cif_sha256,
+      structure: { id: 15851, mineral: "Cuprite", formula: "Cu2 O", space_group: "P n 3 m", authors: "", year: 1930,
+        journal: "", title: "Cuprite structure", cif: "data_Cuprite\n_cell_length_a 4.27", elements: ["Cu", "O"], sites: [],
+        cell: { a: 4.27, b: 4.27, c: 4.27, alpha: 90, beta: 90, gamma: 90 }, ordered: true, supported: true, warnings: [] } }],
+    last_operation: { action: "example", skipped_group_ids: [], artemis_example: { group_id: added[3].id, attachment_id: "example-cuprite-cif", example } },
   }
 }
 
@@ -1188,22 +1216,11 @@ describe("AthenaWorkbench data group folders", () => {
     const openProject = screen.getByRole("button", { name: "Open project" })
     expect(button.compareDocumentPosition(openProject) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(screen.queryByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).not.toBeInTheDocument()
+    expect(screen.getByText("Includes Cu₂O EXAFS setup")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
 
-    const added = [
-      group("example-10k", "Cu foil · 10 K"),
-      group("example-50k", "Cu foil · 50 K"),
-      group("example-300k", "Cu foil · 300 K"),
-      group("example-cu2o", "Cu₂O · room temperature"),
-    ]
-    api.mockResolvedValueOnce({
-      ...project,
-      version: project.version + 1,
-      groups: [...project.groups, ...added],
-      group_folders: [
-        { id: "example-foils", name: "Temperature series", group_ids: added.slice(0, 3).map(item => item.id) },
-        { id: "example-reference", name: "reference", group_ids: [added[3].id] },
-      ],
-    })
+    const loaded = copperExampleProject(project)
+    api.mockResolvedValueOnce(loaded)
     fireEvent.click(button)
 
     await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
@@ -1214,6 +1231,78 @@ describe("AthenaWorkbench data group folders", () => {
     expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "Collapse Temperature series group" })).toBeVisible()
     expect(screen.getByRole("button", { name: "Collapse reference group" })).toBeVisible()
+    expect(screen.getByText("Cu₂O EXAFS example added")).toBeVisible()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      group: { id: "example-10k" },
+      exampleSetup: { projectId: project.id, groupId: "example-cu2o", attachmentId: "example-cuprite-cif", example: loaded.last_operation!.artemis_example!.example },
+    })
+    const requestCount = api.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Open Cu₂O EXAFS" }))
+    expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].group?.id).toBe("example-cu2o")
+    expect(api).toHaveBeenCalledTimes(requestCount)
+  })
+
+  it("opens the new Cu₂O spectrum and matching CIF when examples are loaded from EXAFS fitting", async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole("tab", { name: "EXAFS fitting" }))
+    const loaded = copperExampleProject(project)
+    const cuprite = loaded.artemis_structures![0]
+    loaded.artemis_structures = [
+      { ...cuprite, id: "other-cif", amcsd_id: 123, structure: { ...cuprite.structure, id: 123, mineral: "Other structure" } },
+      cuprite,
+    ]
+    api.mockResolvedValueOnce(loaded)
+    const requestCount = api.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
+
+    await waitFor(() => expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      projectId: project.id, version: loaded.version, group: { id: "example-cu2o" },
+      exampleSetup: { projectId: project.id, groupId: "example-cu2o", attachmentId: cuprite.id },
+      pending: false,
+    }))
+    expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("combobox", { name: "Viewed CIF structure" })).toHaveValue(cuprite.id)
+    expect(api).toHaveBeenCalledTimes(requestCount + 1)
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "example", group_ids: [], options: {},
+    })
+  })
+
+  it("hides the Cu₂O shortcut after undo removes its group and restores it on redo", async () => {
+    const project = await openSaved()
+    const loaded = copperExampleProject(project)
+    api.mockResolvedValueOnce(loaded)
+    fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
+    await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })
+
+    api.mockResolvedValueOnce({ ...project, version: loaded.version + 1, redo: ["Copper examples"], last_operation: { action: "undo", skipped_group_ids: [] } })
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument())
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup).toBeUndefined()
+
+    api.mockResolvedValueOnce({ ...loaded, version: loaded.version + 2, last_operation: { action: "redo", skipped_group_ids: [] } })
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }))
+    expect(await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })).toBeVisible()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup?.groupId).toBe("example-cu2o")
+  })
+
+  it("does not offer a prior project's Cu₂O setup after opening another project with the same group ID", async () => {
+    const project = await openSaved()
+    api.mockResolvedValueOnce(copperExampleProject(project))
+    fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
+    await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })
+    const other = projectFixture({ id: "other-project", name: "Other project", groups: [group("example-cu2o", "Unrelated Cu₂O")] })
+    api.mockResolvedValueOnce([{ id: other.id, name: other.name, updated: other.updated, count: other.groups.length }]).mockResolvedValueOnce(other)
+    fireEvent.click(screen.getByRole("button", { name: "Open project" }))
+    const dialog = await screen.findByRole("dialog", { name: "Open a project" })
+    const recent = await within(dialog).findByRole("button", { name: new RegExp(other.name) })
+    await waitFor(() => expect(recent).toBeEnabled())
+    fireEvent.click(recent)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({ projectId: other.id, group: { id: "example-cu2o" } })
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup).toBeUndefined()
   })
 
   it("creates a project-backed folder from marked spectra and collapses it without changing the active plot", async () => {

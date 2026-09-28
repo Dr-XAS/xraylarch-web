@@ -35,6 +35,8 @@ The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
 examples: three temperature-series foils and a room-temperature Cu₂O reference.
+The local copper loader also attaches the Cuprite CIF and prepares the Cu₂O
+EXAFS model with four FEFF paths; **Open Cu₂O EXAFS** opens the prepared setup.
 The earlier single-spectrum interface is at `/classic`. The
 Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
 both the frontend and backend to loopback and relies on Dr.XAS ingress rather

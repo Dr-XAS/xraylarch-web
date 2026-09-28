@@ -24,6 +24,7 @@ import { viewerIcons } from "./athena-viewer-icons"
 import { AthenaWavelet } from "./artefact-viewers/athena-wavelet"
 import { AthenaParameterTabs, type ParameterTab } from "./athena-parameter-tabs"
 import { ArtemisFittingPanel, type ArtemisFitResult } from "./artemis-fitting"
+import { validCupriteExample, type ArtemisExampleSetup } from "@/lib/artemis"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import { ProjectCifViewer } from "./artefact-viewers/project-cif-viewer"
 import { FeffPathViewer, type FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
@@ -364,6 +365,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [chosenParameterTab, setParameterTab] = useState<ParameterTab>("processing")
   const parameterTab: ParameterTab = integrated ? "processing" : chosenParameterTab
   const [artemisResult, setArtemisResult] = useState<ArtemisFitResult | null>(null)
+  const [cupriteExample, setCupriteExample] = useState<ArtemisExampleSetup>()
   const [feffPathState, setFeffPathState] = useState<{ projectId: string; groupId: string; paths: FeffPathSummary[] } | null>(null)
   const [cifSelection, setCifSelection] = useState<{ projectId?: string; attachmentId: string } | null>(null)
   const [shownViewers, setShownViewers] = useState<Set<ViewerId>>(() => new Set(viewerIds))
@@ -421,6 +423,33 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (menu === "Help") helpInputRef.current?.focus()
   }, [menu])
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
+  const readyCupriteExample = !integrated && cupriteExample?.projectId === project?.id &&
+    project?.groups.some(group => group.id === cupriteExample?.groupId) &&
+    project.artemis_structures?.some(item => item.id === cupriteExample?.attachmentId && item.sha256 === cupriteExample.example.cif_sha256)
+    ? cupriteExample : undefined
+  function openCupriteExample() {
+    if (!readyCupriteExample || busy || parameterActionBlocked()) return
+    cancelPick()
+    setSearch("")
+    setCollapsedGroupFolders(current => new Set([...current].filter(id =>
+      !project?.group_folders?.find(folder => folder.id === id)?.group_ids.includes(readyCupriteExample.groupId))))
+    setActiveId(readyCupriteExample.groupId)
+    setCifSelection({ projectId: readyCupriteExample.projectId, attachmentId: readyCupriteExample.attachmentId })
+    setAnalysisVisible(false)
+    openFittingFromResults()
+  }
+  async function loadCopperExamples() {
+    if (parameterActionBlocked()) return
+    const previousIds = new Set(projectRef.current?.groups.map(group => group.id) ?? [])
+    await task("Loading copper examples", async () => {
+      const next = await command("example")
+      resetViewerLayout()
+      const setup = parameterTab === "fitting" ? next.last_operation?.artemis_example : undefined
+      const fittingGroup = setup && next.groups.find(group => group.id === setup.group_id)
+      setActiveId(fittingGroup?.id ?? next.groups.find(group => !previousIds.has(group.id))?.id ?? next.groups.at(-1)?.id ?? "")
+      if (fittingGroup && setup) setCifSelection({ projectId: next.id, attachmentId: setup.attachment_id })
+    })
+  }
   function resetViewerLayout() {
     setShownViewers(new Set(viewerIds))
     setViewerSort("default")
@@ -834,6 +863,12 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       })
     }
     projectRef.current = p; setProject(p)
+    const example = p.last_operation?.artemis_example
+    if (!integrated && example && validCupriteExample(example.example) &&
+      p.groups.some(group => group.id === example.group_id) &&
+      p.artemis_structures?.some(item => item.id === example.attachment_id && item.sha256 === example.example.cif_sha256)) {
+      setCupriteExample({ projectId: p.id, groupId: example.group_id, attachmentId: example.attachment_id, example: example.example })
+    }
     setAnalysis(p.analyses?.at(-1) ?? null)
     if (!integrated) localStorage.setItem("athena.project", p.id)
     setActiveId(id => p.groups.some(g => g.id === id) ? id : p.groups[0]?.id ?? "")
@@ -2019,7 +2054,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => { if (integrated) accept(await athenaApi<AthenaProject>(`/projects/${projectRef.current?.id ?? session.projectId}`)); else accept(await openLocalProject(projectRef.current?.id ?? localStorage.getItem("athena.project"))) }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
     <ResizableAthenaWorkspace
       groups={<aside id="athena-data-groups" className="ath-groups"><div className="ath-panel-heading"><h2><ContextLabel label="current group" open={event => showContext(event, { kind: "group" })}>Data groups <span>{project?.groups.length ?? 0}</span></ContextLabel></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div>
-        <div className="ath-sidebar-example"><button disabled={!!busy || !project || !canCommand("example")} onClick={() => { const previousIds = new Set(projectRef.current?.groups.map(group => group.id) ?? []); void task("Loading copper examples", async () => { const next = await command("example"); resetViewerLayout(); setActiveId(next.groups.find(group => !previousIds.has(group.id))?.id ?? next.groups.at(-1)?.id ?? "") }) }}><Activity size={16} />Load copper examples</button></div>
+        <div className="ath-sidebar-example"><button disabled={!!busy || parameterUpdatePending || !project || !canCommand("example")} aria-describedby={!integrated ? "ath-copper-example-hint" : undefined} onClick={() => { void loadCopperExamples() }}><Activity size={16} />Load copper examples</button>
+          {!integrated && <div className="ath-example-details"><small id="ath-copper-example-hint">{readyCupriteExample ? "Cu₂O EXAFS example added" : "Includes Cu₂O EXAFS setup"}</small>
+            {readyCupriteExample && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={openCupriteExample}>Open Cu₂O EXAFS<ChevronRight size={12} /></button>}
+          </div>}
+        </div>
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>
         <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => { cancelGroupDrag(); setSearch(e.target.value) }} /></label>
         <div className="ath-group-sort-row"><label><ArrowUpDown size={13} aria-hidden="true" /><span>Sort</span><select aria-label="Sort spectra" aria-describedby="ath-group-sort-help" value={groupSort} onChange={event => changeGroupSort(event.target.value as GroupSort)}><option value="manual">Manual order</option><option value="added">Added order</option><option value="name">Name A–Z</option><option value="tag">Tag type</option></select></label><span id="ath-group-sort-help" className="ath-sr-only">Sorting changes only the view and keeps folders together. Added order is when each spectrum was added to or created in the project. Tag order is trans, fluo, ref, then untagged. Switch to Manual order to reorder spectra.</span></div>
@@ -2084,7 +2123,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "detector"}><details open><summary><ContextLabel label="Forward Fourier transform" open={event => showContext(event, { kind: "section", section: "forward" })}>Forward Fourier transform <small>k → R</small></ContextLabel></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
         <details><summary><ContextLabel label="Backward Fourier transform" open={event => showContext(event, { kind: "section", section: "reverse" })}>Backward Fourier transform <small>R → q</small></ContextLabel></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
         <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details></fieldset>
-      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label><p className="ath-hint" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</p>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending || (!can("copy_parameters") && !can("reset_parameters"))} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</>} fitting={integrated ? null : <ArtemisFittingPanel projectId={project?.id} version={project?.version} group={active} pending={!!busy || !!dirty || parameterUpdatePending} onFitResult={receiveFitResult} onPathsChange={receiveFeffPaths} onProjectChange={acceptArtemisProject} onViewStructure={attachmentId => setCifSelection({ projectId: project?.id, attachmentId })} />} /></aside>}
+      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label><p className="ath-hint" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</p>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending || (!can("copy_parameters") && !can("reset_parameters"))} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</>} fitting={integrated ? null : <ArtemisFittingPanel exampleSetup={readyCupriteExample} projectId={project?.id} version={project?.version} group={active} pending={!!busy || !!dirty || parameterUpdatePending} onFitResult={receiveFitResult} onPathsChange={receiveFeffPaths} onProjectChange={acceptArtemisProject} onViewStructure={attachmentId => setCifSelection({ projectId: project?.id, attachmentId })} />} /></aside>}
     />
     <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
 

@@ -31,15 +31,23 @@ a path removes it from that sum. The fit concerns the current spectrum;
 selecting several spectra for Athena plotting does not create a simultaneous
 multi-dataset fit.
 
-For a Cu₂O model, use **Load copper examples** in Athena and select the
-**Cu₂O · room temperature** spectrum, or select another processed Cu K-edge
-spectrum. Then choose **Cu₂O example**. One click attaches the Cuprite CIF
-(AMCSD 0015851, 1930) to the current project and loads the first four
-precomputed Cu K-edge FEFF paths from its Cu site 1. The paths include Cu–O
-and Cu–Cu scattering; the example does
-not supply or change the experimental spectrum. Review the path parameters and
-fit ranges for the selected data before fitting. The button is available when
-the path list is empty and a local project and spectrum are selected.
+In the local workspace, **Load copper examples** loads the three foil spectra
+and the **Cu₂O · room temperature** reference, attaches the Cuprite CIF
+(AMCSD 0015851, 1930), and prepares the reference's EXAFS model with the first
+four precomputed Cu K-edge FEFF paths from Cu site 1. From the Processing tab,
+the first foil stays selected; from EXAFS fitting, the prepared Cu₂O model
+opens directly. Choose **Open Cu₂O EXAFS** below the loader to select the reference
+and open its prepared fitting model. Existing spectra and fitting drafts are
+preserved; Undo removes the added spectra and any newly attached CIF together.
+Linked Dr.XAS sessions retain their spectra-only example import.
+
+The separate **Cu₂O example** button remains available for another selected
+processed spectrum when its path list is empty. It attaches the same CIF and
+loads the model without changing the experimental spectrum. The paths include
+Cu–O and Cu–Cu scattering. Review the path parameters and fit ranges, then
+choose **Run EXAFS fit**; loading an example never runs a fit automatically.
+Fitting drafts stay in the workspace session; export model JSON to preserve
+an edited model after reload.
 
 The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
 and up to four legs. The first four files in FEFF order are:
