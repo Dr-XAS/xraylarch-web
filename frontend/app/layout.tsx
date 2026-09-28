@@ -8,7 +8,7 @@ import "./globals.css"
 import "./athena.css"
 
 export const metadata: Metadata = {
-  title: "Athena Web · XAS workbench",
+  title: "XAS workbench",
   description: "Athena workflows for X-ray absorption spectroscopy, powered by Larch.",
 }
 
