@@ -84,14 +84,19 @@ assert all(group["result"] for group in project["groups"]), "Example processing 
 status, headers, body = request(alice, api + "/" + project["id"] + "/export?format=prj")
 assert status == 200 and body and headers.get("Content-Disposition"), "Project export failed"
 artemis = "/api/backend/api/artemis"
-status, _, body = request(alice, artemis + "/examples/copper")
-assert status == 200, "Missing Artemis copper example"
+status, _, body = request(alice, artemis + "/examples/cuprite")
+assert status == 200, f"Missing Artemis Cuprite example: HTTP {status}: {body[:200]!r}"
 example = json.loads(body)
+assert example["amcsd_id"] == 15851 and len(example["paths"]) == 4, "Invalid Artemis Cuprite example"
+seed = project["last_operation"]["artemis_example"]
+assert seed["group_id"] == project["groups"][3]["id"], "Cuprite model targets the wrong example spectrum"
+assert seed["example"]["cif_sha256"] == example["cif_sha256"], "Cuprite example provenance changed"
 fit_request = {"version": project["version"], "parameters": example["parameters"],
-               "transform": example["transform"], "paths": [{
-                   "id": "cu-first-shell", "filename": example["path"]["filename"],
-                   "content": example["path"]["content"], "label": "Cu first shell"}]}
-fit_path = artemis + "/projects/" + project["id"] + "/groups/" + project["groups"][0]["id"] + "/fit"
+               "transform": example["transform"], "paths": [
+                   {"id": f"cuprite-{index}", "filename": path["filename"],
+                    "content": path["content"], "label": f"Cuprite path {index}"}
+                   for index, path in enumerate(example["paths"], 1)]}
+fit_path = artemis + "/projects/" + project["id"] + "/groups/" + project["groups"][3]["id"] + "/fit"
 status, _, _ = request(bob, fit_path, fit_request)
 assert status == 404, "Second visitor fitted private project"
 status, _, body = request(alice, fit_path, fit_request)
