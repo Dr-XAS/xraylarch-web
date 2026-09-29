@@ -1,6 +1,6 @@
 "use client"
 
-import { memo, useEffect, useId, useMemo, useRef, useState, type ComponentProps } from "react"
+import { memo, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
 import { plotlyColorscale, type AthenaColormap } from "@/lib/athena-colormaps"
@@ -59,8 +59,9 @@ function validPreview(preview: PlotWeightResult, data: WaveletResult, range: Ran
     Math.abs(preview.effective.kmin - range.min) < 1e-6 && Math.abs(preview.effective.kmax - range.max) < 1e-6
 }
 
-function MeasuredPlot({ label, className, main = false, square = false, plotKey, ...props }: ComponentProps<typeof Plot> & {
+function MeasuredPlot({ label, className, main = false, square = false, plotKey, renderAbove, ...props }: ComponentProps<typeof Plot> & {
   label: string; className: string; main?: boolean; square?: boolean; plotKey: string
+  renderAbove?: (insets: { left: number; right: number }) => ReactNode
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -90,13 +91,16 @@ function MeasuredPlot({ label, className, main = false, square = false, plotKey,
     margin = { ...margin, l: l + horizontalSpace, r: r + horizontalSpace,
       t: t + verticalSpace, b: b + verticalSpace, autoexpand: false }
   }
-  return <div ref={ref} className={className} aria-label={label} data-wavelet-main-plot={main || undefined}>
-    {failedKey === plotKey ? <div className={styles.notice} role="alert">
-      Could not render the {label.toLowerCase()}.{label === "3D wavelet surface" && " Try the 2D heatmap if 3D graphics are unavailable."}
-    </div> : <Plot {...props} layout={{ ...props.layout, margin, autosize: true,
-      ...(size.width > 0 ? { width: size.width } : {}), ...(size.height > 0 ? { height: size.height } : {}),
-    }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setFailedKey(plotKey)} />}
-  </div>
+  return <>
+    {renderAbove?.({ left: margin?.l ?? 0, right: margin?.r ?? 0 })}
+    <div ref={ref} className={className} aria-label={label} data-wavelet-main-plot={main || undefined}>
+      {failedKey === plotKey ? <div className={styles.notice} role="alert">
+        Could not render the {label.toLowerCase()}.{label === "3D wavelet surface" && " Try the 2D heatmap if 3D graphics are unavailable."}
+      </div> : <Plot {...props} layout={{ ...props.layout, margin, autosize: true,
+        ...(size.width > 0 ? { width: size.width } : {}), ...(size.height > 0 ? { height: size.height } : {}),
+      }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setFailedKey(plotKey)} />}
+    </div>
+  </>
 }
 
 // Range selection only affects the Fourier companions. Keeping the surface in
@@ -202,31 +206,31 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
 
   return <div className={styles.viewer}>
     <div className={styles.analysis} data-view={mode}>
-      {!surfaceOnly && <fieldset className={styles.range}>
-        <legend className={styles.srOnly}>k range</legend>
-        <div className={styles.alignedRange} style={{ marginLeft: leftMargin, marginRight: rightMargin }}>
-          <span aria-hidden="true" className={styles.rangeLabel}>k</span>
-          <span aria-hidden="true" className={styles.rangeUnit}>Å⁻¹</span>
-          <div className={styles.track}>
-            <span aria-hidden="true" className={styles.rail} />
-            <span aria-hidden="true" className={styles.selectedRange} style={{ left: `${percent(range.min)}%`, right: `${100 - percent(range.max)}%` }} />
-            {(["min", "max"] as const).map(handle => <span key={handle}>
-              <label className={styles.srOnly} htmlFor={`${sliderId}-${handle}`}>k {handle === "min" ? "minimum" : "maximum"}</label>
-              <input id={`${sliderId}-${handle}`} className={styles.rangeInput} type="range"
-                aria-label={`k ${handle === "min" ? "minimum" : "maximum"}`} aria-valuetext={`${range[handle].toFixed(2)} Å⁻¹`}
-                min={domainMin} max={domainMax} step="any" value={range[handle]}
-                onChange={event => handle === "min"
-                  ? updateRange(Math.min(Number(event.target.value), range.max - gap), range.max)
-                  : updateRange(range.min, Math.max(Number(event.target.value), range.min + gap))}
-                onFocus={() => setFocusedHandle(handle)} onBlur={() => setFocusedHandle(null)} />
-              <span aria-hidden="true" className={`${styles.marker} ${focusedHandle === handle ? styles.focusedMarker : ""}`}
-                style={{ left: `${percent(range[handle])}%` }} />
-              <output htmlFor={`${sliderId}-${handle}`} className={styles.rangeValue} style={{ left: `${percent(range[handle])}%` }}>{range[handle].toFixed(2)}</output>
-            </span>)}
+      {!surfaceOnly && <MeasuredPlot key="heatmap" label="2D wavelet heatmap" main square className={`${styles.mainPlot} ${styles.heatmapPlot}`} plotKey={`${context}:2d`} data={[trace]}
+        renderAbove={({ left, right }) => <fieldset className={styles.range}>
+          <legend className={styles.srOnly}>k range</legend>
+          <div className={styles.alignedRange} style={{ marginLeft: left, marginRight: right }}>
+            <span aria-hidden="true" className={styles.rangeLabel}>k</span>
+            <span aria-hidden="true" className={styles.rangeUnit}>Å⁻¹</span>
+            <div className={styles.track}>
+              <span aria-hidden="true" className={styles.rail} />
+              <span aria-hidden="true" className={styles.selectedRange} style={{ left: `${percent(range.min)}%`, right: `${100 - percent(range.max)}%` }} />
+              {(["min", "max"] as const).map(handle => <span key={handle}>
+                <label className={styles.srOnly} htmlFor={`${sliderId}-${handle}`}>k {handle === "min" ? "minimum" : "maximum"}</label>
+                <input id={`${sliderId}-${handle}`} className={styles.rangeInput} type="range"
+                  aria-label={`k ${handle === "min" ? "minimum" : "maximum"}`} aria-valuetext={`${range[handle].toFixed(2)} Å⁻¹`}
+                  min={domainMin} max={domainMax} step="any" value={range[handle]}
+                  onChange={event => handle === "min"
+                    ? updateRange(Math.min(Number(event.target.value), range.max - gap), range.max)
+                    : updateRange(range.min, Math.max(Number(event.target.value), range.min + gap))}
+                  onFocus={() => setFocusedHandle(handle)} onBlur={() => setFocusedHandle(null)} />
+                <span aria-hidden="true" className={`${styles.marker} ${focusedHandle === handle ? styles.focusedMarker : ""}`}
+                  style={{ left: `${percent(range[handle])}%` }} />
+                <output htmlFor={`${sliderId}-${handle}`} className={styles.rangeValue} style={{ left: `${percent(range[handle])}%` }}>{range[handle].toFixed(2)}</output>
+              </span>)}
+            </div>
           </div>
-        </div>
-      </fieldset>}
-      {!surfaceOnly && <MeasuredPlot key="heatmap" label="2D wavelet heatmap" main square className={styles.mainPlot} plotKey={`${context}:2d`} data={[trace]}
+        </fieldset>}
         layout={{ ...baseLayout, title: { text: `Wavelet Transform (Cauchy, k-weight = ${data.kweight})` },
           margin: { l: leftMargin, r: rightMargin, t: 50, b: 55, autoexpand: false },
           xaxis: { ...axis("k (Å⁻¹)"), range: [domainMin, domainMax], fixedrange: true },

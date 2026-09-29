@@ -29,20 +29,61 @@ type HeatmapRanges = { k: number[]; r: number[] }
 
 async function heatmapGeometry(viewer: Locator) {
   return viewer.locator(".js-plotly-plot").evaluate(element => {
-    type Axis = { _length: number; range: number[] }
+    type Axis = { _length: number; _offset: number; range: number[] }
     const plot = element as HTMLElement & {
       data: { x: number[] }[]
       _fullLayout: { xaxis: Axis; yaxis: Axis }
     }
     const { xaxis, yaxis } = plot._fullLayout
     const k = plot.data[0].x
+    const box = plot.getBoundingClientRect()
     return {
       width: xaxis._length,
       height: yaxis._length,
       ranges: { k: xaxis.range, r: yaxis.range },
       kDomain: [k[0], k[k.length - 1]],
+      xLeft: box.left + xaxis._offset,
+      xRight: box.left + xaxis._offset + xaxis._length,
+      frame: { left: box.left, right: box.right, top: box.top },
     }
   })
+}
+
+async function sliderGeometry(viewer: Locator) {
+  return viewer.page().getByRole("slider", { name: "k minimum", exact: true }).evaluate(element => {
+    const minimum = element as HTMLInputElement
+    const fieldset = minimum.closest("fieldset")!
+    const maximum = fieldset.querySelector<HTMLInputElement>('input[aria-label="k maximum"]')!
+    const track = minimum.parentElement!.parentElement!
+    const rail = track.querySelector<HTMLElement>(':scope > span[aria-hidden="true"]')!.getBoundingClientRect()
+    const range = fieldset.getBoundingClientRect()
+    return {
+      rail: { left: rail.left, right: rail.right },
+      fieldset: { left: range.left, right: range.right, bottom: range.bottom },
+      handles: [minimum, maximum].map(input => {
+        const marker = input.nextElementSibling!.getBoundingClientRect()
+        return { value: input.valueAsNumber, center: marker.left + marker.width / 2 }
+      }),
+    }
+  })
+}
+
+async function expectSliderAligned(viewer: Locator) {
+  await expect.poll(async () => {
+    const plot = await heatmapGeometry(viewer)
+    const slider = await sliderGeometry(viewer)
+    const projectK = (k: number) => plot.xLeft + (k - plot.ranges.k[0]) / (plot.ranges.k[1] - plot.ranges.k[0]) * plot.width
+    return Math.max(
+      Math.abs(slider.rail.left - plot.xLeft),
+      Math.abs(slider.rail.right - plot.xRight),
+      ...slider.handles.map(handle => Math.abs(handle.center - projectK(handle.value))),
+    )
+  }, { message: "Slider rail and both handles must align with the heatmap k axis within one pixel" }).toBeLessThanOrEqual(1)
+  const plot = await heatmapGeometry(viewer)
+  const slider = await sliderGeometry(viewer)
+  expect(slider.fieldset.left).toBeGreaterThanOrEqual(plot.frame.left - 1)
+  expect(slider.fieldset.right).toBeLessThanOrEqual(plot.frame.right + 1)
+  expect(slider.fieldset.bottom).toBeLessThanOrEqual(plot.frame.top)
 }
 
 async function expectSquareHeatmapHeight(viewer: Locator, expected: number, ranges: HeatmapRanges) {
@@ -54,6 +95,7 @@ async function expectSquareHeatmapHeight(viewer: Locator, expected: number, rang
       ranges: geometry.ranges,
     }
   }).toEqual({ square: true, ranges })
+  await expectSliderAligned(viewer)
 }
 
 async function camera(viewer: Locator) {
@@ -156,6 +198,13 @@ test("combined wavelet views share data, preserve camera and keep the heatmap sq
   await panel.getByRole("slider", { name: "k minimum", exact: true }).press("ArrowRight")
   expect((await preview).ok()).toBe(true)
   await expect(panel.getByLabel("Selected k-range Fourier preview", { exact: true })).toHaveAttribute("aria-busy", "false")
+  expect(await camera(surface)).toBe(rotatedCamera)
+  await expectSliderAligned(heatmap)
+  const maximumPreview = page.waitForResponse(response => response.url().endsWith("/plot-transform") && response.request().method() === "POST")
+  await panel.getByRole("slider", { name: "k maximum", exact: true }).press("ArrowLeft")
+  expect((await maximumPreview).ok()).toBe(true)
+  await expect(panel.getByLabel("Selected k-range Fourier preview", { exact: true })).toHaveAttribute("aria-busy", "false")
+  await expectSliderAligned(heatmap)
   expect(await camera(surface)).toBe(rotatedCamera)
   await panel.getByRole("combobox", { name: "Wavelet color legend", exact: true }).click()
   await page.getByRole("option", { name: "Viridis · purple–green–yellow", exact: true }).click()
