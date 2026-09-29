@@ -261,8 +261,8 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-param-current { padding: 8px 12px; display: flex; align-items: center; gap: 7px; background: var(--ath-surface-muted); border-bottom: 1px solid var(--ath-line); }
 .ath-param-current strong { font-size: var(--text-label); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .ath-app .ath-param-current button { color: var(--ath-muted); font-size: var(--text-body); padding: 4px 3px; }
-/* Fill the stretched workspace column without letting all parameter sections size the grid row. */
-.ath-param-fields { flex: 1 1 0px; height: 0; margin: 0; border: 0; padding: 0; min-height: 410px; overflow: auto; }
+/* Keep absolute screen-reader hints inside the scroller as viewer heights change. */
+.ath-param-fields { position: relative; flex: 1 1 0px; height: 0; margin: 0; border: 0; padding: 0; min-height: 0; overflow: auto; }
 .ath-param-fields:disabled { opacity: .65; }
 .ath-app details { border-bottom: 1px solid var(--ath-line); padding: 0 12px; }
 .ath-app summary { line-height: var(--leading-control); display: flex; align-items: center; gap: 8px; list-style: none; color: var(--ath-ink); padding: 10px 0; font-size: var(--text-body); font-weight: 600; }
