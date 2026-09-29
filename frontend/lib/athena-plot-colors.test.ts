@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest"
 
 import { ATHENA_COLORMAPS, colormapOptions } from "./athena-colormaps"
-import { defaultPlotColors, isPlotPalette, plotPaletteOptions, spectrumColors } from "./athena-plot-colors"
+import { defaultPlotColors, isPlotPalette, normalizePlotColorRange, plotPaletteOptions, spectrumColors } from "./athena-plot-colors"
 
 describe("spectrum plot palettes", () => {
   it("uses the PR's categorical colors by default", () => {
@@ -29,6 +29,31 @@ describe("spectrum plot palettes", () => {
     const forward = spectrumColors(3, { palette: "viridis", reversed: false })
     expect(forward).toEqual(["#440154", "#21918c", "#fde725"])
     expect(spectrumColors(3, { palette: "viridis", reversed: true })).toEqual([...forward].reverse())
+  })
+
+  it("uses visible ramp bounds to choose continuous colors, including after reversal", () => {
+    expect(spectrumColors(3, { palette: "coolwarm", reversed: false, vmin: 0.25, vmax: 0.75 }))
+      .toEqual(["#8db0fe", "#dddcdc", "#f4987a"])
+    expect(spectrumColors(2, { palette: "coolwarm", reversed: true, vmin: 0.25, vmax: 0.5 }))
+      .toEqual(["#f4987a", "#dddcdc"])
+    expect(spectrumColors(1, { palette: "coolwarm", reversed: false, vmin: 0.25, vmax: 0.5 }))
+      .toEqual(["#b9d0f9"])
+  })
+
+  it("keeps Classic categorical colors when bounds change", () => {
+    expect(spectrumColors(3, { palette: "classic", reversed: false, vmin: 0.25, vmax: 0.75 }))
+      .toEqual(spectrumColors(3, defaultPlotColors))
+  })
+
+  it("normalizes missing, nonfinite, out-of-range, and overlapping ramp bounds", () => {
+    expect(normalizePlotColorRange({})).toEqual({ vmin: 0, vmax: 1 })
+    expect(normalizePlotColorRange({ vmin: Number.NaN, vmax: Number.POSITIVE_INFINITY }))
+      .toEqual({ vmin: 0, vmax: 1 })
+    expect(normalizePlotColorRange({ vmin: -0.2, vmax: 1.3 })).toEqual({ vmin: 0, vmax: 1 })
+    expect(normalizePlotColorRange({ vmin: 0.99, vmax: 0.99 })).toEqual({ vmin: 0.98, vmax: 1 })
+    const crossing = normalizePlotColorRange({ vmin: 0.45, vmax: 0.44 })
+    expect(crossing.vmin).toBe(0.45)
+    expect(crossing.vmax).toBeCloseTo(0.47)
   })
 
   it("uses canonical stop positions across the full range without cropping line palettes", () => {

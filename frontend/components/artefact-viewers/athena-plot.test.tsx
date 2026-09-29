@@ -172,6 +172,24 @@ describe("AthenaPlot display options", () => {
     expect(handoff().data.map(trace => trace.line?.color)).toEqual(["#fde725", "#440154"])
   })
 
+  it("redraws line colors when color ramp bounds move", () => {
+    const first = group("First")
+    const second = group("Second")
+    const groups = [first, second]
+    const props = { groups, active: first }
+    const view = show({ ...props, colorSettings: { palette: "coolwarm", reversed: false } })
+    const original = handoff()
+    expect(original.data.map(trace => trace.line?.color)).toEqual(["#3b4cc0", "#b40426"])
+
+    view.rerender(<AthenaPlot groups={groups} active={first} space="E" energyMode="mu"
+      component="mag" background={false} window={false} offset={0} analysis={null} analysisVisible={false}
+      range={[null, null]} colorSettings={{ palette: "coolwarm", reversed: false, vmin: 0.25, vmax: 0.75 }} />)
+    const bounded = handoff()
+    expect(bounded.data).not.toBe(original.data)
+    expect(bounded.data.map(trace => trace.line?.color)).toEqual(["#8db0fe", "#f4987a"])
+    expect(bounded.layout).toBe(original.layout)
+  })
+
   it("keeps the current line-and-grid presentation by default", () => {
     show()
     expect(handoff().data[0]).toMatchObject({ mode: "lines" })

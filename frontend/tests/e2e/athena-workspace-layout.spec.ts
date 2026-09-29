@@ -196,3 +196,51 @@ test("keeps current and marked spectra in independent viewer panels", async ({ p
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   await capturePanels("narrow")
 })
+
+test("keeps spectrum color ramps aligned at the right across plot spaces", async ({ page }) => {
+  test.setTimeout(60000)
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+
+  const single = page.getByRole("region", { name: "Single spectrum viewer", exact: true })
+  const multiple = page.getByRole("region", { name: "Multiple spectra viewer", exact: true })
+  const placement = (viewer: Locator) => viewer.locator(".ath-plot-controls").evaluate(controls => {
+    const legend = controls.querySelector<HTMLElement>(".ath-color-legend")!
+    const preview = legend.querySelector<HTMLElement>(".ath-color-preview")!
+    const ramp = legend.querySelector<HTMLElement>(".ath-color-ramp")!
+    const controlBox = controls.getBoundingClientRect()
+    const legendBox = legend.getBoundingClientRect()
+    const previewBox = preview.getBoundingClientRect()
+    const rampBox = ramp.getBoundingClientRect()
+    return {
+      inset: controlBox.right - legendBox.right,
+      legendRight: legendBox.right,
+      previewRight: previewBox.right,
+      rampRight: rampBox.right,
+      rampWidth: rampBox.width,
+    }
+  })
+
+  for (const viewport of [{ width: 1440, height: 1000 }, { width: 390, height: 844 }]) {
+    await page.setViewportSize(viewport)
+    const reference = await placement(multiple)
+    for (const viewer of [single, multiple]) {
+      for (const [space, tab] of [["E", /^E(?: Energy)?$/], ["k", /^k(?: EXAFS)?$/], ["R", /^R(?: Fourier)?$/], ["q", /^q(?: Back transform)?$/]] as const) {
+        await viewer.getByRole("tab", { name: tab }).click()
+        const current = await placement(viewer)
+        expect(current.inset, `${viewport.width}px ${space}: color controls should reach the right padding`).toBeLessThanOrEqual(13)
+        expect(current.rampWidth, `${viewport.width}px ${space}: color ramp should remain visible`).toBeGreaterThan(50)
+        expect(Math.abs(current.legendRight - reference.legendRight), `${viewport.width}px ${space}: legend right edge`).toBeLessThanOrEqual(2)
+        expect(Math.abs(current.previewRight - reference.previewRight), `${viewport.width}px ${space}: preview right edge`).toBeLessThanOrEqual(2)
+        expect(Math.abs(current.rampRight - reference.rampRight), `${viewport.width}px ${space}: ramp right edge`).toBeLessThanOrEqual(2)
+      }
+    }
+    await single.getByRole("tab", { name: /^E(?: Energy)?$/ }).click()
+    await single.getByRole("radio", { name: "μ(E) · normalized", exact: true }).check()
+    await expect(single.getByText("For pre-/post-edge lines, choose μ(E) · raw.")).toBeVisible()
+    const withHint = await placement(single)
+    expect(Math.abs(withHint.legendRight - reference.legendRight), `${viewport.width}px E hint: legend right edge`).toBeLessThanOrEqual(2)
+    expect(Math.abs(withHint.rampRight - reference.rampRight), `${viewport.width}px E hint: ramp right edge`).toBeLessThanOrEqual(2)
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
+  }
+})
