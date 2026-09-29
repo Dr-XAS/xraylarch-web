@@ -1,11 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
-import type { AthenaGroup, AthenaProject } from "@/lib/athena"
+import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
+import { ApiRequestError } from "@/lib/backend-client"
 import {
   artemisApi, validArtemisResult, validCupriteExample, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult,
   type ArtemisInspectedPath, type ArtemisParameter, type ArtemisPath, type ArtemisTransform,
+  artemisModelKey, type ArtemisModelDraft as Draft, type ArtemisParameterDraft as ParameterDraft, type ArtemisTransformDraft as TransformDraft,
 } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
@@ -16,11 +18,7 @@ import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
 
-type ParameterDraft = Omit<ArtemisParameter, "value" | "min" | "max"> & { value: string; min: string; max: string; id: string }
-type TransformDraft = Omit<ArtemisTransform, "kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr"> &
-  Record<"kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr", string>
-interface Draft { parameters: ParameterDraft[]; paths: ArtemisPath[]; transform: TransformDraft; revision: number }
-interface SavedDraft { draft: Draft; result: { revision: number; data: ArtemisFitResult } | null }
+interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; result: { revision: number; data: ArtemisFitResult } | null }
 interface PanelProps {
   exampleSetup?: ArtemisExampleSetup
   projectId?: string
@@ -31,10 +29,11 @@ interface PanelProps {
   onPathsChange?: (paths: FeffPathSummary[], projectId?: string, groupId?: string) => void
   onProjectChange?: (project: AthenaProject) => void
   onViewStructure?: (attachmentId: string) => void
+  onDirtyChange?: (groupId: string, dirty: boolean) => void
 }
 
-let sequence = 0
-const nextId = () => `artemis-${++sequence}`
+// getRandomValues also works on HTTP workspaces opened on a lab network.
+const nextId = () => `artemis-${crypto.getRandomValues(new Uint32Array(4)).join("-")}`
 const defaultParameters: ArtemisParameter[] = [
   { name: "amp", kind: "guess", value: 1, expression: "", min: 0, max: 2 },
   { name: "del_e0", kind: "guess", value: 0, expression: "", min: -20, max: 20 },
@@ -86,7 +85,7 @@ function requestFromDraft(draft: Draft, version: number): ArtemisFitRequest {
   const t = draft.transform
   const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
     kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
-    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: 0 }
+    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
   if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
   if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
   if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
@@ -122,25 +121,35 @@ export function ArtemisFittingPanel(props: PanelProps) {
     const exampleKey = `${setup.projectId}:${setup.groupId}`
     // Prepare the Cu₂O model even while a foil is selected. Never replace a
     // saved draft, including a model whose paths the user deliberately removed.
-    if (!cache.current.has(exampleKey)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
+    if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
   }
   const key = `${props.projectId ?? "none"}:${props.group?.id ?? "none"}`
   return <FittingEditor key={key} {...props} initial={cache.current.get(key)} onSave={saved => cache.current.set(key, saved)} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, initial, onSave }: PanelProps & {
+function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft) => void
 }) {
-  const [draft, setDraft] = useState<Draft>(() => initial?.draft ?? newDraft())
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
+    if (!group?.artemis && initial?.persisted && initial.base && artemisModelKey(initial.draft) === artemisModelKey(initial.base)) return newDraft()
+    return initial?.draft ?? group?.artemis?.model ?? newDraft()
+  })
+  const base = useRef(group?.artemis?.model ?? (initial?.persisted ? draft : initial?.base ?? draft))
+  const persisted = group?.artemis
+  const previousSaved = useRef(persisted?.model)
+  const [selectedFitId, setSelectedFitId] = useState(initial?.selectedFitId)
+  const archive = persisted?.history.find(item => item.id === selectedFitId) ?? persisted?.history.at(-1)
+  const modelDirty = artemisModelKey(draft) !== artemisModelKey(persisted?.model ?? base.current) || (!persisted && draft.paths.length > 0)
   const [result, setResult] = useState<SavedDraft["result"]>(initial?.result ?? null)
-  const [busy, setBusy] = useState<"fit" | "upload" | "example" | null>(null)
+  const [busy, setBusy] = useState<"fit" | "upload" | "example" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const controller = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const modelInputRef = useRef<HTMLInputElement>(null)
-  const callbacks = useRef({ onFitResult, onPathsChange, onSave })
-  callbacks.current = { onFitResult, onPathsChange, onSave }
+  const callbacks = useRef({ onFitResult, onPathsChange, onSave, onDirtyChange })
+  callbacks.current = { onFitResult, onPathsChange, onSave, onDirtyChange }
   const reason = !projectId || !group ? "Select a spectrum to build an EXAFS fit."
     : pending ? "Waiting for spectrum processing…"
     : group.processing_error ? "Resolve this spectrum’s processing error before fitting."
@@ -149,13 +158,35 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const context = `${projectId}:${group?.id}:${version}:${draft.revision}:${reason}`
   const contextRef = useRef(context)
   contextRef.current = context
-  const currentResult = !reason && result?.revision === draft.revision && result.data.project_id === projectId &&
-    result.data.group_id === group?.id && result.data.version === version ? result.data : null
+  const savedResult = useMemo(() => {
+    if (!archive || !projectId || !group) return null
+    let request: ArtemisFitRequest | undefined
+    try { request = requestFromDraft(archive.model, archive.origin.project_version) } catch { /* Imported archives are inert, even if their model is incomplete. */ }
+    return { ...archive.result, project_id: projectId, group_id: group.id, group_label: group.label,
+      request,
+      archive: { id: archive.id, created: archive.created, imported: archive.imported,
+        stale: !persisted?.current_input_sha256 || persisted.current_input_sha256 !== archive.input_sha256,
+        modelChanged: artemisModelKey(draft) !== artemisModelKey(archive.model), origin: archive.origin } }
+  }, [archive, projectId, group?.id, group?.label, persisted?.current_input_sha256, draft])
+  const currentResult = savedResult ?? (!reason && result?.revision === draft.revision && result.data.project_id === projectId &&
+    result.data.group_id === group?.id && result.data.version === version ? result.data : null)
 
   useEffect(() => {
-    callbacks.current.onSave({ draft, result })
+    const saved = persisted?.model
+    if (saved === previousSaved.current) return
+    previousSaved.current = saved
+    // External saves and Undo/Redo update clean editors; unfinished edits stay in memory.
+    const previousBase = base.current
+    const nextBase = saved ?? newDraft()
+    setDraft(previous => artemisModelKey(previous) === artemisModelKey(previousBase) ? nextBase : previous)
+    base.current = nextBase
+  }, [persisted?.model])
+
+  useEffect(() => {
+    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, result })
     callbacks.current.onFitResult?.(currentResult)
-  }, [draft, result, currentResult])
+    if (group) callbacks.current.onDirtyChange?.(group.id, modelDirty)
+  }, [draft, result, currentResult, selectedFitId, modelDirty, group?.id, persisted])
   useEffect(() => {
     callbacks.current.onPathsChange?.(draft.paths.map(({ id, label, filename, enabled, metadata }) => ({ id, label, filename, enabled, metadata })), projectId, group?.id)
   }, [draft.paths, projectId, group?.id])
@@ -203,6 +234,15 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     setError("")
     setNotice("")
     return abort
+  }
+  async function recoverConflict(error: unknown) {
+    if (!(error instanceof ApiRequestError) || error.code !== "stale_revision" || !projectId || !onProjectChange) return false
+    try {
+      const updated = await athenaApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}`)
+      onProjectChange(updated)
+      setNotice("Project state refreshed after another change. Your unsaved model is retained; review it and retry saving or fitting.")
+      return true
+    } catch { return false }
   }
   async function upload(files: File[]) {
     if (!files.length) return
@@ -259,7 +299,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   function saveModel() {
     try {
       const request = requestFromDraft(draft, version ?? 0)
-      download("artemis-model.json", exportBundle(request, currentResult, { project_id: projectId, group_id: group?.id, group_label: group?.label }))
+      download("artemis-model.json", exportBundle(request, currentResult?.archive?.modelChanged ? null : currentResult, { project_id: projectId, group_id: group?.id, group_label: group?.label }))
       setError("")
       setNotice("Downloaded the model, FEFF files, and any current fit result as JSON.")
     } catch (error) { setError(errorText(error)) }
@@ -273,9 +313,11 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       for (const path of request.paths) {
         if (abort.signal.aborted) return
         const inspected = await artemisApi<ArtemisInspectedPath>("/paths/inspect", { filename: path.filename, content: path.content }, abort.signal)
-        paths.push({ ...path, ...inspected, id: nextId() })
+        paths.push({ ...inspected, id: nextId(), label: path.label, enabled: path.enabled, s02: path.s02, e0: path.e0, deltar: path.deltar, sigma2: path.sigma2 })
       }
-      const imported = { revision: draft.revision + 1, paths, parameters: request.parameters.map(parameterDraft), transform: transformDraft({ ...request.transform, dr: 0 }) }
+      const t = request.transform
+      const imported = { revision: draft.revision + 1, paths, parameters: request.parameters.map(({ name, kind, value, min, max, expression }) => parameterDraft({ name, kind, value, min, max, expression })),
+        transform: transformDraft({ fitspace: t.fitspace, window: t.window, kweight: t.kweight, kmin: t.kmin, kmax: t.kmax, dk: t.dk, rmin: t.rmin, rmax: t.rmax, dr: 0 }) }
       requestFromDraft(imported, version ?? 0)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
       setDraft(imported)
@@ -293,11 +335,44 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     const requestContext = context
     setResult(null)
     try {
+      if (onProjectChange) {
+        // A mutation may commit after the user changes tabs. Receive its new version even then.
+        const response = await artemisApi<{ project: AthenaProject; fit_id: string }>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit-saved`, { version, model: draft })
+        const state = response.project?.groups.find(item => item.id === group.id)?.artemis
+        const record = state?.history.find(item => item.id === response.fit_id)
+        const apply = !abort.signal.aborted && contextRef.current === requestContext
+        if (response.project?.id === projectId && response.project.version >= version) onProjectChange(response.project)
+        if (!record || !validArtemisResult(record.result, projectId, group.id, version)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Reload this project to check its saved history.")
+        if (apply) {
+          setDraft(state!.model)
+          setSelectedFitId(record.id)
+          setResult({ revision: draft.revision, data: { ...record.result, request } })
+          setNotice("Saved the model and fit result in this project.")
+        }
+        return
+      }
       const response = await artemisApi<ArtemisFitResult>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit`, request, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
       if (!validArtemisResult(response, projectId, group.id, version)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Try the fit again.")
       setResult({ revision: draft.revision, data: { ...response, request } })
-    } catch (error) { if (!abort.signal.aborted && contextRef.current === requestContext) setError(errorText(error)) }
+    } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted && contextRef.current === requestContext) setError(errorText(error)) }
+    finally { if (!abort.signal.aborted) setBusy(null) }
+  }
+
+  async function persistModel(removeId?: string) {
+    if (!projectId || !group || version === undefined || !onProjectChange || busy || pending) return
+    const abort = begin(removeId ? "remove" : "save")
+    const requestContext = context
+    try {
+      const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/${removeId ? "remove-fit" : "model"}`,
+        removeId ? { version, fit_id: removeId } : { version, model: draft })
+      if (updated.id !== projectId || updated.version < version) throw new Error("The project response is invalid. Reload this project before saving again.")
+      if (!abort.signal.aborted && contextRef.current === requestContext) {
+        if (!removeId) setDraft(updated.groups.find(item => item.id === group.id)!.artemis!.model)
+        setNotice(removeId ? "Removed the saved fit. Undo restores it." : "Model saved in this project. Save project downloads it with the spectra.")
+      }
+      onProjectChange(updated)
+    } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted) setError(errorText(error)) }
     finally { if (!abort.signal.aborted) setBusy(null) }
   }
 
@@ -309,10 +384,22 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       {error && <p className={styles.error} role="alert">{error}</p>}
       <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
       <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
-      <p className={styles.help}>Fit runs only when requested. Drafts stay in this workspace session; use model JSON to keep them after reload. Athena project exports do not include fitting models.</p>
+      {onProjectChange && <div className={styles.toolbar}>
+        <button type="button" disabled={disabled || !group || !projectId || version === undefined} onClick={() => void persistModel()}>Save model to project</button>
+        {persisted && <button type="button" disabled={disabled || !modelDirty} onClick={() => { setDraft(persisted.model); setNotice("Reloaded the saved model.") }}>Reload saved model</button>}
+      </div>}
+      <p className={styles.help}>{modelDirty ? "Model has unsaved changes. Save the model or run a fit before reloading or downloading this project." : persisted ? "Model saved in this project. Project downloads include FEFF files and fit history." : "Save the model to keep it with this spectrum."} Fits run only when requested.</p>
     </div>
+    {!!persisted?.history.length && <div className={styles.section}>
+        <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
+          {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
+        </select></label>
+        <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
+          <button type="button" disabled={disabled || !archive} onClick={() => void persistModel(archive?.id)}>Remove saved fit</button></div>
+        <p className={styles.help}>Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.</p>
+    </div>}
     {notice && <p className={styles.message} role="status">{notice}</p>}
-    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : "Loading Cu₂O CIF and FEFF paths…"}</p>}
+    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : busy === "example" ? "Loading Cu₂O CIF and FEFF paths…" : "Saving project…"}</p>}
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}

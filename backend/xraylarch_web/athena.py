@@ -969,6 +969,8 @@ class AthenaStore:
                     if key not in group["parameters"]:
                         group["parameters"][key] = effective.get(key) if effective.get(key) is not None else default
                 _ensure_edge_identity(group)
+            from .artemis_persistence import refresh_project
+            refresh_project(project)
             return project
         except FileNotFoundError:
             fail("Project was not found.", "workspace_not_found")
@@ -1014,6 +1016,8 @@ class AthenaStore:
     def save(self, p: dict, old: dict, message: str, *, prune_snapshots: bool = True) -> dict:
         if len(p["groups"]) > 100:
             fail("A project can contain at most 100 groups.")
+        from .artemis_persistence import refresh_project
+        refresh_project(p)
         _stamp_group_added_orders(p, old)
         p["group_folders"] = _group_folders(
             p.get("group_folders", []), (group["id"] for group in p["groups"]),
@@ -2021,6 +2025,8 @@ class AthenaStore:
                 temporary_id = replacement['id']
                 for key in ('id', 'label', 'marked', 'frozen', 'notes', 'multiplier', 'offset', 'reference_id', 'background_standard_id'):
                     replacement[key] = copy.deepcopy(target[key])
+                if 'artemis' in target:
+                    replacement['artemis'] = copy.deepcopy(target['artemis'])
                 family = self.reference_family(p, target['id'])
                 if len(family) > 1:
                     previous_shift = replacement['parameters']['energy_shift']
@@ -3508,6 +3514,9 @@ class AthenaStore:
             from .artemis_attachments import validate_attachments
             sidecar["artemis_structures"] = validate_attachments(p["artemis_structures"])
         for meta, g in zip(sidecar["groups"], p["groups"]):
+            if "artemis" in g:
+                from .artemis_persistence import validate_state
+                meta["artemis"] = validate_state(g["artemis"])
             meta["parameters"] = _exchange_recipe(g["parameters"], g.get("result"))
             meta["is_difference"] = _is_difference(g)
             meta["data_type"] = g["data_type"]
@@ -3692,8 +3701,13 @@ class AthenaStore:
                                 "background_standard_id": standard,
                                 "frozen": frozen, "multiplier": multiplier, "offset": offset,
                                 "has_web_recipe": web or "parameters" in meta, "recipe_error": recipe_error})
+            if "artemis" in meta:
+                from .artemis_persistence import imported_state
+                provisional[-1]["artemis"] = imported_state(meta["artemis"])
 
         _exchange_budget(provisional, self.settings)
+        from .artemis_persistence import refresh_project
+        refresh_project({"groups": provisional})
         for record in provisional:
             if record["reference_id"] and record["reference_id"] not in idmap:
                 import_warnings.append(f"{record['label']}: reference {record['reference_id']} was not present in the project.")
@@ -3744,6 +3758,7 @@ class AthenaStore:
                 "data_type": record["data_type"], "source": record["source"],
                 "is_difference": record["is_difference"], "is_normalized": record["is_normalized"],
                 "notes": record["notes"][:20_000], "result": None, "processing_error": record["recipe_error"],
+                **({"artemis": copy.deepcopy(record["artemis"])} if "artemis" in record else {}),
                 **{key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id", "background_standard_id")}}
 
     def preview_project(self, ident, data, filename, *, prepared=None):

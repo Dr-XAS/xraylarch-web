@@ -1,5 +1,5 @@
 import type { ArtemisStructureAttachment } from "./artemis-structures"
-import type { ArtemisExample } from "./artemis"
+import type { ArtemisExample, ArtemisProjectState } from "./artemis"
 import { backendUrl } from "./app-url"
 import { createAthenaTransport, type AthenaSession } from "./athena-transport"
 
@@ -18,6 +18,7 @@ export interface AthenaResult {
   warnings: string[]
 }
 export interface AthenaGroup {
+  artemis?: ArtemisProjectState
   id: string; label: string; energy: number[]; mu: number[]; data_type: "mu" | "xanes" | "norm" | "chi" | "xmudat" | "detector"
   marked: boolean; frozen: boolean; multiplier: number; offset: number; notes: string
   reference_id: string | null; parameters: Parameters; result: AthenaResult | null

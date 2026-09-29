@@ -507,4 +507,7 @@ def build_artemis_router(store) -> APIRouter:
     from .artemis_structures import build_structures_router
 
     router.include_router(build_structures_router(store))
+    from .artemis_persistence import build_persistence_router
+
+    router.include_router(build_persistence_router(store))
     return router

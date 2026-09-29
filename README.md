@@ -79,9 +79,10 @@ Larch/Larixite. Review the generated paths and add the selected ones to the
 model, or import existing FEFF path files. Define Guess/Set/Def parameters
 and fit the current spectrum with Larch's `feffit` core in k or R space. A Cu
 first-shell starter model is included. The right panel shows data/model/residual
-curves, uncertainties, correlations, and the fit report. Use model JSON exports
-to preserve the fit setup; Athena `.prj` exports retain attached CIFs through
-web metadata but do not include fitting models.
+curves, uncertainties, correlations, and the fit report. Save model drafts in
+the project; each explicit fit also saves its model and result. Athena `.prj`
+and web JSON downloads retain FEFF files and up to 10 fits per spectrum.
+Changed scientific inputs and imported archives are clearly labeled.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
