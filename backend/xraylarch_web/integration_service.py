@@ -271,11 +271,12 @@ class IntegrationService:
     def _recipe_from_parameters(
         values: Mapping, *, recipe_version: int, larch_version: str
     ) -> CoreProcessingRecipe:
-        """Invert ``_parameters``.
+        """Project the portable subset of Athena parameters into a recipe.
 
-        Every recipe field maps to a distinct Athena key, so this is exact — but
-        the recipe's own version stamps have no Athena home and must be supplied
-        by the caller from the persisted launch origin.
+        This inverts ``_parameters`` for recipe fields, but not every Athena
+        processing option has a recipe field. Export callers must first check
+        ``_unportable_processing_options``. Version stamps have no Athena home
+        and must be supplied by the caller.
         """
 
         return CoreProcessingRecipe.model_validate(
@@ -774,6 +775,14 @@ class IntegrationService:
             # digest means the workspace was tampered with rather than edited.
             raise IntegrationAuthorizationError("Integration draft was not found.")
 
+        unsupported = self._unportable_processing_options(group)
+        if unsupported:
+            # The legacy envelope has no computed-array-only representation.
+            # Refuse before import preparation can freeze this editable draft.
+            raise IntegrationConflictError(
+                "Recipe version 1 cannot represent these processing options: "
+                + ", ".join(unsupported) + "."
+            )
         recipe = self._recipe_from_parameters(
             group["parameters"],
             recipe_version=draft.origin.recipe_version,
@@ -921,6 +930,22 @@ class IntegrationService:
             )
         )
 
+    @staticmethod
+    def _unportable_processing_options(group: Mapping) -> tuple[str, ...]:
+        """Name science that recipe version 1 cannot reproduce from mu(E).
+
+        Check the saved inputs and cached computation evidence so a result that
+        used an omitted option is never described by a plain portable recipe.
+        """
+        parameters = group.get("parameters") or {}
+        effective = (group.get("result") or {}).get("effective") or {}
+        return tuple(name for name, enabled in (
+            ("fnorm", parameters.get("fnorm") or effective.get("fnorm")),
+            ("background_standard", group.get("background_standard_id")
+             or effective.get("background_standard") or effective.get("background_standard_id")),
+            ("is_normalized", group.get("is_normalized") or effective.get("is_normalized")),
+        ) if enabled)
+
     def _group_science(
         self, group: dict, spectrum: AuthoritativeSpectrum, larch_version: str
     ) -> RecomputableGroupScience | ExportedGroupScience:
@@ -939,6 +964,8 @@ class IntegrationService:
             return self._exported_science(group, "difference", arrays, effective)
         if group["data_type"] != "mu":
             return self._exported_science(group, "data_type", arrays, effective)
+        if self._unportable_processing_options(group):
+            return self._exported_science(group, "unportable_recipe", arrays, effective)
         try:
             recipe = self._recipe_from_parameters(
                 group["parameters"], recipe_version=1, larch_version=larch_version

@@ -494,6 +494,42 @@ def test_signed_snapshot_returns_cached_numerical_evidence_and_rejects_replay(tm
             assert workspace.json()["allowed_operations"] == ["export"]
 
 
+def test_legacy_fnorm_snapshot_conflict_keeps_the_workspace_editable(tmp_path):
+    from xraylarch_web.integration_contracts import AuthoritativeSpectrum, canonical_sha256
+
+    payload = json.loads(body())
+    energy = tuple(8800.0 + index * 2 for index in range(551))
+    spectrum = AuthoritativeSpectrum(
+        energy=energy, mu=tuple(0.7 + math.atan((value - 8980.0) / 4.0) / math.pi for value in energy)
+    )
+    payload.update(spectrum=spectrum.model_dump(mode="json"), spectrum_sha256=canonical_sha256(spectrum))
+    with TestClient(create_app(import_settings(tmp_path))) as client:
+        launched = bootstrap(client, json.dumps(payload).encode())
+        session = consume(client, launched.json()["handle"]).json()
+        auth = capability(session["owner_capability"])
+        command_path = f"/api/athena/projects/{session['project_id']}/command"
+        changed = client.post(command_path, headers=auth, json={
+            "version": 0, "action": "parameters", "group_ids": [session["group_id"]],
+            "options": {"fnorm": True},
+        })
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["groups"][0]["processing_error"] is None
+        request_body = json.dumps({
+            "draft_id": session["draft_id"], "owner_capability": session["owner_capability"],
+        }).encode()
+        path = f"/api/integration/v1/drafts/{session['draft_id']}/snapshot"
+        rejected = client.post(path, content=request_body, headers=headers(request_body, nonce="s" * 32))
+        assert rejected.status_code == 409, rejected.text
+        assert "fnorm" in rejected.json()["detail"]
+        restored = client.post(command_path, headers=auth, json={
+            "version": changed.json()["version"], "action": "parameters", "group_ids": [session["group_id"]],
+            "options": {"fnorm": False},
+        })
+        assert restored.status_code == 200, restored.text
+        retried = client.post(path, content=request_body, headers=headers(request_body, nonce="r" * 32))
+        assert retried.status_code == 200, retried.text
+
+
 def test_export_requires_a_valid_signature_and_rejects_replay(tmp_path):
     with TestClient(create_app(import_settings(tmp_path))) as client:
         session = launch_session(client)

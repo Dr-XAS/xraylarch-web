@@ -6,7 +6,11 @@ import hmac
 import json
 import math
 from copy import deepcopy
+from pathlib import Path
+from types import SimpleNamespace
+from typing import get_args
 
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
@@ -17,7 +21,7 @@ from xraylarch_web.integration_service import (
     IntegrationAuthorizationError,
     IntegrationService,
 )
-from xraylarch_web.integration_contracts import DraftStatus, AuthoritativeSpectrum, canonical_sha256
+from xraylarch_web.integration_contracts import ComputedArray, DraftStatus, AuthoritativeSpectrum, canonical_sha256
 from xraylarch_web.integration_storage import IntegrationReplayError, IntegrationStorage
 from test_integration_contracts import launch_payload
 
@@ -493,3 +497,106 @@ def test_expired_unprepared_draft_has_no_import_receipt(service):
     session = real_science_session(service)
     with pytest.raises(IntegrationNotFoundError):
         signed_import_action(service, session, 'status', now=NOW + timedelta(days=8))
+
+
+@pytest.mark.parametrize("mode, divergent_array", [
+    ("portable", None),
+    ("fnorm", "chi"),
+    ("background_standard", "chi"),
+    ("is_normalized", "flat"),
+])
+def test_measured_spectrum_export_only_claims_replayable_science(service, mode, divergent_array):
+    """Replay the local portable recipe on measured Cu, including omitted modes."""
+    from xraylarch_web.athena_science import AthenaParameters, process_spectrum
+
+    fixtures = Path(__file__).resolve().parents[2] / "examples" / "xafsdata"
+    energy, mu = np.loadtxt(fixtures / "cu_rt01.xmu", usecols=(0, 1)).T
+    parameters = AthenaParameters(
+        e0=8980, step=1, pre1=-150, pre2=-30, norm1=150, norm2=700,
+        nnorm=2, bkg_kmax=12, kmax=11, dk2=1, rmax_out=10, dr2=0,
+        qmax_out=20, reverse_nfft=2048, reverse_kstep=0.05,
+        fnorm=mode == "fnorm",
+    ).model_dump()
+    options = {}
+    if mode == "is_normalized":
+        mu = process_spectrum(energy, mu, parameters)["arrays"]["norm"]
+        options["is_normalized"] = True
+    if mode == "background_standard":
+        standard_energy, standard_mu = np.loadtxt(fixtures / "cu_10k.xmu", usecols=(0, 1)).T
+        standard = service.athena_store.make_group(
+            "Cu 10 K standard", standard_energy, standard_mu, parameters=parameters
+        )
+        assert standard["processing_error"] is None
+        options.update(background_standard_id=standard["id"], project={"groups": [standard]})
+    group = service.athena_store.make_group(
+        "Measured Cu", energy, mu, parameters=parameters, **options
+    )
+    assert group["processing_error"] is None
+    before = deepcopy(group)
+    exported = service._exported_group(group, 0)
+    recipe = service._recipe_from_parameters(
+        parameters, recipe_version=1, larch_version=group["result"]["larch_version"]
+    )
+    replay = process_spectrum(
+        exported.spectrum.energy, exported.spectrum.mu,
+        service._parameters(SimpleNamespace(recipe=recipe)),
+    )
+    original_arrays = group["result"]["arrays"]
+    if divergent_array is None:
+        assert exported.science.kind == "recomputable"
+        assert exported.science.recipe == recipe
+        for name, values in exported.science.computed.arrays.items():
+            np.testing.assert_array_equal(values, original_arrays[name], err_msg=name)
+            np.testing.assert_allclose(values, replay["arrays"][name], rtol=1e-11, atol=1e-11, err_msg=name)
+    else:
+        # These are actual numerical discrepancies, not just absent schema keys.
+        difference = np.abs(np.asarray(original_arrays[divergent_array]) - replay["arrays"][divergent_array])
+        assert difference.max() > 1e-7
+        assert exported.science.kind == "exported"
+        assert exported.science.reason == "unportable_recipe"
+        assert "recipe" not in exported.science.model_dump()
+        assert exported.science.arrays == {
+            name: tuple(original_arrays[name]) for name in get_args(ComputedArray)
+            if original_arrays[name]
+        }
+    assert list(exported.spectrum.energy) == group["energy"]
+    assert list(exported.spectrum.mu) == group["mu"]
+    assert group == before
+
+
+@pytest.mark.parametrize("option", ["fnorm", "background_standard", "is_normalized"])
+def test_legacy_export_rejects_omitted_options_without_freezing_the_draft(service, option):
+    from xraylarch_web.integration_storage import IntegrationConflictError
+
+    session = real_science_session(service)
+    binding = import_binding(service, session)
+
+    def enable(group):
+        if option == "fnorm":
+            group["parameters"]["fnorm"] = True
+        elif option == "background_standard":
+            group["background_standard_id"] = "standard-group"
+        else:
+            group["is_normalized"] = True
+
+    _write_group(service, session, enable)
+    for export in (service.sealed_export, service.import_snapshot):
+        with pytest.raises(IntegrationConflictError, match=option):
+            export(draft_id=session.draft_id, capability=session.owner_capability, now=NOW)
+    with pytest.raises(IntegrationConflictError, match=option):
+        signed_import_action(service, session, "prepare", binding)
+    draft = service.storage.load_draft(session.draft_id, session.owner_capability)
+    assert draft.status is DraftStatus.ACTIVE
+    assert draft.import_binding is None
+    service.allowed_operation("parameters", group_ids=[session.group_id], draft=draft)
+
+
+@pytest.mark.parametrize("option", ["fnorm", "background_standard", "is_normalized"])
+def test_export_honors_omitted_options_recorded_in_cached_science(service, option):
+    session = real_science_session(service)
+    group = service.athena_store.load(session.project_id)["groups"][0]
+    # Cached science may retain its own processing evidence after metadata changes.
+    group["result"]["effective"][option] = True
+    exported = service._exported_group(group, 0)
+    assert exported.science.kind == "exported"
+    assert exported.science.reason == "unportable_recipe"
