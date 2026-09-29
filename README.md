@@ -66,6 +66,11 @@ backends and the Dr.XAS public ingress hop as one system — lives in the Dr.XAS
 repository at `frontend/tests/e2e/xraylarch-native-integration.spec.ts` and
 starts its own five processes on ephemeral ports.
 
+The [recipe fidelity contract](docs/integration-recipe-fidelity.md) explains
+which processing can be replayed and when exports retain computed arrays.
+It also records measured-spectrum regressions for fnorm, background standards,
+and already-normalized inputs.
+
 The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
 middle parameter panel. Search the bundled AMCSD crystal-structure database in
 a popup, attach the selected CIF directly to the project, select an absorber
