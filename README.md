@@ -399,11 +399,31 @@ signing value and exercises the `/advanced-xas/app` build.
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests -q
 cd frontend
-npx tsc --noEmit
-npx vitest run
-NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app npm run build
-npm run test:e2e -- integration-mounted.spec.ts
+npm run typecheck
+npm test
+npm run build
+npx playwright install chromium
+npm run test:e2e -- --config=playwright.ci.config.ts
 ```
+
+The `Web frontend` workflow uses the Node version in `frontend/.nvmrc` and runs
+these checks on pull requests to `master` and pushes to `master`, using the release backend
+dependency installer. Its focused browser checks cover:
+
+- The checked-in, measured Cu foil: import, change AUTOBK Rbkg, save `.prj`,
+  reopen in a new project, reload, and compare raw and processed arrays plus
+  downloaded μ(E) and χ(k) columns. This runs against the production build.
+- The measured Cu₂O reference: save a four-path EXAFS model and fit, refresh,
+  exchange the project through `.prj`, then change Rbkg and verify that the saved
+  fit is labeled outdated. This also checks imported archives and mobile layout.
+- The mounted integration lifecycle at `/advanced-xas/app`, using the existing
+  mounted development server. It validates this application's handoff flow;
+  it does not run the external Dr.XAS consumer.
+
+The full browser suite remains available with `npm run test:e2e`. Local CI-style
+checks can use an installed Chrome with `XRAYLARCH_E2E_BROWSER_CHANNEL=chrome`.
+To enforce a merge gate, select the `Web frontend / frontend` check in the
+repository's branch protection settings.
 
 ### Operating boundary and deferred work
 
