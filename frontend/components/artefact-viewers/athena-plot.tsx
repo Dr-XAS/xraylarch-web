@@ -57,14 +57,14 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const [plotWidth, setPlotWidth] = useState(0)
   const [optionsMenu, setOptionsMenu] = useState<PlotOptionsMenu | null>(null)
   const activeId = active?.id
-  const { palette, reversed } = colorSettings
+  const { palette, reversed, vmin, vmax } = colorSettings
   // Plotly uses data/layout identities to decide whether to redraw. Keep the
   // spectrum transforms stable during unrelated workbench and menu updates.
   const { data, xTitle, yTitle } = useMemo(() => {
     const compareK = space === "q" && component === "re"
     const data: Record<string, unknown>[] = []
     // Assign before filtering by plot space so a group keeps its color across E/k/R/q.
-    const colors = spectrumColors(groups.length, { palette, reversed })
+    const colors = spectrumColors(groups.length, { palette, reversed, vmin, vmax })
     const add = (x: number[], y: number[], name: string, color: string, dash = "solid", measured = false) => {
       if (!Array.isArray(x) || !Array.isArray(y) || !x.length || x.length !== y.length) return
       const points = measured && showDataPoints
@@ -183,7 +183,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       }
     }
     return { data, xTitle, yTitle }
-  }, [groups, activeId, space, energyMode, background, showWindow, component, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, analysis, analysisVisible])
+  }, [groups, activeId, space, energyMode, background, showWindow, component, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, vmin, vmax, analysis, analysisVisible])
   const hasData = data.some(d => (d.x as number[])?.length)
   useEffect(() => {
     const element = plotRef.current
