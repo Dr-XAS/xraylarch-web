@@ -509,7 +509,7 @@ test("the real Cu2O example highlights both degenerate first-shell oxygens but d
   const exampleRequests: string[] = []
   page.on("request", request => {
     if (request.url().endsWith("/examples/cuprite") || request.method() === "POST" &&
-      /\/api\/artemis\/projects\/[^/]+\/(structures|groups\/[^/]+\/fit)$/.test(request.url())) exampleRequests.push(request.url())
+      /\/api\/artemis\/projects\/[^/]+\/(structures|groups\/[^/]+\/fit(?:-saved)?)$/.test(request.url())) exampleRequests.push(request.url())
   })
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   await expect(page.getByText("Cu₂O EXAFS example added", { exact: true })).toBeVisible()
@@ -576,11 +576,12 @@ test("the real Cu2O example highlights both degenerate first-shell oxygens but d
   await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   await expect(page.getByRole("tab", { name: "EXAFS fitting", exact: true })).toBeInViewport()
   await page.screenshot({ path: info.outputPath("copper-exafs-setup-mobile.png") })
-  const fitResponse = page.waitForResponse(response => response.url().endsWith("/fit"), { timeout: 60000 })
+  const fitResponse = page.waitForResponse(response => response.url().endsWith("/fit-saved"), { timeout: 60000 })
   await page.getByRole("button", { name: "Run EXAFS fit", exact: true }).click()
   const fitted = await fitResponse
   expect(fitted.ok()).toBe(true)
-  const result = await fitted.json()
+  const saved = await fitted.json()
+  const result = saved.project.groups.flatMap((group: { artemis?: { history: { id: string; result: unknown }[] } }) => group.artemis?.history ?? []).find((fit: { id: string }) => fit.id === saved.fit_id).result
   expect(result.group_label).toBe("Cu₂O · room temperature")
   expect(result.paths).toHaveLength(4)
   expect(result.success).toBe(true)

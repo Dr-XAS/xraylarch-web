@@ -305,30 +305,47 @@ Plots use the first selected fit k weight; the optimizer uses all selected
 weights. Statistics, fitted parameter values, uncertainties, correlations,
 and the complete Larch report appear below the plot.
 
-Fitting runs when **Run EXAFS fit** is clicked. Changing a model field invalidates
-its previous result. Failed requests retain the model for correction and retry.
-Each spectrum's draft and most recent result remain available while switching
-spectra and the Processing/EXAFS fitting tabs within the open workspace. Results
-are associated with the spectrum, model revision, and Athena project version;
-processing changes or project updates invalidate them.
+Fitting runs when **Run EXAFS fit** is clicked. A successful request saves the
+model and its result in the selected local Athena group. **Save model to project**
+also saves incomplete drafts, including unfinished numeric fields and expressions.
+The saved model includes every FEFF file, path expression, parameter, transform
+setting, and FEFF input atom cluster used by the preview. Reloading the browser
+restores the saved model; unsaved edits remain in the current workspace session.
+A browser exit warning and project-download checks help prevent losing those edits.
 
-Use **Export model JSON** to keep a model beyond the current browser session.
-The `artemis-web/v1` bundle contains the GDS definitions, transform settings,
-complete FEFF-file contents and path expressions, source identifiers, and any
-current fit result. **Download fit + model JSON** also saves the fitted curves,
-statistics, and parameter results; **Download report** saves the plain-text
-Larch report. Plotly's image download exports the displayed plot.
+**Saved fit history** keeps up to 10 results per group, each with its own model,
+curves, statistics, report, timestamp, original project/group identity, and Larch
+version. Selecting history shows that result without changing the editable model.
+**Use this fit’s model** copies its model into the editor. **Remove saved fit** is
+undoable; export the project first if you want to keep that archive elsewhere.
+At 10 fits, the next fit is rejected until one is removed. History is never pruned
+silently. Models and history share a 20 MB project budget; each model can contain
+up to 24 FEFF files, 500 KB per file and 4 MB total UTF-8 text.
 
-To resume, load the experimental spectrum in Athena and choose **Import model
-JSON**. The imported FEFF files are inspected again and the model is applied to
-the current spectrum. Archived results are not treated as a new fit: run the
-model again to obtain results for that spectrum and its current processing.
-This JSON format is specific to Artemis Web and is not a desktop `.fpj` file.
+Input staleness is determined from the actual processed k/chi arrays, data type,
+Larch processing version and effective Rbkg. Changing labels, selection or display
+settings does not invalidate a fit. Changed scientific input or a processing
+error labels the result **Outdated input**; the plot continues to show the saved
+data/model pair. A separate notice identifies edits to the current model. Neither
+condition automatically runs another fit.
 
-Without a downloaded model JSON, reloading or closing the workspace loses the
-browser-memory fit state. Saving an Athena `.prj` does not include the fitting
-model. Automatic persistence, fit history, and CSV curve export are follow-up
-work.
+Athena `.prj` downloads and complete web-project JSON include the saved models and
+fit history, including partial group exports. Import creates new group identities
+while preserving each fit's original provenance. Imported numerical results are
+explicitly labeled **Imported fit archive**, even when their input matches. They
+are never treated as a new local fit. The Artemis data lives in the web metadata
+sidecar of `.prj` files; desktop Athena does not offer this fitting editor, and
+resaving through software that drops that sidecar can discard the web fit history.
+
+**Export model JSON** remains available for standalone `artemis-web/v1` model
+exchange. It includes the current model and only includes a result when that model
+matches. **Download fit + model JSON** exports the selected history entry's own
+model and result together; **Download report** exports its Larch report.
+**Import model JSON** inspects the supplied FEFF files and loads an editable draft;
+save it to the project or run a new fit. This format is not a desktop `.fpj` file.
+
+This persistence applies to local Athena projects. Dr.XAS integration projects
+retain their existing fitting boundary; import into a local project to fit.
 
 ## Larch integration
 
@@ -345,6 +362,23 @@ The numerical references are the checked-out
 [`xafs_feffit.rst`](../doc/xafs_feffit.rst), alongside the published
 [Larch fitting](https://xraypy.github.io/xraylarch/xafs_feffit.html) and
 [FEFF-path documentation](https://xraypy.github.io/xraylarch/xafs_feffpaths.html).
+
+Project persistence adds three POST endpoints under
+`/api/artemis/projects/{project_id}/groups/{group_id}`:
+
+- `/model`: `{version, model}` saves an editable model and returns the updated project.
+- `/fit-saved`: `{version, model}` computes a fit, then saves model and result atomically;
+  returns `{project, fit_id}`. Computation runs outside the project lock, and the
+  version is checked again before saving. A concurrent update returns 409 without
+  overwriting history; the editor refreshes project state and keeps unfinished edits.
+- `/remove-fit`: `{version, fit_id}` removes one archive and returns the updated project.
+
+The model uses `parameters` with stable row IDs and numeric values as strings,
+full inspected `paths`, string-valued numeric `transform` settings, and an editor
+`revision`. It is stored as `group.artemis.model` in schema version 1, alongside
+`history` and a derived `current_input_sha256`. Import validates bounded finite
+archives without evaluating expressions or executing FEFF. Saving a model inspects
+its FEFF contents again; only an explicit fit evaluates the model.
 
 The API exposes `POST /api/artemis/paths/inspect`,
 `GET /api/artemis/examples/cuprite`, and
@@ -426,8 +460,8 @@ The original fitting implementation was also checked separately:
 ## Scope beyond this iteration
 
 Future work includes arbitrary external CIF/Atoms input, disordered structures
-and automatic averaging over absorber sites, full Artemis project import/export and fit
-history, simultaneous multi-dataset fits, q-space and wavelet fitting,
+and automatic averaging over absorber sites, desktop Artemis project interchange,
+simultaneous multi-dataset fits, q-space and wavelet fitting,
 background co-refinement, additional cumulants, physical disorder functions,
 restraints, and the remaining desktop GDS parameter types. Directly importing a
 FEFF path uses an existing calculation; the AMCSD workflow separately creates
