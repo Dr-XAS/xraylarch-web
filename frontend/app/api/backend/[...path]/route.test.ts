@@ -47,7 +47,7 @@ describe("backend proxy", () => {
 
   it.each([
     ["POST", ["api", "artemis", "paths", "inspect"]],
-    ["GET", ["api", "artemis", "examples", "copper"]],
+    ["GET", ["api", "artemis", "examples", "cuprite"]],
     ["GET", ["api", "artemis", "structures"]],
     ["GET", ["api", "artemis", "structures", "13088"]],
     ["POST", ["api", "artemis", "feff", "jobs"]],
@@ -82,7 +82,7 @@ describe("backend proxy", () => {
     ["PUT", ["api", "artemis", "feff", "jobs"]],
     ["PATCH", ["api", "artemis", "projects", "project-cu", "structures"]],
     ["GET", ["api", "artemis", "paths", "inspect"]],
-    ["POST", ["api", "artemis", "examples", "copper"]],
+    ["GET", ["api", "artemis", "examples", "copper"]],
     ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "fit", "admin"]],
   ])("blocks unknown or unsupported Artemis %s %j before fetching", async (method, path) => {
     const fetcher = vi.fn()
