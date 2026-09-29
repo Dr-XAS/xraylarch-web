@@ -1,5 +1,15 @@
-import { Activity, Layers, WavesHorizontal, createLucideIcon } from "lucide-react"
+import { WavesVertical, createLucideIcon, type LucideIcon } from "lucide-react"
 import type { ViewerId } from "@/lib/athena-viewer-order"
+
+export const SingleSpectrumIcon = createLucideIcon("SingleSpectrum", [
+  ["path", { d: "M2 21.6C5.2 21.5 7 19.8 8.2 12.6 9.1 7.2 9.7 2 10.9 2c1.5 0 2.3 8.6 3.6 11.5 1.1 2.5 1.7-.8 2.8-.8 1.3 0 1.8 2.3 4.7 3", transform: "matrix(1 0 0 0.8 0 2.4)", strokeWidth: "1.8", key: "spectrum" }],
+])
+
+export const MultipleSpectraIcon = createLucideIcon("MultipleSpectra", [
+  ["path", { d: "M2.3 11.4C6.4 11.3 8 2 10.3 2c1.8 0 2.3 6 4.1 6.1.8.1 1.1-.9 1.9-.9 1.8 0 2.2 3.8 5.4 3.9", strokeWidth: "1.15", key: "top-spectrum" }],
+  ["path", { d: "M2.2 16.5c4.1 0 5.8-7.8 8.1-7.8 1.9 0 2.4 4.8 4 4.8.9 0 1.1-.8 2-.8 1.8 0 2.3 3.6 5.5 3.6", strokeWidth: "1.6", key: "middle-spectrum" }],
+  ["path", { d: "M2.1 21.7c4.2 0 5.9-7.2 8.2-7.2 1.9 0 2.3 5 3.9 5 1 0 1.2-.9 2.1-.9 1.8 0 2.5 3.1 5.6 3.1", strokeWidth: "2.1", key: "bottom-spectrum" }],
+])
 
 export const CrystalLatticeIcon = createLucideIcon("CrystalLattice", [
   ["path", { d: "M3 8h12v12H3V8Zm5-5h12v12H8V3ZM3 8l5-5m7 5 5-5m-5 17 5-5M3 20l5-5", strokeWidth: "1.4", key: "cell" }],
@@ -25,10 +35,10 @@ export const FitCurvesIcon = createLucideIcon("FitCurves", [
 ])
 
 export const viewerIcons = {
-  single: Activity,
-  multiple: Layers,
-  wavelet: WavesHorizontal,
+  single: SingleSpectrumIcon,
+  multiple: MultipleSpectraIcon,
+  wavelet: WavesVertical,
   cif: CrystalLatticeIcon,
   feff: FeffScatteringIcon,
   fit: FitCurvesIcon,
-} satisfies Record<ViewerId, typeof Activity>
+} satisfies Record<ViewerId, LucideIcon>
