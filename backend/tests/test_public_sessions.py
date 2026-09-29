@@ -100,8 +100,10 @@ def test_concurrent_project_requests_use_the_initialized_session(tmp_path):
 def test_athena_upload_body_limit_precedes_multipart_parser(tmp_path, suffix):
     with client(public_app(tmp_path, max_upload_bytes=100)) as browser:
         ident = browser.post("/api/athena/projects").json()["id"]
+        # The request cap includes a bounded allowance for multipart headers and
+        # boundaries on top of the configured file-byte limit.
         response = browser.post(f"/api/athena/projects/{ident}/{suffix}",
-                                content=b"x" * 200, headers={"content-type": "multipart/form-data; boundary=test"})
+                                content=b"x" * 70_000, headers={"content-type": "multipart/form-data; boundary=test"})
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "upload_too_large"
 

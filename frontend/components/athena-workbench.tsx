@@ -944,8 +944,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       try {
         return await athenaApi<AthenaProject>(`/projects/${id}`)
       } catch (e) {
-        if (!(e instanceof ApiRequestError && e.code === "workspace_not_found")) throw e
-        localStorage.removeItem("athena.project")
+        if (!(e instanceof ApiRequestError && e.status === 404 && e.code === "workspace_not_found")) throw e
       }
     }
     return await athenaApi<AthenaProject>("/projects", {})

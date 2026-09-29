@@ -390,7 +390,7 @@ async function openSaved(project = projectFixture()) {
 }
 
 async function waitForWorkbenchIdle() {
-  await waitFor(() => expect(screen.getByText("Saved", { exact: true })).toBeVisible())
+  await waitFor(() => expect(screen.getByText("Saved locally", { exact: true })).toBeVisible())
 }
 
 async function waitForCommand(projectId: string, body: Record<string, unknown>) {
@@ -2605,22 +2605,19 @@ describe("AthenaWorkbench import edge policy", () => {
     // Accessibility queries can exceed its 400 ms delay on a busy CI worker.
     vi.useFakeTimers()
     editNumber(/^Rbkg/, 2.7)
-    const applied = await finishParameterDrafts(project, [{ groupId: "foil", options: { rbkg: 2.7 } }])
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
     expectPolicyMenuState(false)
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
     await enableCopperPolicy()
-    expect(api.mock.calls.at(-1)).toEqual(["/edges?element=Cu"])
-    expect(api).toHaveBeenCalledTimes(3)
+    expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/edges?element=Cu"]])
     expect(JSON.parse(sessionStorage.getItem(edgePolicyStorageKey)!)).toEqual(copperPolicy)
-    expect(plotProps().active).toBe(applied.groups[0])
+    expect(plotProps().active).toBe(project.groups[0])
     expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.7)
     const dialog = await openEdgePolicyDialog()
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Element symbol" }), { target: { value: "Fe" } })
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
     expectPolicyMenuState(true)
     expect(JSON.parse(sessionStorage.getItem(edgePolicyStorageKey)!)).toEqual(copperPolicy)
-    expect(api).toHaveBeenCalledTimes(3)
     expect(api.mock.calls.filter(([path]) => path.startsWith("/edges?"))).toHaveLength(1)
   })
 
