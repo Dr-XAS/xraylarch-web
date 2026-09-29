@@ -119,6 +119,8 @@ The **Wavelet plotter** follows the highlighted group’s
 processed χ(k). The default **2D + 3D** view places the heatmap beside the surface
 on wide panels and stacks them on narrow panels. The 2D plotting area stays square
 when the browser or plot height is resized, preserving the k and R ranges.
+The k-range slider sits directly above the heatmap and follows its x-axis bounds
+as the plot resizes.
 **2D heatmap** and **3D surface** remain available individually. Both views share
 one result from Dr.XAS’s unwindowed Cauchy transform and one color scale,
 displaying R up to 6 Å without phase correction. Draggable k-range handles and
