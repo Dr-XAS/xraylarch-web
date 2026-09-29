@@ -593,14 +593,16 @@ function expectPolicyMenuState(enabled: boolean) {
 async function openEdgePolicyDialog() {
   fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" }))
   fireEvent.click(screen.getByRole("button", { name: "Enforce element and edge…" }))
-  return screen.findByRole("dialog", { name: "Enforce element and edge" })
+  return screen.getByRole("dialog", { name: "Enforce element and edge" })
 }
 async function enableCopperPolicy() {
   const dialog = await openEdgePolicyDialog()
   fireEvent.change(within(dialog).getByRole("textbox", { name: "Element symbol" }), { target: { value: "cu" } })
   api.mockResolvedValueOnce({ element: "Cu", edges: [{ edge: "K", energy: 8979 }, { edge: "L3", energy: 932.7 }] })
-  fireEvent.click(within(dialog).getByRole("button", { name: "Look up edges" }))
-  await within(dialog).findByRole("option", { name: "K · 8979 eV" })
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole("button", { name: "Look up edges" }))
+  })
+  expect(within(dialog).getByRole("option", { name: "K · 8979 eV" })).toBeInTheDocument()
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Enforced edge" }), { target: { value: "K" } })
   fireEvent.click(within(dialog).getByRole("button", { name: "Apply enforcement" }))
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -2599,6 +2601,9 @@ describe("AthenaWorkbench absorber and edge identity", () => {
 describe("AthenaWorkbench import edge policy", () => {
   it("starts off without a catalog request, enables without mutating the project, and cancels edits", async () => {
     const project = await openSaved()
+    // Keep the unrelated parameter debounce pending while testing policy edits.
+    // Accessibility queries can exceed its 400 ms delay on a busy CI worker.
+    vi.useFakeTimers()
     editNumber(/^Rbkg/, 2.7)
     const applied = await finishParameterDrafts(project, [{ groupId: "foil", options: { rbkg: 2.7 } }])
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
