@@ -206,6 +206,34 @@ def measurement_uncertainty(group):
                      'method': 'Demeter Larch chi_noise; high-R noise estimate (15–30 Å)'}
 
 
+def noise_floor(group):
+    """chi_noise over the whole measured k support, not the transform range.
+
+    measurement_uncertainty answers "how noisy was what the transform used",
+    which is the right question for nidp and moves with kmin and kmax by
+    design: the same copper scan reports epsilon_k 4.4e-4 over k 3-24 and
+    1.1e-3 over k 3-16. A caller trying to find where chi(k) stops being
+    signal cannot use a yardstick that changes length when they change the
+    window they are measuring. This runs the same native estimator over the
+    full measured support instead, so the answer is a property of the
+    measurement rather than of the current settings.
+    """
+    from .athena_merge import signal
+    k, chi = signal(group, 'chi')
+    effective = (group.get('result') or {}).get('effective', {})
+    p = group['parameters']
+    kmin, kmax = effective.get('kmin'), float(k[-1])
+    if kmin is None or kmax <= kmin:
+        raise ScientificError('Process a usable Fourier-transform range first.')
+    out = Group()
+    estimate_noise(k, chi, group=out, kmin=kmin, kmax=kmax, dk=p['dk'], dk2=p['dk'],
+                   window=p['window'], kweight=p['kweight'])
+    value = float(out.epsilon_k)
+    if not np.isfinite(value) or value <= 0:
+        raise ScientificError('Larch could not resolve a finite noise floor.')
+    return {'epsilon_k': float(f'{value:.3e}'), 'kmin': float(kmin), 'kmax': kmax}
+
+
 def edge_step_uncertainty(group, seed=0):
     effective = (group.get('result') or {}).get('effective', {})
     if group['data_type'] not in ('mu', 'xanes') or group.get('is_normalized') or group.get('is_difference'):

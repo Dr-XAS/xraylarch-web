@@ -43,6 +43,8 @@ from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
 from .athena_export import DataExport
 from .athena_context import ContextReport, ContextPlot
+from .agent_views import preview_view, project_view
+from .agent_transcript import Transcript, entry, preview_entry, replay_entry, replayed
 from .errors import WebInputError
 from .parsing import parse_upload
 from .routes import _read_bounded_upload
@@ -53,7 +55,17 @@ if TYPE_CHECKING:
 
 
 def uid() -> str:
-    return secrets.token_urlsafe(18)
+    """A url-safe id, never starting with a hyphen.
+
+    token_urlsafe's alphabet includes '-', so about one id in sixty-four began
+    with one, and every argument parser an id is ever pasted into reads that as
+    a flag: `larchctl --project -kP3...` comes back as "expected one argument"
+    rather than as the project it plainly names. Nothing about the id's meaning
+    changes, and no stored id is affected; the generator just draws again.
+    """
+    while (token := secrets.token_urlsafe(18)).startswith("-"):
+        pass
+    return token
 
 
 def now() -> str:
@@ -853,6 +865,10 @@ class ImportRequest(BaseModel):
         return [primary, fluorescence]
 
 
+ProjectView = Literal["full", "summary", "parameters"]
+PreviewView = Literal["full", "summary"]
+
+
 class Command(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
     version: int
@@ -937,6 +953,7 @@ class AthenaStore:
         self.preferences = AthenaPreferences(settings)
         self.settings = settings
         self.storage = WorkspaceStorage(settings.data_root / "athena")
+        self.transcript = Transcript(self.storage)
 
     def create(self) -> dict:
         ident = uid()
@@ -1019,7 +1036,14 @@ class AthenaStore:
 
     def check(self, p: dict, version: int):
         if p["version"] != version:
-            fail("This project changed in another tab. Reload it before editing.", "stale_revision")
+            # The default recovery -- review the groups and values -- is wrong
+            # here, and expensively so: nothing about the request was bad, and
+            # a caller that goes looking for the mistake will not find one.
+            raise WebInputError(
+                "stale_revision",
+                "This project changed in another tab. Reload it before editing.",
+                recovery=f"Re-read the project and resend with version {p['version']}.",
+            )
 
     def save(self, p: dict, old: dict, message: str, *, prune_snapshots: bool = True) -> dict:
         if len(p["groups"]) > 100:
@@ -2801,9 +2825,83 @@ class AthenaStore:
         self.check(self.load(ident), request.version)
         return dict(version=project['version'], group_id=group_id, **report)
 
-    def command(self, ident, request: Command):
+    def command(self, ident, request: Command, *, idempotency_key: str | None = None):
+        """Run one command and record it, whether or not it worked.
+
+        The key is checked before the lock rather than inside it, so two
+        genuinely concurrent retries of the same key could both get through.
+        The version check behind them still admits only one, which turns the
+        rare race back into the ordinary stale-revision error rather than a
+        duplicate merge.
+        """
+        if idempotency_key is not None:
+            prior = self.transcript.find(ident, idempotency_key)
+            if prior is not None:
+                self.transcript.append(ident, replay_entry(prior, idempotency_key))
+                return replayed(self.load(ident), prior)
+        seen: dict = {}
+        try:
+            project = self._apply_command(ident, request, seen)
+        except Exception as exc:
+            self._record(request, idempotency_key, seen, None, exc)
+            raise
+        self._record(request, idempotency_key, seen, project)
+        return project
+
+    def record_preview(self, ident: str, request: Command, error=None) -> None:
+        """Record one preview attempt, whether or not the body was accepted.
+
+        Called from the route rather than from the preview methods, because
+        there are ten of them on eight routes and the thing worth recording is
+        the same for all of them: the body that was sent and whether it came
+        back. The project is loaded a second time here to label the selection
+        and to name the version the preview ran against; that is one JSON read
+        beside a deepcopy and a reprocess, which is what a preview already
+        costs.
+
+        Failures here are swallowed for the same reason they are in `_record`:
+        a preview must not start failing because its diagnostic could not be
+        written. Integration projects keep no transcript at all.
+        """
+        try:
+            project = self.load(ident)
+            if project.get("integration") is True:
+                return
+            self.transcript.append(ident, preview_entry(request, project, error))
+        except Exception:
+            pass
+
+    def _record(self, request: Command, key, seen: dict, project, error=None) -> None:
+        """Append the transcript record, for the projects that keep one.
+
+        An integration project keeps none. Its seam snapshots every file in the
+        workspace and restores them if the mutation raises, so a transcript
+        there would be charged against the caller's byte quota and rolled back
+        for exactly the failures most worth keeping. The v2 contract is pinned
+        to this repository's revision; it gets left alone.
+
+        Nothing is recorded before the project is loaded either, because until
+        then there is no workspace to write into. Loading is the dispatcher's
+        first act, so the only commands this drops are ones against a project
+        that does not exist.
+        """
+        before = seen.get("before")
+        if before is None or before.get("integration") is True:
+            return
+        try:
+            self.transcript.append(before["id"], entry(request, key, seen, project, error))
+        except Exception:
+            # Swallowed on purpose. A command that worked must not come back as
+            # a failure because its diagnostic could not be written, and a
+            # command that failed must come back with its own error rather than
+            # one raised while recording it. A dropped record shows up as a gap
+            # in the seq numbers, which is the honest way to notice this.
+            pass
+
+    def _apply_command(self, ident, request: Command, seen: dict):
         with self.storage.lock(ident):
             old = self.load(ident)
+            seen["before"] = old
             self.check(old, request.version)
             p = copy.deepcopy(old)
             action, options = request.action, request.options
@@ -3200,7 +3298,13 @@ class AthenaStore:
                     p['groups'].extend(merged)
                     operation_details={'merge':dict(options=preview['options'],
                         group_ids=[g['id'] for g in merged],notes=preview['notes'],
-                        outputs=[{k:row[k] for k in ('role','label','processing_error')} for row in preview['outputs']])}
+                        # A merge succeeds after dropping a short scan, so the
+                        # reply has to say so; "merged" with no exclusions
+                        # reads as though it took the whole selection.
+                        outputs=[{**{k:row[k] for k in ('role','label','processing_error')},
+                                  'excluded':[{k:e[k] for k in ('group_id','label','reason')}
+                                              for e in row['result']['excluded']]}
+                                 for row in preview['outputs']])}
                 elif action in ("merge", "sum", "difference"):
                     if len(groups) < 2:
                         fail("Select at least two groups.")
@@ -4113,6 +4217,7 @@ def build_athena_router(
         ("POST", "/api/athena/projects/{ident}/context-report"): "report",
         ("POST", "/api/athena/projects/{ident}/context-plot"): "plot",
         ("GET", "/api/athena/projects/{ident}/groups/{group_id}/source-text"): "read_group",
+        ("GET", "/api/athena/projects/{ident}/groups/{group_id}/digest"): "read_group",
         ("GET", "/api/athena/projects/{ident}/groups/{group_id}/xdi"): "read_group",
         ("POST", "/api/athena/projects/{ident}/groups/{group_id}/xdi/validate"): "read_group",
         ("POST", "/api/athena/projects/{ident}/analyze"): "analyze",
@@ -4227,6 +4332,23 @@ def build_athena_router(
             fail("; ".join(messages))
         except (ValueError, KeyError, TypeError, IndexError, OSError, SyntaxError, RecursionError) as exc:
             fail(str(exc) or "The requested operation could not be completed.")
+
+    def previewed(ident: str, request: Command, call, view: str = "full"):
+        """Run a preview and put the attempt in the transcript either way.
+
+        A preview is a turn the caller spent and, when it is refused, a mistake
+        the caller made. Both belong in the record for the same reason a
+        rejected /command does: the look-before-you-leap path is where an agent
+        that is guessing does its guessing, and a log that skipped it would
+        report every arm as having made no mistakes at all.
+        """
+        try:
+            result = guarded(call)
+        except Exception as exc:
+            store.record_preview(ident, request, exc)
+            raise
+        store.record_preview(ident, request)
+        return preview_view(result, view)
 
     @router.get('/preferences/rebin')
     def rebin_defaults():
@@ -4358,6 +4480,25 @@ def build_athena_router(
         from .athena_e0 import edge_catalog
         return guarded(lambda: edge_catalog(element))
 
+    @router.get("/capabilities")
+    def capabilities():
+        """The action menu for /command, small enough to read before choosing."""
+        from .agent_actions import index
+        return index()
+
+    @router.get("/capabilities/{action}")
+    def capability(action: str):
+        """One action in full. Kept off the index so the index stays cheap."""
+        from .agent_actions import detail
+
+        def described():
+            found = detail(action)
+            if found is None:
+                fail(f"There is no {action!r} action. "
+                     "GET /api/athena/capabilities lists them.")
+            return found
+        return guarded(described)
+
     @router.post("/projects")
     def create_project(
         draft_capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability"),
@@ -4367,9 +4508,12 @@ def build_athena_router(
         return store.create()
 
     @router.get("/projects/{ident}")
-    def get_project(ident: str, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def get_project(ident: str, view: ProjectView = "full",
+                    capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        # full stays the default: the browser draws the arrays, and the
+        # integration seam's sealed snapshots are taken from this same record.
         integration_draft(ident, capability, "read_project", allow_terminal=True)
-        return store.load(ident)
+        return project_view(store.load(ident), view)
 
     @router.post("/projects/{ident}/inspect")
     def inspect(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
@@ -4467,10 +4611,19 @@ def build_athena_router(
         request: Command,
         capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability"),
         project_capability: str | None = Header(default=None, alias="X-XrayLarch-Project-Capability"),
+        idempotency_key: str | None = Header(default=None, max_length=200, alias="Idempotency-Key"),
+        view: ProjectView = "full",
     ):
+        # full stays the default, and means the reply the browser has always
+        # had, response_mode included. Any other view is a projection taken
+        # after the save, so it changes what is sent and never what is stored.
+        def respond(saved):
+            return (_command_response(saved, request) if view == "full"
+                    else project_view(saved, view))
         project = store.load(ident)
         if project.get("integration") is not True:
-            return _command_response(guarded(lambda: store.command(ident, request)), request)
+            return respond(guarded(lambda: store.command(
+                ident, request, idempotency_key=idempotency_key)))
         capability = project_capability or capability
         if integration_service is None or not capability:
             raise HTTPException(status_code=404, detail="Project was not found.")
@@ -4487,7 +4640,7 @@ def build_athena_router(
                     lambda: guarded(lambda: store.command(ident, request)),
                     now=datetime.now(timezone.utc),
                 )
-                return _command_response(saved, request)
+                return respond(saved)
             except Exception as exc:
                 from .integration_storage import IntegrationConflictError
                 if isinstance(exc, IntegrationConflictError):
@@ -4504,7 +4657,7 @@ def build_athena_router(
                 request.group_ids,
                 datetime.now(timezone.utc),
             ):
-                return _command_response(guarded(lambda: store.command(ident, request)), request)
+                return respond(guarded(lambda: store.command(ident, request)))
         except HTTPException:
             raise
         except Exception as exc:
@@ -4527,6 +4680,35 @@ def build_athena_router(
         from .athena_context import source_text as text
         return guarded(lambda: text(store, ident, group_id))
 
+    @router.get("/projects/{ident}/transcript")
+    def transcript(ident: str, limit: int = Query(default=20, ge=1, le=500),
+                   since: int = Query(default=0, ge=0)):
+        """Every command issued against this project, newest last.
+
+        Defaults to the last twenty, because the common question is "what have
+        I just done" and a caller after the whole run can say so. `since` takes
+        the last seq already seen, which is how a long run reads only the part
+        it has not read before.
+        """
+        def log():
+            # This route is deliberately absent from route_operations, so an
+            # integration project 404s here rather than reporting an empty log
+            # for a surface the v2 seam does not include.
+            records = store.transcript.read(ident, limit=limit, since=since)
+            return {"project_id": ident, "version": store.load(ident)["version"],
+                    "count": len(records), "records": records}
+        return guarded(log)
+
+    @router.get('/projects/{ident}/groups/{group_id}/digest')
+    def group_digest_route(ident: str, group_id: str):
+        from .agent_digest import group_digest
+
+        def report():
+            project = store.load(ident)
+            return {"project_id": ident, "version": project["version"],
+                    **group_digest(store.group(project, group_id))}
+        return guarded(report)
+
     @router.get('/projects/{ident}/groups/{group_id}/xdi')
     def xdi_metadata(ident: str, group_id: str):
         return guarded(lambda: store.xdi_metadata(ident, group_id))
@@ -4544,21 +4726,22 @@ def build_athena_router(
         )
 
     @router.post("/projects/{ident}/difference/preview")
-    def preview_difference(ident: str, request: Command, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def preview_difference(ident: str, request: Command, view: PreviewView = "full",
+                           capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         integration_draft(ident, capability, "difference", group_ids=request.group_ids)
-        return guarded(lambda: store.preview_difference(ident, request))
+        return previewed(ident, request, lambda: store.preview_difference(ident, request), view)
 
     @router.post('/projects/{ident}/rebin/preview')
-    def preview_rebin(ident: str, request: Command):
-        return guarded(lambda: store.preview_rebin(ident, request))
+    def preview_rebin(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_rebin(ident, request), view)
 
     @router.post('/projects/{ident}/mee/preview')
-    def preview_mee(ident: str, request: Command):
-        return guarded(lambda: store.preview_mee(ident, request))
+    def preview_mee(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_mee(ident, request), view)
 
     @router.post('/projects/{ident}/point-edit/preview')
-    def preview_point_edit(ident: str, request: Command):
-        return guarded(lambda: store.preview_point_edit(ident, request))
+    def preview_point_edit(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_point_edit(ident, request), view)
 
     @router.get('/preferences/merge')
     def merge_preferences():
@@ -4569,8 +4752,8 @@ def build_athena_router(
         return guarded(lambda:store.preferences.save_merge(request))
 
     @router.post('/projects/{ident}/merge/preview')
-    def preview_merge(ident: str,request: Command):
-        return guarded(lambda:store.preview_merge(ident,request))
+    def preview_merge(ident: str,request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_merge(ident, request), view)
 
     @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
     def plot_saved_merge(ident: str, group_id: str, request: dict):
@@ -4593,24 +4776,25 @@ def build_athena_router(
         return guarded(lambda: store.plot_shortcut(ident, request))
 
     @router.post('/projects/{ident}/alignment/preview')
-    def preview_alignment(ident: str, request: Command):
-        return guarded(lambda: store.preview_alignment(ident, request))
+    def preview_alignment(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_alignment(ident, request), view)
 
     @router.post('/projects/{ident}/calibration/preview')
-    def preview_calibration(ident: str, request: Command):
-        return guarded(lambda: store.preview_calibration(ident, request))
+    def preview_calibration(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_calibration(ident, request), view)
 
     @router.post('/projects/{ident}/calibration/zero')
-    def calibration_zero(ident: str, request: Command):
-        return guarded(lambda: store.preview_calibration(ident, request, find_zero=True))
+    def calibration_zero(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request,
+                         lambda: store.preview_calibration(ident, request, find_zero=True), view)
 
     @router.post('/projects/{ident}/convolve/preview')
-    def preview_convolution(ident: str, request: Command):
-        return guarded(lambda: store.preview_convolution(ident, request))
+    def preview_convolution(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_convolution(ident, request), view)
 
     @router.post('/projects/{ident}/smooth/preview')
-    def preview_smoothing(ident: str, request: Command):
-        return guarded(lambda: store.preview_smoothing(ident, request))
+    def preview_smoothing(ident: str, request: Command, view: PreviewView = "full"):
+        return previewed(ident, request, lambda: store.preview_smoothing(ident, request), view)
 
     @router.post("/projects/{ident}/restore")
     def restore(ident: str, version: int, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
