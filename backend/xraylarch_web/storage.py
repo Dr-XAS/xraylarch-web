@@ -69,9 +69,15 @@ class WorkspaceStorage:
         return path
 
     @contextmanager
-    def lock(self, workspace_id: str) -> Iterator[None]:
-        """Serialize workspace mutation across threads and local worker processes."""
-        path = self.path(workspace_id, "workspace.lock")
+    def lock(self, workspace_id: str, name: str = "workspace.lock") -> Iterator[None]:
+        """Serialize workspace mutation across threads and local worker processes.
+
+        A caller that needs a second, independent lock names it. flock is held
+        per descriptor, so taking the same lock twice in one thread deadlocks;
+        separate names are how a side file gets ordering of its own without
+        having to nest inside the mutation lock.
+        """
+        path = self.path(workspace_id, name)
         descriptor = os.open(path, os.O_CREAT | os.O_RDWR, 0o600)
         try:
             os.fchmod(descriptor, 0o600)
