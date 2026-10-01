@@ -199,3 +199,45 @@ def test_a_feff_job_can_be_polled_without_its_files(http):
     first = summary.json()["paths"][0]
     assert (first["scatterers"], first["degen"], first["kmax"]) == ("Cu-Cu", 12, 20)
     assert "content" not in first and "content" in full.json()["paths"][0]
+
+
+def _copper_job(http):
+    import time
+
+    job = http.post("/api/artemis/feff/jobs", json={
+        "amcsd_id": 11145, "absorber": "Cu", "site_index": 1, "path_radius": 3, "cluster_radius": 5}).json()
+    deadline = time.monotonic() + 60
+    while job["status"] in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.2)
+        job = http.get(f"/api/artemis/feff/jobs/{job['id']}", params={"view": "summary"}).json()
+    assert job["status"] == "complete"
+    return job
+
+
+def _fit_foil(http, run, paths):
+    version = http.get(f"/api/athena/projects/{run['project_id']}", params={"view": "summary"}).json()["version"]
+    return http.post(f"/api/artemis/projects/{run['project_id']}/groups/{run['groups'][FOILS[0]]}/fit",
+                     params={"view": "summary"},
+                     json={"version": version, "paths": paths, "transform": {"kmax": 16, "kweight": [2]},
+                           "parameters": larchctl.DEFAULT_FIT_PARAMETERS})
+
+
+def test_a_fit_can_name_a_feff_jobs_path_instead_of_carrying_it(http, run):
+    job = _copper_job(http)
+    named = _fit_foil(http, run, [{"id": "p1", "feff_job": job["id"], "feff_path": "feff0001"}])
+    assert named.status_code == 200, named.text
+    source = http.get(f"/api/artemis/feff/jobs/{job['id']}").json()["paths"][0]
+    carried = _fit_foil(http, run, [{"id": "p1", "filename": source["filename"], "content": source["content"]}])
+    assert named.json()["paths"] == carried.json()["paths"]
+    assert 2.52 < named.json()["paths"][0]["r"] < 2.58
+
+
+def test_a_named_path_the_job_does_not_have_is_refused_by_name(http, run):
+    job = _copper_job(http)
+    response = _fit_foil(http, run, [{"id": "p1", "feff_job": job["id"], "feff_path": "feff0099"}])
+    assert response.status_code == 400
+    assert "has no path feff0099; it has feff0001" in response.json()["error"]["message"]
+    # A body that mixes the two forms is refused for its own fields, not for both shapes.
+    response = _fit_foil(http, run, [{"id": "p1", "feff_job": job["id"]}])
+    assert response.status_code == 422
+    assert response.json()["error"]["fields"] == ["feff_path"]

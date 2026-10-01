@@ -140,9 +140,9 @@ def feff_job_summary(record: dict) -> dict:
             "scatterers": _scatterers((path.get("metadata") or {}).get("geometry") or []),
             **{key: (path.get("metadata") or {}).get(key) for key in ("nleg", "degen", "reff", "kmax")},
         } for path in record["paths"]]
-        summary["note"] = ("The path files are left out of this view. Read them, as "
-                           "paths[].filename and paths[].content, from the same route without "
-                           "?view=summary once, when you are ready to fit.")
+        summary["note"] = ("The path files are left out of this view. A fit can name them "
+                           "instead of carrying them: send each path as {id, feff_job, feff_path} "
+                           "with feff_job this job's id and feff_path a paths[].id below.")
     return _round(summary)
 
 
@@ -176,6 +176,7 @@ def capabilities() -> dict:
                      "transform": "transform; every key optional"},
             "parameter": _model_options("artemis:FitParameter"),
             "path": _model_options("artemis:FitPath"),
+            "path_from_feff_job": _model_options("artemis:FeffJobPath"),
             "transform": _model_options("artemis:FitTransform"),
             "notes": [
                 "Each path's s02, e0, deltar and sigma2 are expressions, and default to the "
@@ -184,7 +185,10 @@ def capabilities() -> dict:
                 "kind 'guess' is fitted between min and max, 'set' is held at value, 'def' is "
                 "computed from expression. Bounds apply to guesses only.",
                 "A path is the filename and content of a FEFF feffNNNN.dat, plus an id you "
-                "choose. Strip a FEFF job's metadata before sending; unlisted keys are rejected.",
+                "choose; unlisted keys, such as a FEFF job's metadata, are rejected. A path from a "
+                "FEFF job can be named instead, as path_from_feff_job: {id, feff_job, "
+                "feff_path: 'feff0001'}, and the server reads the file out of the job. Jobs are "
+                "kept 24 hours.",
                 "kweight is a list even for one weight: [2], not 2. Several weights fit "
                 "together.",
                 "The transform defaults are this route's, not the group's: k 3-12 whatever the "
@@ -206,7 +210,8 @@ def capabilities() -> dict:
                 "metals and oxides.",
                 "The full status reply carries the CIF and the FEFF log as well as the paths, "
                 "about 20 KB on every poll. Poll with ?view=summary, which lists each path's "
-                "scatterers, degeneracy and reff without its file.",
+                "scatterers, degeneracy and reff without its file, and name the paths in the "
+                "fit rather than reading the files at all.",
             ],
         },
         "fit_reply": NOTE,

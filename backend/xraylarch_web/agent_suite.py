@@ -145,16 +145,10 @@ def _check_t3(observed: Observed) -> list[Assertion]:
 
 
 def _check_t4(observed: Observed) -> list[Assertion]:
-    ends = {label: ((observed.foil(label) or {}).get("range") or [None, None])[1] for label in FOILS}
-    known = [value for value in ends.values() if value is not None]
-    spread = max(known) - min(known) if len(known) == 3 else None
-    return [
-        Assertion("foil ranges end within 15 eV", spread is not None and spread <= 15,
-                  ", ".join(f"{label[8:]} {value:.1f}" if value else f"{label[8:]} ?"
-                            for label, value in ends.items())),
-        _count(observed, EXAMPLE_GROUPS + 1),
-        _merged_foils(observed),
-    ]
+    # Truncating first is allowed and changes nothing; only the merge is checked.
+    # Until 2026-10-01 this also required the foils' ranges to end within 15 eV,
+    # which rewarded a cut the merge already makes for itself.
+    return [_count(observed, EXAMPLE_GROUPS + 1), _merged_foils(observed)]
 
 
 def _check_t5(observed: Observed) -> list[Assertion]:
@@ -191,10 +185,12 @@ TASKS = {task.key: task for task in (
          "or not phase-corrected, or sits below the true Cu-Cu distance.",
          _check_t3),
     Task("T4",
-         "The 300 K scan is shorter than the other two. Cut the long ones down to match "
-         "before merging, so the merge isn't averaging three points against two at the "
-         "top end.",
-         "States the energy it truncated at, within 15 eV of 10146.",
+         "The 300 K scan is shorter than the other two, and I want all three in one merge. "
+         "Do I need to cut the long ones down to match first? Do whatever it takes, merge "
+         "them, and tell me where the merged spectrum ends.",
+         "Says the cut is unnecessary, because the merge covers only the energy range all "
+         "three share (or, having cut, that it changed nothing), and gives the merge's end "
+         "within 15 eV of 10140.",
          _check_t4),
     Task("T5",
          "How far apart are the copper atoms in the 10 K foil? I need the nearest-neighbour "

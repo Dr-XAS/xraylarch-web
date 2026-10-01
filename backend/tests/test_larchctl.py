@@ -350,7 +350,7 @@ def test_a_merge_names_what_it_left_out(run, project):
     assert "EXCLUDED Cu foil · 300 K: More than 10 points shorter" in result
 
     summary = run("--project", project, "summary")
-    assert "merge of 2,1 EXCLUDED" in summary
+    assert "merge of 2 (mu),1 EXCLUDED" in summary
 
 
 def test_an_option_naming_a_group_takes_a_label(run, project):

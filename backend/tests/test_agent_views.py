@@ -239,6 +239,15 @@ def test_a_merge_that_kept_everything_says_so(client, example):
     assert merged["derived"]["excluded"] == [], "empty, not absent: absent reads as unchecked"
 
 
+def test_a_merge_says_what_it_averaged(client, example):
+    """Both read "merge"; one has an edge step near 1 and the other the members' average."""
+    scans = [labelled(example, f"Cu foil · {t}") for t in ("10 K", "50 K")]
+    reply = command(client, example, "merge", scans, view="summary",
+                    method="demeter-larch", array="norm").json()
+    merged = next(group for group in reply["groups"] if group["derived"])
+    assert merged["derived"]["array"] == "norm"
+
+
 def test_a_parameters_reply_reports_what_larch_used(client, example):
     """Requested beside effective, so the caller needs no second read to check."""
     cold = labelled(example, "Cu foil · 10 K")

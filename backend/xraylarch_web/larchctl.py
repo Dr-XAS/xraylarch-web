@@ -199,7 +199,8 @@ def render_summary(summary: dict) -> str:
             # align refuses to move one away from its standard's family.
             flags.append(f"ref:{labels.get(group['reference_id'], group['reference_id'])[:16]}")
         if derived := group.get("derived"):
-            flags.append(f"{derived['operation']} of {len(derived['parents'])}")
+            flags.append(f"{derived['operation']} of {len(derived['parents'])}"
+                         + (f" ({derived['array']})" if derived.get("array") else ""))
             if derived.get("excluded"):
                 flags.append(f"{len(derived['excluded'])} EXCLUDED")
         span = group["range"]
@@ -508,7 +509,8 @@ def render_result(project: dict, before: dict) -> str:
         # "+ merge" with nothing else reads as though it took all of them.
         derived = added.get("derived") or {}
         if derived.get("parents"):
-            lines.append(f"      from {', '.join(_label(now, gid) for gid in derived['parents'])}")
+            lines.append(f"      from {', '.join(_label(now, gid) for gid in derived['parents'])}"
+                         + (f", averaging {derived['array']}" if derived.get("array") else ""))
         for left_out in derived.get("excluded") or ():
             lines.append(f"      EXCLUDED {left_out['label']}: {left_out['reason']}")
     for removed in sorted(was - set(now)):
@@ -626,11 +628,12 @@ DEFAULT_FIT_PARAMETERS = [
 
 
 def _feff_paths(client, args, absorber: str | None) -> list[dict]:
-    """Run FEFF on a bundled AMCSD structure and return the paths it made.
+    """Run FEFF on a bundled AMCSD structure and name the paths it made.
 
     The job's full status reply carries the CIF, the FEFF log and every path
     file, about 20 KB for one path, so it is polled under ?view=summary and
-    read in full once; only the path files go any further than here.
+    never read in full: the fit names each path by its job, and the server
+    reads the file out of the job itself.
     """
     import time
 
@@ -653,13 +656,11 @@ def _feff_paths(client, args, absorber: str | None) -> list[dict]:
         job = client.get(f"/feff/jobs/{job['id']}", api="artemis", params={"view": "summary"})
     if job["status"] != "complete":
         raise Failed(f"FEFF job {job['id']} {job['status']}: {job.get('message')}")
-    # The files, once; each poll above was a few hundred bytes rather than 20 KB.
-    job = client.get(f"/feff/jobs/{job['id']}", api="artemis")
     chosen = job["paths"][:args.max_paths]
     # FEFF stops its calculation at a k of its own (20 for these jobs), and a
     # fit asked to run past it has nothing to compare the data with.
-    limits = [path["metadata"]["kmax"] for path in chosen if (path.get("metadata") or {}).get("kmax")]
-    return ([{"filename": path["filename"], "content": path["content"]} for path in chosen],
+    limits = [path["kmax"] for path in chosen if path.get("kmax")]
+    return ([{"feff_job": job["id"], "feff_path": path["id"]} for path in chosen],
             min(limits) if limits else None)
 
 

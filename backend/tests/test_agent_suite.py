@@ -95,14 +95,19 @@ def test_t3_wants_the_effective_kmax_not_the_requested_one(http, run):
     assert failed(check(http, "T3", run)) == []
 
 
-def test_t4_passes_on_matched_ranges_and_a_merge_of_all_three(http, run):
+def test_t4_passes_a_merge_of_all_three_without_a_cut(http, run):
+    ok(http, run, "merge", FOILS, method="demeter-larch", exclude_short_data=False)
+    assert failed(check(http, "T4", run)) == []
+
+
+def test_t4_passes_a_cut_too_since_it_changes_nothing(http, run):
     ok(http, run, "truncate", FOILS[:2], mode="truncate", side="after", value=10146)
     # Matching the range leaves the point counts apart, so the short scan goes first.
     ok(http, run, "merge", (FOILS[2], FOILS[0], FOILS[1]), method="demeter-larch")
     assert failed(check(http, "T4", run)) == []
 
 
-def test_t4_fails_the_truncate_then_default_merge(http, run):
+def test_t4_fails_the_default_merge_that_drops_the_short_scan(http, run):
     ok(http, run, "truncate", FOILS[:2], mode="truncate", side="after", value=10146)
     ok(http, run, "merge", FOILS, method="demeter-larch")
     assert failed(check(http, "T4", run)) == ["one merge of all three foils, by derived.parents"]

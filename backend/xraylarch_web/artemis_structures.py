@@ -506,9 +506,9 @@ class FeffJobs:
                 slot.close()
 
 
-def build_structures_router(store):
+def build_structures_router(store, jobs=None):
     router = APIRouter(tags=["Artemis structures"])
-    jobs = FeffJobs(store.settings.data_root, store=store)
+    jobs = jobs or FeffJobs(store.settings.data_root, store=store)
 
     @router.post("/structures/first-shell")
     def coordination(request: FirstShellRequest):

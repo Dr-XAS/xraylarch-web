@@ -107,6 +107,10 @@ def _derivation(group) -> dict | None:
     parents = source.get("parents") or ([source["parent"]] if source.get("parent") else [])
     derived = {"operation": operation, "parents": parents}
     if operation == "merge":
+        # The label is native Athena's "merge" whatever was averaged, and a
+        # merge of normalized spectra reads an edge step of about 1 where one
+        # of mu reads the members' average, so say which it was.
+        derived["array"] = source.get("array")
         # Always present on a merge, so an empty list means nothing was left
         # out rather than that nobody looked.
         derived["excluded"] = [

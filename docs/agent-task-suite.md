@@ -100,29 +100,44 @@ first number concludes the transform is fine.
 that it is below the true Cu–Cu distance because no phase correction is applied. An
 answer that reports 2.30 Å as the bond length fails, regardless of state.
 
-## T4 — Make them comparable first
+## T4 — Does the short scan need cutting first
+
+> The 300 K scan is shorter than the other two, and I want all three in one merge. Do I
+> need to cut the long ones down to match first? Do whatever it takes, merge them, and
+> tell me where the merged spectrum ends.
+
+Reworded on 2026-10-01; see "The old T4" below. The question now has a right answer the
+arm has to find, rather than an instruction it can follow without understanding. The
+`demeter-larch` merge covers only the energy range every member shares, so truncating
+the two long scans first changes nothing: cutting them at 10146 eV gives the same merged
+values point for point, one point shorter at the top.
+
+**State:** six groups; one merge whose `derived.parents` is exactly the three
+originals. Truncating first is allowed and not checked.
+
+The trap behind the question is still there. The 300 K scan is 204 points shorter than
+the others, so the default merge drops it, and truncating does not save it either: the
+cut scans keep 460 and 468 points against its 408. Passing needs
+`exclude_short_data: false`, a `short_data_margin` of at least 60 after a cut, or the
+300 K scan selected first. Groups are measured only against the first one selected.
+
+**Answer:** says the cut is unnecessary, because the merge covers only the shared range
+(or, having cut, that the cut changed nothing), and gives the merged spectrum's end
+within 15 eV of 10140. It ends at 10134.3 eV with a cold scan selected first and at
+10139.2 eV with the 300 K scan first, on whose grid it then lands.
+
+### The old T4
+
+Runs one to four used this wording:
 
 > The 300 K scan is shorter than the other two. Cut the long ones down to match before
 > merging, so the merge isn't averaging three points against two at the top end.
 
-A numeric feedback loop. The arm has to read a number out of one group, feed it into an
-action on two others, then confirm it landed. `truncate` has a preview, so an arm that
-uses the preview should reach this in fewer rejected commands than one that doesn't.
-
-**State:** the three original groups' energy ranges end within 15 eV of each other; six
-groups; the merge's `derived.parents` is exactly the three truncated originals.
-
-This one has a second trap behind the first. Matching the energy ranges does not match
-the point counts: the truncated scans keep 460 and 468 points against the 300 K scan's
-408, so the default merge still drops it. Passing needs `exclude_short_data: false`, a
-`short_data_margin` of at least 60, or the 300 K scan selected first. Groups are only
-measured against the first one selected, so with the shortest scan first nothing is
-excluded and the merge lands on its grid, ending at 10139 eV. The threshold was 10 eV when this
-was drafted, and the first run missed it at 11.54 eV because `truncate` snaps to the
-nearest measured point and the two long scans are on a coarser grid up there than the
-300 K one. Fifteen is the honest number for a cut that lands on real data.
-
-**Answer:** states the energy it truncated at, within 15 eV of 10146.
+It also asserted that the three foils' ranges end within 15 eV of each other, and its
+answer was the energy truncated at, within 15 eV of 10146. The premise is false for
+`demeter-larch`, as the fourth run's CLI arm pointed out, and the range assertion
+rewarded an arm for doing what it was told rather than for being right. T4 results from
+before the rewording are not comparable with later ones.
 
 ## T5 — A distance, not a peak
 
@@ -501,7 +516,8 @@ merge isn't averaging three points against two") is false for `demeter-larch`, a
 assertion "ranges end within 15 eV" rewards an arm for doing what it was told rather
 than for being right. I have left the task as it is, because rewording it breaks
 comparison with the earlier runs. The CLI T4 result should be read as a correct refusal.
-AGENTS.md and the truncate note now say the cut is unnecessary.
+AGENTS.md and the truncate note now say the cut is unnecessary. T4 was reworded after the
+fifth run anyway; see "The old T4".
 
 **The arms were reading a stale AGENTS.md.** Subagents receive the project's AGENTS.md
 as an attachment cached when the session started, not the file on disk. So no arm in
@@ -619,6 +635,50 @@ Friction from this run, fixed after it:
 
 Not fixed: `structures` lists no cell or temperature, so the CLI T5 arm picked a
 high-temperature cell without knowing (the fit's deltar absorbs it). A fit body still
-carries every path file's text rather than naming a FEFF job's paths, which costs an
-HTTP arm nothing in context when it scripts the request, but is a round trip of the
-same files.
+carried every path file's text rather than naming a FEFF job's paths; that was fixed
+after the run, below.
+
+## After the fifth run, 2026-10-01
+
+Nine questions were left open after the fifth run. These are the decisions taken.
+
+**Changed:**
+
+- **AGENTS.md is slimmed, from 315 lines to 245.** It keeps every rule and drops
+  the worked numbers from the copper example. Those numbers were most of its length, and
+  they were also the suite's answers: the 2.547 Å fit, the 2.30 against 2.73 edge
+  steps, kmax 18, and the claim that a cut before merging changes nothing. An arm that
+  read the guide could pass T2 to T5 by quoting it. Runs after this one measure the
+  interface, not the guide, and their context costs are not comparable with runs
+  three to five.
+- **T4 is reworded**, under "The old T4" above. Its premise was false for
+  `demeter-larch`, as the fourth run's CLI arm said.
+- **A fit path can name a FEFF job's path** as `{id, feff_job, feff_path}`, and the
+  server reads the file out of the job. `larchctl fit --structure` now polls the
+  summary view and never reads the 20 KB full reply. Saved Artemis models still carry
+  the file text, because a job is deleted after 24 hours and a model has to outlive
+  it.
+- **A merge's `derived` names the `array` it averaged**, and `larchctl` prints it
+  (`merge of 3 (norm)`). The label stays native Athena's "merge". Changing it would
+  touch the browser and project files for a fact that belongs in the derivation.
+- **The frontend proxy allows `GET .../compare` and forwards `Idempotency-Key`.** The
+  Artemis routes were already allowed by prefix. Before this, compare was a 404
+  through the proxy, and a keyed retry lost its key on the way through.
+
+**Kept as they are:**
+
+- **Align does not find E0 again.** It matches native Athena, which pins E0 through
+  an alignment. The catalog note, AGENTS.md and the CLI's `~` lines already say so,
+  and `parameters` with `e0: null` is one command away.
+- **The example's shared reference stays a copy of the 300 K scan.** It is the demo's
+  documented provenance (`docs/athena-reference-links.md`). It is also a fair trap: two
+  labels holding one measurement is a thing real projects do, `same_data` is tested
+  against it, and both fourth-run T1 arms caught it.
+- **The arm reaches this backend over loopback**, through the Dr.XAS backend's
+  existing `internal_url`, never over the ingress. See question 1 in
+  `agent-interface-scope.md`.
+- **The two arms do not share numerics.** Dr.XAS pins upstream Larch from August 2025,
+  and this backend runs a fork 97 files further on. Its align is not Larch's at all.
+  Equivalence is scored per quantity with a tolerance, which is how the answer
+  assertions are already written. See question 3.
+
