@@ -55,6 +55,12 @@ def test_it_names_the_same_measurement_under_two_labels(http, run):
     assert rows["Cu foil · shared reference"]["same_data_as"] == [FOILS[2]]
 
 
+def test_it_names_a_duplicate_that_was_not_selected(http, run):
+    """The copy worth knowing about is usually the one nobody thought to compare."""
+    rows = compare(http, run, FOILS[0], FOILS[2])
+    assert rows[FOILS[2]]["same_data_as"] == ["Cu foil · shared reference"]
+
+
 def test_it_measures_a_linked_family_that_align_will_not_move(http, run):
     """The example's foils share a reference, so align refuses them; reading is not moving."""
     base = f"/api/athena/projects/{run['project_id']}"

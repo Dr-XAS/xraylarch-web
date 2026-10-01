@@ -4633,8 +4633,11 @@ def build_athena_router(
                 return _command_response(saved, request)
             projected = project_view(saved, view)
             if request.action == "parameters" and request.options:
-                projected["applied"] = applied_parameters(
-                    saved, request.group_ids, sorted(request.options))
+                # Under last_operation, beside the rest of what this command did:
+                # that is where a caller checking its write looks first.
+                projected["last_operation"] = {**(projected.get("last_operation") or {}),
+                                               "applied": applied_parameters(
+                                                   saved, request.group_ids, sorted(request.options))}
             return projected
         project = store.load(ident)
         if project.get("integration") is not True:
@@ -4742,7 +4745,8 @@ def build_athena_router(
             prefs = store.smoothing_preferences.read()['values']
             return {"project_id": ident, "version": project["version"],
                     **compare([store.group(project, gid) for gid in ids],
-                              {"sg_window": prefs["window"], "sg_order": prefs["order"]})}
+                              {"sg_window": prefs["window"], "sg_order": prefs["order"]},
+                              project["groups"])}
         return guarded(report)
 
     @router.get('/projects/{ident}/groups/{group_id}/xdi')

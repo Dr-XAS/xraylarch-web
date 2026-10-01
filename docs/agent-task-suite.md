@@ -108,7 +108,7 @@ A numeric feedback loop. The arm has to read a number out of one group, feed it 
 action on two others, then confirm it landed. `truncate` has a preview, so an arm that
 uses the preview should reach this in fewer rejected commands than one that doesn't.
 
-**State:** the three original groups' energy ranges end within 15 eV of each other; four
+**State:** the three original groups' energy ranges end within 15 eV of each other; six
 groups; the merge's `derived.parents` is exactly the three truncated originals.
 
 This one has a second trap behind the first. Matching the energy ranges does not match

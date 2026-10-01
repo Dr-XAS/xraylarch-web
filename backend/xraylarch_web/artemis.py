@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Literal
 
 import numpy as np
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from larch import Group
 from larch.fitting import ParameterGroup, param, param_group
 from larch.xafs import feffit, feffit_dataset, feffit_report, feffit_transform, feffpath
@@ -500,7 +500,9 @@ def build_artemis_router(store) -> APIRouter:
         return cuprite_example()
 
     @router.post("/projects/{ident}/groups/{group_id}/fit")
-    def fit(ident: str, group_id: str, request: FitRequest):
+    def fit(ident: str, group_id: str, request: FitRequest,
+            view: Literal["full", "summary"] = Query(default="full")):
+        """Fit one group. `?view=summary` returns the fitted values without the curves."""
         project = store.load(ident)
         # Draft access is capability-guarded by Athena's integration router.
         # Do not create an unguarded alternative entry point to those spectra.
@@ -509,7 +511,12 @@ def build_artemis_router(store) -> APIRouter:
         store.check(project, request.version)
         result = fit_group(store.group(project, group_id), request)
         store.check(store.load(ident), request.version)
-        return dict(project_id=ident, version=request.version, **result)
+        reply = dict(project_id=ident, version=request.version, **result)
+        if view == "summary":
+            from .agent_fit import fit_summary
+
+            return fit_summary(reply)
+        return reply
 
     from .artemis_structures import build_structures_router
 

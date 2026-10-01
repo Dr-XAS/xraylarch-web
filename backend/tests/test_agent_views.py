@@ -243,7 +243,7 @@ def test_a_parameters_reply_reports_what_larch_used(client, example):
     """Requested beside effective, so the caller needs no second read to check."""
     cold = labelled(example, "Cu foil · 10 K")
     reply = command(client, example, "parameters", [cold], view="summary", kmax=18, e0=None).json()
-    [applied] = reply["applied"]
+    [applied] = reply["last_operation"]["applied"]
     assert applied["id"] == cold and applied["processing_error"] is None
     assert applied["values"]["kmax"] == {"requested": 18, "effective": 18.0}
     # null hands the value back to Larch, and only the effective side says what it chose.
@@ -254,7 +254,8 @@ def test_a_parameters_reply_reports_what_larch_used(client, example):
 
 def test_a_full_parameters_reply_is_left_as_the_browser_has_it(client, example):
     cold = labelled(example, "Cu foil · 10 K")
-    assert "applied" not in command(client, example, "parameters", [cold], kmax=18).json()
+    reply = command(client, example, "parameters", [cold], kmax=18).json()
+    assert "applied" not in reply and "applied" not in (reply.get("last_operation") or {})
 
 
 def test_a_merge_preview_without_method_refuses_rather_than_previewing_something_else(client, example):

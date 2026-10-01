@@ -60,10 +60,10 @@ class Client:
         if not self._borrowed:
             self._http.close()
 
-    def request(self, method: str, path: str, *, raw=False, **kwargs) -> Any:
+    def request(self, method: str, path: str, *, raw=False, api="athena", **kwargs) -> Any:
         import httpx
         try:
-            response = self._http.request(method, f"/api/athena{path}", **kwargs)
+            response = self._http.request(method, f"/api/{api}{path}", **kwargs)
         except httpx.HTTPError as exc:
             raise Failed(f"Could not reach the backend at {self._http.base_url}: {exc}")
         if response.status_code >= 400:
@@ -141,7 +141,11 @@ def resolve_group(summary: dict, token: str) -> str:
     if any(group["id"] == token for group in groups):
         return token
     folded = _fold(token)
-    matches = [group for group in groups if folded in _fold(group["label"])]
+    # A whole label wins over the labels that contain it. Otherwise naming a
+    # merge "Cu foil · 300 K + cold scans" makes "Cu foil · 300 K" ambiguous,
+    # and the only way back to the scan is its id.
+    exact = [group for group in groups if _fold(group["label"]) == folded]
+    matches = exact or [group for group in groups if folded in _fold(group["label"])]
     if len(matches) == 1:
         return matches[0]["id"]
     if not matches:
@@ -209,7 +213,10 @@ def render_summary(summary: dict) -> str:
         ])
     body = _table(rows, ["ID", "LABEL", "TYPE", "EL", "E0", "SHIFT", "STEP",
                          "RANGE", "PTS", "FLAGS"])
-    same = [f"same data: {' = '.join(labels)}" for labels in summary.get("same_data") or ()]
+    files = {group["label"]: group.get("file") for group in summary["groups"]}
+    same = [f"same data: {' = '.join(labels)}"
+            + (f"  ({files[labels[0]]})" if files.get(labels[0]) else "")
+            for labels in summary.get("same_data") or ()]
     return "\n".join([*head, "", body, *same])
 
 
@@ -231,7 +238,9 @@ def render_compare(report: dict) -> str:
             str(row["points"]), _number(row.get("available_kmax"), 2),
             ", ".join(row.get("same_data_as") or ()) or "-",
         ])
-    lines.append(_table(rows, ["LABEL", "dE0", "SHIFT", "STEP/REF", "XANES", "COMMON",
+    # ALIGN BY rather than SHIFT: the summary's SHIFT is the shift a group
+    # already carries, and this is what align would add to it.
+    lines.append(_table(rows, ["LABEL", "dE0", "ALIGN BY", "STEP/REF", "XANES", "COMMON",
                                "PTS", "KMAX", "SAME DATA AS"]))
     for row in report["groups"]:
         if amplitude := row.get("chi_amplitude"):
@@ -263,6 +272,10 @@ def render_parameters(view: dict) -> str:
 def render_digest(digest: dict) -> str:
     group, lines = digest["group"], []
     lines.append(f"{group['label']}  ({group['id']})")
+    # Where the data came from is the first thing a description of a scan
+    # states, and the digest had it while the table left it out.
+    lines.append(f"  from {group.get('file') or '?'}"
+                 + (f": {digest['citation']}" if digest.get("citation") else ""))
     lines.append(f"  {group['data_type']}, {group['element'] or '?'} {group['edge'] or ''}"
                  f" ({group['edge_origin'] or 'unknown origin'}),"
                  f" e0 {_number(group['e0'], 2)}, edge step {_number(group['edge_step'])}")
@@ -336,6 +349,10 @@ def render_capabilities(listing: dict) -> str:
         "",
         "analyses (POST " + listing["analyses"]["post"] + "): "
         + ", ".join(listing["analyses"]["actions"]),
+        # The reads are subcommands here rather than actions, and without this
+        # line the only list of them is --help.
+        "reads: larchctl summary | params | digest G | compare G G... | log | export G"
+        " | fit G (distances) | structures",
     ])
 
 
@@ -439,7 +456,7 @@ def render_result(project: dict, before: dict) -> str:
         lines.append(f"  - {removed}")
     # A parameters command changes no group list, so without this the reply is
     # just the version, and whether Larch honoured the value takes another read.
-    for group in project.get("applied") or ():
+    for group in operation.get("applied") or ():
         values = "  ".join(f"{key} {_value(entry['requested'])}->{_value(entry['effective'])}"
                            for key, entry in group["values"].items())
         lines.append(f"  {group['label']}  {values}"
@@ -502,6 +519,136 @@ def command_compare(client, args):
     ids = [resolve_group(summary, token) for token in args.groups]
     report = client.get(f"/projects/{ident}/compare", params={"groups": ",".join(ids)})
     return report, render_compare(report)
+
+
+# The four guesses both bundled Artemis setups use, and the names a FEFF path's
+# s02, e0, deltar and sigma2 default to, so bare path files fit as they are.
+DEFAULT_FIT_PARAMETERS = [
+    {"name": "amp", "kind": "guess", "value": 1.0, "min": 0.0, "max": 2.0},
+    {"name": "del_e0", "kind": "guess", "value": 0.0, "min": -30.0, "max": 30.0},
+    {"name": "del_r", "kind": "guess", "value": 0.0, "min": -0.2, "max": 0.2},
+    {"name": "sig2", "kind": "guess", "value": 0.008, "min": 0.0, "max": 0.05},
+]
+
+
+def _feff_paths(client, args, absorber: str | None) -> list[dict]:
+    """Run FEFF on a bundled AMCSD structure and return the paths it made.
+
+    The job's status reply carries the CIF, the FEFF log and every path file,
+    about 20 KB for one path; only the path files go any further than here.
+    """
+    import time
+
+    details = client.get(f"/structures/{args.structure}", api="artemis")
+    if not details.get("supported"):
+        raise Failed(f"AMCSD {args.structure} cannot be used: {' '.join(details.get('warnings') or ())}")
+    sites = [site for site in details["sites"] if absorber is None or site["element"] == absorber]
+    if args.site is None and not sites:
+        raise Failed(f"AMCSD {args.structure} ({details['formula']}) has no {absorber} site.")
+    site = args.site or sites[0]["index"]
+    job = client.post("/feff/jobs", api="artemis", json={
+        "amcsd_id": args.structure, "absorber": absorber or sites[0]["element"],
+        "site_index": site, "path_radius": args.path_radius,
+        "cluster_radius": max(5.0, args.path_radius)})
+    deadline = time.monotonic() + 300
+    while job["status"] in ("queued", "running"):
+        if time.monotonic() > deadline:
+            raise Failed(f"FEFF job {job['id']} is still {job['status']} after five minutes.")
+        time.sleep(0.5)
+        job = client.get(f"/feff/jobs/{job['id']}", api="artemis")
+    if job["status"] != "complete":
+        raise Failed(f"FEFF job {job['id']} {job['status']}: {job.get('message')}")
+    return [{"filename": path["filename"], "content": path["content"]}
+            for path in job["paths"][:args.max_paths]]
+
+
+def _fit_body(client, args, absorber: str | None = None) -> dict:
+    """The fit request: FEFF paths and a starting model, with -p/--fix/-t applied."""
+    if args.example:
+        example = client.get(f"/examples/{args.example}", api="artemis")
+        paths = [{"filename": path["filename"], "content": path["content"]} for path in example["paths"]]
+        parameters, transform = example["parameters"], dict(example["transform"])
+    else:
+        paths, parameters, transform = [], [dict(row) for row in DEFAULT_FIT_PARAMETERS], {}
+        if args.structure:
+            paths = _feff_paths(client, args, absorber)
+            # Fit out to the farthest path asked for, not to the route's 3 A default.
+            transform["rmax"] = max(3.0, args.path_radius)
+    for name in args.path:
+        try:
+            with open(name, encoding="utf-8") as handle:
+                paths.append({"filename": os.path.basename(name), "content": handle.read()})
+        except OSError as exc:
+            raise Failed(f"Could not read the FEFF path {name}: {exc}")
+    if not paths:
+        raise Failed("Give FEFF paths with --path feffNNNN.dat, a bundled structure with "
+                     "--structure AMCSD_ID, or a bundled setup with --example cuprite.")
+    for index, path in enumerate(paths, start=1):
+        path["id"] = f"p{index}"
+    by_name = {row["name"]: row for row in parameters}
+    for text, kind in [(text, "guess") for text in args.param] + [(text, "set") for text in args.fix]:
+        name, value = parse_option(text)
+        if name not in by_name:
+            raise Failed(f"No fit parameter {name!r}; the model has {', '.join(by_name)}.")
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise Failed(f"{name} needs a number; got {value!r}.")
+        by_name[name].update(value=float(value), kind=kind)
+    for text in args.transform:
+        name, value = parse_option(text)
+        transform[name] = value
+    return {"parameters": parameters, "paths": paths, "transform": transform}
+
+
+def command_fit(client, args):
+    ident = need_project(args)
+    summary = client.get(f"/projects/{ident}", params={"view": "summary"})
+    group_id = resolve_group(summary, args.group)
+    if args.example and args.structure:
+        raise Failed("Use --example or --structure, not both.")
+    element = next(group["element"] for group in summary["groups"] if group["id"] == group_id)
+    body = _fit_body(client, args, element) | {"version": summary["version"]}
+    result = client.post(f"/projects/{ident}/groups/{group_id}/fit", api="artemis",
+                         params={"view": "summary"}, json=body)
+    return result, render_fit(result)
+
+
+def render_fit(result: dict) -> str:
+    stats, transform = result["statistics"], result["transform"]
+    lines = [f"fit {result['group_label']}: {result['message']}",
+             f"  r-factor {_number(stats.get('r_factor'), 4)}, reduced chi-square "
+             f"{_number(stats.get('reduced_chi_square'), 1)}, {stats.get('n_varys')} variables "
+             f"against {_number(stats.get('n_independent'), 1)} independent points",
+             f"  k {transform['kmin']:g}-{transform['kmax']:g} (kweight "
+             f"{','.join(map(str, transform['kweight']))}, dk {transform['dk']:g}), "
+             f"R {transform['rmin']:g}-{transform['rmax']:g}, fit in {transform['fitspace']}", ""]
+    rows = [[row["name"], row["kind"], _number(row["value"], 4),
+             "-" if row.get("stderr") is None else _number(row["stderr"], 4),
+             _number(row["initial"], 4), "AT " + row["at_bound"].upper() if row.get("at_bound") else ""]
+            for row in result["parameters"]]
+    lines.append(_table(rows, ["PARAM", "KIND", "VALUE", "STDERR", "INITIAL", "BOUND"]))
+    lines.append("")
+    rows = [[path["label"][:20], path["scatterers"], _number(path.get("degen"), 0),
+             _number(path.get("reff"), 4), _number(path.get("r"), 4),
+             _number(path.get("sigma2"), 5), _number(path.get("s02"), 3)]
+            for path in result["paths"]]
+    lines.append(_table(rows, ["PATH", "SCATTERERS", "N", "REFF", "R", "SIGMA2", "S02"]))
+    if correlations := result.get("correlations"):
+        lines.append("  correlations: " + ", ".join(
+            f"{row['left']}/{row['right']} {row['value']:+.2f}" for row in correlations[:6]))
+    for warning in result.get("warnings") or ():
+        lines.append(f"  WARNING: {warning}")
+    lines.append(result["note"])
+    return "\n".join(lines)
+
+
+def command_structures(client, args):
+    found = client.get("/structures", api="artemis",
+                       params={"q": " ".join(args.query), "element": args.element or "", "limit": args.limit})
+    rows = [[str(row["id"]), (row.get("mineral") or "")[:24], row.get("formula") or "",
+             row.get("space_group") or "", str(row.get("year") or ""),
+             " ".join((row.get("title") or "").split())[:60]] for row in found["results"]]
+    text = _table(rows, ["AMCSD", "MINERAL", "FORMULA", "GROUP", "YEAR", "TITLE"])
+    return found, f"{text}\n{found['source']}" if rows else f"No structure matches. {found['source']}"
 
 
 def command_export(client, args):
@@ -603,7 +750,8 @@ COMMANDS = {
     "projects": command_projects, "new": command_new, "summary": command_summary,
     "params": command_params, "digest": command_digest, "compare": command_compare,
     "describe": command_describe,
-    "do": command_do, "log": command_log, "export": command_export,
+    "do": command_do, "log": command_log, "export": command_export, "fit": command_fit,
+    "structures": command_structures,
 }
 
 
@@ -659,6 +807,32 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--out", metavar="PATH",
                         help="file to write; '-' prints the CSV instead "
                              "(default athena-<space>.csv)")
+
+    fit = sub.add_parser("fit", help="fit FEFF paths to one group with Artemis; nothing is saved")
+    fit.add_argument("group", help="group id, or part of its label")
+    fit.add_argument("--example", choices=("cuprite",),
+                     help="start from a bundled setup: its paths, parameters and ranges")
+    fit.add_argument("--structure", type=int, metavar="AMCSD_ID",
+                     help="run FEFF on a bundled AMCSD structure and fit its paths; "
+                          "find ids with `larchctl structures copper`")
+    fit.add_argument("--site", type=int, help="absorber site in the structure (default: the first)")
+    fit.add_argument("--path-radius", type=float, default=3.0, metavar="A",
+                     help="longest path FEFF keeps, in angstrom (default 3.0: the first shell "
+                          "of most solids); the fit's rmax follows it")
+    fit.add_argument("--max-paths", type=int, default=24, help="fit at most this many FEFF paths")
+    fit.add_argument("--path", action="append", default=[], metavar="FEFF.dat",
+                     help="a FEFF path file to add; repeat for several")
+    fit.add_argument("-p", "--param", action="append", default=[], metavar="NAME=VALUE",
+                     help="start a guess parameter at VALUE")
+    fit.add_argument("--fix", action="append", default=[], metavar="NAME=VALUE",
+                     help="hold a parameter at VALUE instead of fitting it")
+    fit.add_argument("-t", "--transform", action="append", default=[], metavar="KEY=VALUE",
+                     help="kmin, kmax, kweight, dk, rmin, rmax, fitspace, window")
+
+    structures = sub.add_parser("structures", help="search the bundled crystal structures for `fit --structure`")
+    structures.add_argument("query", nargs="*", help="mineral, formula or words from the title")
+    structures.add_argument("--element", help="only structures containing this element")
+    structures.add_argument("--limit", type=int, default=10)
 
     log = sub.add_parser("log", help="every command issued against this project")
     log.add_argument("--limit", type=int, default=20)

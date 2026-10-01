@@ -71,6 +71,15 @@ def test_a_group_is_named_by_label_and_ambiguity_is_refused(run, project):
     assert "Cu foil" in missing, "say what is there, not only what is not"
 
 
+def test_a_whole_label_wins_over_the_labels_that_contain_it(run, project):
+    run("--project", project, "do", "example")
+    run("--project", project, "do", "metadata", "Cu₂O", "-o", "label=Cu foil · 300 K, refit")
+
+    digest = run("--project", project, "digest", "Cu foil · 300 K")
+    assert digest.startswith("Cu foil · 300 K  ("), "the scan, not the group named after it"
+    assert "matches several groups" in run("--project", project, "digest", "300 K", expect=1)
+
+
 def test_a_preview_reports_its_shape_instead_of_its_curves(run, project):
     """The whole point of this layer is not to paste arrays into a context."""
     run("--project", project, "do", "example")
@@ -250,6 +259,7 @@ def test_the_digest_says_where_chi_stops_being_signal(run, project):
     assert "chi/noise by k:" in digest
     assert "3-5:" in digest and "23-25:" in digest
     assert "a window near 1 is noise" in digest
+    assert "from cu_10k.xmu: XrayLarch example data" in digest, "where the scan came from"
 
 
 def test_export_writes_a_file_rather_than_a_context_window(run, project, tmp_path):
@@ -363,4 +373,4 @@ def test_compare_takes_labels_and_prints_a_table(run, project):
 def test_the_summary_says_when_two_groups_are_one_measurement(run, project):
     run("--project", project, "do", "example")
     out = run("--project", project, "summary")
-    assert "same data: Cu foil · 300 K = Cu foil · shared reference" in out
+    assert "same data: Cu foil · 300 K = Cu foil · shared reference  (cu_rt01.xmu)" in out

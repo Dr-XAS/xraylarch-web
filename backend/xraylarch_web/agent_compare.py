@@ -30,8 +30,8 @@ NOTE = (
     "reference E0 -20 to +50 eV on the current axes, so an unaligned pair reads "
     "high. chi_amplitude is rms(k^kweight chi) of the group over the "
     "reference's, per k window over the support both share, at the reference's "
-    "kweight; below 1 is weaker oscillation. same_data_as names every selected "
-    "group, the reference included, whose raw energy and mu arrays are identical "
+    "kweight; below 1 is weaker oscillation. same_data_as names every group in "
+    "the project, selected or not, whose raw energy and mu arrays are identical "
     "to this one's: the same measurement under two labels."
 )
 
@@ -118,12 +118,18 @@ def _chi_amplitude(group, reference) -> dict | None:
     return {"kweight": kweight, "bins": bins} if bins else None
 
 
-def compare(groups: list[dict], preferences: dict) -> dict:
-    """Every group after the first, measured against the first."""
+def compare(groups: list[dict], preferences: dict, project_groups: list[dict] | None = None) -> dict:
+    """Every group after the first, measured against the first.
+
+    same_data_as looks across project_groups when given, not only the
+    selection: the duplicate worth knowing about is usually the one not asked
+    about, such as a reference channel that is a copy of a sample scan.
+    """
     reference, rest = groups[0], groups[1:]
     summaries = {group["id"]: group_summary(group) for group in groups}
     base = summaries[reference["id"]]
-    prints = {group["id"]: _fingerprint(group) for group in groups}
+    pool = {group["id"]: group for group in [*groups, *(project_groups or ())]}
+    prints = {ident: _fingerprint(group) for ident, group in pool.items()}
     rows = []
     for group in rest:
         mine = summaries[group["id"]]
@@ -131,7 +137,7 @@ def compare(groups: list[dict], preferences: dict) -> dict:
             "id": group["id"],
             "label": group["label"],
             "file": mine["file"],
-            "same_data_as": [other["label"] for other in groups if other["id"] != group["id"]
+            "same_data_as": [other["label"] for other in pool.values() if other["id"] != group["id"]
                              and prints[group["id"]] is not None
                              and prints[other["id"]] == prints[group["id"]]],
             "points": mine["points"],

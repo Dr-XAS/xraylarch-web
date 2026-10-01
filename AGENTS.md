@@ -39,6 +39,7 @@ command, and every preview.
 | `?view=parameters` | ~2,150 tokens | each group's recipe, requested against effective |
 | `.../groups/{gid}/digest` | ~720 tokens | one spectrum characterised in numbers |
 | `.../compare?groups=a,b,c` | ~850 tokens for five | each group against the first: shift, XANES and chi(k) differences, shared range, duplicates |
+| `POST /api/artemis/.../fit?view=summary` | ~800 tokens | one fit's values, per-path distances |
 | `.../transcript` | ~120 tokens each | what has already been tried here, failures included |
 | *(no view)* | ~239,000 tokens | everything, arrays included |
 
@@ -55,7 +56,7 @@ command, and every preview.
    `{version, action, group_ids, options}`.
 6. Read the reply. Do not trust that it worked because the POST returned 200: check
    `processing_error`, `warnings`, and on a created group, `derived`. A `parameters`
-   reply also carries `applied`: for each selected group and each key you sent, the
+   reply also carries `last_operation.applied`: for each selected group and each key you sent, the
    value you asked for and the value Larch used.
 
 `version` must be the project's current version. A stale one is a 409 whose `recovery`
@@ -89,7 +90,9 @@ reply says so in `last_operation.idempotent_replay`.
 python -m xraylarch_web.larchctl --help
 ```
 
-It does steps 3 and 5 for you — fetches the version, resolves groups by label, strips
+It does steps 3 and 5 for you — fetches the version, resolves groups by label (in
+`group_ids` and in the options that name a group: `standard_id`, `reference_id`,
+`background_standard_id`; over HTTP those take ids), strips
 plotting arrays out of previews, and prints tables instead of JSON. `--json` gives the
 response as JSON and still elides the arrays; `--arrays` is how you ask for them.
 
@@ -99,7 +102,8 @@ python -m xraylarch_web.larchctl do example
 python -m xraylarch_web.larchctl summary
 python -m xraylarch_web.larchctl digest "10 K"
 python -m xraylarch_web.larchctl compare "10 K" "50 K" "300 K"
-python -m xraylarch_web.larchctl describe merge
+python -m xraylarch_web.larchctl describe            # step 1: every action
+python -m xraylarch_web.larchctl describe merge      # step 2: one action
 python -m xraylarch_web.larchctl do parameters "10 K" -o kmax=12 -o kweight=3
 python -m xraylarch_web.larchctl do merge "10 K" "50 K" -o method=demeter-larch --preview
 python -m xraylarch_web.larchctl do rebin "10 K" --key retry-1
@@ -121,7 +125,7 @@ compare against the requested value you will conclude the wrong thing.
 **The digest's |chi(R)| peaks are not bond lengths.** No phase correction is applied, so
 each peak sits roughly 0.2–0.5 Å below the true shell distance. Copper foil's first
 shell reports at 2.30 Å against a true Cu–Cu distance of 2.55 Å. Fit if you need
-distances; the peaks are for recognising structure, not measuring it.
+distances (below); the peaks are for recognising structure, not measuring it.
 
 **Ranges are reported on the shifted axis.** For energy spectra the reported range
 already has `energy_shift` folded in. `energy_shift` is reported alongside, so the
@@ -148,7 +152,10 @@ its reason, and so does `last_operation.merge.outputs[].excluded` in the command
 `exclude_short_data: false` or select it first. Truncating the long scans to the same
 energy range is not enough, because it does not equalise their point counts. Keeping
 it has a cost of its own: the merge covers only the energy range every member shares,
-so here it stops at 10134 eV where the cold scans alone run to 11362.
+so here it stops at 10134 eV where the cold scans alone run to 11362. That also means
+there is no need to truncate the long scans to the short one's range before merging:
+the merge already does it. On the example, truncating the cold scans at 10146 eV first
+gives the same merged values point for point, one point shorter at the top.
 
 Always send `method: "demeter-larch"` to merge. Without it the command takes an older
 plain average that excludes nothing, and the preview refuses, because it cannot show
@@ -199,6 +206,43 @@ against the 10 K scan's 130 does not make it the cleaner scan. Compare where eac
 group's ratios fall towards 1. The digest's `noise.recommended_kmax` is Larch's own
 estimate, measured over the current transform range and pessimistic by Larch's own
 account; on the 10 K scan it says 14.6 where the ratios say about 18.
+
+## Distances come from a fit
+
+Artemis fits FEFF paths to a group's chi(k), and a path's fitted `r` (reff + deltar) is a
+distance with the scattering phase accounted for. The route is
+`POST /api/artemis/projects/{id}/groups/{gid}/fit?view=summary` with
+`{version, parameters, paths, transform}`; each path carries the FEFF file's text as
+`content`. Without `?view=summary` the reply is about 250 KB of curves; with it, about
+2.5 KB: statistics, each parameter with its stderr, correlations of 0.1 or more, and
+per path its scatterers, degeneracy, reff, r and sigma2. A parameter that stopped at
+its bound is flagged `at_bound`; its stderr then means nothing. The fit saves nothing.
+
+FEFF paths come from one of three places:
+
+- `GET /api/artemis/examples/cuprite` returns a complete setup for the example's Cu₂O
+  group: four paths, four guesses, the ranges. Send its `paths` (each with an `id`
+  added, `metadata` removed), `parameters` and `transform` as the fit body.
+- `GET /api/artemis/structures?q=copper&element=Cu` searches the bundled AMCSD
+  structures, and `POST /api/artemis/feff/jobs` with `{amcsd_id, absorber, site_index,
+  path_radius}` runs FEFF on one, in about a second. Poll `GET .../feff/jobs/{job}`
+  until `status` is `complete`; its `paths` hold the files. The status reply is about
+  20 KB because it carries the CIF and the FEFF log as well.
+- Your own `feffNNNN.dat` files.
+
+The CLI does all of it:
+
+```
+larchctl fit "Cu2O" --example cuprite
+larchctl structures copper --element Cu
+larchctl fit "10 K" --structure 11145             # FEFF to 3 Å, then the fit
+larchctl fit "10 K" --structure 11145 --fix amp=0.9 -t kmax=14
+```
+
+On the 10 K copper foil the structure fit gives Cu–Cu at 2.547 Å with sigma2 0.0038 Å²,
+where the digest's peak sat at 2.30. The four default guesses are `amp`, `del_e0`,
+`del_r` and `sig2`, with the bounds Artemis starts from; `-p name=value` moves a
+guess's start and `--fix name=value` holds it.
 
 ## What you cannot get
 

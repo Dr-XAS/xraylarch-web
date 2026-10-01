@@ -252,7 +252,7 @@ ACTIONS: dict[str, Action] = {
              "Larch's automatic choice; kmax null, for instance, means kmax from "
              "the measured support. Keys without null in their type need a value. "
              "Larch may clip a requested range to the measured support. With "
-             "?view=summary the reply's `applied` lists, for each selected group "
+             "?view=summary the reply's `last_operation.applied` lists, for each selected group "
              "and each key sent, the requested and the effective value.",
     ),
     "project": Action(
@@ -475,6 +475,12 @@ def index() -> dict:
             "/api/athena/projects/{id}/compare?groups={gid},{gid}": "groups against the first",
             "/api/athena/projects/{id}/transcript?since={seq}": "commands and previews tried so far",
             "/api/athena/projects/{id}/groups/{gid}/export?space=E|k|R|q": "arrays, as a file",
+            # Distances need a fit; these are the Artemis routes one takes.
+            "/api/artemis/projects/{id}/groups/{gid}/fit?view=summary":
+                "POST FEFF paths and guesses; fitted distances and sigma2, no curves",
+            "/api/artemis/examples/cuprite": "a complete Cu2O fit setup to POST to fit",
+            "/api/artemis/structures?q={text}&element={el}": "bundled crystal structures",
+            "/api/artemis/feff/jobs": "POST {amcsd_id, absorber, site_index}; poll for FEFF paths",
         },
     }
 
