@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -11,6 +11,7 @@ import {
 } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
+import { ArtemisModelAutosave, type ArtemisSaveStatus } from "@/lib/artemis-model-autosave"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
 import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
@@ -24,17 +25,30 @@ import styles from "./artemis-fitting.module.css"
 export type { ArtemisFitResult } from "@/lib/artemis"
 
 interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; result: { revision: number; data: ArtemisFitResult } | null }
+export type ArtemisModelActions = {
+  flush: () => Promise<void>
+  importModel: () => void
+  exportModel: () => void
+  canExportModel: boolean
+  status: ArtemisSaveStatus
+  error?: string
+  retry: () => Promise<void>
+}
+type EditorActions = Pick<ArtemisModelActions, "importModel" | "exportModel" | "canExportModel">
+type ModelMutation = { version: number; finish: () => void }
 interface PanelProps {
   exampleSetup?: ArtemisExampleSetup
   projectId?: string
   version?: number
   group?: AthenaGroup
+  groups?: AthenaGroup[]
   pending?: boolean
   onFitResult?: (result: ArtemisFitResult | null) => void
   onPathsChange?: (paths: FeffPathSummary[], projectId?: string, groupId?: string) => void
   onProjectChange?: (project: AthenaProject) => void
   onViewStructure?: (attachmentId: string, siteIndex?: number) => void
   onDirtyChange?: (groupId: string, dirty: boolean) => void
+  onActionsChange?: (actions: ArtemisModelActions | null) => void
 }
 
 // getRandomValues also works on HTTP workspaces opened on a lab network.
@@ -132,6 +146,81 @@ function FittingSection({ title, summary, disabled, children }: {
 /** The workbench keeps this wrapper mounted; drafts survive group and processing-tab changes. */
 export function ArtemisFittingPanel(props: PanelProps) {
   const cache = useRef(new Map<string, SavedDraft>())
+  const propsRef = useRef(props)
+  propsRef.current = props
+  const [, refresh] = useState(0)
+  const editorActions = useRef<EditorActions | null>(null)
+  const [canExportModel, setCanExportModel] = useState(false)
+  const receiveProject = useRef<(project: AthenaProject) => void>(() => {})
+  const mutationPending = useRef(false)
+  const mutationCount = useRef(0)
+  const mutationTail = useRef(Promise.resolve())
+  const [saver] = useState(() => new ArtemisModelAutosave({
+    save: (projectId, groupId, version, model) => artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(groupId)}/model`, { version, model }),
+    recover: (projectId, error) => error instanceof ApiRequestError && error.code === "stale_revision"
+      ? athenaApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}`) : Promise.resolve(null),
+    accept: project => receiveProject.current(project),
+    changed: () => refresh(value => value + 1),
+  }))
+  receiveProject.current = project => {
+    if (project.version < saver.version(project.id, project.version)) return
+    for (const group of project.groups) {
+      const saved = group.artemis?.model
+      const cached = cache.current.get(`${project.id}:${group.id}`)
+      if (!saved || !cached) continue
+      const clean = !saver.hasChanges(project.id, group.id) && cached.base && artemisModelKey(cached.draft) === artemisModelKey(cached.base)
+      cache.current.set(`${project.id}:${group.id}`, { ...cached, draft: clean ? saved : cached.draft, base: saved, persisted: true })
+    }
+    saver.observe(project.id, project.version, project.groups)
+    propsRef.current.onProjectChange?.(project)
+  }
+  const acceptProject = useCallback((project: AthenaProject) => receiveProject.current(project), [])
+  const registerEditorActions = useCallback((actions: EditorActions) => {
+    editorActions.current = actions
+    setCanExportModel(previous => previous === actions.canExportModel ? previous : actions.canExportModel)
+  }, [])
+  const updatePause = useCallback(() => saver.setPaused(mutationCount.current > 0 || mutationPending.current || !!propsRef.current.pending || !propsRef.current.onProjectChange), [saver])
+  const pause = useCallback((busy: boolean) => { mutationPending.current = busy; updatePause() }, [updatePause])
+  const prepareMutation = useCallback(async () => {
+    const previous = mutationTail.current
+    let release!: () => void
+    mutationTail.current = new Promise<void>(resolve => { release = resolve })
+    mutationCount.current += 1
+    updatePause()
+    await previous
+    await saver.settle()
+    const current = propsRef.current
+    let finished = false
+    return { version: current.projectId ? saver.version(current.projectId, current.version ?? 0) : current.version ?? 0,
+      finish: () => { if (finished) return; finished = true; mutationCount.current -= 1; release(); updatePause() } }
+  }, [saver, updatePause])
+  const flushModels = useCallback(async (projectId: string | undefined, retry = false) => {
+    // Another spectrum can queue a fit while an earlier mutation is still running.
+    // Wait for the latest tail before starting a model write or project export.
+    for (;;) {
+      const tail = mutationTail.current
+      await tail
+      if (tail === mutationTail.current) break
+    }
+    if (projectId) await saver.flush(projectId, retry)
+  }, [saver])
+  const status = saver.state(props.projectId)
+  const actions = useMemo<ArtemisModelActions>(() => ({
+    flush: () => flushModels(props.projectId),
+    retry: () => flushModels(props.projectId, true),
+    importModel: () => editorActions.current?.importModel(),
+    exportModel: () => editorActions.current?.exportModel(),
+    canExportModel, ...status,
+  }), [props.projectId, flushModels, canExportModel, status.status, status.error]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { propsRef.current.onActionsChange?.(actions) }, [actions])
+  useEffect(() => { saver.activate(); return () => { saver.dispose(); propsRef.current.onActionsChange?.(null) } }, [saver])
+  useEffect(() => {
+    if (props.projectId && props.version !== undefined) saver.observe(props.projectId, props.version, props.groups ?? (props.group ? [props.group] : []), !!props.groups)
+  }, [props.projectId, props.version, props.groups, props.group, saver])
+  useEffect(updatePause, [props.pending, props.onProjectChange, updatePause])
+  useEffect(() => {
+    if (props.projectId) for (const group of saver.dirtyGroups(props.projectId)) propsRef.current.onDirtyChange?.(group.id, group.dirty)
+  })
   const setup = props.exampleSetup
   if (setup && setup.projectId === props.projectId) {
     const exampleKey = `${setup.projectId}:${setup.groupId}`
@@ -140,11 +229,29 @@ export function ArtemisFittingPanel(props: PanelProps) {
     if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
   }
   const key = `${props.projectId ?? "none"}:${props.group?.id ?? "none"}`
-  return <FittingEditor key={key} {...props} initial={cache.current.get(key)} onSave={saved => cache.current.set(key, saved)} />
+  useEffect(() => {
+    if (!props.projectId || !props.onProjectChange) return
+    for (const [cacheKey, saved] of cache.current) {
+      if (!cacheKey.startsWith(`${props.projectId}:`)) continue
+      const groupId = cacheKey.slice(props.projectId.length + 1)
+      const group = props.groups?.find(item => item.id === groupId)
+      if (group && !group.artemis && saved.draft.paths.length && !saved.persisted) saver.update(props.projectId, groupId, saved.draft, undefined, true)
+    }
+  }, [props.projectId, props.groups, props.onProjectChange, setup, saver])
+  return <FittingEditor key={key} {...props} onProjectChange={props.onProjectChange ? acceptProject : undefined}
+    initial={cache.current.get(key)} actions={actions} onEditorActions={registerEditorActions} onMutationPending={pause} prepareMutation={prepareMutation}
+    preserveDraft={!!props.projectId && !!props.group && saver.hasChanges(props.projectId, props.group.id)}
+    onSave={(saved, dirty) => {
+      cache.current.set(key, saved)
+      if (props.projectId && props.group && props.onProjectChange) saver.update(props.projectId, props.group.id, saved.draft, props.group.artemis?.model, dirty)
+    }} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave }: PanelProps & {
-  initial?: SavedDraft; onSave: (saved: SavedDraft) => void
+function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft }: PanelProps & {
+  initial?: SavedDraft; onSave: (saved: SavedDraft, dirty: boolean) => void
+  actions: ArtemisModelActions; onEditorActions: (actions: EditorActions) => void
+  onMutationPending: (busy: boolean) => void; prepareMutation: () => Promise<ModelMutation>
+  preserveDraft: boolean
 }) {
   const [draft, setDraft] = useState<Draft>(() => {
     if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
@@ -166,6 +273,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const radialState = useRadialShells(radialContext?.structure ?? null, radialContext?.siteIndex)
   const shellPathIds = useMemo(() => shellSelection ? draft.paths.filter(path => isFirstShellPath(path.metadata, shellSelection.structure, shellSelection.shell)).map(path => path.id) : [], [draft.paths, shellSelection])
   const controller = useRef<AbortController | null>(null)
+  const alive = useRef(true)
   const inputRef = useRef<HTMLInputElement>(null)
   const modelInputRef = useRef<HTMLInputElement>(null)
   const callbacks = useRef({ onFitResult, onPathsChange, onSave, onDirtyChange })
@@ -198,15 +306,21 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     // External saves and Undo/Redo update clean editors; unfinished edits stay in memory.
     const previousBase = base.current
     const nextBase = saved ?? newDraft()
-    setDraft(previous => artemisModelKey(previous) === artemisModelKey(previousBase) ? nextBase : previous)
+    setDraft(previous => !preserveDraft && artemisModelKey(previous) === artemisModelKey(previousBase) ? nextBase : previous)
     base.current = nextBase
   }, [persisted?.model])
 
   useEffect(() => {
-    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, result })
+    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, result }, modelDirty)
     callbacks.current.onFitResult?.(currentResult)
     if (group) callbacks.current.onDirtyChange?.(group.id, modelDirty)
   }, [draft, result, currentResult, selectedFitId, modelDirty, group?.id, persisted])
+  const localActions = useRef<EditorActions>({ importModel: () => {}, exportModel: () => {}, canExportModel: false })
+  localActions.current = { importModel: () => modelInputRef.current?.click(), exportModel: saveModel, canExportModel: !!group && !busy && draft.paths.length > 0 }
+  useEffect(() => {
+    onEditorActions({ importModel: () => localActions.current.importModel(), exportModel: () => localActions.current.exportModel(), canExportModel: localActions.current.canExportModel })
+  }, [group?.id, busy, draft.paths.length, onEditorActions])
+  useEffect(() => { onMutationPending(!!busy); return () => onMutationPending(false) }, [busy, onMutationPending])
   useEffect(() => {
     callbacks.current.onPathsChange?.(draft.paths.map(({ id, label, filename, enabled, metadata }) => ({ id, label, filename, enabled, metadata })), projectId, group?.id)
   }, [draft.paths, projectId, group?.id])
@@ -215,7 +329,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     setBusy(null)
     setError("")
     return () => { controller.current?.abort() }
-  }, [projectId, group?.id, version, reason])
+  }, [projectId, group?.id, reason])
+  useEffect(() => { alive.current = true; return () => { alive.current = false } }, [])
 
   function edit(change: (previous: Draft) => Draft) {
     controller.current?.abort()
@@ -286,7 +401,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   async function loadExample() {
     if (!projectId || version === undefined || !group || !onProjectChange || draft.paths.length) return
     const abort = begin("example")
-    const requestContext = context
+    let requestContext = context
+    let mutation: ModelMutation | undefined
     try {
       const example = await artemisApi<ArtemisExample>("/examples/cuprite", undefined, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
@@ -295,9 +411,13 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       }
       // The attach operation can commit even if the selected spectrum changes.
       // Always receive its response so the workbench learns the new project version.
+      mutation = await prepareMutation()
+      if (!alive.current || abort.signal.aborted) return
+      const mutationVersion = mutation.version
+      requestContext = contextRef.current
       const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/structures`,
-        { version, amcsd_id: example.amcsd_id })
-      if (updated.id !== projectId || updated.version < version) {
+        { version: mutationVersion, amcsd_id: example.amcsd_id })
+      if (updated.id !== projectId || updated.version < mutationVersion) {
         throw new Error("The saved CIF response does not match this project. Reload the project and try again.")
       }
       const applyToGroup = !abort.signal.aborted && contextRef.current === requestContext
@@ -314,7 +434,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       onProjectChange(updated)
       if (applyToGroup) onViewStructure?.(attachment.id)
     } catch (error) { if (!abort.signal.aborted) setError(errorText(error)) }
-    finally { if (!abort.signal.aborted) setBusy(null) }
+    finally { mutation?.finish(); if (!abort.signal.aborted) setBusy(null) }
   }
   function saveModel() {
     try {
@@ -351,18 +471,23 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     let request: ArtemisFitRequest
     try { request = requestFromDraft(draft, version) }
     catch (error) { setError(errorText(error)); return }
+    setBusy("fit")
+    const mutation = await prepareMutation()
+    if (!alive.current) { mutation.finish(); return }
+    const mutationVersion = mutation.version
+    request = { ...request, version: mutationVersion }
     const abort = begin("fit")
-    const requestContext = context
+    const requestContext = contextRef.current
     setResult(null)
     try {
       if (onProjectChange) {
         // A mutation may commit after the user changes tabs. Receive its new version even then.
-        const response = await artemisApi<{ project: AthenaProject; fit_id: string }>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit-saved`, { version, model: draft })
+        const response = await artemisApi<{ project: AthenaProject; fit_id: string }>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit-saved`, { version: mutationVersion, model: draft })
         const state = response.project?.groups.find(item => item.id === group.id)?.artemis
         const record = state?.history.find(item => item.id === response.fit_id)
         const apply = !abort.signal.aborted && contextRef.current === requestContext
-        if (response.project?.id === projectId && response.project.version >= version) onProjectChange(response.project)
-        if (!record || !validArtemisResult(record.result, projectId, group.id, version)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Reload this project to check its saved history.")
+        if (response.project?.id === projectId && response.project.version >= mutationVersion) onProjectChange(response.project)
+        if (!record || !validArtemisResult(record.result, projectId, group.id, mutationVersion)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Reload this project to check its saved history.")
         if (apply) {
           setDraft(state!.model)
           setSelectedFitId(record.id)
@@ -373,27 +498,29 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       }
       const response = await artemisApi<ArtemisFitResult>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit`, request, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
-      if (!validArtemisResult(response, projectId, group.id, version)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Try the fit again.")
+      if (!validArtemisResult(response, projectId, group.id, mutationVersion)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Try the fit again.")
       setResult({ revision: draft.revision, data: { ...response, request } })
     } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted && contextRef.current === requestContext) setError(errorText(error)) }
-    finally { if (!abort.signal.aborted) setBusy(null) }
+    finally { mutation.finish(); if (!abort.signal.aborted) setBusy(null) }
   }
 
-  async function persistModel(removeId?: string) {
+  async function removeSavedFit(removeId: string) {
     if (!projectId || !group || version === undefined || !onProjectChange || busy || pending) return
-    const abort = begin(removeId ? "remove" : "save")
-    const requestContext = context
+    setBusy("remove")
+    const mutation = await prepareMutation()
+    if (!alive.current) { mutation.finish(); return }
+    const mutationVersion = mutation.version
+    const abort = begin("remove")
+    const requestContext = contextRef.current
     try {
-      const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/${removeId ? "remove-fit" : "model"}`,
-        removeId ? { version, fit_id: removeId } : { version, model: draft })
-      if (updated.id !== projectId || updated.version < version) throw new Error("The project response is invalid. Reload this project before saving again.")
+      const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/remove-fit`, { version: mutationVersion, fit_id: removeId })
+      if (updated.id !== projectId || updated.version < mutationVersion) throw new Error("The project response is invalid. Reload this project before saving again.")
       if (!abort.signal.aborted && contextRef.current === requestContext) {
-        if (!removeId) setDraft(updated.groups.find(item => item.id === group.id)!.artemis!.model)
-        setNotice(removeId ? "Removed the saved fit. Undo restores it." : "Model saved in this project. Save project downloads it with the spectra.")
+        setNotice("Removed the saved fit. Undo restores it.")
       }
       onProjectChange(updated)
     } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted) setError(errorText(error)) }
-    finally { if (!abort.signal.aborted) setBusy(null) }
+    finally { mutation.finish(); if (!abort.signal.aborted) setBusy(null) }
   }
 
   const disabled = !!busy || pending
@@ -409,24 +536,21 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
-    <FittingSection title="Model & project" summary={modelDirty ? "Unsaved" : persisted ? "Saved" : undefined}>
-      <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
-      {onProjectChange && <div className={styles.toolbar}>
-        <button type="button" disabled={disabled || !group || !projectId || version === undefined} onClick={() => void persistModel()}>Save model to project</button>
-        {persisted && <button type="button" disabled={disabled || !modelDirty} onClick={() => { setDraft(persisted.model); setNotice("Reloaded the saved model.") }}>Reload saved model</button>}
-      </div>}
-      <p className={styles.help}>{modelDirty ? "Model has unsaved changes. Save the model or run a fit before reloading or downloading this project." : persisted ? "Model saved in this project. Project downloads include FEFF files and fit history." : "Save the model to keep it with this spectrum."} Fits run only when requested.</p>
-    </FittingSection>
+    <input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} />
+    {onProjectChange && <div className={styles.toolbar}>
+      <p className={styles.help} aria-live="polite">{actions.status === "saving" ? "Saving model…" : actions.status === "pending" ? "Model changes waiting to save…" : actions.status === "failed" ? "Model could not be saved." : "Model saved automatically in this project."} Fits run only when requested.</p>
+      {actions.status === "failed" && <><p className={styles.error} role="alert">{actions.error}</p><button type="button" disabled={disabled} onClick={() => void actions.retry().catch(() => {})}>Retry saving model</button></>}
+    </div>}
     {!!persisted?.history.length && <FittingSection title="Saved fit history" summary={`${persisted.history.length}/10`} disabled={disabled}>
         <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
           {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
         </select></label>
         <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
-          <button type="button" disabled={disabled || !archive} onClick={() => void persistModel(archive?.id)}>Remove saved fit</button></div>
+          <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
         <p className={styles.help}>Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.</p>
     </FittingSection>}
     <FittingSection title="Crystal structures" summary="CIF">
-    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
+    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
         if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."

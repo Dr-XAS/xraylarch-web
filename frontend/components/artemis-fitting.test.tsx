@@ -7,7 +7,7 @@ import { athenaApi, type AthenaGroup, type AthenaProject, type Parameters } from
 import { artemisApi, type ArtemisModelDraft, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { ApiRequestError } from "@/lib/backend-client"
-import { ArtemisFittingPanel } from "./artemis-fitting"
+import { ArtemisFittingPanel, type ArtemisModelActions } from "./artemis-fitting"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import type { ArtemisPlotWeightResult } from "./artefact-viewers/artemis-plot-weight"
 
@@ -126,6 +126,10 @@ beforeEach(() => {
     if (url === "/projects/p/structures") return attachedProject()
     if (url === "/paths/inspect") { const input = body as { filename: string; content: string }; return path(input.filename, input.content) }
     if (url.endsWith("/fit-saved")) return savedFit(body)
+    if (url.endsWith("/model")) {
+      const { model, version } = body as { model: ArtemisModelDraft; version: number }
+      return { ...attachedProject(version + 1), groups: [{ ...group(), artemis: { schema_version: 1, model, history: [], current_input_sha256: null } }] }
+    }
     return fitResult()
   })
 })
@@ -414,6 +418,7 @@ describe("ArtemisFittingPanel", () => {
     const response = deferred<ReturnType<typeof savedFit>>()
     api.mockReturnValueOnce(response.promise)
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
+    await waitFor(() => expect(api.mock.calls.at(-1)?.[0]).toMatch(/fit-saved$/))
     const signal = api.mock.calls.at(-1)?.[2]
     view.rerender(<ArtemisFittingPanel projectId="p" version={change === "version" ? 5 : 4} group={group(change === "group" ? "iron" : "copper")} pending={change === "pending"} onFitResult={onFitResult} onProjectChange={acceptProject} />)
     expect(signal).toBeUndefined()
@@ -456,13 +461,14 @@ describe("ArtemisFittingPanel", () => {
   })
 
   it("exports the exact fitting request, FEFF content and numerical result together", async () => {
+    let actions: ArtemisModelActions | null = null
     let blob: Blob | undefined
     vi.stubGlobal("URL", class extends URL { static createObjectURL(value: Blob) { blob = value; return "blob:test" } static revokeObjectURL() {} })
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} onActionsChange={value => { actions = value }} />)
     await loadExample()
     await runFit()
-    fireEvent.click(screen.getByRole("button", { name: "Export model JSON" }))
+    act(() => actions!.exportModel())
     const saved = await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob!) })
     const bundle = JSON.parse(saved)
     expect(bundle.schema).toBe("artemis-web/v1")
@@ -738,14 +744,13 @@ describe("project-owned Artemis models", () => {
     api.mockImplementationOnce(async (_url, body) => ({ ...attachedProject(6), groups: [{ ...source, artemis: { ...source.artemis!, model: (body as { model: ArtemisModelDraft }).model } }] }))
     const view = render(<ArtemisFittingPanel projectId="p" version={5} group={source} onProjectChange={receive} />)
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "-" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save model to project" }))
     await waitFor(() => expect(receive).toHaveBeenCalledOnce())
     expect(api.mock.calls[0][0]).toBe("/projects/p/groups/copper/model")
     const saved = receive.mock.calls[0][0] as AthenaProject
     view.unmount()
     render(<ArtemisFittingPanel projectId="p" version={saved.version} group={saved.groups[0]} onProjectChange={acceptProject} />)
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
-    expect(screen.getByText(/Model saved in this project/)).toBeVisible()
+    expect(screen.getByText(/Model saved automatically in this project/)).toBeVisible()
   })
 
   it("follows external saves and Undo for clean cached groups, while preserving dirty drafts", () => {
@@ -766,6 +771,7 @@ describe("project-owned Artemis models", () => {
   })
 
   it("selects history without overwriting the draft, and exports no mismatched numerical result", async () => {
+    let actions: ArtemisModelActions | null = null
     const source = persistedGroup()
     const old = persistedGroup("0.6").artemis!.history[0]
     old.id = "older-fit"
@@ -773,10 +779,10 @@ describe("project-owned Artemis models", () => {
     let blob: Blob | undefined
     vi.stubGlobal("URL", class extends URL { static createObjectURL(value: Blob) { blob = value; return "blob:test" } static revokeObjectURL() {} })
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
-    render(<ArtemisFittingPanel projectId="p" version={5} group={source} onProjectChange={acceptProject} />)
+    render(<ArtemisFittingPanel projectId="p" version={5} group={source} onProjectChange={acceptProject} onActionsChange={value => { actions = value }} />)
     fireEvent.change(screen.getByLabelText("Saved fit history"), { target: { value: "older-fit" } })
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.8")
-    fireEvent.click(screen.getByRole("button", { name: "Export model JSON" }))
+    act(() => actions!.exportModel())
     const text = await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob!) })
     expect(JSON.parse(text).result).toBeNull()
     expect(JSON.parse(text).request.parameters[0].value).toBe(0.8)
@@ -795,11 +801,10 @@ describe("project-owned Artemis models", () => {
     api.mockImplementationOnce(async (_url, body) => ({ ...attachedProject(7), groups: [{ ...persistedGroup(), artemis: { ...persistedGroup().artemis!, model: (body as { model: ArtemisModelDraft }).model } }] }))
     render(<Harness />)
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "-" } })
-    fireEvent.click(screen.getByRole("button", { name: "Save model to project" }))
-    await screen.findByText(/Project state refreshed after another change/)
+    await screen.findByText(/This project changed elsewhere/)
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
-    fireEvent.click(screen.getByRole("button", { name: "Save model to project" }))
-    await screen.findByText(/Model saved in this project. Save project downloads/)
+    fireEvent.click(screen.getByRole("button", { name: "Retry saving model" }))
+    await screen.findByText(/Model saved automatically in this project/)
     expect(api.mock.calls[1][1]).toMatchObject({ version: 6 })
     expect((api.mock.calls[1][1] as { model: ArtemisModelDraft }).model.parameters[0].value).toBe("-")
   })
@@ -810,11 +815,110 @@ describe("project-owned Artemis models", () => {
     api.mockReturnValueOnce(response.promise)
     const view = render(<ArtemisFittingPanel projectId="p" version={5} group={persistedGroup()} onProjectChange={onProjectChange} />)
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
+    await waitFor(() => expect(api).toHaveBeenCalledOnce())
     const body = api.mock.calls[0][1]
     view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("iron")} onProjectChange={onProjectChange} />)
     const saved = savedFit(body, fitResult({ version: 5 }))
     await act(async () => response.resolve(saved))
     expect(onProjectChange).toHaveBeenCalledWith(saved.project)
     expect(screen.queryByLabelText("Path 1 label")).not.toBeInTheDocument()
+  })
+})
+
+describe("automatic model persistence", () => {
+  function workspace() {
+    let server: AthenaProject = { ...attachedProject(5), groups: [persistedGroup(), group("iron")] }
+    let current = server
+    let actions: ArtemisModelActions | null = null
+    const dirty = vi.fn()
+    function saved(url: string, body: unknown) {
+      const { model, version } = body as { model: ArtemisModelDraft; version: number }
+      const id = url.split("/").at(-2)
+      server = { ...server, version: version + 1, groups: server.groups.map(item => item.id === id ? {
+        ...item, artemis: { schema_version: 1, model, history: item.artemis?.history ?? [], current_input_sha256: item.artemis?.current_input_sha256 ?? null },
+      } : item) }
+      return server
+    }
+    api.mockImplementation(async (url, body) => saved(url, body))
+    function Harness() {
+      const [project, setProject] = useState(server)
+      const [activeId, setActiveId] = useState("copper")
+      return <><button onClick={() => setActiveId(id => id === "copper" ? "iron" : "copper")}>Switch spectrum</button>
+        <button onClick={() => { const next = { ...project, version: project.version + 1, groups: project.groups.map(item => item.id === "copper" ? group() : item) }; current = next; setProject(next) }}>Undo model</button>
+        <ArtemisFittingPanel projectId="p" version={project.version} groups={project.groups} group={project.groups.find(item => item.id === activeId)}
+          onProjectChange={next => { current = next; setProject(next) }} onDirtyChange={dirty} onActionsChange={value => { actions = value }} /></>
+    }
+    render(<Harness />)
+    return { saved, dirty, project: () => current, actions: () => actions! }
+  }
+
+  it("flushes edits from multiple spectra and clears each dirty flag", async () => {
+    const state = workspace()
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "-" } })
+    fireEvent.click(screen.getByRole("button", { name: "Switch spectrum" }))
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.6" } })
+    await act(async () => state.actions().flush())
+    expect(api.mock.calls.map(([url, body]) => [url.split("/").at(-2), (body as { version: number }).version])).toEqual([["copper", 5], ["iron", 6]])
+    expect(state.project().groups.map(item => item.artemis!.model.parameters[0].value)).toEqual(["-", "0.6"])
+    expect(state.actions().status).toBe("saved")
+    expect(state.dirty).toHaveBeenCalledWith("copper", false)
+    expect(state.dirty).toHaveBeenCalledWith("iron", false)
+    fireEvent.click(screen.getByRole("button", { name: "Switch spectrum" }))
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
+  })
+
+  it.each(["0.95", "0.8"])("keeps the latest edit %s when an older save finishes", async value => {
+    const state = workspace()
+    const first = deferred<AthenaProject>()
+    api.mockReturnValueOnce(first.promise)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.9" } })
+    let flushing!: Promise<void>
+    act(() => { flushing = state.actions().flush() })
+    await waitFor(() => expect(api).toHaveBeenCalledTimes(1))
+    const [url, body] = api.mock.calls[0]
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value } })
+    await act(async () => { first.resolve(state.saved(url, body)); await flushing })
+    expect(api).toHaveBeenCalledTimes(2)
+    expect((api.mock.calls[1][1] as { model: ArtemisModelDraft }).model.parameters[0].value).toBe(value)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue(value)
+    expect(state.project().groups[0].artemis!.model.parameters[0].value).toBe(value)
+    fireEvent.click(screen.getByRole("button", { name: "Switch spectrum" }))
+    fireEvent.click(screen.getByRole("button", { name: "Switch spectrum" }))
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue(value)
+  })
+
+  it("keeps a clean Undo result without saving the old or empty model again", async () => {
+    const state = workspace()
+    fireEvent.click(screen.getByRole("button", { name: "Undo model" }))
+    expect(screen.queryByLabelText("Path 1 label")).not.toBeInTheDocument()
+    await act(async () => state.actions().flush())
+    expect(api).not.toHaveBeenCalled()
+    expect(state.project().groups[0].artemis).toBeUndefined()
+    expect(state.actions().status).toBe("saved")
+  })
+
+  it("waits for a running fit after switching spectra before a project flush saves another model", async () => {
+    const state = workspace()
+    const fitting = deferred<ReturnType<typeof savedFit>>()
+    api.mockReturnValueOnce(fitting.promise)
+    fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
+    await waitFor(() => expect(api).toHaveBeenCalledTimes(1))
+    const fitBody = api.mock.calls[0][1]
+    fireEvent.click(screen.getByRole("button", { name: "Switch spectrum" }))
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.6" } })
+    let flushing!: Promise<void>
+    let finished = false
+    act(() => { flushing = state.actions().flush().then(() => { finished = true }) })
+    await act(async () => { await Promise.resolve() })
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(finished).toBe(false)
+    const result = savedFit(fitBody, fitResult({ version: 5 }))
+    result.project.groups.push(group("iron"))
+    await act(async () => { fitting.resolve(result); await flushing })
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(api.mock.calls[1][0]).toBe("/projects/p/groups/iron/model")
+    expect(api.mock.calls[1][1]).toMatchObject({ version: 6 })
+    expect(finished).toBe(true)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.6")
   })
 })

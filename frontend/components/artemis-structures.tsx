@@ -24,6 +24,7 @@ interface Props {
   projectId?: string
   version?: number
   onProjectChange?: (project: AthenaProject) => void
+  prepareMutation?: () => Promise<{ version: number; finish: () => void }>
   onViewStructure?: (attachmentId: string, siteIndex?: number) => void
   onFirstShellChange?: (selection: FirstShellSelection | null) => void
   onRadialContextChange?: (selection: RadialShellContext | null) => void
@@ -36,7 +37,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : "
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
 const amcsdLabel = (id: number) => `AMCSD ${String(id).padStart(7, "0")}`
 
-export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
+export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, prepareMutation, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const viewerAnchor = useRef<HTMLDivElement>(null)
@@ -245,6 +246,8 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     const requestContext = contextKey
     const requestProject = projectId
     const selectedId = structure.id
+    const receiveProject = projectCallback.current
+    let mutation: { version: number; finish: () => void } | undefined
     const abort = new AbortController()
     attachAbort.current?.abort()
     attachAbort.current = abort
@@ -252,19 +255,22 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     setError("")
     setNotice("")
     try {
-      const response = await artemisApi<AthenaProject & { artemis_structures?: ArtemisStructureAttachment[] }>(`/projects/${encodeURIComponent(projectId)}/structures`, { version, amcsd_id: selectedId }, abort.signal)
+      mutation = prepareMutation ? await prepareMutation() : { version, finish: () => {} }
       if (abort.signal.aborted || context.current !== requestContext || currentProject.current !== requestProject) return
+      // Receive committed project revisions even if the spectrum changes during the request.
+      const response = await artemisApi<AthenaProject & { artemis_structures?: ArtemisStructureAttachment[] }>(`/projects/${encodeURIComponent(projectId)}/structures`, { version: mutation.version, amcsd_id: selectedId })
       const attached = response.artemis_structures?.find(item => item.amcsd_id === selectedId)
-      if (response.id !== requestProject || response.version < version || !attached) throw new Error("The saved CIF response does not match this project. Refresh the attachment list before retrying.")
+      if (response.id !== requestProject || response.version < mutation.version || !attached) throw new Error("The saved CIF response does not match this project. Refresh the attachment list before retrying.")
+      if (abort.signal.aborted || context.current !== requestContext || currentProject.current !== requestProject) { receiveProject(response); return }
       setAttachments(response.artemis_structures ?? [])
       setStructure(attached.structure)
       setAttachmentId(attached.id)
       setNotice(`${attached.structure.mineral || attached.structure.formula} CIF attached to the current project.`)
-      projectCallback.current?.(response)
+      receiveProject(response)
       viewCallback.current?.(attached.id, site && attached.structure.sites.some(item => item.index === Number(site)) ? Number(site) : undefined)
       setListRevision(previous => previous + 1)
     } catch (error) { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setError(errorText(error)) }
-    finally { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setBusy(null) }
+    finally { mutation?.finish(); if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setBusy(null) }
   }
   async function generate() {
     if (!structure || !structure.supported || controlsDisabled || site === "" || !absorber || !attachmentId || !projectId || version === undefined) return

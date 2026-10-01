@@ -129,6 +129,18 @@ describe("backend proxy", () => {
     expect(response.headers.get("cache-control")).toBe("private, no-store")
   })
 
+  it("preserves native Larix session bytes and compatibility notices", async () => {
+    const bytes = new Uint8Array([31, 139, 8, 0, 255])
+    const warnings = JSON.stringify(["Check fit weights before refitting in Larix."])
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(bytes, { headers: {
+      "content-type": "application/octet-stream", "content-disposition": 'attachment; filename="model.larix"',
+      "x-artemis-export-warnings": warnings,
+    } })))
+    const path = ["api", "artemis", "projects", "cu", "groups", "foil", "export"]
+    const response = await GET(new Request(`http://localhost/api/backend/${path.join("/")}?format=larix&version=8`), { params: Promise.resolve({ path }) })
+    expect(response.headers.get("x-artemis-export-warnings")).toBe(warnings)
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes)
+  })
   it("forwards normalized preview mode and repeated encoded IDs without mutating the request or route parameters", async () => {
     vi.stubEnv("BACKEND_URL", "http://backend.test:8010/")
     const nativeId = "Fe/foil ?# μ+"

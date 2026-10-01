@@ -10,7 +10,8 @@ import type { AthenaSelectionUpdate } from "@/lib/athena-selection"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
 import { AthenaPlot } from "./artefact-viewers/athena-plot"
 import { AthenaWavelet } from "./artefact-viewers/athena-wavelet"
-import { ArtemisFittingPanel } from "./artemis-fitting"
+import { ArtemisFittingPanel, type ArtemisModelActions } from "./artemis-fitting"
+import { downloadLarixSession } from "@/lib/artemis-export"
 import { AthenaProjectImport } from "./athena-project-import"
 import { edgePolicyStorageKey } from "./athena-edge-policy"
 import { AthenaWorkbench } from "./athena-workbench"
@@ -54,6 +55,7 @@ vi.mock("./artefact-viewers/athena-wavelet", () => ({ AthenaWavelet: vi.fn(() =>
 vi.mock("./artemis-fitting", () => ({
   ArtemisFittingPanel: vi.fn(() => <div data-testid="artemis-panel" />),
 }))
+vi.mock("@/lib/artemis-export", () => ({ downloadLarixSession: vi.fn().mockResolvedValue([]) }))
 vi.mock("./artefact-viewers/artemis-fit-result-viewer", () => ({ ArtemisFitResultViewer: () => <div data-testid="artemis-results" /> }))
 vi.mock("./athena-difference-plot", () => ({ AthenaDifferencePlot: () => <div data-testid="difference-preview-plot" /> }))
 // Live arithmetic and stale-response behavior have dedicated preview tests.
@@ -6357,5 +6359,70 @@ describe('Athena ZIP queue', () => {
     await screen.findByTestId('project-import-panel')
     expect(projectImport.mock.calls.at(-1)![0].initialFiles).toEqual(files.slice(1))
     expect(importCalls()).toHaveLength(0)
+  })
+})
+
+describe("EXAFS model File menu", () => {
+  function modelActions(overrides: Partial<ArtemisModelActions> = {}): ArtemisModelActions {
+    return { flush: vi.fn().mockResolvedValue(undefined), importModel: vi.fn(), exportModel: vi.fn(),
+      canExportModel: true, status: "saved", retry: vi.fn().mockResolvedValue(undefined), ...overrides }
+  }
+  async function publishActions(actions: ArtemisModelActions) {
+    await act(async () => { vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)![0].onActionsChange?.(actions) })
+  }
+
+  it.each(["Save project", "Save Athena project (.prj)", "Save complete web project", "Save marked project (.prj)"])("waits for all model saves before %s", async label => {
+    const fetcher = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Download reached"))
+    await openSaved()
+    let complete!: () => void
+    const actions = modelActions({ flush: vi.fn(() => new Promise<void>(resolve => { complete = resolve })) })
+    await publishActions(actions)
+    try {
+      if (label !== "Save project") fireEvent.click(screen.getByRole("button", { name: "File" }))
+      fireEvent.click(screen.getByRole("button", { name: label }))
+      expect(actions.flush).toHaveBeenCalledOnce()
+      expect(fetcher).not.toHaveBeenCalled()
+      await act(async () => complete())
+      await waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
+      expect(String(fetcher.mock.calls[0][0])).toContain("/export?format=")
+    } finally { fetcher.mockRestore() }
+  })
+
+  it("stops the download and reports a failed model save", async () => {
+    await openSaved()
+    await publishActions(modelActions({ status: "failed", flush: vi.fn().mockRejectedValue(new Error("Model save failed. Retry saving.")) }))
+    const fetcher = vi.spyOn(globalThis, "fetch")
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }))
+      await screen.findByText("Model save failed. Retry saving.")
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally { fetcher.mockRestore() }
+  })
+
+  it("exports the selected spectrum with the revision returned by autosave", async () => {
+    const project = await openSaved()
+    const saved = { ...project, version: project.version + 1 }
+    const actions = modelActions({ flush: vi.fn(async () => {
+      vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)![0].onProjectChange?.(saved)
+    }) })
+    vi.mocked(downloadLarixSession).mockClear()
+    await publishActions(actions)
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    fireEvent.click(screen.getByRole("button", { name: "Export Larix session (.larix)" }))
+    await waitFor(() => expect(downloadLarixSession).toHaveBeenCalledWith(project.id, "foil", saved.version, "Foil scan"))
+    expect(actions.flush).toHaveBeenCalledOnce()
+  })
+
+  it("routes model exchange through File and opens fitting for import", async () => {
+    await openSaved()
+    const actions = modelActions()
+    await publishActions(actions)
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    fireEvent.click(screen.getByRole("button", { name: "Export model JSON" }))
+    expect(actions.exportModel).toHaveBeenCalledOnce()
+    fireEvent.click(screen.getByRole("button", { name: "File" }))
+    fireEvent.click(screen.getByRole("button", { name: "Import model JSON…" }))
+    expect(actions.importModel).toHaveBeenCalledOnce()
+    expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
   })
 })

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server"
 import { copySessionCookies, sessionRequestHeaders } from "@/lib/session-headers"
 
 const ordinaryHeaders = ["content-type", "accept", "content-length"] as const
-const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version"] as const
+const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version", "x-artemis-export-warnings"] as const
 
 const athenaRoutes: readonly [string, RegExp][] = [
   ["GET", /^api\/athena\/projects\/[^/]+\/groups\/[^/]+\/columns$/],
