@@ -765,11 +765,11 @@ T5 on both interfaces again, to check FEFF job reuse. The harness is the sixth r
 
 | arm | task | result | requests | wire bytes | FEFF runs | tool calls | end context | wall | cost |
 |---|---|---|---|---|---|---|---|---|---|
-| CLI | T5 | pass, 2.547 ± 0.005 Å | 48 | 116,259 | 1 of 6 POSTs | 7 | 41,517 | 50 s | $0.38 |
+| CLI | T5 | pass, 2.547 ± 0.005 Å | 48 | 116,259 | 1 of 5 POSTs | 7 | 41,517 | 50 s | $0.38 |
 | HTTP | T5 | pass, 2.549 ± 0.005 Å | 29 | 66,435 | 1 of 1 | 7 | 49,157 | 55 s | $0.46 |
 
-**Reuse did what it was for.** The CLI arm called `fit --structure` six times and FEFF
-ran once. The other five POSTs came back 200 with the finished job, and the job
+**Reuse did what it was for.** The CLI arm called `fit --structure` five times and FEFF
+ran once. The other four POSTs came back 200 with the finished job, and the job
 directory held one calculation at the end. Against the sixth run's CLI arm, requests
 fell from 65 to 48 and wire bytes from 172 KB to 116 KB, with no FEFF poll after the
 first job. The HTTP arm ran FEFF once and then refitted twenty times from the job's
