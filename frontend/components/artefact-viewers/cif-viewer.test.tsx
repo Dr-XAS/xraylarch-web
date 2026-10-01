@@ -38,7 +38,9 @@ const loseContext = vi.fn()
 
 async function ready() {
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
-  return renderers.at(-1)!
+  const instance = renderers.at(-1)!
+  await waitFor(() => expect(instance.addModel).toHaveBeenCalled())
+  return instance
 }
 function atoms(instance: Renderer) {
   const xyz = instance.addModel.mock.calls.at(-1)?.[0] as string
