@@ -21,7 +21,7 @@ The API is the whole instrument: `http://127.0.0.1:8006/api/athena`. The fronten
 ## The one rule that will bite you
 
 `GET /api/athena/projects/{id}` returns the project *with every array in it*. For the
-bundled four-group copper example that is 765 KB, about 191,000 tokens. A twenty-group
+bundled four-group copper example that is 844 KB, about 211,000 tokens. A twenty-group
 project approaches a million. It stays the default because the browser needs it.
 
 The writes are no better. `POST .../command` answers with the whole project too, about
@@ -33,13 +33,13 @@ command, and every preview.
 
 | request | example cost | what you get |
 |---|---|---|
-| `?view=summary` | ~570 tokens | every group's identity, state, E0, edge step, range, and what it was derived from |
+| `?view=summary` | ~600 tokens | every group's identity, state, E0, edge step, range, and what it was derived from |
 | `POST .../command?view=summary` | ~1,000 tokens after a merge | the same summary, plus `last_operation` |
 | `POST .../merge/preview?view=summary` | ~900 tokens | the preview with each curve replaced by `<611 numbers, 8786.2 .. 11352.9>` |
 | `?view=parameters` | ~1,720 tokens | each group's recipe, requested against effective |
 | `.../groups/{gid}/digest` | ~700 tokens | one spectrum characterised in numbers |
 | `.../transcript` | ~120 tokens each | what has already been tried here, failures included |
-| *(no view)* | ~191,000 tokens | everything, arrays included |
+| *(no view)* | ~211,000 tokens | everything, arrays included |
 
 ## The loop
 

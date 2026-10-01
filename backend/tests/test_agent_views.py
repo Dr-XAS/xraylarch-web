@@ -213,3 +213,11 @@ def test_a_preview_rejects_a_view_it_cannot_draw(client, example):
         f"/api/athena/projects/{example['id']}/merge/preview", params={"view": "parameters"},
         json={"version": example["version"], "action": "merge", "group_ids": [], "options": {}})
     assert response.status_code == 422
+
+
+def test_an_oversized_operation_detail_is_described_not_sent(client, example):
+    """The example attaches a 30 KB Artemis fit setup to last_operation."""
+    operation = view(client, example, "summary")["last_operation"]
+    assert operation["action"] == "example"
+    marker = operation["artemis_example"]
+    assert marker.startswith("<") and "KB omitted" in marker and "group_id" in marker

@@ -17,6 +17,7 @@ the measured axis can be recovered.
 """
 from __future__ import annotations
 
+import json
 from typing import Any
 
 _COUNTED = ("marked", "frozen")
@@ -44,6 +45,35 @@ def elide_arrays(value: Any) -> Any:
             return f"<{len(value)} numbers, {value[0]:.6g} .. {value[-1]:.6g}>"
         return [elide_arrays(item) for item in value]
     return value
+
+
+# What one entry of last_operation may cost in a summary. An alignment of fifty
+# groups reports about 7.5 KB of per-group shifts and fits; the example
+# action's Artemis fit setup is 30 KB of configuration and does not.
+OPERATION_BUDGET = 8_000
+
+
+def _last_operation(operation: dict | None) -> dict | None:
+    """last_operation with its arrays elided and any oversized entry described.
+
+    Entries get added to last_operation as features need them, and nothing
+    stops one being large: the example action attaches a whole Artemis fit
+    setup. Capping each entry rather than listing the bulky ones means the next
+    one is caught too, and the marker says where the full value can be read.
+    """
+    if not operation:
+        return operation
+    trimmed = {}
+    for key, value in elide_arrays(operation).items():
+        size = len(json.dumps(value, default=str))
+        if size <= OPERATION_BUDGET:
+            trimmed[key] = value
+            continue
+        shape = (f"keys {', '.join(list(value)[:6])}" if isinstance(value, dict)
+                 else f"{len(value)} items" if isinstance(value, list) else "text")
+        trimmed[key] = (f"<{size / 1000:.1f} KB omitted ({shape}); "
+                        "read the project without a view for it>")
+    return trimmed
 
 
 def _derivation(group) -> dict | None:
@@ -148,9 +178,8 @@ def project_summary(project: dict) -> dict:
             for analysis in project.get("analyses") or ()
         ],
         # What the last command did, which for a command response is the part
-        # the caller asked about. Point-edit results list every removed index,
-        # hundreds of them after a truncate, hence the elision.
-        "last_operation": elide_arrays(project.get("last_operation")),
+        # the caller asked about.
+        "last_operation": _last_operation(project.get("last_operation")),
         "can_undo": bool(project.get("undo")),
         "can_redo": bool(project.get("redo")),
         "journal_chars": len(project.get("journal") or ""),
