@@ -25,7 +25,7 @@ else:
 
 import larixite
 import psutil
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from larixite.amcsd import AMCSD
 from larixite.cif_cluster import CIF_Cluster, cif2feffinp
 from larch.xafs.feffrunner import find_exe
@@ -46,6 +46,9 @@ _MODULES = ("rdinp", "pot", "xsph", "pathfinder", "genfmt", "ff2x")
 _TIMEOUT = 180
 _MAX_DISK_BYTES = 80_000_000
 _JOB_ID = re.compile(r"^[0-9a-f]{32}$")
+# A finished job is handed back for an identical request until this age, which
+# leaves it an hour of its 24 for the fit that names its paths.
+_REUSE_SECONDS = 23 * 3600
 _SELECT = """SELECT c.id, m.name AS mineral, c.formula, s.hm_notation AS space_group,
  p.year, p.journalname AS journal, c.pub_title AS title,
  (SELECT group_concat(a.name, ', ') FROM authors a JOIN publication_authors pa
@@ -382,6 +385,8 @@ class FeffJobs:
         if xray_edge(absorber, request.edge) is None:
             _fail("The selected absorption edge is unavailable for this element.", "edge")
         request = request.model_copy(update={"absorber": absorber})
+        if (finished := self._finished(request, source_provenance.get("cif_sha256"))) is not None:
+            return finished
         executables = _executables()
         slot = self._slot()
         ident = uuid.uuid4().hex
@@ -408,6 +413,38 @@ class FeffJobs:
             slot.close()
             raise
         return self.get(ident)
+
+    def _finished(self, request: FeffJobRequest, cif_sha256: str | None):
+        """The newest complete job that ran this same request, marked reused.
+
+        FEFF's paths follow from its input alone, so a second identical request
+        need not run it again. A blind agent testing its fit ranges called
+        `larchctl fit --structure` six times and ran FEFF six times on one
+        structure. An attached CIF must also be the same file, by its hash.
+        """
+        wanted, found = request.model_dump(), None
+        with self.lock:
+            for directory in self.root.iterdir():
+                try:
+                    if not _JOB_ID.fullmatch(directory.name) or directory.is_symlink() or not directory.is_dir():
+                        continue
+                    record = json.loads((directory / "status.json").read_text())
+                    if (record.get("status") != "complete" or record.get("request") != wanted
+                            or record.get("provenance", {}).get("cif_sha256") != cif_sha256
+                            or time.time() - float(record["created"]) > _REUSE_SECONDS
+                            or not (directory / "paths.json").exists()):
+                        continue
+                except (OSError, KeyError, TypeError, ValueError):
+                    continue
+                if found is None or record["created"] > found[1]["created"]:
+                    found = (directory, record)
+            if found is None:
+                return None
+            # Pruning by count removes the least recently touched first.
+            os.utime(found[0])
+        job = self.get(found[0].name)
+        job["reused"] = True
+        return job
 
     def get(self, ident):
         directory = self._directory(ident)
@@ -528,8 +565,21 @@ def build_structures_router(store, jobs=None):
         return structure_details(ident)
 
     @router.post("/feff/jobs", status_code=202)
-    def start(request: FeffJobRequest):
-        return jobs.start(request)
+    def start(request: FeffJobRequest, response: Response,
+              view: Literal["full", "summary"] = Query(default="full")):
+        """Start FEFF, or answer 200 with a finished job that ran this same request.
+
+        A reused job arrives complete, path files and all, so `?view=summary`
+        applies here as it does to the status poll.
+        """
+        job = jobs.start(request)
+        if job.get("reused"):
+            response.status_code = 200
+        if view == "summary":
+            from .agent_fit import feff_job_summary
+
+            return feff_job_summary(job)
+        return job
 
     @router.get("/feff/jobs/{ident}")
     def status(ident: str, view: Literal["full", "summary"] = Query(default="full")):

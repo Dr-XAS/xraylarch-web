@@ -214,7 +214,9 @@ by reference, `{id, feff_job, feff_path: "feff0001"}`. Paths come from:
   FEFF in about a second. `site_index` counts from 1. Poll `GET
   .../feff/jobs/{job}?view=summary` until `status` is `complete`, then name its
   `paths[].id` in the fit. There is no need to read the 20 KB full reply. Jobs are
-  kept 24 hours.
+  kept 24 hours. Send the POST with `?view=summary` too: a request identical to one
+  that completed in the last 23 hours runs no FEFF, and comes back complete, status
+  200, marked `reused`.
 - Your own `feffNNNN.dat` files.
 
 The CLI does all of it:

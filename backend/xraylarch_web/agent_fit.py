@@ -133,7 +133,7 @@ def feff_job_summary(record: dict) -> dict:
     A run that polled while fitting twenty times read 445 KB of it.
     """
     summary = {key: record[key] for key in ("id", "status", "stage", "message", "elapsed_seconds",
-                                            "total_paths", "truncated", "warnings") if key in record}
+                                            "total_paths", "truncated", "reused", "warnings") if key in record}
     if "paths" in record:
         summary["paths"] = [{
             "id": path.get("id"), "filename": path.get("filename"),
@@ -160,12 +160,13 @@ def capabilities() -> dict:
         "workflow": [
             "GET /api/artemis/structures?q=copper&element=Cu: find an AMCSD id; "
             "GET /api/artemis/structures/{amcsd_id} lists its sites, each with an index from 1",
-            "POST /api/artemis/feff/jobs with feff_job below: 202 and a job id",
+            "POST /api/artemis/feff/jobs?view=summary with feff_job below: 202 and a job "
+            "id, or 200 and a complete job marked reused if one already ran that request",
             "GET /api/artemis/feff/jobs/{job_id}?view=summary until status is 'complete' "
-            "(about a second for one shell), then once without the view: its paths[] each "
-            "carry filename and content",
+            "(about a second for one shell)",
             "POST /api/artemis/projects/{id}/groups/{gid}/fit?view=summary with fit "
-            "below; the reply's paths[].r is the fitted distance",
+            "below, each path named as path_from_feff_job; the reply's paths[].r is the "
+            "fitted distance",
         ],
         "fit": {
             "post": "/api/artemis/projects/{id}/groups/{gid}/fit?view=summary",
@@ -199,7 +200,7 @@ def capabilities() -> dict:
             ],
         },
         "feff_job": {
-            "post": "/api/artemis/feff/jobs",
+            "post": "/api/artemis/feff/jobs?view=summary",
             "body": _model_options("artemis_structures:FeffJobRequest"),
             "notes": [
                 "Send amcsd_id, absorber and site_index; the project_id, attachment_id and "
@@ -212,6 +213,9 @@ def capabilities() -> dict:
                 "about 20 KB on every poll. Poll with ?view=summary, which lists each path's "
                 "scatterers, degeneracy and reff without its file, and name the paths in the "
                 "fit rather than reading the files at all.",
+                "A request identical to one whose job completed in the last 23 hours runs no "
+                "FEFF: the reply is that job, status 200, marked reused. Rerunning a fit with "
+                "other ranges therefore costs no FEFF calculation.",
             ],
         },
         "fit_reply": NOTE,

@@ -644,7 +644,7 @@ def _feff_paths(client, args, absorber: str | None) -> list[dict]:
     if args.site is None and not sites:
         raise Failed(f"AMCSD {args.structure} ({details['formula']}) has no {absorber} site.")
     site = args.site or sites[0]["index"]
-    job = client.post("/feff/jobs", api="artemis", json={
+    job = client.post("/feff/jobs", api="artemis", params={"view": "summary"}, json={
         "amcsd_id": args.structure, "absorber": absorber or sites[0]["element"],
         "site_index": site, "path_radius": args.path_radius,
         "cluster_radius": max(5.0, args.path_radius)})

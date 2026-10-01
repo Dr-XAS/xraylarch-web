@@ -152,6 +152,13 @@ def test_the_cli_scans_a_range_from_one_feff_calculation(cli, http, run):
     assert all(row["action"] != "fit" for row in jobs), "fits are not commands"
 
 
+def test_a_second_fit_on_the_same_structure_runs_no_feff(cli, tmp_path):
+    first = json.loads(cli("--json", "fit", FOILS[0], "--structure", "11145"))
+    second = json.loads(cli("--json", "fit", FOILS[0], "--structure", "11145", "-t", "kmax=11"))
+    assert len(list((tmp_path / "artemis-feff").glob("*/status.json"))) == 1
+    assert first["paths"][0]["r"] != second["paths"][0]["r"]
+
+
 @pytest.mark.parametrize("argv, message", [
     (("--vary", "kmax"), "--vary looks like key=v1,v2"),
     (("--vary", "nope=1,2"), "--vary takes a transform key"),

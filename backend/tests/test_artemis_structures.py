@@ -256,3 +256,66 @@ def test_http_search_details_validation_and_missing_database(tmp_path, monkeypat
         monkeypatch.setattr(structures, "_DATABASE", tmp_path / "missing.db")
         response = client.get("/api/artemis/structures", params=dict(q="copper"))
         assert response.status_code == 400 and "database is unavailable" in response.json()["error"]["message"]
+
+
+def _finished_job(jobs, ident, created=None, status="complete", **changes):
+    """A job directory as a completed run leaves it, without running FEFF."""
+    directory = jobs.root / ident
+    directory.mkdir(mode=0o700)
+    record = dict(id=ident, status=status, stage=status, message="Generated 1 FEFF paths.",
+                  created=created or time.time(), elapsed_seconds=1.0,
+                  request=request().model_dump() | changes, log="", provenance={}, paths=[],
+                  total_paths=1, truncated=False, warnings=[])
+    (directory / "status.json").write_text(json.dumps(record))
+    (directory / "paths.json").write_text(json.dumps([{"id": "feff0001", "filename": "feff0001.dat"}]))
+    return directory
+
+
+def _never_runs(monkeypatch):
+    def failed(*args): raise RuntimeError("FEFF ran")
+    monkeypatch.setattr(structures, "_prepare_input", failed)
+
+
+def _settled(jobs, job):
+    for _ in range(100):
+        if job["status"] != "running":
+            return job
+        time.sleep(0.01)
+        job = jobs.get(job["id"])
+    return job
+
+
+def test_an_identical_request_gets_the_finished_job_back(tmp_path, monkeypatch):
+    _never_runs(monkeypatch)
+    jobs = FeffJobs(tmp_path)
+    _finished_job(jobs, "a" * 32, created=time.time() - 60)
+    _finished_job(jobs, "b" * 32)
+    job = jobs.start(request())
+    assert job["id"] == "b" * 32 and job["status"] == "complete" and job["reused"]
+    assert job["paths"][0]["id"] == "feff0001"
+    assert len(list(jobs.root.glob("*/status.json"))) == 2
+
+
+@pytest.mark.parametrize("kept", [
+    dict(status="failed"), dict(created=time.time() - 23.5 * 3600), dict(path_radius=2.5)])
+def test_a_job_that_did_not_run_this_request_is_not_reused(tmp_path, monkeypatch, kept):
+    _never_runs(monkeypatch)
+    jobs = FeffJobs(tmp_path)
+    _finished_job(jobs, "a" * 32, **kept)
+    job = _settled(jobs, jobs.start(request()))
+    assert job["id"] != "a" * 32 and "reused" not in job
+    assert "FEFF ran" in job["message"]
+
+
+def test_a_reused_job_answers_200_and_says_so_in_its_summary(tmp_path, monkeypatch):
+    _never_runs(monkeypatch)
+    with TestClient(create_app(Settings(data_root=tmp_path))) as client:
+        _finished_job(FeffJobs(tmp_path), "c" * 32)
+        response = client.post("/api/artemis/feff/jobs", json=request().model_dump())
+        assert response.status_code == 200 and response.json()["reused"]
+        assert response.json()["paths"][0]["id"] == "feff0001"
+        summary = client.post("/api/artemis/feff/jobs", params={"view": "summary"}, json=request().model_dump())
+        assert summary.status_code == 200 and summary.json()["reused"] and "provenance" not in summary.json()
+        assert summary.json()["paths"][0]["id"] == "feff0001"
+        polled = client.get(f"/api/artemis/feff/jobs/{'c' * 32}", params={"view": "summary"}).json()
+        assert polled["status"] == "complete" and "reused" not in polled

@@ -738,8 +738,12 @@ the fifth run's made 109 for 755 KB.
 **The CLI still runs FEFF once per `fit --structure`.** The CLI T5 arm called it six
 times to test kmin, kmax, R range, k weight and a held E0, and each call ran a new FEFF
 job on the same structure. `--vary` exists for exactly this, but it covers one change
-at a time against a shared baseline. Reusing a complete job for the same structure,
-absorber, site and radius would remove the reruns.
+at a time against a shared baseline. Fixed after the run: `POST /feff/jobs` now
+answers a request identical to one that completed in the last 23 hours with that job,
+status 200, marked `reused`, and runs no FEFF. The comparison is the whole request,
+and for an attached CIF also the file's hash. The POST takes `?view=summary`, since a
+reused job arrives with its path files. `larchctl` sends it, and the browser gets a
+complete job it does not need to poll.
 
 **The CLI T5 arm fitted at k 3–12, the route's default**, because nobody had set the
 group's kmax. The CLI said where the range came from, and the arm then showed that
