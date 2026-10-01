@@ -406,6 +406,10 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     {notice && !open && <p className={styles.status} role="status">{notice}</p>}
     <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
       <header className={styles.dialogHeader}><div><h3 id={titleId}>Crystal structures & FEFF paths</h3><p>Attach a CIF to your project, then choose an absorber site to calculate paths.</p></div><button type="button" aria-label="Close CIF search" disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
+      {(structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
+        {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Generate FEFF paths"}</button>}
+        {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>}
+      </div>}
       <div className={styles.content}>
       <div className={styles.searchColumn}>
       <p className={styles.help}>Search the local AMCSD database snapshot.</p>
@@ -456,7 +460,6 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
           </div>
           <p className={styles.help}>Choose one absorber site explicitly. Max path R is the effective half-path length; site populations are not averaged automatically.</p>
           {!attachmentId && <p className={styles.help}>Attach this CIF to the project before generating FEFF paths.</p>}
-          <button type="button" onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Generate FEFF paths"}</button>
         </>}
       </div>}
       {job && <div className={styles.job}>
@@ -481,7 +484,6 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
               const member = structure && jobRadial ? radialPathNeighbor(path.metadata, structure, jobRadial) : undefined
               return <div className={styles.paths}><label><input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={controlsDisabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} /><span><strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong><small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs{member ? ` · ${member.element} pair ${member.group_id}` : ""}</small><small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small></span></label></div>
             }} />
-          <button type="button" disabled={controlsDisabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>
         </>}
       </div>}
       {error && <div className={styles.error} role="alert">{error}{job?.status === "running" && <button type="button" onClick={() => { setError(""); setPollRevision(previous => previous + 1) }}>Check status</button>}</div>}
