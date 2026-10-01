@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { expect, test } from "@playwright/test"
@@ -35,7 +36,7 @@ for (const example of examples) {
       await expect(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`, { exact: true }).locator(".js-line").first()).toBeVisible()
     }
     const downloadPromise = page.waitForEvent("download")
-    await page.getByRole("button", { name: "Save project", exact: true }).click()
+    await page.getByRole("button", { name: "Save project", exact: true }).click(); await confirmProjectSave(page)
     const downloaded = await downloadPromise
     const saved = info.outputPath("roundtrip.prj")
     await downloaded.saveAs(saved)

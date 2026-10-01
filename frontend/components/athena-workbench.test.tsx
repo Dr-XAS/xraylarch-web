@@ -6362,6 +6362,44 @@ describe('Athena ZIP queue', () => {
   })
 })
 
+describe("Project save confirmation", () => {
+  it("opens with the project filename and cancels without exporting or renaming", async () => {
+    await openSaved()
+    const fetcher = vi.spyOn(globalThis, "fetch")
+    const callsBefore = api.mock.calls.length
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }))
+      const dialog = screen.getByRole("dialog", { name: "Save project" })
+      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue("Copper study.prj")
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "File name" }), { target: { value: "My export" } })
+      fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+      expect(screen.queryByRole("dialog", { name: "Save project" })).not.toBeInTheDocument()
+      expect(screen.getByRole("button", { name: "Copper study" })).toBeInTheDocument()
+      expect(fetcher).not.toHaveBeenCalled()
+      expect(api.mock.calls.length).toBe(callsBefore)
+    } finally { fetcher.mockRestore() }
+  })
+
+  it("keeps invalid filenames in the dialog without requesting an export", async () => {
+    await openSaved()
+    const fetcher = vi.spyOn(globalThis, "fetch")
+    try {
+      fireEvent.click(screen.getByRole("button", { name: "Save project" }))
+      const dialog = screen.getByRole("dialog", { name: "Save project" })
+      const filename = within(dialog).getByRole("textbox", { name: "File name" })
+      fireEvent.change(filename, { target: { value: "  .prj " } })
+      fireEvent.click(within(dialog).getByRole("button", { name: /^Save$/ }))
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("Enter a file name.")
+      fireEvent.change(filename, { target: { value: "folder/sample" } })
+      expect(within(dialog).queryByRole("alert")).not.toBeInTheDocument()
+      fireEvent.click(within(dialog).getByRole("button", { name: /^Save$/ }))
+      expect(within(dialog).getByRole("alert")).toHaveTextContent("without slashes")
+      expect(filename).toHaveValue("folder/sample")
+      expect(fetcher).not.toHaveBeenCalled()
+    } finally { fetcher.mockRestore() }
+  })
+})
+
 describe("EXAFS model File menu", () => {
   function modelActions(overrides: Partial<ArtemisModelActions> = {}): ArtemisModelActions {
     return { flush: vi.fn().mockResolvedValue(undefined), importModel: vi.fn(), exportModel: vi.fn(),
@@ -6380,8 +6418,16 @@ describe("EXAFS model File menu", () => {
     try {
       if (label !== "Save project") fireEvent.click(screen.getByRole("button", { name: "File" }))
       fireEvent.click(screen.getByRole("button", { name: label }))
+      const dialog = screen.getByRole("dialog", { name: "Save project" })
+      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue(`Copper study${label.includes("marked") ? "-marked" : ""}.${label.includes("web") ? "json" : "prj"}`)
+      expect(actions.flush).not.toHaveBeenCalled()
+      expect(fetcher).not.toHaveBeenCalled()
+      fireEvent.click(within(dialog).getByRole("button", { name: /^Save$/ }))
       expect(actions.flush).toHaveBeenCalledOnce()
       expect(fetcher).not.toHaveBeenCalled()
+      expect(within(dialog).getByRole("button", { name: "Saving…" })).toBeDisabled()
+      fireEvent.submit(within(dialog).getByRole("textbox", { name: "File name" }).closest("form")!)
+      expect(actions.flush).toHaveBeenCalledOnce()
       await act(async () => complete())
       await waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
       expect(String(fetcher.mock.calls[0][0])).toContain("/export?format=")
@@ -6394,7 +6440,12 @@ describe("EXAFS model File menu", () => {
     const fetcher = vi.spyOn(globalThis, "fetch")
     try {
       fireEvent.click(screen.getByRole("button", { name: "Save project" }))
+      const dialog = screen.getByRole("dialog", { name: "Save project" })
+      fireEvent.change(within(dialog).getByRole("textbox", { name: "File name" }), { target: { value: "My spectrum.prj" } })
+      fireEvent.click(within(dialog).getByRole("button", { name: /^Save$/ }))
       await screen.findByText("Model save failed. Retry saving.")
+      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue("My spectrum.prj")
+      expect(within(dialog).getByRole("button", { name: /^Save$/ })).toBeEnabled()
       expect(fetcher).not.toHaveBeenCalled()
     } finally { fetcher.mockRestore() }
   })

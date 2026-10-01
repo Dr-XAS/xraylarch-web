@@ -87,6 +87,9 @@ curves, uncertainties, correlations, and the fit report. Save model drafts in
 the project; each explicit fit also saves its model and result. Athena `.prj`
 and web JSON downloads retain FEFF files and up to 10 fits per spectrum.
 Changed scientific inputs and imported archives are clearly labeled.
+Project Save actions open a confirmation dialog where you can edit the download
+filename or cancel. The selected format's `.prj` or `.json` extension is added
+automatically; the exported filename does not rename the saved project.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 

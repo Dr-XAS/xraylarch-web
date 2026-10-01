@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator } from '@playwright/test'
@@ -67,7 +68,7 @@ test('native detector probe previews measured counts, changes processing setting
   expect((await undone.json()).groups[0]).toEqual(g)
   await expect(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('radio', { name: 'Detector signal', exact: true })).toBeChecked()
   const downloading = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Save project', exact: true }).click()
+  await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
   const exported = info.outputPath('detector-roundtrip.prj'); await (await downloading).saveAs(exported)
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await expect(page.getByLabel('Open project file', { exact: true })).toBeEnabled()

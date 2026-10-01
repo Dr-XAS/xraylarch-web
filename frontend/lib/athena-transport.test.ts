@@ -52,6 +52,45 @@ describe("Athena transport", () => {
     expect(revoke).toHaveBeenCalledWith("blob:test")
   })
 
+  it("uses an explicitly confirmed filename instead of the server filename", async () => {
+    let filename = ""
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      filename = this.download
+    })
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:confirmed")
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    const fetcher = vi.fn().mockResolvedValue(new Response("project", {
+      headers: { "content-disposition": "attachment; filename=server-name.prj" },
+    }))
+    await createAthenaTransport(integrated(), fetcher).download("/api/athena/projects/p1/export", "My experiment.prj", { filenameOverride: true })
+    expect(filename).toBe("My experiment.prj")
+    expect(fetcher).toHaveBeenCalledOnce()
+    expect(fetcher).toHaveBeenCalledWith(expect.stringContaining("/api/backend/api/athena/projects/p1/export"), expect.anything())
+    expect((fetcher.mock.calls[0][1].headers as Headers).get("X-XrayLarch-Project-Capability")).toBe("browser-capability")
+    expect(revoke).toHaveBeenCalledWith("blob:confirmed")
+    expect(document.querySelector('a[href="blob:confirmed"]')).toBeNull()
+  })
+
+  it.each([
+    { disposition: "attachment; filename*=UTF-8''dir%2Funsafe%5C%00%1F%7F.prj", filename: "fallback.prj", options: undefined, expected: "dirunsafe.prj" },
+    { disposition: "attachment; filename=server.prj", filename: " dir/unsafe\\\u0000\u001f\u007f.prj ", options: { filenameOverride: true }, expected: "dirunsafe.prj" },
+    { disposition: undefined, filename: " dir/unsafe\\\u0000\u001f\u007f.prj ", options: undefined, expected: "dirunsafe.prj" },
+    { disposition: "attachment; filename=server.prj", filename: " /\\\u0000\u001f\u007f ", options: { filenameOverride: true }, expected: "download" },
+  ])("sanitizes downloaded filenames: $expected", async ({ disposition, filename, options, expected }) => {
+    let downloadedFilename = ""
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      downloadedFilename = this.download
+    })
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:safe")
+    const revoke = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {})
+    const fetcher = vi.fn().mockResolvedValue(new Response("project", {
+      headers: disposition ? { "content-disposition": disposition } : {},
+    }))
+    await createAthenaTransport(integrated(), fetcher).download("/api/athena/projects/p1/export", filename, options)
+    expect(downloadedFilename).toBe(expected)
+    expect(revoke).toHaveBeenCalledWith("blob:safe")
+  })
+
   it("binds raw fetch responses to the project capability", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("bytes"))
     const response = await createAthenaTransport(integrated(), fetcher).fetch("/api/athena/projects/p1/uploads/u/file")

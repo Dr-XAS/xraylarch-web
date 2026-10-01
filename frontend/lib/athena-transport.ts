@@ -16,7 +16,7 @@ export type AthenaSession =
 export interface AthenaTransport {
   api<T>(path: string, init?: RequestInit): Promise<T>
   fetch(path: string, init?: RequestInit): Promise<Response>
-  download(path: string, filename?: string): Promise<void>
+  download(path: string, filename?: string, options?: { filenameOverride?: boolean }): Promise<void>
   href(path: string): string
 }
 
@@ -63,13 +63,16 @@ async function checked(response: Response) {
   throw decodeApiError(response.status, data)
 }
 
+function safeFilename(value: string, fallback = "download") {
+  return value.replace(/[\\/\0-\x1f\x7f]/g, "").trim() || fallback
+}
+
 function attachmentFilename(value: string | null, fallback: string) {
   if (!value) return fallback
   const encoded = /filename\*=UTF-8''([^;]+)/i.exec(value)?.[1]
   const plain = /filename="?([^";]+)"?/i.exec(value)?.[1]
-  let candidate = encoded ? (() => { try { return decodeURIComponent(encoded) } catch { return "" } })() : plain ?? ""
-  candidate = candidate.replace(/[\\/\0-\x1f\x7f]/g, "").trim()
-  return candidate || fallback
+  const candidate = encoded ? (() => { try { return decodeURIComponent(encoded) } catch { return "" } })() : plain ?? ""
+  return safeFilename(candidate, fallback)
 }
 
 export function createAthenaTransport(session: AthenaSession, fetcher: Fetcher = fetch, options: AthenaTransportOptions = {}): AthenaTransport {
@@ -112,13 +115,14 @@ export function createAthenaTransport(session: AthenaSession, fetcher: Fetcher =
       const response = await checked(await fetchBound(path, init))
       return await response.json() as T
     },
-    async download(path, filename = "download") {
+    async download(path, filename = "download", downloadOptions = {}) {
       const response = await checked(await fetchBound(path))
       const url = URL.createObjectURL(await response.blob())
       try {
         const anchor = document.createElement("a")
         anchor.href = url
-        anchor.download = attachmentFilename(response.headers.get("content-disposition"), filename)
+        const fallback = safeFilename(filename)
+        anchor.download = downloadOptions.filenameOverride ? fallback : attachmentFilename(response.headers.get("content-disposition"), fallback)
         anchor.style.display = "none"
         document.body.append(anchor)
         anchor.click()

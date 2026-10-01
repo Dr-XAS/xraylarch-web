@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator, type Page } from '@playwright/test'
@@ -92,7 +93,7 @@ test('ESRF Cu: live pixel columns, fitted calibration, native settings, make, un
   }
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 1',exact:true})).toBeVisible()
   await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 2',exact:true})).toBeVisible()
-  const projectFile=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click()
+  const projectFile=page.waitForEvent('download');await page.getByRole('button',{name:'Save project',exact:true}).click(); await confirmProjectSave(page)
   const projectPath=info.outputPath('calibrated.prj');await (await projectFile).saveAs(projectPath)
   await page.getByRole('button',{name:'Open project',exact:true}).click()
   await page.getByLabel('Open project file',{exact:true}).setInputFiles(projectPath)
