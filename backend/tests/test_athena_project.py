@@ -439,7 +439,7 @@ def test_example_import_uses_measured_copper_files_and_processes_all_groups(stor
     created = store.create()
     p = command(store, created, "example")
     expected = ["cu_10k.xmu", "cu_50k.xmu", "cu_rt01.xmu"]
-    assert len(p["groups"]) == 4 and p["version"] == 1
+    assert len(p["groups"]) == 5 and p["version"] == 1
     for g, filename in zip(p["groups"][:3], expected, strict=True):
         measured = np.loadtxt(EXAMPLES / filename)
         np.testing.assert_array_equal(g["energy"], measured[:, 0])
@@ -459,7 +459,7 @@ def test_example_import_uses_measured_copper_files_and_processes_all_groups(stor
     assert cu2o["result"]["arrays"]["chi"] and cu2o["result"]["arrays"]["chir_mag"]
     assert [folder["name"] for folder in p["group_folders"]] == ["Temperature series", "reference"]
     assert p["group_folders"][0]["group_ids"] == [group["id"] for group in p["groups"][:3]]
-    assert p["group_folders"][1]["group_ids"] == [cu2o["id"]]
+    assert p["group_folders"][1]["group_ids"] == [cu2o["id"], p["groups"][4]["id"]]
     seed = p["last_operation"]["artemis_example"]
     attachment, = p["artemis_structures"]
     assert seed["group_id"] == cu2o["id"]
@@ -488,7 +488,7 @@ def test_copper_example_preserves_existing_data_and_reuses_cuprite_snapshot(stor
     result = command(store, original, "example")
     assert result["name"] == "My experiment"
     assert result["groups"][:2] == original["groups"]
-    assert len(result["groups"]) == 6
+    assert len(result["groups"]) == 7
     assert result["artemis_structures"] == original["artemis_structures"]
     assert result["last_operation"]["artemis_example"]["attachment_id"] == original["artemis_structures"][0]["id"]
     assert result["version"] == original["version"] + 1
@@ -529,7 +529,7 @@ def test_integration_copper_example_keeps_existing_spectra_only_workflow(store, 
         pytest.fail("Integration examples must not attach local-only Artemis structures")
     monkeypatch.setattr(artemis, "cuprite_example", no_artemis)
     result = command(store, original, "example")
-    assert len(result["groups"]) == 4
+    assert len(result["groups"]) == 5
     assert "artemis_structures" not in result
     assert "artemis_example" not in result["last_operation"]
 

@@ -1,0 +1,17 @@
+.body { display: grid; gap: 12px; }
+.body > p, .body > :global(.ath-field) { margin: 0; }
+.body select { min-height: 32px; }
+.samples { min-width: 0; border: 0; padding: 0; margin: 0; }
+.samples legend { width: 100%; padding: 0 0 6px; font-weight: 600; }
+.count { margin-left: 8px; color: var(--ath-muted); font-size: var(--text-caption); font-weight: 400; }
+.list { max-height: 280px; overflow-y: auto; border: 1px solid var(--ath-line); border-radius: 6px; }
+.list > p { padding: 12px; }
+.row { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; cursor: pointer; }
+.row + .row { border-top: 1px solid var(--ath-line); }
+.row:hover { background: var(--ath-surface-muted); }
+.row[data-reference] { background: var(--ath-primary-soft); cursor: default; }
+.row input { flex: none; margin: 3px 0 0; }
+.rowText { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.rowText small { font-size: var(--text-caption); }
+.actions { flex-wrap: wrap; margin-top: 0; }
+.actions button { min-height: 32px; }

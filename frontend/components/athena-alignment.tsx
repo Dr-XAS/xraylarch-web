@@ -17,18 +17,18 @@ type Row={group_id:string;label:string;moving_id:string;standard_id:string;used_
 export type AlignmentPreview={project_id:string;version:number;group_ids:string[];options:Options;requested_options:Options;rows:Row[];
   changes:{group_id:string;label:string;energy_shift:number;e0:number|null}[];processing_errors:Record<string,string>;skipped_reasons:Record<string,string>}
 const finite=(a:unknown):a is number[]=>Array.isArray(a)&&a.every(x=>typeof x==='number'&&Number.isFinite(x))
+function referenceFamily(project:AthenaProject,id:string){
+  const members=new Set([id]);let size=0
+  while(size!==members.size){size=members.size;for(const g of project.groups)if(g.reference_id&&(members.has(g.id)||members.has(g.reference_id))){members.add(g.id);members.add(g.reference_id)}}
+  return members
+}
 function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Options){
   const invalid=()=>{throw new Error('The alignment preview does not match this project and these settings. Replot alignment.')}
   if(v.project_id!==p.id||v.version!==p.version||JSON.stringify(v.group_ids)!==JSON.stringify(ids)||!Array.isArray(v.rows)||!v.rows.length
     ||Object.entries(options).some(([k,x])=>v.requested_options?.[k as keyof Options]!==x||v.options?.[k as keyof Options]!==x))invalid()
   const seen=new Set<string>()
   const expected=new Map<string,number>()
-  function family(id:string){
-    const members=new Set([id]);let size=0
-    while(size!==members.size){size=members.size;for(const g of p.groups)if(g.reference_id&&(members.has(g.id)||members.has(g.reference_id))){members.add(g.id);members.add(g.reference_id)}}
-    return members
-  }
-  const fixed=family(options.standard_id)
+  const fixed=referenceFamily(p,options.standard_id)
   for(const row of v.rows){
     const parent=p.groups.find(g=>g.id===row.group_id),standard=p.groups.find(g=>g.id===options.standard_id)
     const refs=!!(options.use_reference&&parent?.reference_id&&standard?.reference_id)
@@ -36,7 +36,7 @@ function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Option
       ||row.moving_id!==(refs?parent.reference_id:parent.id)||row.standard_id!==(refs?standard.reference_id:standard.id)||!Number.isFinite(row.energy_shift)
       ||row.shift_delta!==row.energy_shift-parent.parameters.energy_shift)invalid()
     seen.add(row.group_id)
-    if(options.operation!=='inspect')for(const id of family(row.group_id)){
+    if(options.operation!=='inspect')for(const id of referenceFamily(p,row.group_id)){
       if(fixed.has(id)||(expected.has(id)&&expected.get(id)!==row.energy_shift))invalid()
       expected.set(id,row.energy_shift)
     }
@@ -66,7 +66,10 @@ function validate(v:AlignmentPreview,p:AthenaProject,ids:string[],options:Option
 export function AthenaAlignment({project,activeId,selectGroup,initialDraft,rememberDraft,disabled=false,setBusy,saved,close}:{project:AthenaProject;activeId:string;selectGroup:(id:string)=>void;initialDraft?:AlignmentDraft;rememberDraft:(d:AlignmentDraft)=>void;disabled?:boolean;setBusy:(s:string)=>void;saved:(p:AthenaProject)=>void;close:()=>void}){
   const athenaApi=useAthenaApi()
   const group=project.groups.find(g=>g.id===activeId)
-  const [draft,setDraft]=useState<AlignmentDraft>(()=>({...{standard_id:project.groups.find(g=>g.id!==activeId&&g.data_type!=='chi'&&g.data_type!=='detector')?.id??'',display:'smoothed',fit:'smoothed',use_reference:false},...initialDraft}))
+  const [draft,setDraft]=useState<AlignmentDraft>(()=>{
+    const family=referenceFamily(project,activeId)
+    return {standard_id:project.groups.find(g=>!family.has(g.id)&&g.data_type!=='chi'&&g.data_type!=='detector'&&!g.is_difference)?.id??'',display:'smoothed',fit:'smoothed',use_reference:false,...initialDraft}
+  })
   const [operation,setOperation]=useState<Options['operation']>('inspect'),[scope,setScope]=useState<'current'|'marked'>('current')
   const [shift,setShift]=useState(String(group?.parameters.energy_shift??0)),[selected,setSelected]=useState(activeId)
   const [preview,setPreview]=useState<{key:string;value:AlignmentPreview}|null>(null),[error,setError]=useState(''),[loading,setLoading]=useState(false),[retry,setRetry]=useState(0)

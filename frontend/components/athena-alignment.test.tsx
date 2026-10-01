@@ -29,6 +29,28 @@ const change=(name:string,value:string)=>fireEvent.change(screen.getByLabelText(
 async function ready(){await waitFor(()=>expect(screen.getByText(/Preview ready at project revision/)).toBeVisible(),{timeout:2500})}
 afterEach(()=>{cleanup();vi.clearAllMocks();api.mockReset()})
 
+it('defaults to an independent standard when spectra share a reference foil',async()=>{
+  const moving={...project.groups[1],reference_id:'foil'}
+  const linked={...project,groups:[
+    {...moving,id:'foil',label:'Cu foil',reference_id:null},
+    moving,
+    {...moving,id:'other-scan',label:'Other scan'},
+    {...project.groups[0],id:'difference',is_difference:true},
+    project.groups[0],
+  ]}
+  serve();render(<AthenaAlignment {...props()} project={linked}/>);await ready()
+  expect(screen.getByLabelText('Alignment standard')).toHaveValue('standard')
+  expect((api.mock.calls[0][1] as {options:Options}).options.standard_id).toBe('standard')
+})
+
+it('preserves an explicitly remembered alignment standard even within the reference family',()=>{
+  const linked={...project,groups:project.groups.map(g=>g.id==='moving'?{...g,reference_id:'standard'}:g)}
+  render(<AthenaAlignment {...props()} project={linked} disabled initialDraft={{standard_id:'standard',display:'mu',fit:'derivative',use_reference:true}}/>)
+  expect(screen.getByLabelText('Alignment standard')).toHaveValue('standard')
+  expect(screen.getByLabelText('Alignment display')).toHaveValue('mu')
+  expect(api).not.toHaveBeenCalled()
+})
+
 it('starts with smoothed derivative, plots all four views and keeps inspection read-only',async()=>{
   serve();const p=props();render(<AthenaAlignment {...p}/>);await ready();expect(save()).toBeDisabled()
   expect(screen.getByLabelText('Alignment display')).toHaveValue('smoothed')
