@@ -4,11 +4,11 @@ Written 2026-09-18. Companion to `agent-interface-scope.md`, which argues that w
 this file the interface work "is a nice API and proves nothing."
 
 Five tasks, phrased the way someone with spectra would phrase them; T5 was added on
-2026-10-01. Each carries two
-kinds of assertion. A **state** assertion is machine-checkable from `?view=summary`,
-`?view=parameters` or a group digest, so it can be run unattended. An **answer**
-assertion is on the prose the arm returns, and needs a grader, though most of it
-reduces to a number that either matches the project or doesn't.
+2026-10-01. Each carries two kinds of assertion. A **state** assertion is
+machine-checkable from `?view=summary`, `?view=parameters` or a group digest, so it can
+be run unattended. An **answer** assertion is on the prose the arm returns, and needs a
+grader, though most of it reduces to a number that either matches the project or
+doesn't.
 
 Every task starts from a fresh project with the bundled copper series loaded, which is
 one command: `example`. The three foil scans are Cu foil at 10 K, 50 K and 300 K. The
