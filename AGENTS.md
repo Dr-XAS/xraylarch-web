@@ -39,7 +39,9 @@ command, and every preview.
 | `?view=parameters` | ~2,150 tokens | each group's recipe, requested against effective |
 | `.../groups/{gid}/digest` | ~720 tokens | one spectrum characterised in numbers |
 | `.../compare?groups=a,b,c` | ~850 tokens for five | each group against the first: shift, XANES and chi(k) differences, shared range, duplicates |
-| `POST /api/artemis/.../fit?view=summary` | ~800 tokens | one fit's values, per-path distances |
+| `POST /api/artemis/.../fit?view=summary` | ~800 tokens | one fit's values, per-path distances, `concerns` |
+| `GET /api/artemis/capabilities` | ~1,100 tokens | the fit and FEFF bodies, with their defaults |
+| `GET /api/artemis/feff/jobs/{job}?view=summary` | ~170 tokens | a FEFF job's status and each path's scatterers, degeneracy and reff, without the files |
 | `.../transcript` | ~120 tokens each | what has already been tried here, failures included |
 | *(no view)* | ~239,000 tokens | everything, arrays included |
 
@@ -61,6 +63,8 @@ command, and every preview.
 
 `version` must be the project's current version. A stale one is a 409 whose `recovery`
 names the version to resend with. Nearly every mutation is undoable: `action: "undo"`.
+A body that fails validation is a 422 whose `message` says what each field wanted, as in
+"site_index: Input should be greater than or equal to 1".
 
 ## What you have already tried
 
@@ -113,6 +117,15 @@ python -m xraylarch_web.larchctl log --since 4
 
 `--json` on any command prints it as JSON instead of a table, before or after the
 subcommand. It does not turn the array elision off; `--arrays` does that.
+
+`-o key=value` reads the value as JSON first and as a bare string when that fails, so
+`-o kmax=18`, `-o reference_id=null`, `-o exclude_short_data=false` and `-o weights='{}'`
+arrive typed, and `-o window=hanning` needs no quotes. A label resolves when it is a
+whole group label, then a whole part of one between the `·`s ("300 K" is "Cu foil ·
+300 K", not a merge whose label lists 300 K), then any unambiguous part. After a
+command the CLI prints `+` for a group created, `-` for one removed and `~` for each
+field a command moved on a group it kept, such as `energy_shift 0.000->-2.959`. Align
+previews print as a table, like merge previews.
 
 ## Reading numbers correctly
 
@@ -167,6 +180,16 @@ not been aligned. Merged as `mu`, every member reads 0.23 or more, because the s
 differ in absolute mu; compare shapes with `array: "norm"`. `larchctl do merge ...
 --preview` prints this as a table.
 
+The same goes for the merge itself. `array: "mu"` averages absolute absorption, so
+scans whose edge steps differ (here 2.30 against 2.73; the 300 K scan comes from another
+beamline) pull the average towards the one with the larger step; `array: "norm"` averages after each
+member is normalized, and the merged group's edge step then reads about 1. Which one is
+right depends on what the merge is for, so say which you chose.
+
+Unlinking a reference before a merge has a second effect: with no member linked to a
+reference, there is no reference channel to merge, and the reply says "Reference
+channels were not merged".
+
 Always send `method: "demeter-larch"` to merge. Without it the command takes an older
 plain average that excludes nothing, and the preview refuses, because it cannot show
 that average.
@@ -203,12 +226,16 @@ command with "The alignment standard and its linked references stay fixed." `lar
 summary` shows the link as `ref:<label>`. To align the scans to each other, first send
 `assign_reference` on them with `reference_id: null`. The preview refuses linked groups
 too; to measure the shift without unlinking, use `compare`. The unlink is undoable.
+Send `operation: "auto"` on the preview and the command alike: `'inspect'` is the
+default only because the browser's preview starts there, and `/command` refuses it.
+The standard never moves, so it can be in `group_ids` or not.
 
 **Alignment does not move E0.** It changes `energy_shift` and pins each moved group's E0
 at the value it had before, as native Athena does. After aligning the 300 K scan by
 −2.959 eV its E0 still reads 8980.50, about 3 eV above its edge on the shifted axis, and
 its edge step moves from 2.729 to 2.717. If you want E0 found again on the shifted data,
-send `parameters` with `e0: null` afterwards.
+send `parameters` with `e0: null` afterwards. If a question asks about the edge steps
+of the original scans, read them before aligning.
 
 **Signal-to-noise ratios compare windows within a group, not groups.** Each group's
 floor is measured over its own k support, so the 300 K scan reading 269 at k 3–5
@@ -223,10 +250,22 @@ Artemis fits FEFF paths to a group's chi(k), and a path's fitted `r` (reff + del
 distance with the scattering phase accounted for. The route is
 `POST /api/artemis/projects/{id}/groups/{gid}/fit?view=summary` with
 `{version, parameters, paths, transform}`; each path carries the FEFF file's text as
-`content`. Without `?view=summary` the reply is about 250 KB of curves; with it, about
-2.5 KB: statistics, each parameter with its stderr, correlations of 0.1 or more, and
-per path its scatterers, degeneracy, reff, r and sigma2. A parameter that stopped at
-its bound is flagged `at_bound`; its stderr then means nothing. The fit saves nothing.
+`content`. `GET /api/artemis/capabilities` describes every field of that body and of the
+FEFF job, with defaults and bounds, read off the validators. Without `?view=summary` the
+reply is about 250 KB of curves; with it, about 2.5 KB: statistics, each parameter with
+its stderr, correlations of 0.1 or more, and per path its scatterers, degeneracy, reff,
+r and sigma2. A parameter that stopped at its bound is flagged `at_bound`; its stderr
+then means nothing. The fit saves nothing.
+
+**"Fit succeeded" means the minimiser stopped.** The summary's `concerns` lists what a
+plot of the fit would have shown: an R-factor above 0.05 (under about 0.02 is a good
+fit), more variables than independent points, a parameter at its bound, a correlation
+above 0.9. Fitting the 10 K foil in k space instead of R reports success at an R-factor
+of 0.38. The bundled Cu₂O setup reads 0.14: a starting point, not a finished fit.
+
+**The route's transform is not the group's.** It defaults to k 3–12, kweight [0,1,2,3],
+dk 2, R 1–3, fitspace r, whatever kmax the group has. `kweight` is a list even for one
+weight. FEFF's paths stop at k 20.
 
 FEFF paths come from one of three places:
 
@@ -235,9 +274,11 @@ FEFF paths come from one of three places:
   added, `metadata` removed), `parameters` and `transform` as the fit body.
 - `GET /api/artemis/structures?q=copper&element=Cu` searches the bundled AMCSD
   structures, and `POST /api/artemis/feff/jobs` with `{amcsd_id, absorber, site_index,
-  path_radius}` runs FEFF on one, in about a second. Poll `GET .../feff/jobs/{job}`
-  until `status` is `complete`; its `paths` hold the files. The status reply is about
-  20 KB because it carries the CIF and the FEFF log as well.
+  path_radius}` runs FEFF on one, in about a second. `site_index` counts from 1, as
+  the `sites[].index` of `GET /api/artemis/structures/{amcsd_id}` does. Poll `GET
+  .../feff/jobs/{job}?view=summary` until `status` is `complete`, then read it once
+  without the view: its `paths` hold the files. The full reply is about 20 KB because
+  it carries the CIF and the FEFF input as well; the summary is under 1 KB.
 - Your own `feffNNNN.dat` files.
 
 The CLI does all of it:
@@ -246,13 +287,25 @@ The CLI does all of it:
 larchctl fit "Cu2O" --example cuprite
 larchctl structures copper --element Cu
 larchctl fit "10 K" --structure 11145             # FEFF to 3 Å, then the fit
-larchctl fit "10 K" --structure 11145 --fix amp=0.9 -t kmax=14
+larchctl fit "10 K" --structure 11145 --fix amp=0.9 -t kmax=14 -t kweight=2
+larchctl fit "10 K" --structure 11145 --vary kmax=14,16,18 --vary del_e0=3,9
 ```
 
 On the 10 K copper foil the structure fit gives Cu–Cu at 2.547 Å with sigma2 0.0038 Å²,
 where the digest's peak sat at 2.30. The four default guesses are `amp`, `del_e0`,
 `del_r` and `sig2`, with the bounds Artemis starts from; `-p name=value` moves a
-guess's start and `--fix name=value` holds it.
+guess's start and `--fix name=value` holds it. `larchctl fit --help` lists them.
+
+Unlike the route, the CLI takes the group's k window (kmin, kmax, dk) once the group's
+kmax has been set, cut to FEFF's k 20, and says where each range came from. `-t`
+overrides either, and takes `kweight=2` or `kweight=1,2,3`.
+
+`--vary` answers "how far to trust it". It runs FEFF once, then refits once per value,
+either with a transform key changed or with a parameter held, and tabulates the first
+path's r, sigma2, S0², E0 and R-factor, with the spread of r per key. On the 10 K foil
+at k 3–18, kmax from 14 to 18 moves r by 0.0002 Å, while holding del_e0 at 3 and at 9 eV,
+either side of its best 6.5, moves it by 0.023 Å and makes the fit five to ten times worse.
+That correlation, not the 0.002 Å stderr, is what limits the distance.
 
 ## What you cannot get
 

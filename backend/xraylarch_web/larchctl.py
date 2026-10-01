@@ -145,7 +145,11 @@ def resolve_group(summary: dict, token: str) -> str:
     # merge "Cu foil · 300 K + cold scans" makes "Cu foil · 300 K" ambiguous,
     # and the only way back to the scan is its id.
     exact = [group for group in groups if _fold(group["label"]) == folded]
-    matches = exact or [group for group in groups if folded in _fold(group["label"])]
+    # So does a whole part of one: "300 K" is the scan "Cu foil · 300 K" more
+    # than it is the merge "Cu foil · merge of 10 K, 50 K, 300 K".
+    segment = [group for group in groups
+               if folded in (part.strip() for part in _fold(group["label"]).split("·"))]
+    matches = exact or segment or [group for group in groups if folded in _fold(group["label"])]
     if len(matches) == 1:
         return matches[0]["id"]
     if not matches:
@@ -385,6 +389,8 @@ def render_preview(payload: dict) -> str:
     who was left out, whether they agree) is a few numbers per member that
     JSON spreads over a hundred lines. Others are JSON with the curves elided.
     """
+    if payload.get("rows") and all("shift_delta" in row for row in payload["rows"]):
+        return _render_alignment_preview(payload)
     outputs = payload.get("outputs") or []
     if not outputs or not all("members" in (output.get("result") or {}) for output in outputs):
         return json.dumps(payload, indent=1)
@@ -412,6 +418,27 @@ def render_preview(payload: dict) -> str:
     if note := next((output["agreement"]["note"] for output in outputs if output.get("agreement")), None):
         lines.append(note)
     lines.append("Nothing was saved. Run the same command without --preview to merge.")
+    return "\n".join(lines)
+
+
+def _render_alignment_preview(payload: dict) -> str:
+    rows = []
+    for row in payload["rows"]:
+        summary = (row.get("fit") or {}).get("summary") or {}
+        rows.append([row["label"][:34], _number(row.get("energy_shift"), 3),
+                     _number(row.get("shift_delta"), 3),
+                     _number(summary.get("native_shift_stderr", summary.get("shift_stderr")), 3),
+                     _number((row.get("after") or {}).get("e0"), 2)])
+    standard = next((row["standard"]["label"] for row in payload["rows"] if row.get("standard")), "?")
+    lines = [f"align to {standard}",
+             _table(rows, ["GROUP", "SHIFT", "CHANGE", "STDERR", "E0 KEPT"])]
+    for gid, reason in (payload.get("skipped_reasons") or {}).items():
+        lines.append(f"  SKIPPED {gid}: {reason}")
+    for gid, error in (payload.get("processing_errors") or {}).items():
+        lines.append(f"  ERROR {gid}: {error}")
+    lines.append("SHIFT is the energy_shift the group would carry; CHANGE is the move from its "
+                 "current one. E0 stays where it was, so it reads about the shift away from the "
+                 "edge afterwards. Nothing was saved. Run the same command without --preview to align.")
     return "\n".join(lines)
 
 
@@ -486,6 +513,13 @@ def render_result(project: dict, before: dict) -> str:
             lines.append(f"      EXCLUDED {left_out['label']}: {left_out['reason']}")
     for removed in sorted(was - set(now)):
         lines.append(f"  - {removed}")
+    # Align, calibrate and set_e0 change no group list either; without this
+    # their reply was "version 2 -> 3" and the shift took another read.
+    previous = {group["id"]: group for group in before["groups"]}
+    for gid, group in now.items():
+        if gid in previous and (changes := _changed(previous[gid], group, now)):
+            lines.append(f"  ~ {group['label']}  " + "  ".join(changes)
+                         + (f"   ERROR: {group['processing_error']}" if group.get("processing_error") else ""))
     # A parameters command changes no group list, so without this the reply is
     # just the version, and whether Larch honoured the value takes another read.
     for group in operation.get("applied") or ():
@@ -494,10 +528,38 @@ def render_result(project: dict, before: dict) -> str:
         lines.append(f"  {group['label']}  {values}"
                      + (f"   ERROR: {group['processing_error']}" if group["processing_error"] else ""))
     if skipped := operation.get("skipped_group_ids"):
-        lines.append(f"  skipped {len(skipped)}: {', '.join(skipped)}")
-    for reason in operation.get("skipped_reasons") or ():
-        lines.append(f"    {reason}")
+        lines.append(f"  skipped {len(skipped)}: {', '.join(_label(now, gid) for gid in skipped)}")
+    for block in [operation, *(value for value in operation.values() if isinstance(value, dict))]:
+        reasons = block.get("skipped_reasons") or ()
+        for gid, reason in reasons.items() if isinstance(reasons, dict) else ((None, r) for r in reasons):
+            lines.append(f"    {_label(now, gid) + ': ' if gid else ''}{reason}")
+        for gid, error in (block.get("processing_errors") or {}).items():
+            lines.append(f"  ERROR {_label(now, gid)}: {error}")
+        for warning in block.get("warnings") or ():
+            lines.append(f"  WARNING: {warning}")
     return "\n".join(lines)
+
+
+# The summary fields a command can move on a group it does not create.
+_WATCHED = ("label", "energy_shift", "e0", "edge_step", "points", "range", "available_kmax",
+            "reference_id", "background_standard_id", "marked", "frozen", "is_normalized")
+
+
+def _changed(before: dict, after: dict, groups: dict) -> list[str]:
+    changes = []
+    for key in _WATCHED:
+        old, new = before.get(key), after.get(key)
+        if old == new:
+            continue
+        if key in ("reference_id", "background_standard_id"):
+            old, new = (_label(groups, ident) if ident else "none" for ident in (old, new))
+        elif key == "range":
+            old, new = (f"{_number(pair[0], 1)}-{_number(pair[1], 1)}" if pair else "-" for pair in (old, new))
+        elif isinstance(old, float) or isinstance(new, float):
+            old, new = _number(old, 3), _number(new, 3)
+        if old != new:  # a value that moved in its fifth figure is not news
+            changes.append(f"{key} {old}->{new}")
+    return changes
 
 
 # ------------------------------------------------------------------- commands
@@ -566,8 +628,9 @@ DEFAULT_FIT_PARAMETERS = [
 def _feff_paths(client, args, absorber: str | None) -> list[dict]:
     """Run FEFF on a bundled AMCSD structure and return the paths it made.
 
-    The job's status reply carries the CIF, the FEFF log and every path file,
-    about 20 KB for one path; only the path files go any further than here.
+    The job's full status reply carries the CIF, the FEFF log and every path
+    file, about 20 KB for one path, so it is polled under ?view=summary and
+    read in full once; only the path files go any further than here.
     """
     import time
 
@@ -587,25 +650,78 @@ def _feff_paths(client, args, absorber: str | None) -> list[dict]:
         if time.monotonic() > deadline:
             raise Failed(f"FEFF job {job['id']} is still {job['status']} after five minutes.")
         time.sleep(0.5)
-        job = client.get(f"/feff/jobs/{job['id']}", api="artemis")
+        job = client.get(f"/feff/jobs/{job['id']}", api="artemis", params={"view": "summary"})
     if job["status"] != "complete":
         raise Failed(f"FEFF job {job['id']} {job['status']}: {job.get('message')}")
-    return [{"filename": path["filename"], "content": path["content"]}
-            for path in job["paths"][:args.max_paths]]
+    # The files, once; each poll above was a few hundred bytes rather than 20 KB.
+    job = client.get(f"/feff/jobs/{job['id']}", api="artemis")
+    chosen = job["paths"][:args.max_paths]
+    # FEFF stops its calculation at a k of its own (20 for these jobs), and a
+    # fit asked to run past it has nothing to compare the data with.
+    limits = [path["metadata"]["kmax"] for path in chosen if (path.get("metadata") or {}).get("kmax")]
+    return ([{"filename": path["filename"], "content": path["content"]} for path in chosen],
+            min(limits) if limits else None)
 
 
-def _fit_body(client, args, absorber: str | None = None) -> dict:
-    """The fit request: FEFF paths and a starting model, with -p/--fix/-t applied."""
+# Where the fit takes its k range from when -t does not say. The route's own
+# defaults (k 3-12, dk 2) are the browser's starting point, and a caller who
+# has already set the group's transform expects the fit to use it.
+_FROM_GROUP = ("kmin", "kmax", "dk")
+
+
+def _kweight(value):
+    """-t kweight=2 and kweight=1,2,3 as well as the list the route takes."""
+    if isinstance(value, bool):
+        raise Failed(f"kweight needs integers 0-3; got {value!r}.")
+    if isinstance(value, int):
+        return [value]
+    if isinstance(value, str):
+        try:
+            return [int(part) for part in value.split(",")]
+        except ValueError:
+            raise Failed(f"kweight needs integers 0-3; got {value!r}.")
+    return value
+
+
+def _group_transform(client, ident: str, group_id: str) -> dict:
+    """The group's own k window, once someone has chosen its kmax.
+
+    Every group's recipe names a kmin and a dk, so their presence says nothing
+    about intent; a kmax left to Larch runs to the end of the data, noise and
+    all. The window is taken whole or not at all, so a fit never mixes the
+    group's dk with the route's kmax.
+    """
+    digest = client.get(f"/projects/{ident}/groups/{group_id}/digest")
+    block = digest.get("transform") or {}
+    if not isinstance(block.get("kmax"), dict) or block["kmax"].get("requested") is None:
+        return {}
+    return {key: block[key]["used"] for key in _FROM_GROUP
+            if isinstance(block.get(key), dict) and block[key].get("used") is not None}
+
+
+def _fit_body(client, args, absorber: str | None = None, group: dict | None = None) -> tuple[dict, dict]:
+    """The fit request, and where each transform key in it came from.
+
+    FEFF paths and a starting model, with the group's own k range where it set
+    one, then -p/--fix/-t applied on top.
+    """
+    sources, feff_kmax = {}, None
     if args.example:
         example = client.get(f"/examples/{args.example}", api="artemis")
         paths = [{"filename": path["filename"], "content": path["content"]} for path in example["paths"]]
         parameters, transform = example["parameters"], dict(example["transform"])
+        sources = {key: f"the {args.example} example" for key in transform}
     else:
         paths, parameters, transform = [], [dict(row) for row in DEFAULT_FIT_PARAMETERS], {}
         if args.structure:
-            paths = _feff_paths(client, args, absorber)
+            paths, feff_kmax = _feff_paths(client, args, absorber)
             # Fit out to the farthest path asked for, not to the route's 3 A default.
             transform["rmax"] = max(3.0, args.path_radius)
+            sources["rmax"] = "--path-radius"
+        for key, value in (group or {}).items():
+            transform[key], sources[key] = value, "the group's transform"
+        if feff_kmax is not None and transform.get("kmax", 0) > feff_kmax:
+            transform["kmax"], sources["kmax"] = feff_kmax, "the group's, cut to where FEFF stops"
     for name in args.path:
         try:
             with open(name, encoding="utf-8") as handle:
@@ -627,8 +743,44 @@ def _fit_body(client, args, absorber: str | None = None) -> dict:
         by_name[name].update(value=float(value), kind=kind)
     for text in args.transform:
         name, value = parse_option(text)
-        transform[name] = value
-    return {"parameters": parameters, "paths": paths, "transform": transform}
+        transform[name], sources[name] = _kweight(value) if name == "kweight" else value, "-t"
+    return {"parameters": parameters, "paths": paths, "transform": transform}, sources
+
+
+def _vary(texts: list[str], parameters: list[dict]) -> list[tuple[str, Any]]:
+    """--vary kmax=14,16,18 as (key, value) pairs, one fit each."""
+    names = {row["name"] for row in parameters}
+    runs = []
+    for text in texts:
+        name, separator, values = text.partition("=")
+        if not separator or not values:
+            raise Failed(f"--vary looks like key=v1,v2,...; got {text!r}.")
+        try:
+            parsed = json.loads(f"[{values}]")
+        except ValueError:
+            parsed = values.split(",")
+        if name not in names and name not in TRANSFORM_KEYS:
+            raise Failed(f"--vary takes a transform key ({', '.join(TRANSFORM_KEYS)}) or a fit "
+                         f"parameter to hold ({', '.join(sorted(names))}); got {name!r}.")
+        runs += [(name, value) for value in parsed]
+    return runs
+
+
+TRANSFORM_KEYS = ("kmin", "kmax", "kweight", "dk", "rmin", "rmax", "fitspace", "window")
+
+
+def _variant(body: dict, name: str, value) -> dict:
+    changed = {**body, "transform": dict(body["transform"]),
+               "parameters": [dict(row) for row in body["parameters"]]}
+    if name in TRANSFORM_KEYS:
+        changed["transform"][name] = _kweight(value) if name == "kweight" else value
+    else:
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise Failed(f"{name} needs numbers to be held at; got {value!r}.")
+        row = next(row for row in changed["parameters"] if row["name"] == name)
+        row.update(kind="set", value=float(value))
+        row.pop("min", None), row.pop("max", None)
+    return changed
 
 
 def command_fit(client, args):
@@ -638,10 +790,26 @@ def command_fit(client, args):
     if args.example and args.structure:
         raise Failed("Use --example or --structure, not both.")
     element = next(group["element"] for group in summary["groups"] if group["id"] == group_id)
-    body = _fit_body(client, args, element) | {"version": summary["version"]}
-    result = client.post(f"/projects/{ident}/groups/{group_id}/fit", api="artemis",
-                         params={"view": "summary"}, json=body)
-    return result, render_fit(result)
+    own = {} if args.example else _group_transform(client, ident, group_id)
+    body, sources = _fit_body(client, args, element, own)
+    body["version"] = summary["version"]
+    route = f"/projects/{ident}/groups/{group_id}/fit"
+    result = client.post(route, api="artemis", params={"view": "summary"}, json=body)
+    result["transform_from"] = {key: sources.get(key, "the fit's default") for key in result["transform"]}
+    if not args.vary:
+        return result, render_fit(result)
+    # Each variant is one fit from the same FEFF paths, so a range scan costs
+    # one FEFF calculation rather than one per invocation.
+    scan = [{"vary": "base", "value": None, "fit": result}]
+    for name, value in _vary(args.vary, body["parameters"]):
+        try:
+            fitted = client.post(route, api="artemis", params={"view": "summary"},
+                                 json=_variant(body, name, value))
+        except Failed as exc:
+            fitted = {"error": str(exc)}
+        scan.append({"vary": name, "value": value, "fit": fitted})
+    report = {"base": result, "scan": scan}
+    return report, render_fit(result) + "\n\n" + render_scan(scan)
 
 
 def render_fit(result: dict) -> str:
@@ -652,7 +820,14 @@ def render_fit(result: dict) -> str:
              f"against {_number(stats.get('n_independent'), 1)} independent points",
              f"  k {transform['kmin']:g}-{transform['kmax']:g} (kweight "
              f"{','.join(map(str, transform['kweight']))}, dk {transform['dk']:g}), "
-             f"R {transform['rmin']:g}-{transform['rmax']:g}, fit in {transform['fitspace']}", ""]
+             f"R {transform['rmin']:g}-{transform['rmax']:g}, fit in {transform['fitspace']}"]
+    if sources := result.get("transform_from"):
+        by_source: dict[str, list[str]] = {}
+        for key in ("kmin", "kmax", "dk", "kweight", "rmin", "rmax"):
+            by_source.setdefault(sources.get(key, "the fit's default"), []).append(key)
+        lines.append("  " + "; ".join(f"{', '.join(keys)} from {source}"
+                                      for source, keys in by_source.items()))
+    lines.append("")
     rows = [[row["name"], row["kind"], _number(row["value"], 4),
              "-" if row.get("stderr") is None else _number(row["stderr"], 4),
              _number(row["initial"], 4), "AT " + row["at_bound"].upper() if row.get("at_bound") else ""]
@@ -669,7 +844,44 @@ def render_fit(result: dict) -> str:
             f"{row['left']}/{row['right']} {row['value']:+.2f}" for row in correlations[:6]))
     for warning in result.get("warnings") or ():
         lines.append(f"  WARNING: {warning}")
+    for concern in result.get("concerns") or ():
+        lines.append(f"  CONCERN: {concern}")
     lines.append(result["note"])
+    return "\n".join(lines)
+
+
+def render_scan(scan: list[dict]) -> str:
+    """One row per variant: the first path's distance and disorder, and the fit's quality."""
+    rows, distances = [], {}
+    for entry in scan:
+        fit = entry["fit"]
+        label = "base" if entry["vary"] == "base" else f"{entry['vary']}={json.dumps(entry['value'])}"
+        if "error" in fit:
+            rows.append([label, "refused", "", "", "", "", fit["error"][:60]])
+            continue
+        first = fit["paths"][0] if fit.get("paths") else {}
+        values = {row["name"]: row for row in fit["parameters"]}
+        e0 = values.get("del_e0", {}).get("value", first.get("e0"))
+        if first.get("r") is not None:
+            distances.setdefault(entry["vary"], []).append(first["r"])
+        count = len(fit.get("concerns") or ())
+        rows.append([label, _number(first.get("r"), 4), _number(first.get("sigma2"), 5),
+                     _number(first.get("s02"), 3), _number(e0, 2),
+                     _number(fit["statistics"].get("r_factor"), 4),
+                     f"{count} concern{'s' if count > 1 else ''}" if count else ""])
+    first_path = next((entry["fit"]["paths"][0] for entry in scan if entry["fit"].get("paths")), {})
+    lines = [f"scan, first path {first_path.get('label', '?')} ({first_path.get('scatterers', '?')}):",
+             _table(rows, ["VARIANT", "R", "SIGMA2", "S02", "E0", "R-FACTOR", ""])]
+    base = distances.pop("base", [])
+    for key, values in distances.items():
+        values = base + values
+        lines.append(f"  varying {key}: r spans {min(values):.4f}-{max(values):.4f} "
+                     f"({max(values) - min(values):.4f}) over {len(values)} fits, base included")
+    if distances:
+        lines.append("  A spread is how far that choice moves the distance, which the stderr of "
+                     "any one fit leaves out. Weigh each row by its R-factor: a held parameter "
+                     "that makes the fit worse is a bound on the error, not a second answer. "
+                     "Run `fit` again without --vary for the concerns behind any row.")
     return "\n".join(lines)
 
 
@@ -855,11 +1067,20 @@ def build_parser() -> argparse.ArgumentParser:
     fit.add_argument("--path", action="append", default=[], metavar="FEFF.dat",
                      help="a FEFF path file to add; repeat for several")
     fit.add_argument("-p", "--param", action="append", default=[], metavar="NAME=VALUE",
-                     help="start a guess parameter at VALUE")
+                     help="start a guess parameter at VALUE. Without --example the model is "
+                          "amp (S0^2, 1, 0-2), del_e0 (eV, 0, -30-30), del_r (A, 0, -0.2-0.2) and "
+                          "sig2 (A^2, 0.008, 0-0.05), shared by every path")
     fit.add_argument("--fix", action="append", default=[], metavar="NAME=VALUE",
                      help="hold a parameter at VALUE instead of fitting it")
     fit.add_argument("-t", "--transform", action="append", default=[], metavar="KEY=VALUE",
-                     help="kmin, kmax, kweight, dk, rmin, rmax, fitspace, window")
+                     help="kmin, kmax, kweight, dk, rmin, rmax, fitspace, window. Once the "
+                          "group's kmax has been set, unset kmin, kmax and dk come from the group "
+                          "(kmax cut to FEFF's 20); otherwise from the fit's defaults: k 3-12, kweight 0,1,2,3, dk 2, "
+                          "R 1-3 (rmax follows --path-radius), fitspace r. kweight=2 or 1,2,3")
+    fit.add_argument("--vary", action="append", default=[], metavar="KEY=V1,V2",
+                     help="refit once per value, from the same FEFF paths, and tabulate how the "
+                          "first path's distance moves: a transform key (kmax=14,16,18) or a "
+                          "parameter to hold at each value (del_e0=3,6,9). Repeat for several")
 
     structures = sub.add_parser("structures", help="search the bundled crystal structures for `fit --structure`")
     structures.add_argument("query", nargs="*", help="mineral, formula or words from the title")

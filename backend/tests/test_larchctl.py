@@ -77,7 +77,10 @@ def test_a_whole_label_wins_over_the_labels_that_contain_it(run, project):
 
     digest = run("--project", project, "digest", "Cu foil · 300 K")
     assert digest.startswith("Cu foil · 300 K  ("), "the scan, not the group named after it"
-    assert "matches several groups" in run("--project", project, "digest", "300 K", expect=1)
+    # So does a whole part of one, between the "·"s: the run-5 merge was named
+    # "... of 10 K, 50 K, 300 K", and "300 K" stopped finding the scan.
+    assert run("--project", project, "digest", "300 K").startswith("Cu foil · 300 K  (")
+    assert "matches several groups" in run("--project", project, "digest", "Cu foil", expect=1)
 
 
 def test_a_preview_reports_its_shape_instead_of_its_curves(run, project):
@@ -385,3 +388,19 @@ def test_the_summary_says_when_two_groups_are_one_measurement(run, project):
     run("--project", project, "do", "example")
     out = run("--project", project, "summary")
     assert "same data: Cu foil · 300 K = Cu foil · shared reference  (cu_rt01.xmu)" in out
+
+
+def test_a_command_says_what_it_changed_on_the_groups_it_kept(run, project):
+    """`do align` used to print "version 3 -> 4" and nothing else; the shift took another read."""
+    run("--project", project, "do", "example")
+    out = run("--project", project, "do", "assign_reference", "10 K", "50 K", "Cu foil · 300 K",
+              "-o", "reference_id=null")
+    assert "~ Cu foil · 50 K  reference_id Cu foil · shared reference->none" in out
+    preview = run("--project", project, "do", "align", "50 K", "Cu foil · 300 K",
+                  "-o", "operation=auto", "-o", "standard_id=10 K", "--preview")
+    assert "Cu foil · 300 K  -2.959" in preview and "Nothing was saved" in preview
+    assert len(preview) < 1500
+    out = run("--project", project, "do", "align", "50 K", "Cu foil · 300 K",
+              "-o", "operation=auto", "-o", "standard_id=10 K")
+    assert "~ Cu foil · 300 K  energy_shift 0.000->-2.959  edge_step 2.729->2.717" in out
+    assert "~ Cu foil · 50 K  energy_shift 0.000->-0.018\n" in out, "a fifth-figure move is not news"

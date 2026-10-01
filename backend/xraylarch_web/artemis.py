@@ -495,6 +495,13 @@ def build_artemis_router(store) -> APIRouter:
     def inspect(source: PathInput):
         return inspect_path(source)
 
+    @router.get("/capabilities")
+    def capabilities():
+        """The fit and FEFF request bodies, for a caller with no form to fill in."""
+        from .agent_fit import capabilities as describe
+
+        return describe()
+
     @router.get("/examples/cuprite")
     def example():
         return cuprite_example()

@@ -80,6 +80,12 @@ ACTIONS: dict[str, Action] = {
              "from the edge on the shifted axis and the edge step can move "
              "slightly. Send parameters with e0=null, or set_e0, afterwards if "
              "you want E0 found again on the shifted data.",
+        option_notes={
+            "operation": "'inspect' is only the preview's default: /command refuses it, so "
+                         "send 'auto' on the preview and the command alike",
+            "standard_id": "the group the others move to; it never moves itself, so leaving "
+                           "it out of group_ids or putting it in comes to the same thing",
+        },
     ),
     "background_standard": Action(
         "Link selected groups to a group used as their background standard.",
@@ -488,6 +494,7 @@ def index() -> dict:
             "/api/artemis/examples/cuprite": "a complete Cu2O fit setup to POST to fit",
             "/api/artemis/structures?q={text}&element={el}": "bundled crystal structures",
             "/api/artemis/feff/jobs": "POST {amcsd_id, absorber, site_index}; poll for FEFF paths",
+            "/api/artemis/capabilities": "the fit and FEFF bodies, with their defaults",
         },
     }
 

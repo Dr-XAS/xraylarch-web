@@ -119,3 +119,9 @@ def test_aligning_first_brings_the_members_together(http, run):
 
 def test_the_full_preview_is_left_as_the_browser_has_it(http, run):
     assert "agreement" not in preview(http, run, "full")
+
+
+def test_a_summary_preview_leaves_out_the_new_groups_starting_recipe(http, run):
+    output = preview(http, run, "summary", array="norm")
+    assert set(output["parameters"]) == {"e0", "omitted"}
+    assert len(preview(http, run, "full")["parameters"]) > 30

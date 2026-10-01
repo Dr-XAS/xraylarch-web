@@ -292,3 +292,21 @@ def test_every_read_the_index_names_is_a_route(client):
     for path in index()["reads"]:
         template = path.split("?")[0].replace("{id}", "{ident}").replace("{gid}", "{group_id}")
         assert template in routes, path
+
+
+def test_the_align_options_say_what_the_validator_cannot(client, example):
+    """A blind arm read "default 'inspect'" and sent it to /command, which refuses it;
+    another could not tell whether the standard belonged in group_ids."""
+    options = client.get("/api/athena/capabilities/align").json()["options"]
+    assert "/command refuses it" in options["operation"]
+    assert "comes to the same thing" in options["standard_id"]
+
+    example = unlinked(client, example)
+    scans = foils(example)
+    response = client.post(f"/api/athena/projects/{example['id']}/command", params={"view": "summary"}, json={
+        "version": example["version"], "action": "align", "group_ids": list(scans.values()),
+        "options": {"operation": "auto", "standard_id": scans["Cu foil · 10 K"]}})
+    assert response.status_code == 200, response.text
+    operation = response.json()["last_operation"]
+    assert operation["skipped_group_ids"] == [scans["Cu foil · 10 K"]]
+    assert len(operation["alignment"]["changes"]) == 2

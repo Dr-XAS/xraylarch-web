@@ -109,3 +109,93 @@ def test_the_cli_refuses_a_fit_it_cannot_build(cli, argv, message):
 def test_structures_lists_what_fit_can_use(cli):
     out = cli("structures", "copper", "--element", "Cu")
     assert "11145" in out and "Copper" in out
+
+
+def test_a_fit_that_does_not_describe_the_data_says_so(http, run, cli):
+    """A blind run fitted in k space, read "Fit succeeded", and had an R-factor of 0.37."""
+    cli("do", "parameters", FOILS[0], "-o", "kmax=18")
+    good = json.loads(cli("--json", "fit", FOILS[0], "--structure", "11145"))
+    assert good["statistics"]["r_factor"] < 0.01 and good["concerns"] == []
+    # The bundled Cu2O setup is a starting point, not a finished fit.
+    assert any(concern.startswith("R-factor 0.1") for concern in fit(http, run).json()["concerns"])
+    pinned = fit(http, run, sig2={"value": 0.003, "max": 0.004}).json()
+    assert any("sig2 stopped at its max bound" in concern for concern in pinned["concerns"])
+
+
+def test_the_cli_takes_the_k_range_the_group_was_given(cli):
+    """Setting the group's kmax and then fitting at the route's k 3-12 was run 5's first complaint."""
+    out = cli("fit", FOILS[0], "--structure", "11145")
+    assert "k 3-12 (kweight 0,1,2,3, dk 2)" in out, "an untouched group keeps the fit's defaults"
+    cli("do", "parameters", FOILS[0], "-o", "kmax=18")
+    out = cli("fit", FOILS[0], "--structure", "11145", "-t", "kweight=2")
+    assert "k 3-18 (kweight 2, dk 1)" in out
+    assert "kmin, kmax, dk from the group's transform; kweight from -t" in out
+
+
+def test_the_cli_cuts_the_group_kmax_to_where_feff_stops(cli):
+    cli("do", "parameters", FOILS[0], "-o", "kmax=22")
+    reply = json.loads(cli("--json", "fit", FOILS[0], "--structure", "11145"))
+    assert reply["transform"]["kmax"] == 20
+    assert reply["transform_from"]["kmax"] == "the group's, cut to where FEFF stops"
+
+
+def test_the_cli_flags_a_fit_it_should_not_quote(cli):
+    out = cli("fit", FOILS[0], "--structure", "11145", "-t", "fitspace=k")
+    assert "CONCERN: R-factor" in out
+
+
+def test_the_cli_scans_a_range_from_one_feff_calculation(cli, http, run):
+    out = cli("fit", FOILS[0], "--structure", "11145", "--vary", "kmax=10,11", "--vary", "del_e0=2")
+    assert "kmax=10" in out and "kmax=11" in out and "del_e0=2" in out
+    assert "varying kmax: r spans" in out and "varying del_e0: r spans" in out
+    jobs = [row for row in http.get(f"/api/athena/projects/{run['project_id']}/transcript").json()["records"]]
+    assert all(row["action"] != "fit" for row in jobs), "fits are not commands"
+
+
+@pytest.mark.parametrize("argv, message", [
+    (("--vary", "kmax"), "--vary looks like key=v1,v2"),
+    (("--vary", "nope=1,2"), "--vary takes a transform key"),
+    (("-t", "kweight=two"), "kweight needs integers"),
+])
+def test_the_cli_refuses_a_scan_it_cannot_run(cli, argv, message):
+    assert message in cli("fit", "Cu2O", "--example", "cuprite", *argv, expect=1)
+
+
+def test_capabilities_describe_the_bodies_the_blind_arms_had_to_guess(http):
+    response = http.get("/api/artemis/capabilities")
+    assert response.status_code == 200 and len(response.content) < 6000
+    described = response.json()
+    assert "default [0, 1, 2, 3]" in described["fit"]["transform"]["kweight"]
+    assert "ge 1" in described["feff_job"]["body"]["site_index"]
+    assert any("counts from 1" in note for note in described["feff_job"]["notes"])
+    # The bundled example is the one complete body; it must fit the description.
+    example = http.get("/api/artemis/examples/cuprite").json()
+    assert {key for row in example["parameters"] for key in row} <= set(described["fit"]["parameter"])
+    assert set(example["transform"]) <= set(described["fit"]["transform"])
+
+
+def test_a_refused_field_says_what_it_wanted(http):
+    response = http.post("/api/artemis/feff/jobs", json={
+        "amcsd_id": 11145, "absorber": "Cu", "site_index": 0, "path_radius": 3, "cluster_radius": 5})
+    assert response.status_code == 422
+    error = response.json()["error"]
+    assert error["fields"] == ["site_index"]
+    assert "site_index: Input should be greater than or equal to 1" in error["message"]
+
+
+def test_a_feff_job_can_be_polled_without_its_files(http):
+    import time
+
+    job = http.post("/api/artemis/feff/jobs", json={
+        "amcsd_id": 11145, "absorber": "Cu", "site_index": 1, "path_radius": 3, "cluster_radius": 5}).json()
+    deadline = time.monotonic() + 60
+    while job["status"] in ("queued", "running") and time.monotonic() < deadline:
+        time.sleep(0.2)
+        job = http.get(f"/api/artemis/feff/jobs/{job['id']}", params={"view": "summary"}).json()
+    assert job["status"] == "complete"
+    summary = http.get(f"/api/artemis/feff/jobs/{job['id']}", params={"view": "summary"})
+    full = http.get(f"/api/artemis/feff/jobs/{job['id']}")
+    assert len(summary.content) < len(full.content) / 10
+    first = summary.json()["paths"][0]
+    assert (first["scatterers"], first["degen"], first["kmax"]) == ("Cu-Cu", 12, 20)
+    assert "content" not in first and "content" in full.json()["paths"][0]

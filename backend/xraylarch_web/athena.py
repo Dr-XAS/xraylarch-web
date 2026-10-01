@@ -4801,6 +4801,14 @@ def build_athena_router(
                 for output in result.get("outputs") or ():
                     if agreement := merge_agreement(output.get("result") or {}):
                         output["agreement"] = agreement
+                    # Forty-odd starting values, nearly all defaults, were the
+                    # longest block left in a summary preview; a blind arm had
+                    # to filter them out to find the agreement beneath.
+                    if isinstance(parameters := output.get("parameters"), dict):
+                        output["parameters"] = {
+                            "e0": parameters.get("e0"),
+                            "omitted": "the rest of the new group's starting recipe; "
+                                       "?view=parameters shows it once merged"}
             return result
         return previewed(ident, request, call, view)
 

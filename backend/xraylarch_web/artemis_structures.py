@@ -532,8 +532,14 @@ def build_structures_router(store):
         return jobs.start(request)
 
     @router.get("/feff/jobs/{ident}")
-    def status(ident: str):
-        return jobs.get(ident)
+    def status(ident: str, view: Literal["full", "summary"] = Query(default="full")):
+        """A job's state. `?view=summary` leaves out the CIF, the log and the path files."""
+        record = jobs.get(ident)
+        if view == "summary":
+            from .agent_fit import feff_job_summary
+
+            return feff_job_summary(record)
+        return record
 
     from .artemis_attachments import build_attachments_router
     router.include_router(build_attachments_router(store))

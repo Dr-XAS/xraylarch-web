@@ -531,3 +531,94 @@ Friction from this run, fixed in `bbfc52e6d` and `c0d15d193`:
 - **The truncate note did not say that interval bounds are inclusive**, or that a bound
   outside the data is refused. It now says both.
 
+
+## Fifth run, 2026-10-01
+
+Six arms: T5, the new distance task, on both interfaces, and T2 and T3 again to check
+the fourth run's fixes. Each arm was told to Read AGENTS.md from disk rather than trust
+the cached attachment, so this is the first run that saw the compare and fit sections.
+
+| arm | task | result | requests | 422s | wire bytes | tool calls | end context |
+|---|---|---|---|---|---|---|---|
+| CLI | T5 | pass, 2.547 ± 0.005 Å | 109 | 3 | 755,252 | 8 | 41,783 |
+| HTTP | T5 | pass, 2.548 ± 0.01 Å | 33 | 10 | 118,950 | 11 | 49,340 |
+| CLI | T2 | pass | 37 | 0 | 122,294 | 12 | 45,556 |
+| HTTP | T2 | pass | 15 | 0 | 50,077 | 12 | 47,839 |
+| CLI | T3 | pass, kmax 18 | 20 | 0 | 98,077 | 8 | 35,374 |
+| HTTP | T3 | pass, kmax 18 | 12 | 0 | 80,436 | 10 | 43,278 |
+
+No command was rejected in any arm. The 422s are fit and FEFF bodies refused by the
+Artemis validators, which the transcript does not record.
+
+**Both T5 arms got the distance, and both said how far to trust it.** Each fitted the
+first shell of FEFF run on fcc copper and landed within 0.001 Å of the other. Each then
+went past the stderr. The HTTP arm refitted eleven times over kmax, kmin, R window, k
+weight and a second structure, held del_e0 either side of its best value, and put the
+uncertainty in the 0.86 del_e0/del_r correlation rather than in the 0.002 Å stderr. It
+also checked the result against copper's lattice constant. Neither quoted the 2.30 Å
+peak.
+
+**Context rose by 9–13 K tokens per arm, and AGENTS.md is the likeliest cause.** Against
+the fourth run, the T2 arms take about the same requests, wire bytes and tool calls,
+and finish about 10 K tokens higher. Each arm still received the stale attachment, then
+Read the current file on top of it: about 16 KB, some 4 K tokens, with line numbers
+added. That accounts for under half of the rise; the rest I cannot attribute from these
+numbers. Either way the guide is now a cost every arm pays before it starts. At 313
+lines after this run's additions, it is the next thing to watch.
+
+**Both T3 arms fitted a distance they were not asked for.** T3 asks only for a better
+transform range. Having read "the peaks are not bond lengths", both arms ran FEFF and a
+fit and reported 2.547–2.549 Å. That is correct and costs about 50 KB of wire. Whether
+it is welcome depends on the user.
+
+**The CLI T5 arm's 755 KB is FEFF, run twenty times.** Each `larchctl fit --structure`
+reran FEFF and polled a 20 KB status reply, and the arm ran twenty fits to test the
+ranges. None of that reached its context, since the CLI printed only tables, but it is
+server work and wall time.
+
+Friction from this run, fixed after it:
+
+- **A refused field did not say why.** `site_index: 0` came back as "invalid fields:
+  site_index", and both HTTP T5 arms found by trial that it counts from 1. Every 422
+  now carries each field's constraint in its message: "site_index: Input should be
+  greater than or equal to 1".
+- **`GET /api/artemis/capabilities` was a 404**, so the HTTP arms rebuilt the fit body
+  from the Cuprite example: which path fields are needed, which parameter kinds exist,
+  whether `kweight` is a list. It now describes the fit and FEFF bodies from their
+  validators, with defaults, bounds, and the traps in notes.
+- **The CLI fit ignored the group's kmax** and fitted k 3–12 after the arm had just set
+  18. It now takes the group's k window once its kmax has been set, cuts it to FEFF's
+  k 20, and prints where each range came from.
+- **`-t kweight=2` was refused**, because the route takes a list. The CLI wraps it, and
+  takes `1,2,3`.
+- **A fit in k space reported "Fit succeeded" at an R-factor of 0.37.** The fit summary
+  now carries `concerns`: R-factor above 0.05, more variables than independent points,
+  a parameter at its bound, a correlation above 0.9.
+- **Testing the ranges took one invocation, and one FEFF run, per fit.** `larchctl fit
+  --vary kmax=14,16,18 --vary del_e0=3,9` runs FEFF once and tabulates r, sigma2, S0²,
+  E0 and R-factor per variant, with the spread of r for each key.
+- **Polling a FEFF job read 20 KB per poll**, half of it the CIF and the FEFF input.
+  `GET .../feff/jobs/{job}?view=summary` answers in under 1 KB with the status and each
+  path's scatterers, degeneracy and reff; `larchctl` polls with it and reads the full
+  reply once.
+- **`fit --help` did not list the default guesses.** It does now, with their bounds,
+  and so do the defaults of `-t`.
+- **`do align` printed "version 3 -> 4" and nothing else.** A command now prints each
+  field it moved on a group it kept (`~ Cu foil · 300 K  energy_shift 0.000->-2.959
+  edge_step 2.729->2.717`), with skip reasons, processing errors and warnings by group
+  label. Align previews print as a table.
+- **"300 K" stopped resolving once a merge was labelled "… 10 K, 50 K, 300 K …".** A
+  whole part of a label between its `·`s now wins over a substring.
+- **`describe align` read "default 'inspect'"**, which `/command` refuses, and did not
+  say whether the standard belongs in `group_ids`. Both options now say.
+- **A summary merge preview still carried the new group's forty starting parameters**,
+  the longest block left in it. Under `?view=summary` it now keeps E0 alone.
+- **AGENTS.md did not say whether to merge `mu` or `norm`** when edge steps differ, that
+  unlinking drops the merge's reference channel, how `-o` values are parsed, or that the
+  original edge steps should be read before aligning. It says all four.
+
+Not fixed: `structures` lists no cell or temperature, so the CLI T5 arm picked a
+high-temperature cell without knowing (the fit's deltar absorbs it). A fit body still
+carries every path file's text rather than naming a FEFF job's paths, which costs an
+HTTP arm nothing in context when it scripts the request, but is a round trip of the
+same files.
