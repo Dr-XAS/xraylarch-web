@@ -112,6 +112,17 @@ def parse_option(text: str) -> tuple[str, Any]:
         return name, value
 
 
+def _value(value) -> str:
+    if value is None:
+        return "auto"
+    return f"{value:.3f}" if isinstance(value, float) else str(value)
+
+
+# Options that name a group. They take labels the way positional groups do,
+# because a caller reading a summary has labels in front of it, not ids.
+GROUP_OPTIONS = ("standard_id", "reference_id", "background_standard_id")
+
+
 def resolve_group(summary: dict, token: str) -> str:
     """Accept a group id or enough of its label to be unambiguous.
 
@@ -389,6 +400,13 @@ def render_result(project: dict, before: dict) -> str:
             lines.append(f"      EXCLUDED {left_out['label']}: {left_out['reason']}")
     for removed in sorted(was - set(now)):
         lines.append(f"  - {removed}")
+    # A parameters command changes no group list, so without this the reply is
+    # just the version, and whether Larch honoured the value takes another read.
+    for group in project.get("applied") or ():
+        values = "  ".join(f"{key} {_value(entry['requested'])}->{_value(entry['effective'])}"
+                           for key, entry in group["values"].items())
+        lines.append(f"  {group['label']}  {values}"
+                     + (f"   ERROR: {group['processing_error']}" if group["processing_error"] else ""))
     if skipped := operation.get("skipped_group_ids"):
         lines.append(f"  skipped {len(skipped)}: {', '.join(skipped)}")
     for reason in operation.get("skipped_reasons") or ():
@@ -493,6 +511,9 @@ def command_do(client, args):
         "group_ids": [resolve_group(summary, token) for token in args.groups],
         "options": dict(parse_option(text) for text in args.option),
     }
+    for key in GROUP_OPTIONS:
+        if isinstance(body["options"].get(key), str):
+            body["options"][key] = resolve_group(summary, body["options"][key])
     # The server does the eliding. Doing it here instead meant receiving the
     # whole project after every command, 500 KB to 1 MB on the copper example,
     # in order to print a few lines about it.
@@ -602,7 +623,8 @@ def build_parser() -> argparse.ArgumentParser:
     do.add_argument("--key", metavar="TOKEN",
                     help="idempotency key; a retry under the same key is answered, not rerun")
     do.add_argument("--preview", action="store_true",
-                    help="use the action's preview endpoint and save nothing")
+                    help="use the action's preview endpoint and save nothing; prints "
+                         "the preview as JSON with its curves elided")
     return parser
 
 

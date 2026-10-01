@@ -326,3 +326,24 @@ def test_a_merge_names_what_it_left_out(run, project):
 
     summary = run("--project", project, "summary")
     assert "merge of 2,1 EXCLUDED" in summary
+
+
+def test_an_option_naming_a_group_takes_a_label(run, project):
+    """Positional groups took labels and standard_id did not, so the same label
+    worked in one place and came back as "no longer exists" in the other."""
+    run("--project", project, "do", "example")
+    run("--project", project, "do", "assign_reference", "10 K", "50 K", "300 K",
+        "-o", "reference_id=null")
+    out = run("--project", project, "do", "align", "300 K", "-o", "standard_id=10 K",
+              "-o", "operation=auto")
+    assert "version" in out
+    row = [line for line in run("--project", project, "summary").splitlines() if "300 K" in line][0]
+    assert "-2.9" in row
+
+
+def test_a_parameters_command_prints_what_larch_used(run, project):
+    run("--project", project, "do", "example")
+    out = run("--project", project, "do", "parameters", "10 K", "-o", "kmax=18", "-o", "e0=null")
+    line = [line for line in out.splitlines() if "10 K" in line][0]
+    assert "kmax 18.000->18.000" in line
+    assert "e0 auto->89" in line, "null is Larch's choice, and the effective side names it"

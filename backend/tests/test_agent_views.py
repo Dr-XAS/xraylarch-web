@@ -221,3 +221,50 @@ def test_an_oversized_operation_detail_is_described_not_sent(client, example):
     assert operation["action"] == "example"
     marker = operation["artemis_example"]
     assert marker.startswith("<") and "KB omitted" in marker and "group_id" in marker
+
+
+def test_the_summary_names_the_file_each_group_came_from(client, example):
+    """Two groups from one file are one measurement, which no number can say."""
+    groups = {group["label"]: group for group in view(client, example, "summary")["groups"]}
+    assert groups["Cu foil · 300 K"]["file"] == groups["Cu foil · shared reference"]["file"]
+    assert groups["Cu foil · 10 K"]["file"] != groups["Cu foil · 300 K"]["file"]
+
+
+def test_a_merge_that_kept_everything_says_so(client, example):
+    scans = [labelled(example, f"Cu foil · {t}") for t in ("10 K", "50 K", "300 K")]
+    reply = command(client, example, "merge", scans, view="summary",
+                    method="demeter-larch", exclude_short_data=False).json()
+    merged = reply["groups"][-1]
+    assert merged["derived"]["parents"] == scans
+    assert merged["derived"]["excluded"] == [], "empty, not absent: absent reads as unchecked"
+
+
+def test_a_parameters_reply_reports_what_larch_used(client, example):
+    """Requested beside effective, so the caller needs no second read to check."""
+    cold = labelled(example, "Cu foil · 10 K")
+    reply = command(client, example, "parameters", [cold], view="summary", kmax=18, e0=None).json()
+    [applied] = reply["applied"]
+    assert applied["id"] == cold and applied["processing_error"] is None
+    assert applied["values"]["kmax"] == {"requested": 18, "effective": 18.0}
+    # null hands the value back to Larch, and only the effective side says what it chose.
+    assert applied["values"]["e0"]["requested"] is None
+    assert 8970 < applied["values"]["e0"]["effective"] < 9000
+    assert set(applied["values"]) == {"kmax", "e0"}
+
+
+def test_a_full_parameters_reply_is_left_as_the_browser_has_it(client, example):
+    cold = labelled(example, "Cu foil · 10 K")
+    assert "applied" not in command(client, example, "parameters", [cold], kmax=18).json()
+
+
+def test_a_merge_preview_without_method_refuses_rather_than_previewing_something_else(client, example):
+    """Without method the command takes a plain average; the preview cannot show it.
+
+    It used to preview the weighted merge instead, which drops the 300 K scan, so
+    a caller who previewed and then sent the same body got a different merge.
+    """
+    scans = [labelled(example, f"Cu foil · {t}") for t in ("10 K", "50 K", "300 K")]
+    response = client.post(f"/api/athena/projects/{example['id']}/merge/preview", json={
+        "version": example["version"], "action": "merge", "group_ids": scans, "options": {}})
+    assert response.status_code == 400
+    assert "method='demeter-larch'" in response.json()["error"]["message"]

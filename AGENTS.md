@@ -43,7 +43,8 @@ command, and every preview.
 
 ## The loop
 
-1. `GET /api/athena/capabilities` — 36 actions, one line each, ~1,650 tokens.
+1. `GET /api/athena/capabilities` — 36 actions under `actions`, one line each,
+   ~1,650 tokens. `undo` and `redo` are among them.
 2. `GET /api/athena/capabilities/{action}` — one action in full: its options with types,
    bounds and defaults, its group selection, its preview endpoint, its traps.
 3. `GET /api/athena/projects/{id}?view=summary` — what is there now, and the `version`.
@@ -52,7 +53,9 @@ command, and every preview.
 5. `POST /api/athena/projects/{id}/command?view=summary` with
    `{version, action, group_ids, options}`.
 6. Read the reply. Do not trust that it worked because the POST returned 200: check
-   `processing_error`, `warnings`, and on a created group, `derived`.
+   `processing_error`, `warnings`, and on a created group, `derived`. A `parameters`
+   reply also carries `applied`: for each selected group and each key you sent, the
+   value you asked for and the value Larch used.
 
 `version` must be the project's current version. A stale one is a 409 whose `recovery`
 names the version to resend with. Nearly every mutation is undoable: `action: "undo"`.
@@ -69,8 +72,9 @@ Previews are recorded as well, marked `preview: true` and carrying no version_af
 because they saved nothing. Count them out if you want the commands alone; read them
 if you want to know which bodies were already refused.
 
-It defaults to the last twenty records. `?since=<seq>` returns only what you have not
-read yet, which is how a long run stays cheap.
+It defaults to the last twenty records. `?since=<seq>` returns the records after that
+seq, not including it: pass the last seq you have read, which is how a long run stays
+cheap.
 
 If a command times out and you cannot tell whether it landed, don't resend it blind.
 The retry carries a version that is now stale, so it comes back as a 409 blaming
@@ -140,7 +144,19 @@ copper foil scans leaves out the 300 K one, which is 204 points short. The new g
 its reason, and so does `last_operation.merge.outputs[].excluded` in the command reply;
 `larchctl` prints them as `EXCLUDED`. To keep a short scan, send
 `exclude_short_data: false` or select it first. Truncating the long scans to the same
-energy range is not enough, because it does not equalise their point counts.
+energy range is not enough, because it does not equalise their point counts. Keeping
+it has a cost of its own: the merge covers only the energy range every member shares,
+so here it stops at 10134 eV where the cold scans alone run to 11362.
+
+Always send `method: "demeter-larch"` to merge. Without it the command takes an older
+plain average that excludes nothing, and the preview refuses, because it cannot show
+that average.
+
+**The same file twice is the same measurement.** Each group in the summary carries the
+`file` it was read from, and the digest carries its `citation`. In the example, "Cu
+foil · 300 K" and "Cu foil · shared reference" both come from `cu_rt01.xmu`, so the
+foils' shared reference is a copy of the 300 K scan, and the citation says the 300 K
+scan was taken at a different beamline, nine years after the other two.
 
 **Linked groups move together, so align refuses them.** In the example, the three foil
 scans all carry `reference_id` pointing at "Cu foil · shared reference", which puts them
@@ -148,7 +164,21 @@ in one family. A shift applied to one shifts them all, so align will not move a 
 that shares the standard's reference, and when nothing else is left it refuses the
 command with "The alignment standard and its linked references stay fixed." `larchctl
 summary` shows the link as `ref:<label>`. To align the scans to each other, first send
-`assign_reference` on them with `reference_id: null`.
+`assign_reference` on them with `reference_id: null`. The preview refuses linked groups
+too, so even measuring the shift needs the unlink first; it is undoable.
+
+**Alignment does not move E0.** It changes `energy_shift` and pins each moved group's E0
+at the value it had before, as native Athena does. After aligning the 300 K scan by
+−2.959 eV its E0 still reads 8980.50, about 3 eV above its edge on the shifted axis, and
+its edge step moves from 2.729 to 2.717. If you want E0 found again on the shifted data,
+send `parameters` with `e0: null` afterwards.
+
+**Signal-to-noise ratios compare windows within a group, not groups.** Each group's
+floor is measured over its own k support, so the 300 K scan reading 269 at k 3–5
+against the 10 K scan's 130 does not make it the cleaner scan. Compare where each
+group's ratios fall towards 1. The digest's `noise.recommended_kmax` is Larch's own
+estimate, measured over the current transform range and pessimistic by Larch's own
+account; on the 10 K scan it says 14.6 where the ratios say about 18.
 
 ## What you cannot get
 

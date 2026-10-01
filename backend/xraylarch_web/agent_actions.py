@@ -48,6 +48,9 @@ class Action:
     preview: str | None = None
     creates: bool = False
     note: str | None = None
+    # Appended to a model-derived option line, for what the model cannot say:
+    # chiefly that the dispatcher reads a field's presence, not its default.
+    option_notes: dict[str, str] = field(default_factory=dict)
 
 
 # Keep alphabetical. The parity test fails loudly on anything missing, but
@@ -57,7 +60,8 @@ ACTIONS: dict[str, Action] = {
         "Shift energies so selected spectra line up with a standard.",
         "one+", model="athena_alignment:AlignmentOptions",
         preview="/projects/{id}/alignment/preview",
-        note="Send method='demeter-larch' to run the real alignment. Preview "
+        note="The preview and the command take the same body; method defaults "
+             "to 'demeter-larch' on both. Preview "
              "with operation='auto': that is the only operation that fits a "
              "shift, that accepts more than one group at a time, and that "
              "reports the shift each group would take without saving it. "
@@ -70,7 +74,12 @@ ACTIONS: dict[str, Action] = {
              "reference as the standard is in its family and stays fixed, so "
              "it is skipped, and if nothing is left the command is refused. "
              "Check reference_id in ?view=summary and unlink with "
-             "assign_reference first.",
+             "assign_reference first. Alignment changes energy_shift and pins "
+             "each moved group's E0 at the value it had before the shift, as "
+             "native Athena does, so afterwards E0 reads about the shift away "
+             "from the edge on the shifted axis and the edge step can move "
+             "slightly. Send parameters with e0=null, or set_e0, afterwards if "
+             "you want E0 found again on the shifted data.",
     ),
     "background_standard": Action(
         "Link selected groups to a group used as their background standard.",
@@ -193,16 +202,26 @@ ACTIONS: dict[str, Action] = {
         "Average the selected groups into one new group.",
         "two+", model="athena_merge:MergeOptions",
         preview="/projects/{id}/merge/preview", creates=True,
-        note="Send method='demeter-larch' for the weighted merge with its "
-             "standard-deviation output. Without method this falls back to a "
-             "plain average over the array named by the array option. With "
+        note="Send method='demeter-larch'. The preview refuses a body without "
+             "it, because without method /command takes an older plain average "
+             "over the array option that excludes nothing and has no preview. "
+             "array ('mu', 'norm' or 'chi') applies with method too. "
+             "The merge is computed on the first selected group's grid, limited "
+             "to the energy range every member covers, with that range's upper "
+             "endpoint dropped; keeping a short scan in therefore cuts the merge "
+             "down to the short scan's range. A merge of array='norm' is stored "
+             "as data_type 'mu' with is_normalized false, and its edge step "
+             "reads about 1. With "
              "method, exclude_short_data defaults to true: any group more than "
              "short_data_margin (10) points shorter than the first group "
              "selected is left out, and the command still succeeds. The new "
              "group's `derived` field in ?view=summary lists the parents it "
              "really used and each excluded group with its reason; check it "
              "rather than the selection you sent. To keep a short group, send "
-             "exclude_short_data=false or select the shortest group first.",
+             "exclude_short_data=false or select the shortest group first. "
+             "derived.excluded is always present on a merge; empty means none.",
+        option_notes={"method": "send it: omitted, /command takes the plain average "
+                                "and the preview refuses"},
     ),
     "metadata": Action(
         "Edit a group's label, notes, and presentation.",
@@ -229,8 +248,12 @@ ACTIONS: dict[str, Action] = {
         "one+", model="athena_science:AthenaParameters",
         note="Send only the keys you want to change. This is the main way to "
              "drive normalization, background removal and the transforms. "
-             "Larch may clip a requested range to the measured support; compare "
-             "requested against effective in the group digest to see whether it did.",
+             "On a key whose type includes null, null hands the value back to "
+             "Larch's automatic choice; kmax null, for instance, means kmax from "
+             "the measured support. Keys without null in their type need a value. "
+             "Larch may clip a requested range to the measured support. With "
+             "?view=summary the reply's `applied` lists, for each selected group "
+             "and each key sent, the requested and the effective value.",
     ),
     "project": Action(
         "Rename the project or replace its journal.",
@@ -298,6 +321,8 @@ ACTIONS: dict[str, Action] = {
         preview="/projects/{id}/smooth/preview", creates=True,
         note="Send method to get the full smoothing pipeline. Without method "
              "this is the plain three-point form taking only window and order.",
+        option_notes={"method": "omitted, /command takes the plain three-point "
+                                "form and the preview refuses"},
     ),
     "sum": Action("Add the selected groups together into one new group.", "two+",
                   creates=True,
@@ -451,6 +476,8 @@ def detail(name: str) -> dict | None:
     if entry is None:
         return None
     options = _model_options(entry.model) if entry.model else dict(entry.options)
+    for key, extra in entry.option_notes.items():
+        options[key] = f"{options[key]} — {extra}"
     result = {
         "action": name, "summary": entry.summary,
         "selection": entry.selection,

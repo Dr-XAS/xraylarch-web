@@ -43,7 +43,7 @@ from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
 from .athena_export import DataExport
 from .athena_context import ContextReport, ContextPlot
-from .agent_views import preview_view, project_view
+from .agent_views import applied_parameters, preview_view, project_view
 from .agent_transcript import Transcript, entry, preview_entry, replay_entry, replayed
 from .errors import WebInputError
 from .parsing import parse_upload
@@ -2337,6 +2337,12 @@ class AthenaStore:
             options=choice.model_dump(exclude_none=True),requested_options=request.options,outputs=rows,notes=notes)
 
     def preview_merge(self, ident, request: Command):
+        # Without method, /command takes the older plain average, which this
+        # preview cannot show. Previewing the weighted merge instead would
+        # report exclusions the command then never makes.
+        if 'method' not in request.options:
+            fail("Send method='demeter-larch' to preview a merge. Without method, "
+                 "/command takes a plain average over the array option, which has no preview.")
         project=self.load(ident);self.check(project,request.version)
         _,preview=self._merge_results(project,request)
         self.check(self.load(ident),request.version)
@@ -2411,7 +2417,9 @@ class AthenaStore:
             family = self.reference_family(project, ident)
             members = {g['id'] for g in family}
             reason = None
-            if members & fixed: reason = 'The alignment standard and its linked references stay fixed.'
+            if members & fixed: reason = ('The alignment standard and its linked references stay fixed. '
+                                          'Groups that share a reference move together, so to align them to each '
+                                          'other, unlink them first with assign_reference and reference_id null.')
             elif members & handled: reason = 'This linked reference family is already included.'
             elif choice.operation != 'inspect' and (any(g['frozen'] for g in family) or self._frozen_background_dependents(project, members)):
                 reason = 'Unfreeze the group, its linked references and background dependents before alignment.'
@@ -3233,7 +3241,10 @@ class AthenaStore:
                     p['groups'] = calibrated['groups']
                     operation_details = {'calibration': {key: preview[key] for key in
                         ('group_id', 'options', 'energy_shift', 'shift_delta', 'actual_reference', 'changes', 'processing_errors')}}
-                elif action == 'align' and 'method' in options:
+                # The older path needs reference_id. Without it, a body the preview
+                # accepted would fail here as a missing group, so it goes to the
+                # same model the preview validated.
+                elif action == 'align' and ('method' in options or 'reference_id' not in options):
                     aligned, preview = self._alignment_results(p, request)
                     if preview['options']['operation'] == 'inspect': fail('Preview an automatic or manual alignment before saving.')
                     p['groups'] = aligned['groups']
@@ -4618,8 +4629,13 @@ def build_athena_router(
         # had, response_mode included. Any other view is a projection taken
         # after the save, so it changes what is sent and never what is stored.
         def respond(saved):
-            return (_command_response(saved, request) if view == "full"
-                    else project_view(saved, view))
+            if view == "full":
+                return _command_response(saved, request)
+            projected = project_view(saved, view)
+            if request.action == "parameters" and request.options:
+                projected["applied"] = applied_parameters(
+                    saved, request.group_ids, sorted(request.options))
+            return projected
         project = store.load(ident)
         if project.get("integration") is not True:
             return respond(guarded(lambda: store.command(

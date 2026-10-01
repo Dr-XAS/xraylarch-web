@@ -91,10 +91,12 @@ def _derivation(group) -> dict | None:
         return None
     parents = source.get("parents") or ([source["parent"]] if source.get("parent") else [])
     derived = {"operation": operation, "parents": parents}
-    if excluded := (source.get("merge") or {}).get("excluded"):
+    if operation == "merge":
+        # Always present on a merge, so an empty list means nothing was left
+        # out rather than that nobody looked.
         derived["excluded"] = [
             {"id": item["group_id"], "label": item["label"], "reason": item["reason"]}
-            for item in excluded
+            for item in (source.get("merge") or {}).get("excluded") or ()
         ]
     return derived
 
@@ -119,6 +121,9 @@ def group_summary(group: dict) -> dict:
         "id": group["id"],
         "label": group["label"],
         "data_type": group["data_type"],
+        # Two groups read from one file are the same measurement, which no
+        # number in this summary can say on its own.
+        "file": group["source"].get("filename"),
         "is_normalized": group["is_normalized"],
         "is_difference": group["is_difference"],
         "marked": group["marked"],
@@ -211,6 +216,24 @@ def project_parameters(project: dict) -> dict:
 
 
 VIEWS = {"summary": project_summary, "parameters": project_parameters}
+
+
+def applied_parameters(project: dict, group_ids: list[str], keys) -> list[dict]:
+    """What a parameters command asked for and what processing then used.
+
+    Without this the reply to a parameters command says only that the version
+    moved, and the one thing the caller wants to know, whether Larch honoured
+    the value or clipped it, costs another read.
+    """
+    wanted = set(group_ids)
+    return [
+        {"id": group["id"], "label": group["label"],
+         "processing_error": group["processing_error"],
+         "values": {key: {"requested": group["parameters"].get(key),
+                          "effective": ((group.get("result") or {}).get("effective") or {}).get(key)}
+                    for key in keys}}
+        for group in project["groups"] if group["id"] in wanted
+    ]
 
 
 def project_view(project: dict, view: str) -> dict:
