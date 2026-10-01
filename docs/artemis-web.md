@@ -111,6 +111,33 @@ display settings when switching views. Expansions beyond the 1,500-atom preview
 limit show a message to reduce the repeats. These controls do not modify the
 saved CIF or FEFF parameters.
 
+Click **Coordination numbers** in the viewer heading to calculate coordination
+shells for the current **Local cluster**. Set **Distance cutoff** (default 5 Å)
+and **Shell tolerance** (default 0.01 Å), then **Calculate** to update results.
+The table lists each ordered element pair, shell mean distance, average CN,
+CN of the selected center atom, and an expandable CN distribution. A dash in
+Center CN means that the pair's first element differs from the selected center.
+Hover over a mean distance to see the shell's minimum and maximum distances.
+
+The calculation uses every atom in the finite cluster, including hidden
+elements, and excludes neighbors outside its boundary. Average CN includes
+all atoms of the pair's first element, including those with no neighbors in
+that shell. Surface atoms therefore contribute lower CNs than bulk atoms.
+Distances must be strictly below the cutoff; consecutive sorted distances are
+grouped in the same shell when their gap is no larger than the tolerance.
+Changing the radius, center, CIF, or calculation settings clears the displayed
+results until **Calculate** is clicked again. Unit-cell views, truncated
+previews, and disordered or partially occupied structures cannot be calculated.
+
+The shell algorithm is adapted from Juanjuan Huang and Shelly D. Kelly's
+[`neighbor`](https://github.com/Cathyhjj/neighbor) `get_CN` / `get_CN_all` methods
+(Copyright © 2024, UChicago Argonne, LLC). It runs locally in the browser.
+Distributions use the same shell membership as the average CN, matching
+`neighbor`'s default gap-based shell calculation at commit `2771716f9b901f2246d55bb7fa67e4c3194a0e04`.
+The viewer exposes finite clusters with gap-based shells; `neighbor`'s periodic
+boundary modes and explicit shell-edge settings are not exposed here.
+The calculation does not modify the saved CIF or FEFF parameters.
+
 Select the absorber, absorption edge, and crystallographic absorber site before
 generating FEFF input. Sites are the symmetry-distinct choices returned by
 Larixite; their native indices are one-based across all unique sites in the

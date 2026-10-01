@@ -1,6 +1,7 @@
 .viewer { margin: 8px 0 12px; min-width: 0; container-type: inline-size; border: 1px solid var(--ath-line); border-radius: 7px; overflow: hidden; background: var(--ath-popover); }
 .docked { min-width: 0; container-type: inline-size; }
-.heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--ath-line); }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ath-line); }
+.headerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .viewer .heading h4 { margin: 0; font-size: var(--text-body); font-weight: 500; }
 .canvas { position: relative; height: 310px; background: var(--ath-plot-bg, var(--ath-popover)); }
 .surface { position: relative; width: 100%; height: 100%; touch-action: none; }

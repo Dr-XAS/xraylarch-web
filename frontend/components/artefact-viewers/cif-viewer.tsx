@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS, type CifVector } from "@/lib/cif-viewer"
@@ -13,6 +13,7 @@ import { AtomLegend } from "../atom-legend"
 import { LocalStructureControls } from "../local-structure-controls"
 import { StructureDisplayLegend } from "../structure-display-legend"
 import { ViewerPanel } from "./viewer-panel"
+import { ClusterCoordination } from "./cluster-coordination"
 import styles from "./cif-viewer.module.css"
 
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z })
@@ -62,17 +63,26 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
   const [hidden, setHidden] = useState<string[]>([])
   const [bonds, setBonds] = useState(true)
   const [cell, setCell] = useState(false)
+  const [coordinationPanel, setCoordinationPanel] = useState<"unopened" | "open" | "closed">("unopened")
+  const coordinationId = useId()
   const centerSites = useMemo(() => structure.sites.filter((site, index, all) => all.findIndex(other => other.index === site.index) === index), [structure.sites])
+  const geometryMode = mode === "cell" ? "cell" : "cluster"
+  const baseGeometry = useMemo(() => buildCifGeometry(structure, { siteIndex: center, radius, mode: geometryMode, cellRepeats }),
+    [structure, center, radius, geometryMode, cellRepeats])
   const geometry = useMemo(() => {
-    const base = buildCifGeometry(structure, { siteIndex: center, radius, mode: mode === "cell" ? "cell" : "cluster", cellRepeats })
-    if (mode !== "shell") return base
-    if (!shell) return { ...base, atoms: [] }
-    const absorber = base.atoms.find(atom => atom.isAbsorber)
-    return absorber ? { ...base, atoms: [absorber, ...shellAtoms], truncated: false, warnings: [] } : base
-  }, [structure, center, radius, mode, cellRepeats, shell, shellAtoms])
+    // An asynchronously loaded CrystalNN overlay does not change the cluster
+    // being analyzed, so keep its geometry and calculated CNs intact.
+    if (mode !== "shell") return baseGeometry
+    if (!shell) return { ...baseGeometry, atoms: [] }
+    const absorber = baseGeometry.atoms.find(atom => atom.isAbsorber)
+    return absorber ? { ...baseGeometry, atoms: [absorber, ...shellAtoms], truncated: false, warnings: [] } : baseGeometry
+  }, [baseGeometry, mode, shell, shellAtoms])
   const elements = useMemo(() => [...new Set(geometry.atoms.map(atom => atom.element))].sort(), [geometry])
   const visibleCount = geometry.atoms.filter(atom => !hidden.includes(atom.element)).length
-
+  const coordinationUnavailable = mode !== "cluster" ? "Switch to Local cluster to calculate coordination numbers."
+    : geometry.truncated ? "Reduce the display radius to calculate coordination numbers for a complete cluster."
+    : !geometry.atoms.length ? "Coordination numbers require a complete cluster."
+    : !structure.ordered || structure.sites.some(site => Math.abs(site.occupancy - 1) > 1e-6) ? "Coordination numbers require fully occupied, ordered sites." : ""
 
   useEffect(() => {
     const host = container.current
@@ -149,6 +159,11 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
   }, [ready, geometry, elements, hidden, bonds, cell, mode, shell, shellAtoms, highlightShell])
 
   const resetButton = <button type="button" disabled={!ready || !!error} onClick={() => { viewer.current?.zoomTo(); if (mode === "shell") viewer.current?.zoom(1.8); viewer.current?.render() }}>Reset view</button>
+  const actions = <div className={styles.headerActions}>
+    <button type="button" aria-expanded={coordinationPanel === "open"} aria-controls={coordinationId}
+      onClick={() => setCoordinationPanel(previous => previous === "open" ? "closed" : "open")}>Coordination numbers</button>
+    {resetButton}
+  </div>
   const content = <>
     {structureControls}
     <div className={styles.canvas}>
@@ -184,12 +199,14 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
       {shell && (highlightShell || mode === "shell") && <p className={styles.help}>Amber: absorber · cyan: CrystalNN neighbors. {mode !== "shell" && "Use CrystalNN first shell view to show all periodic neighbors."}</p>}
     </>}
     {geometry.warnings.map(warning => <p className={styles.warning} key={warning}>{warning}</p>)}
-
+    {coordinationPanel !== "unopened" && <div id={coordinationId} hidden={coordinationPanel !== "open"}>
+      <ClusterCoordination geometry={geometry} unavailableReason={coordinationUnavailable} />
+    </div>}
   </>
   return collapsible
-    ? <ViewerPanel title="CIF structure viewer" viewerId="cif" actions={resetButton} className={styles.docked}>{content}</ViewerPanel>
+    ? <ViewerPanel title="CIF structure viewer" viewerId="cif" actions={actions} className={styles.docked}>{content}</ViewerPanel>
     : <section className={styles.viewer} aria-label="CIF structure viewer">
-      <div className={styles.heading}><h4>CIF structure viewer</h4>{resetButton}</div>
+      <div className={styles.heading}><h4>CIF structure viewer</h4>{actions}</div>
       {content}
     </section>
 }
