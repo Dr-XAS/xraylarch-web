@@ -5,10 +5,11 @@ import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { CifViewer } from "./cif-viewer"
 import { ViewerPanel } from "./viewer-panel"
 
-export function ProjectCifViewer({ attachments = [], selectedId, onSelect }: {
+export function ProjectCifViewer({ attachments = [], selectedId, selectedSite, onSelect }: {
   attachments?: ArtemisStructureAttachment[]
   selectedId?: string
-  onSelect: (attachmentId: string) => void
+  selectedSite?: number
+  onSelect: (attachmentId: string, siteIndex?: number) => void
 }) {
   const selected = attachments.find(attachment => attachment.id === selectedId) ?? attachments[0]
   // Attachments are immutable, content-addressed snapshots. Ordinary project
@@ -19,7 +20,7 @@ export function ProjectCifViewer({ attachments = [], selectedId, onSelect }: {
   </ViewerPanel>
 
   return <div className="ath-project-cif-viewer">
-    <CifViewer key={`${selected.id}:${selected.sha256}`} structure={structure} collapsible structureControls={
+    <CifViewer key={`${selected.id}:${selected.sha256}`} structure={structure} selectedSite={selected.id === selectedId && structure.sites.some(site => site.index === selectedSite) ? selectedSite : undefined} onSiteChange={site => onSelect(selected.id, site)} collapsible structureControls={
       <label className="ath-cif-selection">Project CIF
         <select aria-label="Viewed CIF structure" value={selected.id} onChange={event => onSelect(event.target.value)}>
           {attachments.map(attachment => <option key={attachment.id} value={attachment.id}>

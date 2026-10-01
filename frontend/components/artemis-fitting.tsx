@@ -12,6 +12,7 @@ import {
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { parseFeffCluster } from "@/lib/feff-cluster"
+import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
 import { ArtemisStructures } from "./artemis-structures"
 import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
@@ -28,7 +29,7 @@ interface PanelProps {
   onFitResult?: (result: ArtemisFitResult | null) => void
   onPathsChange?: (paths: FeffPathSummary[], projectId?: string, groupId?: string) => void
   onProjectChange?: (project: AthenaProject) => void
-  onViewStructure?: (attachmentId: string) => void
+  onViewStructure?: (attachmentId: string, siteIndex?: number) => void
   onDirtyChange?: (groupId: string, dirty: boolean) => void
 }
 
@@ -145,6 +146,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const [busy, setBusy] = useState<"fit" | "upload" | "example" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
+  const shellPathIds = useMemo(() => shellSelection ? draft.paths.filter(path => isFirstShellPath(path.metadata, shellSelection.structure, shellSelection.shell)).map(path => path.id) : [], [draft.paths, shellSelection])
   const controller = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const modelInputRef = useRef<HTMLInputElement>(null)
@@ -403,7 +406,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
-    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} disabled={disabled} existingPaths={draft.paths}
+    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
         if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
@@ -415,6 +418,11 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       }} />
     <fieldset className={styles.section} disabled={disabled}>
       <legend>FEFF paths <span>{draft.paths.filter(path => path.enabled).length} included</span></legend>
+      {shellSelection && <div className={styles.help}>
+        <p>CrystalNN · {shellSelection.structure.mineral || shellSelection.structure.formula} · {shellSelection.shell.absorber} site {shellSelection.shell.site_index} · CN {shellSelection.shell.coordination_number}. {shellPathIds.length} first-shell path candidate{shellPathIds.length === 1 ? "" : "s"}.</p>
+        <p>Candidates match the selected shell by element and atomic position. Confirm that the paths use this CIF and absorber site.</p>
+        <button type="button" disabled={!shellPathIds.length || disabled} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: shellPathIds.includes(path.id) })) }))}>Use only first-shell candidates</button>
+      </div>}
       <div className={styles.toolbar}>
         <button type="button" onClick={() => inputRef.current?.click()}><Upload size={13} />Add feff*.dat</button>
         <button type="button" onClick={loadExample} disabled={draft.paths.length > 0 || !projectId || version === undefined || !group || !onProjectChange} title={draft.paths.length ? "Remove existing paths to load the Cu₂O example." : "Attach Cuprite AMCSD 0015851 and load four precomputed Cu K-edge FEFF paths."}>Cu₂O example</button>
@@ -428,6 +436,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           <button type="button" aria-label={`Remove path ${i + 1}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
         <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
+        {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
         <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([

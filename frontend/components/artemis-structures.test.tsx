@@ -9,6 +9,7 @@ import type { AthenaProject } from "@/lib/athena"
 import { ArtemisStructures } from "./artemis-structures"
 
 vi.mock("@/lib/artemis", () => ({ artemisApi: vi.fn() }))
+vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: () => {} }) }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
   CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} />,
 }))
@@ -108,7 +109,7 @@ describe("ArtemisStructures", () => {
     await click("Attach to project")
     expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, amcsd_id: 13088 }, expect.any(AbortSignal))
     expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "p", version: 2, artemis_structures: [attachment()] }))
-    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1")
+    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1", 3)
     expect(screen.getByRole("dialog")).toBeVisible()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", attachment().structure.cif)
@@ -159,7 +160,7 @@ describe("ArtemisStructures", () => {
     await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />) })
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     await click("Open attached Copper CIF")
-    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1")
+    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1", undefined)
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", "data_saved_snapshot")

@@ -7,6 +7,7 @@ import { CifViewer } from "./cif-viewer"
 
 const { createViewer } = vi.hoisted(() => ({ createViewer: vi.fn() }))
 vi.mock("3dmol", () => ({ createViewer }))
+vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: () => {} }) }))
 
 function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure {
   return {
