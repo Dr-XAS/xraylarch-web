@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest"
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { useState, type ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
@@ -67,6 +67,12 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute("open", "") } })
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute("open"); this.dispatchEvent(new Event("close")) } })
   api.mockImplementation(async (url, body) => {
+    if (url.startsWith("/projects/p/structures/") && url.endsWith("/remove")) {
+      const id = url.split("/").at(-2)
+      savedAttachments = savedAttachments.filter(item => item.id !== id)
+      savedVersion += 1
+      return project()
+    }
     if (url.includes("/projects/") && url.endsWith("/structures")) {
       if (body) { savedAttachments = [attachment()]; savedVersion = 2; return project() }
       return { project_id: "p", version: savedVersion, structures: savedAttachments }
@@ -80,6 +86,110 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe("ArtemisStructures", () => {
+  it("shows explicit removal beside Open and removes only that CIF without changing fit paths", async () => {
+    const other = { ...attachment(), id: "cif2", amcsd_id: 9994, structure: structure({ id: 9994, mineral: "Cuprite" }) }
+    savedAttachments = [attachment(), other]
+    const onProjectChange = vi.fn(), onAddPaths = addPathsMock()
+    await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} />) })
+    const remove = screen.getByRole("button", { name: "Remove Copper CIF from project" })
+    expect(remove).toBeVisible()
+    expect(remove).toHaveTextContent("Remove CIF")
+    expect(remove.querySelector("svg")).toBeInTheDocument()
+    expect(within(remove.closest("li")!).getByRole("button", { name: "Open attached Copper CIF" })).toBeVisible()
+    await click("Remove Copper CIF from project")
+    expect(api).toHaveBeenCalledWith("/projects/p/structures/cif1/remove", { version: 1 })
+    expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ version: 2, artemis_structures: [other] }))
+    expect(screen.queryByRole("button", { name: "Open attached Copper CIF" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Remove Cuprite CIF from project" })).toBeEnabled()
+    expect(screen.getByRole("status")).toHaveTextContent("Existing FEFF paths are kept. Undo restores the CIF.")
+    expect(onAddPaths).not.toHaveBeenCalled()
+  })
+
+  it("removes the open CIF from the dialog and clears its viewer, selected site and generated candidates", async () => {
+    const onFirstShellChange = vi.fn(), onRadialContextChange = vi.fn(), onAddPaths = addPathsMock()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={onAddPaths} onFirstShellChange={onFirstShellChange} onRadialContextChange={onRadialContextChange} />)
+    await click("Search / attach CIF")
+    await findAndSelect()
+    await generate()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeVisible()
+    await act(async () => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove Copper CIF from project" })) })
+    expect(screen.getByRole("dialog")).toBeVisible()
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.queryByRole("radio", { name: "Absorber site 3" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("checkbox", { name: "Select generated feff0001.dat" })).not.toBeInTheDocument()
+    expect(onFirstShellChange).toHaveBeenLastCalledWith(null)
+    expect(onRadialContextChange).toHaveBeenLastCalledWith(null)
+    expect(onAddPaths).not.toHaveBeenCalled()
+    expect(within(screen.getByRole("dialog")).getByRole("status")).toHaveTextContent("Undo restores the CIF")
+  })
+
+  it("retains the attachment on removal failure and allows retry from the project list", async () => {
+    savedAttachments = [attachment()]
+    await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />) })
+    api.mockRejectedValueOnce(new Error("Project changed. Refresh and retry."))
+    await click("Remove Copper CIF from project")
+    expect(screen.getByRole("alert")).toHaveTextContent("Project changed")
+    expect(screen.getByRole("button", { name: "Open attached Copper CIF" })).toBeEnabled()
+    await click("Remove Copper CIF from project")
+    expect(screen.queryByRole("button", { name: "Open attached Copper CIF" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("blocks duplicate removal and dismissal and receives a committed response after switching spectra", async () => {
+    savedAttachments = [attachment()]
+    const onProjectChange = vi.fn(), onAddPaths = addPathsMock()
+    const view = render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} />)
+    await click("Search / attach CIF")
+    await click("Use attached Copper CIF")
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    const late = deferred<AthenaProject>()
+    api.mockReturnValueOnce(late.promise)
+    await act(async () => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove Copper CIF from project" })) })
+    expect(api.mock.calls.at(-1)?.[2]).toBeUndefined()
+    expect(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove Copper CIF from project" })).toBeDisabled()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled()
+    fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }))
+    expect(screen.getByRole("dialog")).toBeVisible()
+    view.rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} />)
+    savedAttachments = []; savedVersion = 2
+    await act(async () => { late.resolve(project()) })
+    expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ version: 2, artemis_structures: [] }))
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  })
+
+  it("waits for model autosave before removing at its latest revision and releases the mutation queue", async () => {
+    savedAttachments = [attachment()]
+    const preparation = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn(), prepareMutation = vi.fn(() => preparation.promise)
+    await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} prepareMutation={prepareMutation} />) })
+    await click("Remove Copper CIF from project")
+    expect(prepareMutation).toHaveBeenCalledExactlyOnceWith()
+    expect(api.mock.calls.some(([url]) => url.endsWith("/remove"))).toBe(false)
+    expect(screen.getByRole("button", { name: "Remove Copper CIF from project" })).toBeDisabled()
+    savedVersion = 7
+    await act(async () => { preparation.resolve({ version: 7, finish }) })
+    expect(api).toHaveBeenCalledWith("/projects/p/structures/cif1/remove", { version: 7 })
+    expect(finish).toHaveBeenCalledExactlyOnceWith()
+    expect(screen.getByRole("status")).toHaveTextContent("Undo restores the CIF")
+  })
+
+  it("cancels a queued removal before it is sent when the context changes and releases the queue", async () => {
+    savedAttachments = [attachment()]
+    const preparation = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn(), prepareMutation = vi.fn(() => preparation.promise), onProjectChange = vi.fn(), onAddPaths = addPathsMock()
+    const view = render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} prepareMutation={prepareMutation} />)
+    await click("Search / attach CIF")
+    await act(async () => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove Copper CIF from project" })) })
+    view.rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} prepareMutation={prepareMutation} />)
+    await act(async () => { preparation.resolve({ version: 7, finish }) })
+    expect(api.mock.calls.some(([url]) => url.endsWith("/remove"))).toBe(false)
+    expect(finish).toHaveBeenCalledExactlyOnceWith()
+    expect(onProjectChange).not.toHaveBeenCalled()
+  })
+
   it("unions shell selections and rejects a bulk selection beyond the remaining model capacity", async () => {
     const generated = job()
     for (const path of generated.paths) path.metadata.geometry.push({ atom: "Cu", ipot: 1, x: path.metadata.reff, y: 0, z: 0 })
@@ -198,7 +308,7 @@ describe("ArtemisStructures", () => {
     savedAttachments = []
     await click("Search / attach CIF")
     expect(screen.queryByRole("button", { name: "Open attached Copper CIF" })).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
+    expect(screen.getByText("Select a search result or open a CIF already attached to this project.")).toBeVisible()
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
   })
 

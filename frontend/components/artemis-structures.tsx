@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useId, useRef, useState } from "react"
-import { Search, X } from "lucide-react"
+import { Search, Trash2, X } from "lucide-react"
 import { CifViewer } from "./artefact-viewers/cif-viewer"
 import { useFirstShell } from "@/lib/use-first-shell"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
@@ -72,6 +72,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   const [maxLegs, setMaxLegs] = useState("4")
   const [maxPaths, setMaxPaths] = useState("60")
   const [busy, setBusy] = useState<"search" | "structure" | "job" | "attach" | null>(null)
+  const [removingId, setRemovingId] = useState<string | null>(null)
   const [job, setJob] = useState<ArtemisFeffJob | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [added, setAdded] = useState<string[]>([])
@@ -94,7 +95,8 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   const currentProject = useRef(projectId)
   currentProject.current = projectId
   const attachPending = busy === "attach"
-  const controlsDisabled = disabled || attachPending
+  const mutationPending = attachPending || removingId !== null
+  const controlsDisabled = disabled || mutationPending
   const addedIds = existingPaths === undefined ? added : job?.paths.filter(path => existingPaths.some(existing => existing.filename === path.filename && existing.content === path.content)).map(path => path.id) ?? []
   useEffect(() => {
     if (!existingPaths) return
@@ -108,7 +110,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     setListRevision(previous => previous + 1)
   }
   function closeDialog() {
-    if (attachPending) return
+    if (mutationPending) return
     setOpen(false)
   }
   useEffect(() => {
@@ -141,7 +143,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
         if (abort.signal.aborted || currentProject.current !== projectId) return
         if (response.project_id !== projectId || !Array.isArray(response.structures)) throw new Error("The attached CIF list does not match this project. Try again.")
         setAttachments(response.structures)
-        if (attachmentId && !response.structures.some(item => item.id === attachmentId)) setAttachmentId(null)
+        if (attachmentId && !response.structures.some(item => item.id === attachmentId)) clearSelectedAttachment()
       })
       .catch(error => { if (!abort.signal.aborted && currentProject.current === projectId) setListError(errorText(error)) })
       .finally(() => { if (!abort.signal.aborted && currentProject.current === projectId) setListLoading(false) })
@@ -149,7 +151,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   }, [projectId, version, listRevision])
 
   function openAttachment(attachment: ArtemisStructureAttachment) {
-    if (attachPending) return
+    if (mutationPending) return
     if (attachmentId !== attachment.id) {
       lookupAbort.current?.abort()
       sequence.current += 1
@@ -174,6 +176,15 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     setNotice("")
     setBusy(previous => previous === "job" ? null : previous)
   }
+  function clearSelectedAttachment() {
+    lookupAbort.current?.abort()
+    sequence.current += 1
+    invalidateJob()
+    setStructure(null)
+    setAttachmentId(null)
+    setAbsorber("")
+    setSite("")
+  }
   useEffect(() => {
     sequence.current += 1
     generation.current += 1
@@ -190,6 +201,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     setSite("")
     setAttachmentId(null)
     setBusy(null)
+    setRemovingId(null)
     setError("")
     setNotice("")
     return () => { lookupAbort.current?.abort(); jobAbort.current?.abort(); attachAbort.current?.abort() }
@@ -272,6 +284,42 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     } catch (error) { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setError(errorText(error)) }
     finally { mutation?.finish(); if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setBusy(null) }
   }
+  async function removeAttachment(attachment: ArtemisStructureAttachment) {
+    if (!projectId || version === undefined || controlsDisabled || !projectCallback.current) return
+    const requestContext = contextKey
+    const requestProject = projectId
+    const receiveProject = projectCallback.current
+    let mutation: { version: number; finish: () => void } | undefined
+    const abort = new AbortController()
+    attachAbort.current?.abort()
+    attachAbort.current = abort
+    lookupAbort.current?.abort()
+    sequence.current += 1
+    setRemovingId(attachment.id)
+    setError("")
+    setNotice("")
+    try {
+      mutation = prepareMutation ? await prepareMutation() : { version, finish: () => {} }
+      if (abort.signal.aborted || context.current !== requestContext || currentProject.current !== requestProject) return
+      const response = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/structures/${encodeURIComponent(attachment.id)}/remove`, { version: mutation.version })
+      if (response.id !== requestProject || response.version <= mutation.version || !Array.isArray(response.artemis_structures) || response.artemis_structures.some(item => item.id === attachment.id)) {
+        throw new Error("The removed CIF response does not match this project. Reload the attachment list before retrying.")
+      }
+      if (abort.signal.aborted || context.current !== requestContext || currentProject.current !== requestProject) { receiveProject(response); return }
+      setAttachments(response.artemis_structures)
+      if (attachmentId === attachment.id) clearSelectedAttachment()
+      setNotice(`${attachment.structure.mineral || attachment.structure.formula} CIF removed from this project. Existing FEFF paths are kept. Undo restores the CIF.`)
+      receiveProject(response)
+      setListRevision(previous => previous + 1)
+    } catch (error) { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setError(errorText(error)) }
+    finally { mutation?.finish(); if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) { setRemovingId(null); setBusy(previous => previous === "search" || previous === "structure" ? null : previous) } }
+  }
+  function removeButton(attachment: ArtemisStructureAttachment) {
+    const name = attachment.structure.mineral || attachment.structure.formula
+    return <button type="button" className={styles.removeButton} disabled={controlsDisabled || version === undefined || !onProjectChange}
+      aria-label={`Remove ${name} CIF from project`} title="Remove this CIF from the project. Existing FEFF paths are kept; Undo restores the CIF."
+      onClick={() => void removeAttachment(attachment)}><Trash2 size={14} aria-hidden="true" />{removingId === attachment.id ? "Removing CIF…" : "Remove CIF"}</button>
+  }
   async function generate() {
     if (!structure || !structure.supported || controlsDisabled || site === "" || !absorber || !attachmentId || !projectId || version === undefined) return
     const request: ArtemisFeffRequest = {
@@ -320,7 +368,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   }, [job?.id, job?.status, contextKey, pollRevision])
 
   function addPaths() {
-    if (!job || job.status !== "complete" || disabled || !selected.length) return
+    if (!job || job.status !== "complete" || controlsDisabled || !selected.length) return
     if (selected.length > availableSlots) { setError(`This model has room for ${availableSlots} more path${availableSlots === 1 ? "" : "s"}. Select fewer paths or remove existing ones.`); return }
     const viewerCluster = parseFeffCluster(job.provenance?.feff_input)
     const paths = job.paths.filter(path => selected.includes(path.id) && !addedIds.includes(path.id)).map(path => {
@@ -349,13 +397,15 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   }
   const working = busy === "job" || job?.status === "running"
   return <section className={styles.panel} aria-label="Project CIF structures">
-    <button type="button" className={styles.openButton} disabled={disabled || !projectId} onClick={openDialog}><Search size={14} />Search / attach CIF</button>
+    <button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={openDialog}><Search size={14} />Search / attach CIF</button>
     {listLoading && !attachments.length && <p className={styles.help}>Loading attached CIFs…</p>}
     {!projectId ? <p className={styles.help}>Select a project to attach crystal structures.</p> : !listLoading && !attachments.length && <p className={styles.help}>No CIF structures attached to this project.</p>}
-    {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}><span><strong>{item.structure.mineral || item.structure.formula}</strong><small>{amcsdLabel(item.amcsd_id)}</small></span><button type="button" disabled={disabled || attachPending} onClick={() => openAttachment(item)} aria-label={`Open attached ${item.structure.mineral || item.structure.formula} CIF`}>Open</button></li>)}</ul>}
+    {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}><span className={styles.attachmentInfo}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{amcsdLabel(item.amcsd_id)}</small></span><div className={styles.attachedActions}><button type="button" disabled={controlsDisabled} onClick={() => openAttachment(item)} aria-label={`Open attached ${item.structure.mineral || item.structure.formula} CIF`}>Open</button>{removeButton(item)}</div></li>)}</ul>}
     {listError && !open && <p className={styles.error}>{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
+    {error && !open && <p className={styles.error} role="alert">{error}</p>}
+    {notice && !open && <p className={styles.status} role="status">{notice}</p>}
     <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
-      <header className={styles.dialogHeader}><div><h3 id={titleId}>Crystal structures & FEFF paths</h3><p>Attach a CIF to your project, then choose an absorber site to calculate paths.</p></div><button type="button" aria-label="Close CIF search" disabled={attachPending} onClick={closeDialog}><X size={18} /></button></header>
+      <header className={styles.dialogHeader}><div><h3 id={titleId}>Crystal structures & FEFF paths</h3><p>Attach a CIF to your project, then choose an absorber site to calculate paths.</p></div><button type="button" aria-label="Close CIF search" disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
       <div className={styles.content}>
       <div className={styles.searchColumn}>
       <p className={styles.help}>Search the local AMCSD database snapshot.</p>
@@ -373,7 +423,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
         </button>)}
         {search.source && <p className={styles.source}>{search.source}</p>}
       </div>}
-      {attachments.length > 0 && <div className={styles.savedStructures}><h4>Attached to this project</h4>{attachments.map(item => <button type="button" key={item.id} className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${item.structure.mineral || item.structure.formula} CIF`}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{amcsdLabel(item.amcsd_id)} · Saved CIF</small></button>)}</div>}
+      {attachments.length > 0 && <div className={styles.savedStructures}><h4>Attached to this project</h4>{attachments.map(item => <div key={item.id} className={styles.savedStructureRow}><button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${item.structure.mineral || item.structure.formula} CIF`}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{amcsdLabel(item.amcsd_id)} · Saved CIF</small></button>{removeButton(item)}</div>)}</div>}
       </div>
       <div className={styles.detailColumn}>
       {!structure && busy !== "structure" && <p className={styles.placeholder}>Select a search result or open a CIF already attached to this project.</p>}
@@ -416,29 +466,29 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
           <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"} available{job.truncated ? ` of ${job.total_paths}; increase Maximum paths to include more` : ""}. Select the paths to add; this model has {availableSlots} open slot{availableSlots === 1 ? "" : "s"}.</p>
-          <button type="button" disabled={disabled || !shellPaths.some(id => !addedIds.includes(id))} onClick={() => {
+          <button type="button" disabled={controlsDisabled || !shellPaths.some(id => !addedIds.includes(id))} onClick={() => {
             const eligible = shellPaths.filter(id => !addedIds.includes(id))
             if (eligible.length > availableSlots) { setError(`The first shell needs ${eligible.length} path slots; only ${availableSlots} are available.`); return }
             setSelected(eligible); setError("")
           }}>Select first-shell paths</button>
           <p className={styles.help}>Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</p>
-          <RadialPathGroups paths={job.paths} structure={structure} analysis={jobRadial} selectedIds={selected} blockedIds={addedIds} disabled={disabled}
+          <RadialPathGroups paths={job.paths} structure={structure} analysis={jobRadial} selectedIds={selected} blockedIds={addedIds} disabled={controlsDisabled}
             onSelection={(ids, include) => {
               const next = include ? [...new Set([...selected, ...ids])] : selected.filter(id => !ids.includes(id))
               if (next.length > availableSlots) { setError(`These groups need ${next.length} path slots; only ${availableSlots} are available.`); return }
               setSelected(next); setError("")
             }} renderPath={path => {
               const member = structure && jobRadial ? radialPathNeighbor(path.metadata, structure, jobRadial) : undefined
-              return <div className={styles.paths}><label><input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={disabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} /><span><strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong><small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs{member ? ` · ${member.element} pair ${member.group_id}` : ""}</small><small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small></span></label></div>
+              return <div className={styles.paths}><label><input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={controlsDisabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} /><span><strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong><small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs{member ? ` · ${member.element} pair ${member.group_id}` : ""}</small><small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small></span></label></div>
             }} />
-          <button type="button" disabled={disabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>
+          <button type="button" disabled={controlsDisabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>
         </>}
       </div>}
       {error && <div className={styles.error} role="alert">{error}{job?.status === "running" && <button type="button" onClick={() => { setError(""); setPollRevision(previous => previous + 1) }}>Check status</button>}</div>}
       {notice && <p className={styles.status} role="status">{notice}</p>}
       </div>
       </div>
-      <footer className={styles.dialogFooter}><span>{attachPending ? "Saving the CIF to your project…" : "Closing this window keeps your search and calculation progress."}</span><button type="button" disabled={attachPending} onClick={closeDialog}>Close</button></footer>
+      <footer className={styles.dialogFooter}><span>{removingId ? "Removing the CIF from your project…" : attachPending ? "Saving the CIF to your project…" : "Closing this window keeps your search and calculation progress."}</span><button type="button" disabled={mutationPending} onClick={closeDialog}>Close</button></footer>
     </dialog>
   </section>
 }

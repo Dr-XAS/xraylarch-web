@@ -94,6 +94,10 @@ class AttachRequest(SnapshotModel):
     amcsd_id: int = Field(gt=0, le=99_999_999)
 
 
+class RemoveRequest(SnapshotModel):
+    version: int = Field(ge=0)
+
+
 def validate_attachments(records):
     if not isinstance(records, list) or len(records) > MAX_STRUCTURES:
         _fail(f"A project can contain at most {MAX_STRUCTURES} attached CIF structures.")
@@ -132,7 +136,7 @@ def merge_attachments(current, imported):
 def local_project(store, ident):
     project = store.load(ident)
     if project.get("integration") is True:
-        _fail("Import the integration draft into a local project before attaching or reading CIF structures.", "project")
+        _fail("Import the integration draft into a local project before managing or reading CIF structures.", "project")
     return project
 
 
@@ -172,6 +176,19 @@ def attach_structure(store, ident, request: AttachRequest):
         return store.save(updated, old, f"Attached AMCSD {request.amcsd_id}: {record['structure']['mineral']}")
 
 
+def remove_structure(store, ident, attachment_id, request: RemoveRequest):
+    with store.storage.lock(ident):
+        old = local_project(store, ident)
+        store.check(old, request.version)
+        records = validate_attachments(old.get(PROJECT_FIELD, []))
+        record = next((item for item in records if item["id"] == attachment_id), None)
+        if record is None:
+            _fail("This attached CIF is no longer present in the selected project.", "attachment_id")
+        updated = copy.deepcopy(old)
+        updated[PROJECT_FIELD] = [item for item in records if item["id"] != attachment_id]
+        return store.save(updated, old, f"Removed AMCSD {record['amcsd_id']}: {record['structure']['mineral']}")
+
+
 def build_attachments_router(store):
     router = APIRouter(tags=["Artemis project structures"])
 
@@ -184,5 +201,9 @@ def build_attachments_router(store):
     @router.post("/projects/{ident}/structures")
     def attach(ident: str, request: AttachRequest):
         return attach_structure(store, ident, request)
+
+    @router.post("/projects/{ident}/structures/{attachment_id}/remove")
+    def remove(ident: str, attachment_id: str, request: RemoveRequest):
+        return remove_structure(store, ident, attachment_id, request)
 
     return router
