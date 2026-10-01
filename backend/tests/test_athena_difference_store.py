@@ -63,9 +63,12 @@ def save_difference(store, project, targets=None, **options):
 def disk_snapshot(store, project):
     root = store.storage.workspace_dir(project["id"])
     # Acquiring the store's advisory lock may create workspace.lock even for
-    # a rejected command. It contains no project, history, upload or science.
+    # a rejected command, and a rejected command is appended to the transcript
+    # on purpose. Neither holds project, history, upload or science: what has
+    # to be unchanged is the project, not the log of what was attempted on it.
+    ignored = {"workspace.lock", "transcript.jsonl", "transcript.lock"}
     return {str(path.relative_to(root)): (path.stat().st_mtime_ns, path.read_bytes())
-            for path in root.rglob("*") if path.is_file() and path.name != "workspace.lock"}
+            for path in root.rglob("*") if path.is_file() and path.name not in ignored}
 
 
 def assert_saved(store, project):
