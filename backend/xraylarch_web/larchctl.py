@@ -379,8 +379,40 @@ def render_action(action: dict) -> str:
 
 
 def render_preview(payload: dict) -> str:
-    """A preview without its curves, which is the part a caller can act on."""
-    return json.dumps(payload, indent=1)
+    """A preview without its curves, which is the part a caller can act on.
+
+    The merge preview gets a table, because what it is read for (who went in,
+    who was left out, whether they agree) is a few numbers per member that
+    JSON spreads over a hundred lines. Others are JSON with the curves elided.
+    """
+    outputs = payload.get("outputs") or []
+    if not outputs or not all("members" in (output.get("result") or {}) for output in outputs):
+        return json.dumps(payload, indent=1)
+    lines = []
+    for output in outputs:
+        result, agreement = output["result"], output.get("agreement") or {}
+        details = result.get("details") or {}
+        rms = {row["label"]: row["rms_to_range"] for row in agreement.get("members") or ()}
+        lines.append(f"{output['role']} merge of {details.get('array', '?')}, "
+                     f"{details.get('count', len(result['members']))} members, weighted by "
+                     f"{details.get('weightby', '?')}, over {_number(details.get('xmin'), 1)}"
+                     f"-{_number(details.get('xmax'), 1)}")
+        rows = [[member["label"][:34], str(member["points"]), _number(member["coefficient"], 3),
+                 str(member["extrapolated_points"] or "-"), _number(rms.get(member["label"]), 4)]
+                for member in result["members"]]
+        lines.append(_table(rows, ["MEMBER", "PTS", "COEF", "EXTRAP", "RMS/RANGE"]))
+        for left_out in result.get("excluded") or ():
+            lines.append(f"  EXCLUDED {left_out['label']}: {left_out['reason']}")
+        if agreement:
+            lines.append(f"  scatter/range median {agreement['scatter_to_range']:.4f}, "
+                         f"max {agreement['max_scatter_to_range']:.4f}")
+        for warning in result.get("warnings") or ():
+            lines.append(f"  WARNING: {warning}")
+        lines.append("")
+    if note := next((output["agreement"]["note"] for output in outputs if output.get("agreement")), None):
+        lines.append(note)
+    lines.append("Nothing was saved. Run the same command without --preview to merge.")
+    return "\n".join(lines)
 
 
 def render_log(log: dict) -> str:
@@ -846,8 +878,8 @@ def build_parser() -> argparse.ArgumentParser:
     do.add_argument("--key", metavar="TOKEN",
                     help="idempotency key; a retry under the same key is answered, not rerun")
     do.add_argument("--preview", action="store_true",
-                    help="use the action's preview endpoint and save nothing; prints "
-                         "the preview as JSON with its curves elided")
+                    help="use the action's preview endpoint and save nothing; a merge "
+                         "prints as a table, others as JSON with their curves elided")
     return parser
 
 

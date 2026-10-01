@@ -157,6 +157,16 @@ there is no need to truncate the long scans to the short one's range before merg
 the merge already does it. On the example, truncating the cold scans at 10146 eV first
 gives the same merged values point for point, one point shorter at the top.
 
+**Preview a merge to see whether its members agree.** Under `?view=summary` each output
+of the merge preview carries `agreement`: the median and largest scatter, and each
+member's rms distance from the merge, all as fractions of the merged curve's range. One
+member far above the others is the one that does not belong. On the example's three
+foils merged as `norm`, the 300 K scan reads 0.038 against 0.019 for the cold ones,
+and the largest scatter is 0.20 of the range, at the edge, because the 300 K scan has
+not been aligned. Merged as `mu`, every member reads 0.23 or more, because the scans
+differ in absolute mu; compare shapes with `array: "norm"`. `larchctl do merge ...
+--preview` prints this as a table.
+
 Always send `method: "demeter-larch"` to merge. Without it the command takes an older
 plain average that excludes nothing, and the preview refuses, because it cannot show
 that average.

@@ -161,3 +161,40 @@ def compare(groups: list[dict], preferences: dict, project_groups: list[dict] | 
         "groups": rows,
         "note": NOTE,
     }
+
+
+AGREEMENT_NOTE = (
+    "How far apart the members of this merge are, as fractions of the merged "
+    "curve's range (max - min): scatter_to_range is the median of the merge's "
+    "stddev, and each member's rms_to_range is the rms of that member minus the "
+    "merge. A member far above the others is the one that does not belong. On "
+    "array 'mu' a difference in absolute mu between scans counts as "
+    "disagreement even when the shapes match; preview with array 'norm' to "
+    "compare shapes."
+)
+
+
+def merge_agreement(result: dict) -> dict | None:
+    """A merge preview's scatter in two numbers and one per member.
+
+    The preview hands the browser the stddev band to draw, and a caller who
+    cannot see it learns nothing from "<460 numbers, ...>". The band is as wide
+    as the signal when one member is unaligned or from another instrument, and
+    this is how that shows without a plot.
+    """
+    y = np.asarray(result.get("y") or [], float)
+    stddev = np.asarray(result.get("stddev") or [], float)
+    if y.size < 2 or stddev.size != y.size:
+        return None
+    span = float(np.ptp(y))
+    if span <= 0:
+        return None
+    members = []
+    for component in result.get("components") or ():
+        values = np.asarray(component.get("y") or [], float)
+        if values.size == y.size:
+            members.append({"label": component["label"],
+                            "rms_to_range": round(float(np.sqrt(np.mean((values - y) ** 2))) / span, 4)})
+    return {"scatter_to_range": round(float(np.median(stddev)) / span, 4),
+            "max_scatter_to_range": round(float(np.max(stddev)) / span, 4),
+            "members": members, "note": AGREEMENT_NOTE}

@@ -89,3 +89,33 @@ def test_it_needs_two_distinct_groups(http, run, groups):
     response = http.get(f"/api/athena/projects/{run['project_id']}/compare", params={"groups": groups})
     assert response.status_code == 400
     assert "at least two distinct" in response.json()["error"]["message"]
+
+
+def preview(http, run, view, **options):
+    base = f"/api/athena/projects/{run['project_id']}"
+    version = http.get(base, params={"view": "summary"}).json()["version"]
+    response = http.post(f"{base}/merge/preview", params={"view": view}, json={
+        "version": version, "action": "merge", "group_ids": [run["groups"][label] for label in FOILS],
+        "options": {"method": "demeter-larch", "exclude_short_data": False} | options})
+    assert response.status_code == 200, response.text
+    return response.json()["outputs"][0]
+
+
+def test_a_merge_preview_measures_how_far_apart_its_members_are(http, run):
+    agreement = preview(http, run, "summary", array="norm")["agreement"]
+    rms = {row["label"]: row["rms_to_range"] for row in agreement["members"]}
+    assert rms[FOILS[2]] > 1.5 * max(rms[FOILS[0]], rms[FOILS[1]])
+    assert 0 < agreement["scatter_to_range"] < agreement["max_scatter_to_range"]
+
+
+def test_aligning_first_brings_the_members_together(http, run):
+    before = preview(http, run, "summary", array="norm")["agreement"]
+    send(http, run, "assign_reference", FOILS, reference_id=None)
+    send(http, run, "align", FOILS[1:], method="demeter-larch", operation="auto",
+         standard_id=run["groups"][FOILS[0]])
+    after = preview(http, run, "summary", array="norm")["agreement"]
+    assert after["max_scatter_to_range"] < before["max_scatter_to_range"] / 2
+
+
+def test_the_full_preview_is_left_as_the_browser_has_it(http, run):
+    assert "agreement" not in preview(http, run, "full")

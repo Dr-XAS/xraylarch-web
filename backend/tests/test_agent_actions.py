@@ -233,14 +233,24 @@ def test_the_truncate_note_says_which_modes_are_its_own(client, example):
     assert result["snapped"] in result["selected_energy"]
     assert result["snapped"] not in result["energy"]
     assert result["energy"][-1] < result["snapped"]
-    for phrase in ("side='before' keeps it", "side='after' drops it",
-                   "last kept energy"):
+    for phrase in ("side='before' keeps that point", "side='after' drops it",
+                   "last kept energy", "both ends inclusive", "default when mode is omitted"):
         assert phrase in note
 
     kept = client.post(f"/api/athena/projects/{project}/point-edit/preview", json={
         **body, "options": {"mode": "interval", "xmax": 10146.0}})
     assert kept.status_code == 200, kept.text
     assert kept.json()["results"][0]["output_points"] < 612
+
+    # Both ends inclusive: a bound on a measured point keeps that point.
+    on_point = result["selected_energy"][0]
+    inclusive = client.post(f"/api/athena/projects/{project}/point-edit/preview", json={
+        **body, "options": {"xmax": on_point}}).json()["results"][0]
+    assert inclusive["energy"][-1] == on_point
+
+    beyond = client.post(f"/api/athena/projects/{project}/point-edit/preview", json={
+        **body, "options": {"xmax": 1e6}})
+    assert beyond.status_code == 400, "a bound outside the data is refused, as the note says"
 
 
 def test_the_deglitch_note_says_what_each_of_its_modes_takes(client):

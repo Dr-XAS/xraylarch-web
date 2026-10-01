@@ -86,9 +86,9 @@ def test_a_preview_reports_its_shape_instead_of_its_curves(run, project):
     output = run("--project", project, "do", "merge", "10 K", "50 K",
                  "-o", "method=demeter-larch", "--preview")
 
-    assert len(output) < 10_000, "a preview must not cost what the arrays cost"
-    assert "numbers," in output, "the elision has to be visible"
-    assert not [path for path, length in numeric_runs(json.loads(output)) if length > 8]
+    assert len(output) < 3_000, "a preview must not cost what the arrays cost"
+    assert "Cu foil · 10 K  612" in output and "RMS/RANGE" in output
+    assert "Nothing was saved" in output
 
     # The project must be untouched: preview means preview.
     assert "5 groups" in run("--project", project, "summary")
@@ -326,6 +326,17 @@ def test_a_command_does_not_fetch_the_project_it_is_about_to_discard(run, projec
     run("--project", project, "do", "merge", "10 K", "50 K",
         "-o", "method=demeter-larch", "--preview")
     assert sum(wire) < 20_000, wire
+
+
+def test_a_merge_preview_says_which_member_does_not_belong(run, project):
+    """The 300 K scan is unaligned and from another beamline; the band a plot shows says so."""
+    run("--project", project, "do", "example")
+    out = run("--project", project, "do", "merge", "10 K", "50 K", "300 K", "-o", "method=demeter-larch",
+              "-o", "exclude_short_data=false", "-o", "array=norm", "--preview")
+    rms = {line.split("  ")[0]: float(line.split()[-1]) for line in out.splitlines()
+           if line.startswith("Cu foil")}
+    assert rms["Cu foil · 300 K"] > 1.5 * max(rms["Cu foil · 10 K"], rms["Cu foil · 50 K"])
+    assert "scatter/range median" in out
 
 
 def test_a_merge_names_what_it_left_out(run, project):

@@ -4793,7 +4793,16 @@ def build_athena_router(
 
     @router.post('/projects/{ident}/merge/preview')
     def preview_merge(ident: str,request: Command, view: PreviewView = "full"):
-        return previewed(ident, request, lambda: store.preview_merge(ident, request), view)
+        def call():
+            result = store.preview_merge(ident, request)
+            if view == "summary":
+                # Measured before the curves are elided, since it is measured on them.
+                from .agent_compare import merge_agreement
+                for output in result.get("outputs") or ():
+                    if agreement := merge_agreement(output.get("result") or {}):
+                        output["agreement"] = agreement
+            return result
+        return previewed(ident, request, call, view)
 
     @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
     def plot_saved_merge(ident: str, group_id: str, request: dict):

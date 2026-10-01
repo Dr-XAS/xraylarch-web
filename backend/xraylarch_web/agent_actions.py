@@ -219,7 +219,11 @@ ACTIONS: dict[str, Action] = {
              "really used and each excluded group with its reason; check it "
              "rather than the selection you sent. To keep a short group, send "
              "exclude_short_data=false or select the shortest group first. "
-             "derived.excluded is always present on a merge; empty means none.",
+             "derived.excluded is always present on a merge; empty means none. "
+             "The preview under ?view=summary adds each output's `agreement`: "
+             "the merge's scatter and each member's rms from it, as fractions "
+             "of the merged curve's range, so a member that does not belong "
+             "shows without a plot.",
         option_notes={"method": "send it: omitted, /command takes the plain average "
                                 "and the preview refuses"},
     ),
@@ -351,21 +355,24 @@ ACTIONS: dict[str, Action] = {
         "Cut a spectrum down to an energy range.",
         "one+", model="athena_point_edit:PointEditOptions",
         preview="/projects/{id}/point-edit/preview",
-        note="Only two of the eight mode values belong here; the other six are "
-             "deglitch's and are rejected. mode='truncate' takes side='before' "
-             "or 'after' and value=<energy>, snapping to the nearest measured "
-             "point and reporting it as `snapped` in the preview. The two "
-             "sides treat that point differently: side='before' keeps it and "
-             "drops everything below, while side='after' drops it along with "
-             "everything above, so the surviving axis ends one grid step "
-             "below `snapped`. Read the preview's last kept energy, not "
-             "`snapped`, if you need the new endpoint. "
-             "mode='interval' takes xmin, xmax or both and keeps what lies "
-             "between them, defaulting each missing bound to the end of the "
-             "measured range; sending xmin or xmax with no mode means "
-             "'interval'. Send the fields of one mode and nothing from the "
-             "other. Energies are on the shifted axis, and at least ten points "
-             "must survive the cut.",
+        note="Two ways to cut; the other six mode values are deglitch's and "
+             "are refused here. "
+             "(1) mode='interval', the default when mode is omitted: send xmin, "
+             "xmax or both, and every point with xmin <= E <= xmax is kept, both "
+             "ends inclusive. A missing bound means the end of the data, and a "
+             "bound outside the measured range is refused, so to cut only the "
+             "top send only xmax. "
+             "(2) mode='truncate': side='before' or 'after' and value=<energy>, "
+             "snapping to the nearest measured point and reporting it as "
+             "`snapped` in the preview. side='before' keeps that point and drops "
+             "everything below; side='after' drops it along with everything "
+             "above, so the surviving axis ends one grid step below `snapped`. "
+             "Read the preview's last kept energy, not `snapped`, for the new "
+             "endpoint. "
+             "Send one mode's fields and nothing from the other. Energies are on "
+             "the shifted axis, and at least ten points must survive. To merge "
+             "scans of different lengths there is no need to cut first: the "
+             "merge already restricts itself to the range every member covers.",
     ),
     "undo": Action("Revert the last change.", "none",
                    note="project.can_undo says whether there is anything to undo."),
