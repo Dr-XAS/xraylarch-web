@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
 import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -116,6 +116,17 @@ function importRequest(text: string): ArtemisFitRequest {
     !Array.isArray(t.kweight) || !t.kweight.length || t.kweight.some(weight => ![0, 1, 2, 3].includes(weight)) ||
     new Set(t.kweight).size !== t.kweight.length || [t.kmin, t.kmax, t.rmin, t.rmax, t.dk, t.dr].some(value => !Number.isFinite(value))) throw new Error("The model contains invalid transform settings.")
   return request
+}
+
+/** Native disclosures keep form and CIF-dialog state mounted while folded. */
+function FittingSection({ title, summary, disabled, children }: {
+  title: string; summary?: string; disabled?: boolean; children: ReactNode
+}) {
+  const [open, setOpen] = useState(true)
+  return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>{title}{summary && <small>{summary}</small>}</summary>
+    <fieldset className={styles.sectionBody} aria-label={`${title} controls`} disabled={disabled}>{children}</fieldset>
+  </details>
 }
 
 /** The workbench keeps this wrapper mounted; drafts survive group and processing-tab changes. */
@@ -392,26 +403,29 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     <div className={styles.actions}>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
+    </div>
+    {notice && <p className={styles.message} role="status">{notice}</p>}
+    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : busy === "example" ? "Loading Cu₂O CIF and FEFF paths…" : "Saving project…"}</p>}
+    {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
+    <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
+    {reason && <p className={styles.message} role="status">{reason}</p>}
+    <FittingSection title="Model & project" summary={modelDirty ? "Unsaved" : persisted ? "Saved" : undefined}>
       <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
       {onProjectChange && <div className={styles.toolbar}>
         <button type="button" disabled={disabled || !group || !projectId || version === undefined} onClick={() => void persistModel()}>Save model to project</button>
         {persisted && <button type="button" disabled={disabled || !modelDirty} onClick={() => { setDraft(persisted.model); setNotice("Reloaded the saved model.") }}>Reload saved model</button>}
       </div>}
       <p className={styles.help}>{modelDirty ? "Model has unsaved changes. Save the model or run a fit before reloading or downloading this project." : persisted ? "Model saved in this project. Project downloads include FEFF files and fit history." : "Save the model to keep it with this spectrum."} Fits run only when requested.</p>
-    </div>
-    {!!persisted?.history.length && <div className={styles.section}>
+    </FittingSection>
+    {!!persisted?.history.length && <FittingSection title="Saved fit history" summary={`${persisted.history.length}/10`} disabled={disabled}>
         <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
           {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
         </select></label>
         <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
           <button type="button" disabled={disabled || !archive} onClick={() => void persistModel(archive?.id)}>Remove saved fit</button></div>
         <p className={styles.help}>Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.</p>
-    </div>}
-    {notice && <p className={styles.message} role="status">{notice}</p>}
-    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : busy === "example" ? "Loading Cu₂O CIF and FEFF paths…" : "Saving project…"}</p>}
-    {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
-    <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
-    {reason && <p className={styles.message} role="status">{reason}</p>}
+    </FittingSection>}
+    <FittingSection title="Crystal structures" summary="CIF">
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
@@ -422,8 +436,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           parameters: [...previous.parameters, ...missing.map(parameterDraft)] }))
         return null
       }} />
-    <fieldset className={styles.section} disabled={disabled}>
-      <legend>FEFF paths <span>{draft.paths.filter(path => path.enabled).length} included</span></legend>
+    </FittingSection>
+    <FittingSection title="FEFF paths" summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}>
       {radialContext ? <>
         <RadialShellPanel state={radialState} disabled={disabled} />
         <p className={styles.help}>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>
@@ -465,10 +479,9 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         </div>
       </div>}} />
       {draft.paths.length > 0 && <p className={styles.help}>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>}
-    </fieldset>
+    </FittingSection>
 
-    <fieldset className={styles.section} disabled={disabled}>
-      <legend>Parameters <span>{freeCount} free</span></legend>
+    <FittingSection title="Parameters" summary={`${freeCount} free`} disabled={disabled}>
       <div className={styles.toolbar}><button type="button" className={styles.syncButton} disabled={!draft.paths.some(path => path.enabled)} onClick={syncParameters}><RefreshCw size={13} />Sync parameters</button></div>
       <p className={styles.help}>Sync adds missing parameters and removes those unused by included paths, including Def dependencies. Existing values and constraints are kept.</p>
       <p className={styles.help}>Guess refines a value, Set fixes it, Def evaluates an expression.</p>
@@ -485,10 +498,9 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           </div>}
       </div>)}
       <button type="button" disabled={draft.parameters.length >= 32} onClick={() => edit(previous => ({ ...previous, parameters: [...previous.parameters, parameterDraft({ name: `param${previous.parameters.length + 1}`, kind: "guess", value: 0, expression: "", min: null, max: null })] }))}><Plus size={13} />Add parameter</button>
-    </fieldset>
+    </FittingSection>
 
-    <fieldset className={styles.section} disabled={disabled}>
-      <legend>Fit range & transform</legend>
+    <FittingSection title="Fit range & transform" summary={draft.transform.fitspace === "r" ? "R space" : "k space"} disabled={disabled}>
       <div className={styles.choice} role="group" aria-label="Fit space">{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
       <div className={styles.grid}>
         {([
@@ -498,6 +510,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       </div>
       <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
       <p className={styles.help}>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</p>
-    </fieldset>
+    </FittingSection>
   </section>
 }
