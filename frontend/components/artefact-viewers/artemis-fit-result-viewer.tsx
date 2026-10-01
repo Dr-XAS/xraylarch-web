@@ -50,11 +50,17 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
   }) : []
-  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" className={styles.viewer} actions={<div className={styles.resultActions}>
+  return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" viewerId="fit" className={styles.viewer} actions={<div className={styles.resultActions}>
     <div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>
     {visible && space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}
   </div>}>
     <ResizablePlotCard storageKey="artemis.fit.height.v1" defaultHeight={380} plotSelector="#artemis-fit-plot" resizeLabel="Resize EXAFS fit plot height" controlsId="artemis-fit-plot">
+      {visible?.archive && <div className={styles.message} role="status">
+        <p>{visible.archive.imported ? "Imported fit archive" : "Saved fit"} · {new Date(visible.archive.created).toLocaleString()} · Larch {visible.archive.origin.larch_version}</p>
+        {visible.archive.stale && <p>Outdated input: this spectrum has changed since the fit. These curves show the saved data and model. Run a new fit for the current spectrum.</p>}
+        {visible.archive.modelChanged && <p>The current model differs from this saved fit.</p>}
+        {visible.archive.imported && <p>This result was imported with the project and has not been verified by a new fit here.</p>}
+      </div>}
       {visible && <p className={styles.resultSummary}>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</p>}
       <div id="artemis-fit-plot" className={styles.plot}>
         {!visible || !series ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : "Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model."}</p>

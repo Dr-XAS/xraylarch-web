@@ -35,6 +35,8 @@ The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
 examples: three temperature-series foils and a room-temperature Cu₂O reference.
+The local copper loader also attaches the Cuprite CIF and prepares the Cu₂O
+EXAFS model with four FEFF paths; **Open Cu₂O EXAFS** opens the prepared setup.
 The earlier single-spectrum interface is at `/classic`. The
 Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
 both the frontend and backend to loopback and relies on Dr.XAS ingress rather
@@ -64,6 +66,11 @@ backends and the Dr.XAS public ingress hop as one system — lives in the Dr.XAS
 repository at `frontend/tests/e2e/xraylarch-native-integration.spec.ts` and
 starts its own five processes on ephemeral ports.
 
+The [recipe fidelity contract](docs/integration-recipe-fidelity.md) explains
+which processing can be replayed and when exports retain computed arrays.
+It also records measured-spectrum regressions for fnorm, background standards,
+and already-normalized inputs.
+
 The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
 middle parameter panel. Search the bundled AMCSD crystal-structure database in
 a popup, attach the selected CIF directly to the project, select an absorber
@@ -72,9 +79,10 @@ Larch/Larixite. Review the generated paths and add the selected ones to the
 model, or import existing FEFF path files. Define Guess/Set/Def parameters
 and fit the current spectrum with Larch's `feffit` core in k or R space. A Cu
 first-shell starter model is included. The right panel shows data/model/residual
-curves, uncertainties, correlations, and the fit report. Use model JSON exports
-to preserve the fit setup; Athena `.prj` exports retain attached CIFs through
-web metadata but do not include fitting models.
+curves, uncertainties, correlations, and the fit report. Save model drafts in
+the project; each explicit fit also saves its model and result. Athena `.prj`
+and web JSON downloads retain FEFF files and up to 10 fits per spectrum.
+Changed scientific inputs and imported archives are clearly labeled.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
@@ -108,15 +116,21 @@ in the workspace). Viewers without a recorded event retain their default order.
 These display choices do not change project data or recalculate results.
 
 The **Wavelet plotter** follows the highlighted group’s
-processed χ(k). Switch the same panel between **2D heatmap** and **3D surface**;
-both views share Dr.XAS’s unwindowed Cauchy transform and color scale, displaying R up to
-6 Å without phase correction. The Dr.XAS-style 2D viewer adds draggable k-range
-handles and boundary lines alongside windowed χ(k) and Fourier |χ(R)| previews.
+processed χ(k). The default **2D + 3D** view places the heatmap beside the surface
+on wide panels and stacks them on narrow panels. The 2D plotting area stays square
+when the browser or plot height is resized, preserving the k and R ranges.
+The k-range slider sits directly above the heatmap and follows its x-axis bounds
+as the plot resizes.
+**2D heatmap** and **3D surface** remain available individually. Both views share
+one result from Dr.XAS’s unwindowed Cauchy transform and one color scale,
+displaying R up to 6 Å without phase correction. Draggable k-range handles and
+heatmap boundary lines update the windowed χ(k) and Fourier |χ(R)| previews below
+the main plots.
 These previews use Larch with the spectrum’s applied window settings and the
 selected viewer k-weight; changing the range does not modify saved processing
 parameters or the wavelet matrix. **Export CSV** downloads the active wavelet
-grid. Both modes retain the resizable plot height, and the plot refreshes after
-spectrum processing.
+grid. Range dragging does not rebuild the 3D surface. All views retain the
+resizable plot height, and the plots refresh after spectrum processing.
 
 The Athena import dialog shows a live plot while selecting columns. It also
 recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`
@@ -387,11 +401,31 @@ signing value and exercises the `/advanced-xas/app` build.
 ```bash
 PYTHONPATH=backend backend/.venv/bin/python -m pytest backend/tests -q
 cd frontend
-npx tsc --noEmit
-npx vitest run
-NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app npm run build
-npm run test:e2e -- integration-mounted.spec.ts
+npm run typecheck
+npm test
+npm run build
+npx playwright install chromium
+npm run test:e2e -- --config=playwright.ci.config.ts
 ```
+
+The `Web frontend` workflow uses the Node version in `frontend/.nvmrc` and runs
+these checks on pull requests to `master` and pushes to `master`, using the release backend
+dependency installer. Its focused browser checks cover:
+
+- The checked-in, measured Cu foil: import, change AUTOBK Rbkg, save `.prj`,
+  reopen in a new project, reload, and compare raw and processed arrays plus
+  downloaded μ(E) and χ(k) columns. This runs against the production build.
+- The measured Cu₂O reference: save a four-path EXAFS model and fit, refresh,
+  exchange the project through `.prj`, then change Rbkg and verify that the saved
+  fit is labeled outdated. This also checks imported archives and mobile layout.
+- The mounted integration lifecycle at `/advanced-xas/app`, using the existing
+  mounted development server. It validates this application's handoff flow;
+  it does not run the external Dr.XAS consumer.
+
+The full browser suite remains available with `npm run test:e2e`. Local CI-style
+checks can use an installed Chrome with `XRAYLARCH_E2E_BROWSER_CHANNEL=chrome`.
+To enforce a merge gate, select the `Web frontend / frontend` check in the
+repository's branch protection settings.
 
 ### Operating boundary and deferred work
 

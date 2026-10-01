@@ -3,6 +3,13 @@
 import { useEffect, useId, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
 import { CifViewer } from "./artefact-viewers/cif-viewer"
+import { useFirstShell } from "@/lib/use-first-shell"
+import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
+import { FirstShellSummary } from "./first-shell-summary"
+import { useRadialShells } from "@/lib/use-radial-shells"
+import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
+import { RadialShellPanel } from "./radial-shell-panel"
+import { RadialPathGroups } from "./radial-path-groups"
 import type { AthenaProject } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"
@@ -17,7 +24,9 @@ interface Props {
   projectId?: string
   version?: number
   onProjectChange?: (project: AthenaProject) => void
-  onViewStructure?: (attachmentId: string) => void
+  onViewStructure?: (attachmentId: string, siteIndex?: number) => void
+  onFirstShellChange?: (selection: FirstShellSelection | null) => void
+  onRadialContextChange?: (selection: RadialShellContext | null) => void
   disabled?: boolean
   availableSlots: number
   existingPaths?: Pick<ArtemisInspectedPath, "filename" | "content">[]
@@ -27,7 +36,7 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : "
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
 const amcsdLabel = (id: number) => `AMCSD ${String(id).padStart(7, "0")}`
 
-export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, onViewStructure, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
+export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const viewerAnchor = useRef<HTMLDivElement>(null)
@@ -44,6 +53,18 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   const [structure, setStructure] = useState<ArtemisStructure | null>(null)
   const [absorber, setAbsorber] = useState("")
   const [site, setSite] = useState("")
+  const shellState = useFirstShell(structure, site ? Number(site) : undefined)
+  const radialState = useRadialShells(structure, site ? Number(site) : undefined)
+  const radialCallback = useRef(onRadialContextChange)
+  radialCallback.current = onRadialContextChange
+  useEffect(() => {
+    radialCallback.current?.(structure && attachmentId && site ? { structure, attachmentId, siteIndex: Number(site) } : null)
+  }, [structure, attachmentId, site])
+  const shellCallback = useRef(onFirstShellChange)
+  shellCallback.current = onFirstShellChange
+  useEffect(() => {
+    shellCallback.current?.(structure && attachmentId && shellState.shell ? { structure, attachmentId, shell: shellState.shell } : null)
+  }, [structure, attachmentId, shellState.shell])
   const [edge, setEdge] = useState<ArtemisFeffRequest["edge"]>("K")
   const [clusterRadius, setClusterRadius] = useState("5")
   const [pathRadius, setPathRadius] = useState("4")
@@ -138,7 +159,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       setSite("")
       setBusy(null)
     }
-    viewCallback.current?.(attachment.id)
+    viewCallback.current?.(attachment.id, attachmentId === attachment.id && site ? Number(site) : undefined)
     openDialog()
   }
 
@@ -240,7 +261,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       setAttachmentId(attached.id)
       setNotice(`${attached.structure.mineral || attached.structure.formula} CIF attached to the current project.`)
       projectCallback.current?.(response)
-      viewCallback.current?.(attached.id)
+      viewCallback.current?.(attached.id, site && attached.structure.sites.some(item => item.index === Number(site)) ? Number(site) : undefined)
       setListRevision(previous => previous + 1)
     } catch (error) { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setError(errorText(error)) }
     finally { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setBusy(null) }
@@ -310,6 +331,16 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   }
 
   const sites = structure?.sites.filter(item => item.element === absorber) ?? []
+  const shellPaths = job?.status === "complete" && structure && shellState.shell && job.provenance.cif === structure.cif && job.request.site_index === shellState.shell.site_index
+    ? job.paths.filter(path => isFirstShellPath(path.metadata, structure, shellState.shell!)).map(path => path.id) : []
+  const jobRadial = job?.status === "complete" && radialState.data && job.provenance.cif === radialState.data.cif && job.request.site_index === radialState.data.site_index && job.request.absorber === radialState.data.absorber ? radialState.data : null
+  function chooseSite(index: number) {
+    if (controlsDisabled) return
+    invalidateJob()
+    setAbsorber(structure!.sites.find(item => item.index === index)!.element)
+    setSite(String(index))
+    if (attachmentId) viewCallback.current?.(attachmentId, index)
+  }
   const working = busy === "job" || job?.status === "running"
   return <section className={styles.panel} aria-label="Project CIF structures">
     <button type="button" className={styles.openButton} disabled={disabled || !projectId} onClick={openDialog}><Search size={14} />Search / attach CIF</button>
@@ -343,7 +374,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
       {structure && <div className={styles.structure}>
         <h4>{structure.mineral} <span>{amcsdLabel(structure.id)}</span></h4>
-        {open && attachmentId && <div ref={viewerAnchor}><CifViewer key={attachmentId} structure={structure} /></div>}
+        {open && attachmentId && <div ref={viewerAnchor}><CifViewer key={attachmentId} structure={structure} selectedSite={site ? Number(site) : undefined} analysis={shellState} radialAnalysis={radialState} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
         {structure.title && <p className={styles.citation}>{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</p>}
         <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button></div>
@@ -356,9 +387,11 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
             <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => { invalidateJob(); setEdge(event.target.value as ArtemisFeffRequest["edge"]) }}>{["K", "L1", "L2", "L3"].map(item => <option key={item}>{item}</option>)}</select></label>
           </div>
           <fieldset className={styles.sites} disabled={controlsDisabled}><legend>Inequivalent absorber site</legend>
-            {sites.map(item => <label key={item.index}><input type="radio" name={`feff-site-${contextKey}`} checked={site === String(item.index)} onChange={() => { invalidateJob(); setSite(String(item.index)) }} aria-label={`Absorber site ${item.index}`} /><span><strong>{item.species} · site {item.index} · Wyckoff {item.wyckoff}</strong><small>({numberText(item.x)}, {numberText(item.y)}, {numberText(item.z)}) · multiplicity {item.multiplicity} · occupancy {numberText(item.occupancy)}</small></span></label>)}
+            {sites.map(item => <label key={item.index}><input type="radio" name={`feff-site-${contextKey}`} checked={site === String(item.index)} onChange={() => chooseSite(item.index)} aria-label={`Absorber site ${item.index}`} /><span><strong>{item.species} · site {item.index} · Wyckoff {item.wyckoff}</strong><small>({numberText(item.x)}, {numberText(item.y)}, {numberText(item.z)}) · multiplicity {item.multiplicity} · occupancy {numberText(item.occupancy)}</small></span></label>)}
             {!sites.length && <p className={styles.help}>No supported sites for this absorber.</p>}
           </fieldset>
+          {!attachmentId && <FirstShellSummary state={shellState} />}
+          {site && <details><summary>FEFF shell distance ranges · {absorber} site {site}</summary><RadialShellPanel state={radialState} disabled={controlsDisabled} /></details>}
           <div className={styles.grid}>
             <label>Cluster radius (Å)<input aria-label="FEFF cluster radius" inputMode="decimal" value={clusterRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setClusterRadius(event.target.value) }} /></label>
             <label>Max path R (Å)<input aria-label="FEFF maximum path radius" inputMode="decimal" value={pathRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setPathRadius(event.target.value) }} /></label>
@@ -377,7 +410,21 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
           <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"} available{job.truncated ? ` of ${job.total_paths}; increase Maximum paths to include more` : ""}. Select the paths to add; this model has {availableSlots} open slot{availableSlots === 1 ? "" : "s"}.</p>
-          <div className={styles.paths}>{job.paths.map(path => <label key={path.id}><input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={disabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} /><span><strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}</strong><small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs</small><small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small></span></label>)}</div>
+          <button type="button" disabled={disabled || !shellPaths.some(id => !addedIds.includes(id))} onClick={() => {
+            const eligible = shellPaths.filter(id => !addedIds.includes(id))
+            if (eligible.length > availableSlots) { setError(`The first shell needs ${eligible.length} path slots; only ${availableSlots} are available.`); return }
+            setSelected(eligible); setError("")
+          }}>Select first-shell paths</button>
+          <p className={styles.help}>Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</p>
+          <RadialPathGroups paths={job.paths} structure={structure} analysis={jobRadial} selectedIds={selected} blockedIds={addedIds} disabled={disabled}
+            onSelection={(ids, include) => {
+              const next = include ? [...new Set([...selected, ...ids])] : selected.filter(id => !ids.includes(id))
+              if (next.length > availableSlots) { setError(`These groups need ${next.length} path slots; only ${availableSlots} are available.`); return }
+              setSelected(next); setError("")
+            }} renderPath={path => {
+              const member = structure && jobRadial ? radialPathNeighbor(path.metadata, structure, jobRadial) : undefined
+              return <div className={styles.paths}><label><input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={disabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} /><span><strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong><small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs{member ? ` · ${member.element} pair ${member.group_id}` : ""}</small><small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small></span></label></div>
+            }} />
           <button type="button" disabled={disabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>
         </>}
       </div>}

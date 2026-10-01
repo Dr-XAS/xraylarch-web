@@ -3,9 +3,10 @@ import "@testing-library/jest-dom/vitest"
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { useState } from "react"
-import type { AthenaGroup, AthenaProject, Parameters } from "@/lib/athena"
-import { artemisApi, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
+import { athenaApi, type AthenaGroup, type AthenaProject, type Parameters } from "@/lib/athena"
+import { artemisApi, type ArtemisModelDraft, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
+import { ApiRequestError } from "@/lib/backend-client"
 import { ArtemisFittingPanel } from "./artemis-fitting"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 
@@ -15,6 +16,7 @@ vi.mock("next/dynamic", () => ({ default: () => plot }))
 // Structure persistence and its modal lifecycle are covered in artemis-structures.test.tsx.
 vi.mock("./artemis-structures", () => ({ ArtemisStructures: () => <div data-testid="structures-launcher" /> }))
 vi.mock("@/lib/artemis", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/artemis")>(), artemisApi: vi.fn() }))
+vi.mock("@/lib/athena", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/athena")>(), athenaApi: vi.fn() }))
 const api = vi.mocked(artemisApi)
 
 const parameters: Parameters = {
@@ -56,6 +58,12 @@ function example(): ArtemisExample {
       { name: "sig2", kind: "guess", value: 0.003, expression: "", min: 0, max: 0.1 },
     ], transform: { fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 } }
 }
+function exampleSetup(): ArtemisExampleSetup {
+  const model = example()
+  return { projectId: "p", groupId: "cuprite", attachmentId: cupriteAttachment.id,
+    example: { ...model, parameters: model.parameters.map(parameter => parameter.name === "amp" ? { ...parameter, value: 0.82 } : parameter),
+      transform: { ...model.transform, kmin: 2, kmax: 10, rmin: 1.2, rmax: 3.4 } } }
+}
 function fitResult(overrides: Partial<ArtemisFitResult> = {}): ArtemisFitResult {
   return { project_id: "p", group_id: "copper", group_label: "copper foil", version: 4, success: true, message: "Fit succeeded.", report: "[[Fit Statistics]]\nR-factor = 0.003", warnings: [],
     statistics: { n_varys: 4, n_independent: 12.5, n_data: 40, nfev: 25, chi_square: 50, reduced_chi_square: 5.8, r_factor: 0.003, aic: 20, bic: 25, errorbars: true },
@@ -81,6 +89,16 @@ function file(name: string, contents: string) {
   Object.defineProperty(value, "text", { value: () => Promise.resolve(contents) })
   return value
 }
+function savedFit(body: unknown, result = fitResult()) {
+  const { version, model } = body as { version: number; model: ArtemisModelDraft }
+  const project = attachedProject(version + 1)
+  project.groups[0].artemis = { schema_version: 1, model, current_input_sha256: "a".repeat(64), history: [{
+    id: "fit-one", created: "2026-09-28T12:00:00Z", input_sha256: "a".repeat(64), imported: false, model, result,
+    origin: { project_id: "p", group_id: "copper", project_version: version, larch_version: "test" },
+  }] }
+  return { project, fit_id: "fit-one" }
+}
+function submittedModel() { return (api.mock.calls.at(-1)![1] as { model: ArtemisModelDraft }).model }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
 async function loadExample() {
   fireEvent.click(screen.getByRole("button", { name: "Cu₂O example" }))
@@ -92,17 +110,75 @@ async function runFit() {
 }
 
 beforeEach(() => {
-  api.mockReset(); plot.mockClear(); localStorage.clear()
+  api.mockReset(); vi.mocked(athenaApi).mockReset(); plot.mockClear(); localStorage.clear()
   api.mockImplementation(async (url, body) => {
     if (url === "/examples/cuprite") return example()
     if (url === "/projects/p/structures") return attachedProject()
     if (url === "/paths/inspect") { const input = body as { filename: string; content: string }; return path(input.filename, input.content) }
+    if (url.endsWith("/fit-saved")) return savedFit(body)
     return fitResult()
   })
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe("ArtemisFittingPanel", () => {
+  it("prepares the supplied Cu₂O model while the foil stays selected, without requests or fitting", () => {
+    const setup = exampleSetup()
+    const onFitResult = vi.fn()
+    const onViewStructure = vi.fn()
+    const onPathsChange = vi.fn()
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup}
+      onFitResult={onFitResult} onPathsChange={onPathsChange} onViewStructure={onViewStructure} />)
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+
+    // A later command may clear the transient setup prop before Cu₂O is selected.
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("cuprite")}
+      onFitResult={onFitResult} onPathsChange={onPathsChange} onViewStructure={onViewStructure} />)
+    expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.82")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("2")
+    expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("10")
+    expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeEnabled()
+    expect(onPathsChange.mock.calls.at(-1)?.[0].map((item: { filename: string }) => item.filename)).toEqual(setup.example.paths.map(item => item.filename))
+    expect(onFitResult.mock.calls.every(([result]) => result === null)).toBe(true)
+    expect(onViewStructure).not.toHaveBeenCalled()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("does not replace an existing edited Cu₂O draft when a supplied setup arrives", () => {
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group("cuprite")} />)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.67" } })
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group()} exampleSetup={exampleSetup()} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("cuprite")} exampleSetup={exampleSetup()} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.67")
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("preserves model edits and removal of every supplied path across spectrum switches", () => {
+    const setup = exampleSetup()
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.71" } })
+    for (let remaining = 4; remaining > 0; remaining--) fireEvent.click(screen.getByRole("button", { name: "Remove path 1" }))
+    view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("cuprite")} exampleSetup={exampleSetup()} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.71")
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeDisabled()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("scopes supplied Cu₂O models to their project even when group IDs match", () => {
+    const setup = exampleSetup()
+    const view = render(<ArtemisFittingPanel projectId="other-project" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
+    view.rerender(<ArtemisFittingPanel projectId="other-project" version={4} group={group("cuprite")} exampleSetup={setup} />)
+    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
+
   it("requires a processed spectrum and explicit fit action", async () => {
     const view = render(<ArtemisFittingPanel />)
     expect(screen.getByRole("status")).toHaveTextContent("Select a spectrum")
@@ -121,15 +197,15 @@ describe("ArtemisFittingPanel", () => {
     const onProjectChange = vi.fn()
     const onViewStructure = vi.fn()
     const onPathsChange = vi.fn()
-    api.mockImplementation(async url => {
+    api.mockImplementation(async (url, body) => {
       if (url === "/examples/cuprite") return example()
       if (url === "/projects/p/structures") return attachedProject(5)
-      return fitResult({ version: 5 })
+      return savedFit(body, fitResult({ version: 5 }))
     })
     function Harness() {
-      const [version, setVersion] = useState(4)
-      return <ArtemisFittingPanel projectId="p" version={version} group={group()}
-        onProjectChange={project => { onProjectChange(project); setVersion(project.version) }}
+      const [project, setProject] = useState(attachedProject())
+      return <ArtemisFittingPanel projectId="p" version={project.version} group={project.groups[0]}
+        onProjectChange={project => { onProjectChange(project); setProject(project) }}
         onViewStructure={onViewStructure} onPathsChange={onPathsChange} />
     }
     render(<Harness />)
@@ -146,8 +222,8 @@ describe("ArtemisFittingPanel", () => {
     }
     expect(onPathsChange.mock.calls.at(-1)?.[0]).toHaveLength(4)
     await runFit()
-    const submitted = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
-    expect(submitted.version).toBe(5)
+    const submitted = submittedModel()
+    expect(api.mock.calls.at(-1)?.[1]).toMatchObject({ version: 5 })
     expect(submitted.paths.map(item => [item.filename, item.content])).toEqual(example().paths.map(item => [item.filename, item.content]))
   })
 
@@ -197,7 +273,7 @@ describe("ArtemisFittingPanel", () => {
     expect(onViewStructure).not.toHaveBeenCalled()
   })
 
-  it("reads selected FEFF file contents, retains degeneracy, and sends expressions and objective weights without metadata", async () => {
+  it("reads selected FEFF file contents, retains degeneracy, and saves complete FEFF metadata, expressions and objective weights", async () => {
     const result = vi.fn()
     render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onFitResult={result} onProjectChange={acceptProject} />)
     fireEvent.change(screen.getByLabelText("Upload FEFF path files"), { target: { files: [file("feff0002.dat", "contents not a file path")] } })
@@ -210,13 +286,13 @@ describe("ArtemisFittingPanel", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Fit k-weight 3" }))
     fireEvent.click(screen.getByRole("button", { name: "k space" }))
     await runFit()
-    const request = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
-    expect(request).toMatchObject({ version: 4, transform: { kweight: [1, 2], fitspace: "k" }, paths: [{ filename: "feff0002.dat", content: "contents not a file path", s02: "amp * 0.5" }] })
-    expect(request.paths[0]).not.toHaveProperty("metadata")
-    expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request })
+    const request = submittedModel()
+    expect(request).toMatchObject({ transform: { kweight: [1, 2], fitspace: "k" }, paths: [{ filename: "feff0002.dat", content: "contents not a file path", s02: "amp * 0.5" }] })
+    expect(request.paths[0].metadata.degen).toBe(12)
+    expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } })
   })
 
-  it("serializes Set and Def parameters without irrelevant bounds", async () => {
+  it("saves Set and Def draft text with editable bounds", async () => {
     render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
     await loadExample()
     fireEvent.change(screen.getByLabelText("Parameter 2 kind"), { target: { value: "set" } })
@@ -224,9 +300,9 @@ describe("ArtemisFittingPanel", () => {
     fireEvent.change(screen.getByLabelText("Parameter 3 kind"), { target: { value: "def" } })
     fireEvent.change(screen.getByLabelText("Parameter 3 expression"), { target: { value: "sig2 * 2" } })
     await runFit()
-    const request = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
-    expect(request.parameters[1]).toEqual({ name: "del_e0", kind: "set", value: 3.5, expression: "", min: null, max: null })
-    expect(request.parameters[2]).toEqual({ name: "del_r", kind: "def", value: 0, expression: "sig2 * 2", min: null, max: null })
+    const request = submittedModel()
+    expect(request.parameters[1]).toMatchObject({ name: "del_e0", kind: "set", value: "3.5", expression: "", min: "-20", max: "20" })
+    expect(request.parameters[2]).toMatchObject({ name: "del_r", kind: "def", expression: "sig2 * 2" })
   })
 
   it("syncs one path's renamed parameters while preserving the other paths' shared settings", async () => {
@@ -251,7 +327,7 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("Parameter 2 minimum")).toHaveValue("-10")
     expect(api).toHaveBeenCalledTimes(2)
     await runFit()
-    const request = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
+    const request = submittedModel()
     expect(request.parameters.map(parameter => parameter.name)).toEqual(["amp", "del_e0", "del_r", "sig2", "del_r1", "sig2_1"])
     expect(request.paths[0]).toMatchObject({ deltar: "del_r1", sigma2: "sig2_1" })
     expect(request.paths.slice(1).every(item => item.deltar === "del_r" && item.sigma2 === "sig2")).toBe(true)
@@ -325,13 +401,13 @@ describe("ArtemisFittingPanel", () => {
     const onFitResult = vi.fn()
     const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
     await loadExample()
-    const response = deferred<ArtemisFitResult>()
+    const response = deferred<ReturnType<typeof savedFit>>()
     api.mockReturnValueOnce(response.promise)
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
     const signal = api.mock.calls.at(-1)?.[2]
     view.rerender(<ArtemisFittingPanel projectId="p" version={change === "version" ? 5 : 4} group={group(change === "group" ? "iron" : "copper")} pending={change === "pending"} onFitResult={onFitResult} onProjectChange={acceptProject} />)
-    expect(signal?.aborted).toBe(true)
-    await act(async () => { response.resolve(fitResult()) })
+    expect(signal).toBeUndefined()
+    await act(async () => { response.resolve(savedFit(api.mock.calls.at(-1)?.[1])) })
     expect(onFitResult.mock.calls.at(-1)?.[0]).toBeNull()
     expect(screen.queryByText("Fit completed. Results are in the plot panel.")).not.toBeInTheDocument()
   })
@@ -340,11 +416,11 @@ describe("ArtemisFittingPanel", () => {
     const onFitResult = vi.fn()
     render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
     await loadExample()
-    api.mockResolvedValueOnce(fitResult({ version: 3 }))
+    api.mockImplementationOnce(async (_url, body) => savedFit(body, fitResult({ version: 3 })))
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
     await screen.findByRole("alert")
     expect(screen.getByRole("alert")).toHaveTextContent("does not match this spectrum")
-    api.mockResolvedValueOnce(fitResult({ k: { ...fitResult().k, model: [Number.NaN] } }))
+    api.mockImplementationOnce(async (_url, body) => savedFit(body, fitResult({ k: { ...fitResult().k, model: [Number.NaN] } })))
     fireEvent.click(screen.getByRole("button", { name: "Retry fit" }))
     await waitFor(() => expect(screen.getByRole("button", { name: "Retry fit" })).toBeEnabled())
     expect(onFitResult.mock.calls.every(([result]) => result === null)).toBe(true)
@@ -363,8 +439,8 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByRole("checkbox", { name: "Fit k-weight 2" })).not.toBeChecked()
     expect(screen.queryByText("Fit completed. Results are in the plot panel.")).not.toBeInTheDocument()
     await runFit()
-    const submitted = api.mock.calls.at(-1)?.[1] as ArtemisFitRequest
-    expect(submitted).toMatchObject({ version: 4, transform: { kweight: [1, 3], dr: 0 } })
+    const submitted = submittedModel()
+    expect(submitted).toMatchObject({ transform: { kweight: [1, 3], dr: "0" } })
     expect(submitted.transform).not.toHaveProperty("unknown_transform_field")
     expect(submitted.paths[0]).not.toHaveProperty("unknown_path_field")
   })
@@ -380,7 +456,8 @@ describe("ArtemisFittingPanel", () => {
     const saved = await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob!) })
     const bundle = JSON.parse(saved)
     expect(bundle.schema).toBe("artemis-web/v1")
-    expect(bundle.request).toEqual(api.mock.calls.at(-1)?.[1])
+    expect(bundle.request.paths.map((p: { content: string }) => p.content)).toEqual(submittedModel().paths.map(p => p.content))
+    expect(bundle.request.parameters).toEqual(example().parameters)
     expect(bundle.request.paths[0].content).toBe(example().paths[0].content)
     expect(bundle.result).toEqual(fitResult())
     vi.unstubAllGlobals()
@@ -529,5 +606,122 @@ describe("ArtemisFitResultViewer", () => {
     act(() => { plot.mock.calls.at(-1)![0].onError() })
     expect(screen.getByRole("alert")).toHaveTextContent("Could not render")
     expect(screen.getByText("Larch fit report")).toBeInTheDocument()
+  })
+})
+
+function persistedGroup(value = "0.8"): AthenaGroup {
+  const e = example()
+  const model: ArtemisModelDraft = { revision: 0,
+    parameters: e.parameters.map((p, i) => ({ ...p, id: `parameter-${i}`, value: i === 0 ? value : String(p.value), min: p.min === null ? "" : String(p.min), max: p.max === null ? "" : String(p.max) })),
+    paths: e.paths.map((p, i) => ({ ...p, id: `path-${i}`, label: p.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" })),
+    transform: { ...e.transform, kmin: "3", kmax: "12", dk: "1", rmin: "1", rmax: "3", dr: "0" },
+  }
+  return savedFit({ version: 4, model }).project.groups[0]
+}
+
+describe("project-owned Artemis models", () => {
+  it("restores a saved history without refitting and labels scientific staleness and imported results", () => {
+    const source = persistedGroup()
+    const receive = vi.fn()
+    const view = render(<ArtemisFittingPanel projectId="p" version={20} group={source} onFitResult={receive} onProjectChange={acceptProject} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.8")
+    expect(screen.getByLabelText("Saved fit history")).toHaveValue("fit-one")
+    expect(receive.mock.calls.at(-1)?.[0].archive).toMatchObject({ stale: false, modelChanged: false, imported: false })
+    const changed = structuredClone(source)
+    changed.artemis!.current_input_sha256 = "b".repeat(64)
+    changed.artemis!.history[0].imported = true
+    view.rerender(<ArtemisFittingPanel projectId="p" version={21} group={changed} onFitResult={receive} onProjectChange={acceptProject} />)
+    const result = receive.mock.calls.at(-1)?.[0]
+    expect(result.archive).toMatchObject({ stale: true, imported: true })
+    render(<ArtemisFitResultViewer group={changed} result={result} />)
+    expect(screen.getByText(/Outdated input: this spectrum has changed/)).toBeVisible()
+    expect(screen.getByText(/has not been verified by a new fit here/)).toBeVisible()
+    expect(api).not.toHaveBeenCalled()
+  })
+
+  it("saves an unfinished numeric draft and restores it after a remount", async () => {
+    const source = persistedGroup()
+    const receive = vi.fn()
+    api.mockImplementationOnce(async (_url, body) => ({ ...attachedProject(6), groups: [{ ...source, artemis: { ...source.artemis!, model: (body as { model: ArtemisModelDraft }).model } }] }))
+    const view = render(<ArtemisFittingPanel projectId="p" version={5} group={source} onProjectChange={receive} />)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "-" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save model to project" }))
+    await waitFor(() => expect(receive).toHaveBeenCalledOnce())
+    expect(api.mock.calls[0][0]).toBe("/projects/p/groups/copper/model")
+    const saved = receive.mock.calls[0][0] as AthenaProject
+    view.unmount()
+    render(<ArtemisFittingPanel projectId="p" version={saved.version} group={saved.groups[0]} onProjectChange={acceptProject} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
+    expect(screen.getByText(/Model saved in this project/)).toBeVisible()
+  })
+
+  it("follows external saves and Undo for clean cached groups, while preserving dirty drafts", () => {
+    const view = render(<ArtemisFittingPanel projectId="p" version={5} group={persistedGroup()} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("iron")} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={6} group={persistedGroup("0.9")} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.9")
+    view.rerender(<ArtemisFittingPanel projectId="p" version={7} group={persistedGroup("0.7")} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.7")
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.55" } })
+    view.rerender(<ArtemisFittingPanel projectId="p" version={8} group={persistedGroup("0.6")} />)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.55")
+    fireEvent.click(screen.getByRole("button", { name: "Use this fit’s model" }))
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.6")
+    view.rerender(<ArtemisFittingPanel projectId="p" version={8} group={group("iron")} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={9} group={group()} />)
+    expect(screen.queryByLabelText("Path 1 label")).not.toBeInTheDocument()
+  })
+
+  it("selects history without overwriting the draft, and exports no mismatched numerical result", async () => {
+    const source = persistedGroup()
+    const old = persistedGroup("0.6").artemis!.history[0]
+    old.id = "older-fit"
+    source.artemis!.history.unshift(old)
+    let blob: Blob | undefined
+    vi.stubGlobal("URL", class extends URL { static createObjectURL(value: Blob) { blob = value; return "blob:test" } static revokeObjectURL() {} })
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
+    render(<ArtemisFittingPanel projectId="p" version={5} group={source} onProjectChange={acceptProject} />)
+    fireEvent.change(screen.getByLabelText("Saved fit history"), { target: { value: "older-fit" } })
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.8")
+    fireEvent.click(screen.getByRole("button", { name: "Export model JSON" }))
+    const text = await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob!) })
+    expect(JSON.parse(text).result).toBeNull()
+    expect(JSON.parse(text).request.parameters[0].value).toBe(0.8)
+    fireEvent.click(screen.getByRole("button", { name: "Use this fit’s model" }))
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.6")
+    vi.unstubAllGlobals()
+  })
+
+  it("refreshes after a version conflict without losing the unfinished draft, then retries at the new version", async () => {
+    function Harness() {
+      const [project, setProject] = useState({ ...attachedProject(5), groups: [persistedGroup()] })
+      return <ArtemisFittingPanel projectId="p" version={project.version} group={project.groups[0]} onProjectChange={setProject} />
+    }
+    api.mockRejectedValueOnce(new ApiRequestError({ code: "stale_revision", message: "Project changed", fields: [], recovery: "Reload" }, 409))
+    vi.mocked(athenaApi).mockResolvedValueOnce({ ...attachedProject(6), groups: [persistedGroup("0.9")] })
+    api.mockImplementationOnce(async (_url, body) => ({ ...attachedProject(7), groups: [{ ...persistedGroup(), artemis: { ...persistedGroup().artemis!, model: (body as { model: ArtemisModelDraft }).model } }] }))
+    render(<Harness />)
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "-" } })
+    fireEvent.click(screen.getByRole("button", { name: "Save model to project" }))
+    await screen.findByText(/Project state refreshed after another change/)
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
+    fireEvent.click(screen.getByRole("button", { name: "Save model to project" }))
+    await screen.findByText(/Model saved in this project. Save project downloads/)
+    expect(api.mock.calls[1][1]).toMatchObject({ version: 6 })
+    expect((api.mock.calls[1][1] as { model: ArtemisModelDraft }).model.parameters[0].value).toBe("-")
+  })
+
+  it("receives a committed fit after switching groups without applying it to the new spectrum", async () => {
+    const onProjectChange = vi.fn()
+    const response = deferred<ReturnType<typeof savedFit>>()
+    api.mockReturnValueOnce(response.promise)
+    const view = render(<ArtemisFittingPanel projectId="p" version={5} group={persistedGroup()} onProjectChange={onProjectChange} />)
+    fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
+    const body = api.mock.calls[0][1]
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={group("iron")} onProjectChange={onProjectChange} />)
+    const saved = savedFit(body, fitResult({ version: 5 }))
+    await act(async () => response.resolve(saved))
+    expect(onProjectChange).toHaveBeenCalledWith(saved.project)
+    expect(screen.queryByLabelText("Path 1 label")).not.toBeInTheDocument()
   })
 })

@@ -1,0 +1,15 @@
+.panel { min-width: 0; margin: 8px 0; padding: 8px 0; font-size: var(--text-caption); color: var(--ath-muted); }
+.panel strong { color: var(--ath-ink); }
+.panel p { margin: 6px 0; line-height: var(--leading-body); }
+.controls { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: end; margin: 8px 0; }
+.controls label { display: flex; flex: 1 1 125px; flex-direction: column; gap: 4px; min-width: 0; }
+.controls input { width: 100%; min-width: 0; box-sizing: border-box; }
+.scroll { max-width: 100%; max-height: 240px; overflow: auto; border: 1px solid var(--ath-line); border-radius: 5px; }
+.scroll table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+.scroll th, .scroll td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--ath-line); vertical-align: top; }
+.scroll th { font-weight: 500; }
+.scroll thead th { position: sticky; top: 0; background: var(--ath-popover); z-index: 1; }
+.scroll label { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
+.scroll summary { cursor: pointer; }
+.scroll input { width: auto; margin: 0; }
+.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }

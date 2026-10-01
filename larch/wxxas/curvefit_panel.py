@@ -191,6 +191,7 @@ class CurveFitResultFrame(wx.Frame):
         self.datasets = {}
         self.form = {}
         self.larch_eval = self.fit_frame.larch_eval
+        self.report_frame = None
         self.nfit = 0
         self.createMenus()
         self.build()
@@ -268,9 +269,6 @@ class CurveFitResultFrame(wx.Frame):
 
         pack(ppanel, psizer)
 
-#         wids['load_model'] = Button(panel, 'Load this Model for Fitting',
-#                                     size=(250, -1), action=self.onLoadModel)
-
         wids['plot_choice'] = Button(panel, 'Plot This Fit',
                                      size=(125, -1), action=self.onPlot)
 
@@ -292,11 +290,14 @@ class CurveFitResultFrame(wx.Frame):
         sizer.Add(wids['model_desc'],  (irow, 0), (1, 6), LEFT)
 
         self.wids['use_model'] = Button(panel, 'Load This Model for Fitting',
-                                       size=(275, -1), action=self.onCopyModel)
+                                       size=(250, -1), action=self.onCopyModel)
 
         self.wids['copy_params'] = Button(panel, 'Update Model with best-fit values',
-                                          size=(275, -1), action=self.onCopyParams)
+                                          size=(250, -1), action=self.onCopyParams)
 
+        self.wids['show_fitreport'] = Button(panel, 'Show Fit Report',
+                                          size=(250, -1), action=self.onShowFitReport)
+        
         irow += 1
         sizer.Add(self.wids['use_model'], (irow, 0), (1, 2), LEFT)
         sizer.Add(self.wids['copy_params'], (irow, 2), (1, 3), LEFT)
@@ -323,6 +324,7 @@ class CurveFitResultFrame(wx.Frame):
 
         sizer.Add(title, (irow, 0), (1, 1), LEFT)
         sizer.Add(subtitle, (irow, 1), (1, 1), LEFT)
+        sizer.Add(self.wids['show_fitreport'], (irow, 2), (1, 2), LEFT)        
 
         sview = self.wids['stats'] = dv.DataViewListCtrl(panel, style=DVSTYLE)
 
@@ -331,7 +333,6 @@ class CurveFitResultFrame(wx.Frame):
         xw = (170, 75, 75, 110, 115, 115, 100)
         if uname=='darwin':
             xw = (150, 70, 70, 90, 95, 95, 95)
-
 
         sview.Bind(dv.EVT_DATAVIEW_SELECTION_CHANGED, self.onSelectFit)
         sview.AppendTextColumn('Label',  width=xw[0])
@@ -366,13 +367,13 @@ class CurveFitResultFrame(wx.Frame):
         pview.SetFont(self.font_fixedwidth)
         self.wids['paramsdata'] = []
 
-        xw = (180, 140, 150, 250)
+        xw = (180, 135, 135, 270)
         if uname=='darwin':
             xw = (180, 110, 110, 250)
         pview.AppendTextColumn('Parameter',  width=xw[0])
         pview.AppendTextColumn('Best Value', width=xw[1])
-        pview.AppendTextColumn('1-\u03c3 Uncertainty', width=xw[2])
-        pview.AppendTextColumn('Initial value or constraint expression',     width=xw[3])
+        pview.AppendTextColumn('Stderr (1\u03c3)', width=xw[2])
+        pview.AppendTextColumn('Initial value/Constraint',     width=xw[3])
 
         for col in range(4):
             this = pview.Columns[col]
@@ -409,9 +410,9 @@ class CurveFitResultFrame(wx.Frame):
         cview = self.wids['correl'] = dv.DataViewListCtrl(panel, style=DVSTYLE)
         cview.SetFont(self.font_fixedwidth)
 
-        cview.AppendTextColumn('Parameter 1',    width=150)
-        cview.AppendTextColumn('Parameter 2',    width=150)
-        cview.AppendTextColumn('Correlation',    width=150)
+        cview.AppendTextColumn('Parameter 1',    width=180)
+        cview.AppendTextColumn('Parameter 2',    width=180)
+        cview.AppendTextColumn('Correlation',    width=200)
 
         for col in (0, 1, 2):
             this = cview.Columns[col]
@@ -420,7 +421,7 @@ class CurveFitResultFrame(wx.Frame):
             if col == 2:
                 align = wx.ALIGN_RIGHT
             this.Alignment = this.Renderer.Alignment = align
-        cview.SetMinSize((475, 150))
+        cview.SetMinSize((625, 150))
 
         irow += 1
         sizer.Add(cview, (irow, 0), (1, 5), LEFT)
@@ -442,6 +443,8 @@ class CurveFitResultFrame(wx.Frame):
         item = self.wids['stats'].GetSelectedRow()
         result.label = self.wids['fit_label'].GetValue()
         self.show_results()
+        if event is not None:
+            event.Skip()
 
     def onRemoveFromHistory(self, event=None):
         result = self.get_fitresult()
@@ -452,6 +455,9 @@ class CurveFitResultFrame(wx.Frame):
             self.datagroup.curvefit.fit_history.pop(self.nfit)
             self.nfit = 0
             self.show_results()
+        if event is not None:
+            event.Skip()
+
 
     def onSaveAllStats(self, evt=None):
         "Save Parameters and Statistics to CSV"
@@ -628,7 +634,7 @@ class CurveFitResultFrame(wx.Frame):
             name1, name2 = namepair.split('$$')
             self.wids['correl'].AppendItem((name1, name2, "% .4f" % corval))
 
-
+        
     def onCopyModel(self, evt=None):
         dataset = evt.GetString()
         dgroup = self.datasets.get(evt.GetString(), None)
@@ -636,9 +642,30 @@ class CurveFitResultFrame(wx.Frame):
         self.fit_frame.use_modelresult(modelresult=result, dgroup=dgroup)
 
     def onCopyParams(self, evt=None):
-        result = self.get_fitresult()
-        self.fit_frame.update_start_values(result.result.params)
+        fitresult = self.get_fitresult()
+        self.fit_frame.update_start_values(fitresult.result.params)
 
+    def onShowFitReport(self, event=None):
+        fitresult = self.get_fitresult()
+        text = fitresult.result.fit_report()
+        fname = self.datagroup.filename
+        label = fitresult.label
+        title = f'Report for {fname} fit "{label}"'
+        
+        default_filename = 'curvefit_report.txt'
+        wildcard = 'Text Files (*.txt)|*.txt'
+        try:
+            self.report_frame.set_text(text)
+            self.report_frame.SetTitle(title)
+            self.report_frame.default_filename = default_filename
+            self.report_frame.wildcard = wildcard
+        except:
+            self.report_frame = ReportFrame(parent=self.parent,
+                                            text=text, title=title,
+                                            default_filename=default_filename,
+                                            wildcard=wildcard)
+
+        
     def ShowDataSet(self, evt=None):
         dataset = evt.GetString()
         group = self.datasets.get(evt.GetString(), None)
@@ -930,12 +957,12 @@ class EditParamsFrame(wx.Frame):
             for pname, sel, ptype, val in self.model.data:
                 if sel:
                     out.append(pname)
-                    if name in params:
+                    if name in self.params:
                         params.pop(name)
 
             self.model.set_data(self.params)
             self.model.read_data()
-            self.curvefit_panel.get_pathpage('parameters').Rebuild()
+            self.curvefit_panel.get_component_page('parameters').Rebuild()
         dlg.Destroy()
 
     def onAddParam(self, event=None):
@@ -950,9 +977,9 @@ class EditParamsFrame(wx.Frame):
             ptype = 'expr'
 
         if ptype == 'vary':
-            cmd = f"curvefit_params.Add({par_name}, value={val}, vary=True)"
+            cmd = f"curvefit_params.add('{par_name}', value={val}, vary=True)"
         else:
-            cmd = f"curvefit_params.Add({par_name}, expr='{val}')"
+            cmd = f"curvefit_params.add('{par_name}', expr='{val}')"
 
         if not self.curvefit_panel.larch_has_symbol('curvefit_params'):
             self.curvefit_panel.larch_eval(COMMANDS['curvefit_params'])
@@ -966,7 +993,9 @@ class EditParamsFrame(wx.Frame):
         self.params = self.curvefit_panel.larch_get('curvefit_params')
         self.model.set_data(self.params)
         self.model.read_data()
-        self.curvefit_panel.get_pathpage('parameters').Rebuild()
+        self.curvefit_panel.get_component_page('parameters').Rebuild()
+        if event is not None:
+            event.Skip()
 
     def onClose(self, event=None):
         self.Destroy()
@@ -1020,6 +1049,7 @@ class CurveFitParamsPanel(wx.Panel):
         self.panel.irow = 1
         self.parwids = {}
         self.update()
+
 
     def set_init_values(self, params):
         for pname, par in params.items():
@@ -1112,12 +1142,17 @@ class CurveFitParamsPanel(wx.Panel):
 
     def onPanelExposed(self, event=None):
         self.update()
+        if event is not None:
+            event.Skip()
+
 
     def onPanelHidden(self, event=None):
         try:
             self.update_components()
         except:
             pass
+        if event is not None:
+            event.Skip()
 
     def update_components(self):
         """ updates the component parameter widgets"""
@@ -1178,6 +1213,8 @@ class CurveFitPanel(TaskPanel):
 
         getattr(oldpage, 'onPanelHidden', noop)()
         getattr(newpage, 'onPanelExposed', noop)()
+        if event is not None:
+            event.Skip()
 
 
     def build_display(self):
@@ -1291,7 +1328,6 @@ class CurveFitPanel(TaskPanel):
                                               curvefit_panel=self)
 
         self.mod_nb.AddPage(self.params_panel, 'Parameters', True)
-        self.mod_nb
 
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add((5, 5), 0, LEFT, 3)
@@ -1652,6 +1688,23 @@ class CurveFitPanel(TaskPanel):
         i2 = index_of(x, opts['xmax'] + dx) + 1
         return i1, i2
 
+    def get_component_page(self, name):
+        "get nb page for a component by name"
+        name = name.lower().strip()
+        for i in range(self.mod_nb.GetPageCount()):
+            text = self.mod_nb.GetPageText(i).strip().lower()
+            if name in text:
+                return self.mod_nb.GetPage(i)
+
+    def get_used_params(self):
+        used_syms = []
+        for key, val in self.fit_components.items():
+            for pname, wids in val.parwids.items():
+                used_syms.append(pname)
+        return used_syms
+
+
+
     def set_yerror(self):
         """set yerr array based on Panel selections"""
         dgroup = self.controller.get_group()
@@ -1697,31 +1750,40 @@ class CurveFitPanel(TaskPanel):
         curvefit_opts = dict(array=opts['array_name'],
                          xmin=opts['xmin'], xmax=opts['xmax'])
         dgroup.journal.add_ifnew('curvefit_setup', curvefit_opts)
+        comp_params = self.get_used_params()
+        def generate_param_cmd(parwids):
+            this = parwids.param
+            pargs = ["'%s'" % this.name, 'value=%f' % (this.value),
+                     'min=%f' % (this.min), 'max=%f' % (this.max)]
+            # comp_params.append(this.name)
+            if this.expr is not None:
+                pargs.append("expr='%s'" % (this.expr))
+            elif not this.vary:
+                pargs.pop()
+                pargs.pop()
+                pargs.append("vary=False")
+            return this.name, ', '.join(pargs)
+
 
         for comp in self.fit_components.values():
             _cen, _amp = None, None
             if comp.usebox is not None and comp.usebox.IsChecked():
                 for parwids in comp.parwids.values():
-                    this = parwids.param
-                    pargs = ["'%s'" % this.name, 'value=%f' % (this.value),
-                             'min=%f' % (this.min), 'max=%f' % (this.max)]
-                    if this.expr is not None:
-                        pargs.append("expr='%s'" % (this.expr))
-                    elif not this.vary:
-                        pargs.pop()
-                        pargs.pop()
-                        pargs.append("vary=False")
+                    name, args = generate_param_cmd(parwids)
+                    comp_params.append(name)
+                    cmds.append(f"curvefit_params.add({args})")
 
-                    cmds.append("curvefit_params.add(%s)" % (', '.join(pargs)))
-                    if this.name.endswith('_center'):
-                        _cen = this.name
-                    elif parwids.param.name.endswith('_amplitude'):
-                        _amp = this.name
                 mname = comp.mclass.__name__
                 modcmds.append(f"curvefit_model {modop} {mname}(prefix='{comp.prefix}')")
                 modop = "+="
-                if not comp.bkgbox.IsChecked() and _cen is not None and _amp is not None:
-                    comps.append((_amp, _cen))
+
+        # check for other constraint/calculated params
+        for parwids in self.params_panel.parwids.values():
+            name, args = generate_param_cmd(parwids)
+            if name not in comp_params:
+                comp_params.append(name)
+                cmds.append(f"curvefit_params.add({args})")
+
 
         cmds.extend(modcmds)
         cmds.append(COMMANDS['curvefit_prep'].format(group=dgroup.groupname,
@@ -1826,15 +1888,24 @@ class CurveFitPanel(TaskPanel):
 
     def update_start_values(self, params):
         """fill parameters with best fit values"""
-        allparwids = {}
+           
         for comp in self.fit_components.values():
             if comp.usebox is not None and comp.usebox.IsChecked():
                 for name, parwids in comp.parwids.items():
-                    allparwids[name] = parwids
-
-        for pname, par in params.items():
-            if pname in allparwids:
-                allparwids[pname].value.SetValue(par.value)
+                    if name in params:
+                        par = params[name]
+                        parwids.value.SetValue(par.value)
+                        parwids.minval.SetValue(par.min)
+                        parwids.maxval.SetValue(par.max)
+                        varstr = 'vary' if par.vary else 'fix'
+                        if par.expr is not None:
+                            varstr = 'constrain'
+                            parwids.expr.SetValue(par.expr)
+                        parwids.vary.SetStringSelection(varstr)
+                        parwids.onVaryChoice()
+                        
+        self.larch_set('curvefit_params', params)        
+        self.params_panel.update()
 
     def autosave_modelresult(self, result, fname=None):
         """autosave model result to user larch folder"""
@@ -1991,6 +2062,8 @@ class ModelComponentPanel(GridPanel):
                 pwids.minval.SetValue(par.min)
                 pwids.maxval.SetValue(par.max)
                 pwids.onVaryChoice()
+        if event is not None:
+            event.Skip()
 
     def onPanelHidden(self, event=None):
         "set params from widget values"
@@ -2007,3 +2080,5 @@ class ModelComponentPanel(GridPanel):
                 par.expr = pwids.expr.GetValue()
             else:
                 par.value = pwids.value.GetValue()
+        if event is not None:
+            event.Skip()

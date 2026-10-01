@@ -1,0 +1,14 @@
+.panel { min-width: 0; margin: 8px 12px 12px; padding-top: 8px; border-top: 1px solid var(--ath-line); }
+.controls { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.controls label { display: flex; flex: 1 1 140px; flex-direction: column; gap: 4px; min-width: 0; color: var(--ath-muted); font-size: var(--text-label); }
+.controls input { width: 100%; min-width: 0; font-variant-numeric: tabular-nums; }
+.help, .warning { margin: 8px 0; color: var(--ath-muted); font-size: var(--text-caption); line-height: var(--leading-body); }
+.warning { color: var(--ath-warning-ink, #9a6700); }
+.tableScroll { max-height: 300px; overflow: auto; border: 1px solid var(--ath-line); border-radius: 5px; }
+.tableScroll table { width: 100%; min-width: 530px; border-collapse: collapse; font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.caption { text-align: left; padding: 8px; font-weight: 500; }
+.tableScroll th, .tableScroll td { padding: 6px 8px; border-top: 1px solid var(--ath-line); text-align: left; vertical-align: top; white-space: nowrap; }
+.tableScroll thead th { position: sticky; top: 0; background: var(--ath-canvas); font-weight: 500; }
+.tableScroll tbody th { font-weight: 500; }
+.tableScroll summary { cursor: pointer; color: var(--ath-primary); }
+.distribution { display: flex; flex-direction: column; gap: 3px; margin-top: 5px; }

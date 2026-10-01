@@ -146,9 +146,18 @@ def attached_source(store, project_id, attachment_id, version):
     _fail("This attached CIF is no longer present in the selected project.", "attachment_id")
 
 
-def attach_structure(store, ident, request: AttachRequest):
+def structure_attachment(amcsd_id):
+    """Prepare a validated database snapshot without committing a project edit."""
     from .artemis_structures import structure_details
 
+    details = copy.deepcopy(structure_details(amcsd_id))
+    record = dict(id=uuid.uuid4().hex, amcsd_id=amcsd_id,
+                  attached_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                  sha256=hashlib.sha256(details["cif"].encode("utf-8")).hexdigest(), structure=details)
+    return validate_attachments([record])[0]
+
+
+def attach_structure(store, ident, request: AttachRequest):
     with store.storage.lock(ident):
         old = local_project(store, ident)
         store.check(old, request.version)
@@ -157,13 +166,10 @@ def attach_structure(store, ident, request: AttachRequest):
             return old
         if len(records) >= MAX_STRUCTURES:
             _fail(f"A project can contain at most {MAX_STRUCTURES} attached CIF structures.")
-        details = copy.deepcopy(structure_details(request.amcsd_id))
-        record = dict(id=uuid.uuid4().hex, amcsd_id=request.amcsd_id,
-                      attached_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                      sha256=hashlib.sha256(details["cif"].encode("utf-8")).hexdigest(), structure=details)
+        record = structure_attachment(request.amcsd_id)
         updated = copy.deepcopy(old)
         updated[PROJECT_FIELD] = validate_attachments([*records, record])
-        return store.save(updated, old, f"Attached AMCSD {request.amcsd_id}: {details['mineral']}")
+        return store.save(updated, old, f"Attached AMCSD {request.amcsd_id}: {record['structure']['mineral']}")
 
 
 def build_attachments_router(store):

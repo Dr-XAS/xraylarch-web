@@ -7,6 +7,7 @@ import pytest
 
 from xraylarch_web.config import Settings
 from xraylarch_web.main import create_app
+from xraylarch_web.upload_limit import _MULTIPART_OVERHEAD_BYTES
 import xraylarch_web.routes as routes_module
 
 
@@ -574,11 +575,12 @@ def test_upload_cap_rejects_an_oversized_declared_content_length_before_receive(
 
     async def exercise() -> None:
         app = create_app(Settings(data_root=tmp_path, max_upload_bytes=10))
+        body_limit = 10 + _MULTIPART_OVERHEAD_BYTES
         status, body, received = await _asgi_request(
             app,
             headers=[
                 (b"content-type", b"multipart/form-data; boundary=boundary"),
-                (b"content-length", b"11"),
+                (b"content-length", str(body_limit + 1).encode()),
             ],
             body_chunks=(),
         )
@@ -586,9 +588,9 @@ def test_upload_cap_rejects_an_oversized_declared_content_length_before_receive(
         assert status == 400
         assert body == (
             b'{"error":{"code":"upload_too_large",'
-            b'"message":"Upload exceeds the 10 byte limit.",'
-            b'"fields":["file"],'
-            b'"recovery":"Choose a smaller text upload."}}'
+            + f'"message":"Upload request exceeds the {body_limit} byte limit.",'.encode()
+            + b'"fields":["file"],'
+            + b'"recovery":"Choose a smaller text upload."}}'
         )
         assert received == 0
         assert not parsed
@@ -614,7 +616,7 @@ def test_upload_cap_rejects_streamed_body_without_trusting_content_length(
             b"--boundary\r\n"
             b'Content-Disposition: form-data; name="file"; filename="oversized.xmu"\r\n'
             b"Content-Type: text/plain\r\n\r\n"
-            + b"1" * 300
+            + b"1" * (300 + _MULTIPART_OVERHEAD_BYTES + 1)
             + b"\r\n--boundary--\r\n"
         )
         for content_length in (None, b"1"):

@@ -1,0 +1,66 @@
+name: Web frontend
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the release backend for browser acceptance
+        working-directory: .
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          python -m venv "$GITHUB_WORKSPACE/backend/.venv"
+          XRAYLARCH_WEB_TEST_MODE=1 source scripts/deploy-xraylarch-web.sh
+          REQUESTED_SHA="$(git rev-parse HEAD)"
+          validate_sha "$REQUESTED_SHA"
+          SAFE_PATH="$(dirname "$(command -v python)"):/usr/local/bin:/usr/bin:/bin"
+          DATA_ROOT="$RUNNER_TEMP/xraylarch-frontend-data"
+          CANDIDATE_DATA="$RUNNER_TEMP/xraylarch-frontend-candidate"
+          CLEAN_HOME="$CANDIDATE_DATA/home"
+          mkdir -p "$DATA_ROOT" "$CLEAN_HOME" "$CANDIDATE_DATA/runtime/pycache"
+          install_release_backend "$GITHUB_WORKSPACE"
+      - run: npx playwright install --with-deps chromium
+      - name: Measured spectra, saved EXAFS fits, and mounted integration lifecycle
+        run: npm run test:e2e -- --config=playwright.ci.config.ts
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-frontend-browser-failures
+          path: frontend/test-results
+          if-no-files-found: ignore
+          retention-days: 7

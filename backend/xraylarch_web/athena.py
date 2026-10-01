@@ -11,6 +11,8 @@ import gzip
 import hashlib
 import io
 import json
+import logging
+import re
 import secrets
 from datetime import datetime, timezone
 from pathlib import Path
@@ -75,6 +77,8 @@ def fail(message: str, code: str = "athena_invalid"):
 
 
 _MAX_SAFE_ADDED_ORDER = (1 << 53) - 1
+_SNAPSHOT_FILE = re.compile(r"(?:undo|redo)-\d+\.json")
+_LOGGER = logging.getLogger(__name__)
 
 
 def _group_added_orders(value, group_ids, *, prune_missing=False):
@@ -982,6 +986,8 @@ class AthenaStore:
                     if key not in group["parameters"]:
                         group["parameters"][key] = effective.get(key) if effective.get(key) is not None else default
                 _ensure_edge_identity(group)
+            from .artemis_persistence import refresh_project
+            refresh_project(project)
             return project
         except FileNotFoundError:
             fail("Project was not found.", "workspace_not_found")
@@ -1031,9 +1037,11 @@ class AthenaStore:
                 recovery=f"Re-read the project and resend with version {p['version']}.",
             )
 
-    def save(self, p: dict, old: dict, message: str) -> dict:
+    def save(self, p: dict, old: dict, message: str, *, prune_snapshots: bool = True) -> dict:
         if len(p["groups"]) > 100:
             fail("A project can contain at most 100 groups.")
+        from .artemis_persistence import refresh_project
+        refresh_project(p)
         _stamp_group_added_orders(p, old)
         p["group_folders"] = _group_folders(
             p.get("group_folders", []), (group["id"] for group in p["groups"]),
@@ -1051,7 +1059,29 @@ class AthenaStore:
         p["updated"] = now()
         p["history"] = (old["history"] + [{"time": now(), "message": message}])[-200:]
         self.storage.write_json(p["id"], "project.json", p)
+        if prune_snapshots:
+            self._prune_snapshots(p)
         return p
+
+    def _prune_snapshots(self, project: dict) -> None:
+        """Delete undo/redo snapshots the committed project no longer lists.
+
+        Each snapshot is a full project copy, and only the stored project's own
+        stacks refer to one. Callers hold the workspace lock and have already
+        replaced project.json, so an interruption can leave an orphan (removed
+        by the next save) but never a dangling reference.
+        """
+        keep = set(project["undo"]) | set(project["redo"])
+        try:
+            for path in self.storage.workspace_dir(project["id"]).iterdir():
+                if _SNAPSHOT_FILE.fullmatch(path.name) and path.name not in keep:
+                    try:
+                        path.unlink(missing_ok=True)
+                    except OSError:
+                        _LOGGER.warning("Could not remove unused Athena snapshot %s", path, exc_info=True)
+        except OSError:
+            # Cleanup can retry on the next save; the project was already committed.
+            _LOGGER.warning("Could not scan Athena snapshots for project %s", project["id"], exc_info=True)
 
     @staticmethod
     def _stamp_group_revisions(p: dict, old: dict) -> None:
@@ -2019,6 +2049,8 @@ class AthenaStore:
                 temporary_id = replacement['id']
                 for key in ('id', 'label', 'marked', 'frozen', 'notes', 'multiplier', 'offset', 'reference_id', 'background_standard_id'):
                     replacement[key] = copy.deepcopy(target[key])
+                if 'artemis' in target:
+                    replacement['artemis'] = copy.deepcopy(target['artemis'])
                 family = self.reference_family(p, target['id'])
                 if len(family) > 1:
                     previous_shift = replacement['parameters']['energy_shift']
@@ -2835,6 +2867,7 @@ class AthenaStore:
                 restore["version"] = old["version"] + 1
                 restore["updated"] = now()
                 self.storage.write_json(ident, "project.json", restore)
+                self._prune_snapshots(restore)
                 return restore
             if action == "project":
                 p["name"] = str(options.get("name", p["name"]))[:200] or "Untitled project"
@@ -2855,6 +2888,20 @@ class AthenaStore:
                         options["group_folders"], (group["id"] for group in p["groups"])
                     )
             elif action == "example":
+                artemis_example = None
+                if p.get("integration") is not True:
+                    # Validate and attach the matching CIF before creating any
+                    # spectra, then commit the whole example in one Undo step.
+                    from .artemis import cuprite_example
+                    from .artemis_attachments import merge_attachments, structure_attachment
+                    artemis_example = cuprite_example()
+                    attachment = structure_attachment(artemis_example["amcsd_id"])
+                    if attachment["sha256"] != artemis_example["cif_sha256"]:
+                        fail("The Cuprite example does not match its attached CIF snapshot.")
+                    p["artemis_structures"] = merge_attachments(
+                        p.get("artemis_structures", []), [attachment])
+                    attachment = next(record for record in p["artemis_structures"]
+                                      if record["amcsd_id"] == artemis_example["amcsd_id"])
                 foil_ids = []
                 for filename, label in (("cu_10k.xmu", "Cu foil · 10 K"), ("cu_50k.xmu", "Cu foil · 50 K"), ("cu_rt01.xmu", "Cu foil · 300 K")):
                     path = Path(__file__).resolve().parents[2] / "examples" / "xafsdata" / filename
@@ -2879,6 +2926,11 @@ class AthenaStore:
                 ])
                 if p["name"] == "Untitled project":
                     p["name"] = "Copper examples · foils and reference"
+                if artemis_example is not None:
+                    operation_details["artemis_example"] = {
+                        "group_id": cu2o["id"], "attachment_id": attachment["id"],
+                        "example": artemis_example,
+                    }
             elif action == "reorder":
                 ids = options.get("ids", [])
                 if len(ids) != len(p["groups"]) or set(ids) != {g["id"] for g in p["groups"]}:
@@ -3566,6 +3618,9 @@ class AthenaStore:
             from .artemis_attachments import validate_attachments
             sidecar["artemis_structures"] = validate_attachments(p["artemis_structures"])
         for meta, g in zip(sidecar["groups"], p["groups"]):
+            if "artemis" in g:
+                from .artemis_persistence import validate_state
+                meta["artemis"] = validate_state(g["artemis"])
             meta["parameters"] = _exchange_recipe(g["parameters"], g.get("result"))
             meta["is_difference"] = _is_difference(g)
             meta["data_type"] = g["data_type"]
@@ -3750,8 +3805,13 @@ class AthenaStore:
                                 "background_standard_id": standard,
                                 "frozen": frozen, "multiplier": multiplier, "offset": offset,
                                 "has_web_recipe": web or "parameters" in meta, "recipe_error": recipe_error})
+            if "artemis" in meta:
+                from .artemis_persistence import imported_state
+                provisional[-1]["artemis"] = imported_state(meta["artemis"])
 
         _exchange_budget(provisional, self.settings)
+        from .artemis_persistence import refresh_project
+        refresh_project({"groups": provisional})
         for record in provisional:
             if record["reference_id"] and record["reference_id"] not in idmap:
                 import_warnings.append(f"{record['label']}: reference {record['reference_id']} was not present in the project.")
@@ -3802,6 +3862,7 @@ class AthenaStore:
                 "data_type": record["data_type"], "source": record["source"],
                 "is_difference": record["is_difference"], "is_normalized": record["is_normalized"],
                 "notes": record["notes"][:20_000], "result": None, "processing_error": record["recipe_error"],
+                **({"artemis": copy.deepcopy(record["artemis"])} if "artemis" in record else {}),
                 **{key: record[key] for key in ("marked", "frozen", "multiplier", "offset", "reference_id", "background_standard_id")}}
 
     def preview_project(self, ident, data, filename, *, prepared=None):
@@ -4021,13 +4082,16 @@ class AthenaStore:
             if not keep_name or (not old["groups"] and old["name"] == "Untitled project"):
                 p["name"] = parsed["name"]
             p["journal"] = (p["journal"] + "\n" + parsed["journal"]).strip()[:50_000]
-            saved = self.save(p, old, f"Imported project {filename}: {len(imported)} groups")
+            # Keep prior snapshots until the separate analysis sidecar commits.
+            saved = self.save(p, old, f"Imported project {filename}: {len(imported)} groups", prune_snapshots=False)
             if imported_analyses:
                 try:
                     self.storage.write_json(ident, "analyses.json", {"analyses": p["analyses"]})
                 except OSError:
                     self.storage.write_json(ident, "project.json", old)
+                    self._prune_snapshots(old)
                     raise
+            self._prune_snapshots(saved)
             return saved
 
 
@@ -4246,8 +4310,8 @@ def build_athena_router(
                         headers={'Content-Disposition': 'attachment; filename="athena.plugin_registry"'})
 
     @router.post('/preferences/plugins/import')
-    async def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
-        data = await _read_bounded_upload(file, MAX_REGISTRY_BYTES)
+    def import_file_plugins(version: int = Query(ge=0), file: UploadFile = File(...)):
+        data = _read_bounded_upload(file, MAX_REGISTRY_BYTES)
         return guarded(lambda: registry_view(preferences.save_plugins(PluginRegistry(version=version, enabled=decode_registry(data)))))
     operation_aliases = {
         "inspect": "upload",
@@ -4366,18 +4430,18 @@ def build_athena_router(
         return project_view(store.load(ident), view)
 
     @router.post("/projects/{ident}/inspect")
-    async def inspect(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def inspect(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "upload")
-        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        data = _read_bounded_upload(file, settings.max_upload_bytes)
         mutation = lambda: guarded(lambda: store.inspect(ident, data, file.filename or "data.dat"))
         return integrated_mutation(
             ident, capability, "upload", authority, mutation, lock_workspace=True
         )
 
     @router.post('/projects/{ident}/dispersive/inspect')
-    async def inspect_dispersive(ident: str,file: UploadFile=File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def inspect_dispersive(ident: str,file: UploadFile=File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "upload")
-        data=await _read_bounded_upload(file,settings.max_upload_bytes)
+        data=_read_bounded_upload(file,settings.max_upload_bytes)
         mutation = lambda: guarded(lambda: store.inspect_dispersive(ident,data,file.filename or 'pixels.dat'))
         return integrated_mutation(
             ident, capability, "upload", authority, mutation, lock_workspace=True
@@ -4410,9 +4474,9 @@ def build_athena_router(
         return Response(content,media_type='application/x-yaml',headers={'Content-Disposition':'attachment; filename="athena.dxas"'})
 
     @router.post('/preferences/dispersive/import')
-    async def import_dispersive_defaults(version: int=Query(...,ge=0),file: UploadFile=File(...)):
+    def import_dispersive_defaults(version: int=Query(...,ge=0),file: UploadFile=File(...)):
         from .athena_dispersive import decode_calibration
-        data=await _read_bounded_upload(file,4096)
+        data=_read_bounded_upload(file,4096)
         return guarded(lambda: AthenaPreferences(settings).save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
 
     @router.post("/projects/{ident}/import")
@@ -4647,18 +4711,18 @@ def build_athena_router(
         return previewed(ident, request, lambda: store.preview_smoothing(ident, request), view)
 
     @router.post("/projects/{ident}/restore")
-    async def restore(ident: str, version: int, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def restore(ident: str, version: int, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "restore")
-        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        data = _read_bounded_upload(file, settings.max_upload_bytes)
         return integrated_mutation(
             ident, capability, "restore", authority,
             lambda: guarded(lambda: store.restore(ident, version, data, file.filename or "project.prj")),
         )
 
     @router.post("/projects/{ident}/preview-project")
-    async def preview_project(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def preview_project(ident: str, file: UploadFile = File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
         authority = integration_draft(ident, capability, "upload")
-        data = await _read_bounded_upload(file, settings.max_upload_bytes)
+        data = _read_bounded_upload(file, settings.max_upload_bytes)
         mutation = lambda: guarded(lambda: store.preview_project(ident, data, file.filename or "project.prj"))
         return integrated_mutation(ident, capability, "upload", authority, mutation)
 

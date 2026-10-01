@@ -4,6 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { athenaApi, type Analysis, type AthenaGroup, type AthenaProject, type Parameters, type E0Method } from "@/lib/athena"
+import type { ArtemisExample } from "@/lib/artemis"
 import { ApiRequestError } from "@/lib/backend-client"
 import type { AthenaSelectionUpdate } from "@/lib/athena-selection"
 import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts"
@@ -317,6 +318,33 @@ function projectFixture(overrides: Partial<AthenaProject> = {}): AthenaProject {
   }
 }
 
+function copperExampleProject(project: AthenaProject): AthenaProject {
+  const added = [
+    group("example-10k", "Cu foil · 10 K"),
+    group("example-50k", "Cu foil · 50 K"),
+    group("example-300k", "Cu foil · 300 K"),
+    group("example-cu2o", "Cu₂O · room temperature"),
+  ]
+  const example: ArtemisExample = {
+    amcsd_id: 15851, cif_sha256: "a".repeat(64), feff_input: "TITLE Cuprite AMCSD 15851\nEDGE K",
+    description: "Cuprite starter model", parameters: [{ name: "amp", kind: "guess", value: 0.8, expression: "", min: 0, max: 2 }],
+    transform: { fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 },
+    paths: [1, 2, 3, 4].map(index => ({ filename: `feff000${index}.dat`, content: `Cuprite FEFF path ${index}`,
+      metadata: { reff: 1.85, degen: 2, nleg: 2, absorber: "Cu", edge: "K", geometry: [], kmin: 0, kmax: 20 } })),
+  }
+  return { ...project, version: project.version + 1, groups: [...project.groups, ...added], undo: ["Before copper examples"],
+    group_folders: [
+      { id: "example-foils", name: "Temperature series", group_ids: added.slice(0, 3).map(item => item.id) },
+      { id: "example-reference", name: "reference", group_ids: [added[3].id] },
+    ],
+    artemis_structures: [{ id: "example-cuprite-cif", amcsd_id: 15851, attached_at: "2026-09-28T00:00:00Z", sha256: example.cif_sha256,
+      structure: { id: 15851, mineral: "Cuprite", formula: "Cu2 O", space_group: "P n 3 m", authors: "", year: 1930,
+        journal: "", title: "Cuprite structure", cif: "data_Cuprite\n_cell_length_a 4.27", elements: ["Cu", "O"], sites: [],
+        cell: { a: 4.27, b: 4.27, c: 4.27, alpha: 90, beta: 90, gamma: 90 }, ordered: true, supported: true, warnings: [] } }],
+    last_operation: { action: "example", skipped_group_ids: [], artemis_example: { group_id: added[3].id, attachment_id: "example-cuprite-cif", example } },
+  }
+}
+
 function nextProject(project: AthenaProject, changes: Record<string, Partial<AthenaGroup>>): AthenaProject {
   return {
     ...project,
@@ -565,14 +593,16 @@ function expectPolicyMenuState(enabled: boolean) {
 async function openEdgePolicyDialog() {
   fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" }))
   fireEvent.click(screen.getByRole("button", { name: "Enforce element and edge…" }))
-  return screen.findByRole("dialog", { name: "Enforce element and edge" })
+  return screen.getByRole("dialog", { name: "Enforce element and edge" })
 }
 async function enableCopperPolicy() {
   const dialog = await openEdgePolicyDialog()
   fireEvent.change(within(dialog).getByRole("textbox", { name: "Element symbol" }), { target: { value: "cu" } })
   api.mockResolvedValueOnce({ element: "Cu", edges: [{ edge: "K", energy: 8979 }, { edge: "L3", energy: 932.7 }] })
-  fireEvent.click(within(dialog).getByRole("button", { name: "Look up edges" }))
-  await within(dialog).findByRole("option", { name: "K · 8979 eV" })
+  await act(async () => {
+    fireEvent.click(within(dialog).getByRole("button", { name: "Look up edges" }))
+  })
+  expect(within(dialog).getByRole("option", { name: "K · 8979 eV" })).toBeInTheDocument()
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Enforced edge" }), { target: { value: "K" } })
   fireEvent.click(within(dialog).getByRole("button", { name: "Apply enforcement" }))
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -1188,22 +1218,11 @@ describe("AthenaWorkbench data group folders", () => {
     const openProject = screen.getByRole("button", { name: "Open project" })
     expect(button.compareDocumentPosition(openProject) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(screen.queryByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).not.toBeInTheDocument()
+    expect(screen.getByText("Includes Cu₂O EXAFS setup")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
 
-    const added = [
-      group("example-10k", "Cu foil · 10 K"),
-      group("example-50k", "Cu foil · 50 K"),
-      group("example-300k", "Cu foil · 300 K"),
-      group("example-cu2o", "Cu₂O · room temperature"),
-    ]
-    api.mockResolvedValueOnce({
-      ...project,
-      version: project.version + 1,
-      groups: [...project.groups, ...added],
-      group_folders: [
-        { id: "example-foils", name: "Temperature series", group_ids: added.slice(0, 3).map(item => item.id) },
-        { id: "example-reference", name: "reference", group_ids: [added[3].id] },
-      ],
-    })
+    const loaded = copperExampleProject(project)
+    api.mockResolvedValueOnce(loaded)
     fireEvent.click(button)
 
     await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
@@ -1214,6 +1233,78 @@ describe("AthenaWorkbench data group folders", () => {
     expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "Collapse Temperature series group" })).toBeVisible()
     expect(screen.getByRole("button", { name: "Collapse reference group" })).toBeVisible()
+    expect(screen.getByText("Cu₂O EXAFS example added")).toBeVisible()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      group: { id: "example-10k" },
+      exampleSetup: { projectId: project.id, groupId: "example-cu2o", attachmentId: "example-cuprite-cif", example: loaded.last_operation!.artemis_example!.example },
+    })
+    const requestCount = api.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Open Cu₂O EXAFS" }))
+    expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].group?.id).toBe("example-cu2o")
+    expect(api).toHaveBeenCalledTimes(requestCount)
+  })
+
+  it("opens the new Cu₂O spectrum and matching CIF when examples are loaded from EXAFS fitting", async () => {
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole("tab", { name: "EXAFS fitting" }))
+    const loaded = copperExampleProject(project)
+    const cuprite = loaded.artemis_structures![0]
+    loaded.artemis_structures = [
+      { ...cuprite, id: "other-cif", amcsd_id: 123, structure: { ...cuprite.structure, id: 123, mineral: "Other structure" } },
+      cuprite,
+    ]
+    api.mockResolvedValueOnce(loaded)
+    const requestCount = api.mock.calls.length
+    fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
+
+    await waitFor(() => expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
+      projectId: project.id, version: loaded.version, group: { id: "example-cu2o" },
+      exampleSetup: { projectId: project.id, groupId: "example-cu2o", attachmentId: cuprite.id },
+      pending: false,
+    }))
+    expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
+    expect(screen.getByRole("combobox", { name: "Viewed CIF structure" })).toHaveValue(cuprite.id)
+    expect(api).toHaveBeenCalledTimes(requestCount + 1)
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: "example", group_ids: [], options: {},
+    })
+  })
+
+  it("hides the Cu₂O shortcut after undo removes its group and restores it on redo", async () => {
+    const project = await openSaved()
+    const loaded = copperExampleProject(project)
+    api.mockResolvedValueOnce(loaded)
+    fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
+    await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })
+
+    api.mockResolvedValueOnce({ ...project, version: loaded.version + 1, redo: ["Copper examples"], last_operation: { action: "undo", skipped_group_ids: [] } })
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }))
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument())
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup).toBeUndefined()
+
+    api.mockResolvedValueOnce({ ...loaded, version: loaded.version + 2, last_operation: { action: "redo", skipped_group_ids: [] } })
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }))
+    expect(await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })).toBeVisible()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup?.groupId).toBe("example-cu2o")
+  })
+
+  it("does not offer a prior project's Cu₂O setup after opening another project with the same group ID", async () => {
+    const project = await openSaved()
+    api.mockResolvedValueOnce(copperExampleProject(project))
+    fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
+    await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })
+    const other = projectFixture({ id: "other-project", name: "Other project", groups: [group("example-cu2o", "Unrelated Cu₂O")] })
+    api.mockResolvedValueOnce([{ id: other.id, name: other.name, updated: other.updated, count: other.groups.length }]).mockResolvedValueOnce(other)
+    fireEvent.click(screen.getByRole("button", { name: "Open project" }))
+    const dialog = await screen.findByRole("dialog", { name: "Open a project" })
+    const recent = await within(dialog).findByRole("button", { name: new RegExp(other.name) })
+    await waitFor(() => expect(recent).toBeEnabled())
+    fireEvent.click(recent)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({ projectId: other.id, group: { id: "example-cu2o" } })
+    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup).toBeUndefined()
   })
 
   it("creates a project-backed folder from marked spectra and collapses it without changing the active plot", async () => {
@@ -2510,6 +2601,9 @@ describe("AthenaWorkbench absorber and edge identity", () => {
 describe("AthenaWorkbench import edge policy", () => {
   it("starts off without a catalog request, enables without mutating the project, and cancels edits", async () => {
     const project = await openSaved()
+    // Keep the unrelated parameter debounce pending while testing policy edits.
+    // Accessibility queries can exceed its 400 ms delay on a busy CI worker.
+    vi.useFakeTimers()
     editNumber(/^Rbkg/, 2.7)
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
     expectPolicyMenuState(false)
@@ -4810,6 +4904,107 @@ describe("AthenaWorkbench group selection and drafts", () => {
     })
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
+
+  it("loads the newer project after another tab saves, keeps the draft, and retries against it", async () => {
+    const project = await openSaved()
+    const changedElsewhere = nextProject(project, { foil: { label: "Foil scan (edited elsewhere)" } })
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockResolvedValueOnce(changedElsewhere)
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(api).toHaveBeenNthCalledWith(3, `/projects/${project.id}`)
+    expect(screen.getByRole("alert")).toHaveTextContent("latest version is now loaded")
+    expect(screen.getAllByText("Foil scan (edited elsewhere)").length).toBeGreaterThan(0)
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(api).toHaveBeenCalledTimes(3)
+
+    const saved = nextProject(changedElsewhere, { foil: { parameters: { ...parameters, rbkg: 2.4 } } })
+    api.mockResolvedValueOnce(saved)
+    fireEvent.click(screen.getByRole("button", { name: "Retry processing" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: changedElsewhere.version, action: "parameters", group_ids: ["foil"], options: { rbkg: 2.4 },
+    })
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("pauses every queued parameter edit after a stale revision until each is retried", async () => {
+    const project = await openSaved()
+    const sample = project.groups.find(group => group.id === "sample")!
+    const changedElsewhere = nextProject(project, {
+      sample: { parameters: { ...sample.parameters, rbkg: 3.1 } },
+    })
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockResolvedValueOnce(changedElsewhere)
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    selectGroup("Sample scan")
+    editNumber(/^Rbkg/, 2.5)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(api).toHaveBeenNthCalledWith(2, `/projects/${project.id}/command`, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { rbkg: 2.4 },
+    })
+    expect(api).toHaveBeenNthCalledWith(3, `/projects/${project.id}`)
+    expect(screen.getByRole("alert")).toHaveTextContent("latest version is now loaded")
+    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.5)
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(api).toHaveBeenCalledTimes(3)
+    expect(screen.getByRole("button", { name: "Retry processing" })).toBeEnabled()
+
+    const saved = nextProject(changedElsewhere, {
+      sample: { parameters: { ...sample.parameters, rbkg: 2.5 } },
+    })
+    api.mockResolvedValueOnce(saved)
+    fireEvent.click(screen.getByRole("button", { name: "Retry processing" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: changedElsewhere.version, action: "parameters", group_ids: ["sample"], options: { rbkg: 2.5 },
+    })
+  })
+
+  it("clears a paused edit when the newer project already has its value", async () => {
+    const project = await openSaved()
+    const changedElsewhere = nextProject(project, {
+      foil: { parameters: { ...project.groups[0].parameters, rbkg: 2.4 } },
+    })
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockResolvedValueOnce(changedElsewhere)
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+
+    expect(screen.queryByRole("button", { name: "Retry processing" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: /Discard parameter changes/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /^Copy \/ reset parameters/i })).toBeEnabled()
+    await act(async () => { await vi.advanceTimersByTimeAsync(2_000) })
+    expect(api).toHaveBeenCalledTimes(3)
+  })
+
+  it("keeps the backend conflict message when the newer project cannot be loaded", async () => {
+    await openSaved()
+    api.mockRejectedValueOnce(new ApiRequestError({
+      code: "stale_revision", message: "This project changed in another tab. Reload it before editing.",
+      fields: [], recovery: "Review the selected groups and values, then retry.",
+    }, 409))
+    api.mockRejectedValueOnce(new TypeError("offline"))
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, 2.4)
+    await act(async () => { await vi.advanceTimersByTimeAsync(400) })
+    expect(screen.getByRole("alert")).toHaveTextContent("This project changed in another tab. Reload it before editing.")
+  })
 })
 
 describe("AthenaWorkbench single-parameter patches", () => {
@@ -5744,12 +5939,12 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     await openSaved(project)
 
     expect(singleViewer().getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
-    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
+    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
     expect(singleViewer().getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
     expect(multipleViewer().getByRole('checkbox', { name: 'Show legend' })).toBeChecked()
     expect(plotProps('current')).toMatchObject({ plotScope: 'current', showLegend: false, energyMode: 'mu',
       background: count > 0, preEdge: count > 0, postEdge: count > 0 })
-    expect(plotProps()).toMatchObject({ plotScope: 'selected', showLegend: true, energyMode: 'norm',
+    expect(plotProps()).toMatchObject({ plotScope: 'selected', showLegend: true, energyMode: 'flat',
       background: false, preEdge: false, postEdge: false })
     for (const line of ['Background', 'Pre-edge line', 'Post-edge line']) {
       expect(singleViewer().getByRole('checkbox', { name: line })).toHaveProperty('checked', count > 0)
@@ -5808,7 +6003,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps('current').groups).toEqual([afterSecond.groups.at(-1)])
     expect(plotProps().groups).toEqual(afterSecond.groups.filter(g => g.marked))
     expect(plotProps('current')).toMatchObject({ energyMode: 'mu', showLegend: false })
-    expect(plotProps()).toMatchObject({ energyMode: 'norm', showLegend: true })
+    expect(plotProps()).toMatchObject({ energyMode: 'flat', showLegend: true })
   })
 
   it('leaves the multiple viewer empty with no marks while the single viewer follows the current spectrum', async () => {
@@ -5919,7 +6114,7 @@ it('lists every energy view directly above the plot and switches each plotted si
   expect(multipleViewer().queryByRole('combobox', { name: 'Energy plot' })).not.toBeInTheDocument()
   expect(multipleViewer().getByTestId('athena-plot').previousElementSibling).toBe(choices)
   expect(within(choices).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['mu', 'norm', 'flat', 'dmude', 'd2mude'])
-  expect(within(choices).getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
+  expect(within(choices).getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
   for (const [name, value] of [
     ['μ(E) · raw', 'mu'],
     ['μ(E) · normalized', 'norm'],
@@ -5950,8 +6145,8 @@ describe('Legacy detector records in the workbench', () => {
     selectGroup('Sample scan')
     expect(singleViewer().getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
     expect(plotProps('current').energyMode).toBe('mu')
-    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
-    expect(plotProps().energyMode).toBe('norm')
+    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
+    expect(plotProps().energyMode).toBe('flat')
   })
   it('offers energy-type correction for a detector while retaining the three native destinations', async () => {
     const p = projectFixture(); p.groups[0].data_type = 'detector'; await openSaved(p)

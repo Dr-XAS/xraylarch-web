@@ -11,6 +11,7 @@ interface LocalStructureControlsProps {
   radiusLabel?: string
   radiusAriaLabel: string
   radiusDisabled?: boolean
+  extentControl?: ReactNode
   bonds: boolean
   onBondsChange: (bonds: boolean) => void
   showBondsControl?: boolean
@@ -21,10 +22,10 @@ interface LocalStructureControlsProps {
 /** Shared display controls; each viewer owns its geometry and presentation state. */
 export function LocalStructureControls({
   radius, min, max, onRadiusChange, radiusLabel = "Display radius", radiusAriaLabel, radiusDisabled = false,
-  bonds, onBondsChange, showBondsControl = true, atomCount, children,
+  extentControl, bonds, onBondsChange, showBondsControl = true, atomCount, children,
 }: LocalStructureControlsProps) {
   return <div className={styles.localControls}>
-    <label className={styles.radius}>{radiusLabel} <output>{radius.toFixed(1)} Å</output><input aria-label={radiusAriaLabel} type="range" min={min} max={max} step="0.1" value={radius} disabled={radiusDisabled} onChange={event => onRadiusChange(Number(event.target.value))} /></label>
+    {extentControl ?? <label className={styles.radius}>{radiusLabel} <output>{radius.toFixed(1)} Å</output><input aria-label={radiusAriaLabel} type="range" min={min} max={max} step="0.1" value={radius} disabled={radiusDisabled} onChange={event => onRadiusChange(Number(event.target.value))} /></label>}
     <div className={styles.options}>
       {showBondsControl && <label><input type="checkbox" checked={bonds} onChange={event => onBondsChange(event.target.checked)} />Bonds</label>}
       {children}

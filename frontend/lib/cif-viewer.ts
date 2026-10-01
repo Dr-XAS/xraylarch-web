@@ -27,12 +27,14 @@ export interface CifGeometryOptions {
   absorber?: string
   radius?: number
   mode?: "cluster" | "cell"
+  cellRepeats?: CifVector
   maxAtoms?: number
 }
 
 export const CIF_VIEWER_MIN_RADIUS = 1
 export const CIF_VIEWER_MAX_RADIUS = 10
 export const CIF_VIEWER_DEFAULT_RADIUS = 3.5
+export const CIF_VIEWER_MAX_CELL_REPEATS = 6
 const MAX_CELL_ATOMS = 4000
 const MAX_CANDIDATES = 250_000
 const MAX_CIF_LENGTH = 2_000_000
@@ -53,7 +55,7 @@ function cross(a: CifVector, b: CifVector): CifVector {
 }
 function norm(v: CifVector) { return Math.hypot(...v) }
 function subtract(a: CifVector, b: CifVector): CifVector { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
-function cartesian(frac: CifVector, lattice: CifLattice): CifVector {
+export function cartesian(frac: CifVector, lattice: CifLattice): CifVector {
   return [0, 1, 2].map(axis => frac.reduce((sum, value, i) => sum + value * lattice[i][axis], 0)) as CifVector
 }
 function wrapped(value: number) {
@@ -62,7 +64,7 @@ function wrapped(value: number) {
 }
 
 /** Conventional fractional-to-Cartesian basis, including oblique cells. */
-function latticeVectors(cell: ArtemisStructure["cell"]): CifLattice | null {
+export function latticeVectors(cell: ArtemisStructure["cell"]): CifLattice | null {
   const { a, b, c, alpha, beta, gamma } = cell
   if (![a, b, c, alpha, beta, gamma].every(value => typeof value === "number" && Number.isFinite(value))) return null
   if (a! <= 0 || b! <= 0 || c! <= 0 || [alpha!, beta!, gamma!].some(value => value <= 0 || value >= 180)) return null
@@ -198,12 +200,29 @@ export function buildCifGeometry(structure: ArtemisStructure, options: CifGeomet
     if (!selected) throw new Error("The selected absorber site is not available in this CIF.")
     const centerFrac: CifVector = [wrapped(selected.x), wrapped(selected.y), wrapped(selected.z)]
     geometry.center = cartesian(centerFrac, lattice)
-    for (let corner = 0; corner < 8; corner++) {
-      const frac: CifVector = [corner & 1, (corner >> 1) & 1, (corner >> 2) & 1]
+    const cellRepeats = [0, 1, 2].map(axis => {
+      const value = options.mode === "cell" ? options.cellRepeats?.[axis] : undefined
+      return Number.isFinite(value) ? Math.min(CIF_VIEWER_MAX_CELL_REPEATS, Math.max(1, Math.floor(value!))) : 1
+    }) as CifVector
+    const [na, nb, nc] = cellRepeats
+    if (options.mode === "cell") {
+      const atomCount = sites.length * na * nb * nc
+      if (atomCount > maxAtoms) {
+        geometry.truncated = true
+        geometry.warnings.push(na * nb * nc > 1
+          ? `The ${na} × ${nb} × ${nc} unit-cell expansion contains ${atomCount} atoms, exceeding the preview limit of ${maxAtoms}. Reduce the unit-cell repeats to show complete cells.`
+          : `The unit cell contains ${atomCount} atoms, exceeding the preview limit of ${maxAtoms}. A complete unit cell cannot be shown.`)
+        return geometry
+      }
+    }
+    // Walk each lattice-grid segment once, including the shared edges between
+    // constituent cells. Fractional vertices preserve oblique lattice geometry.
+    for (let a = 0; a <= na; a++) for (let b = 0; b <= nb; b++) for (let c = 0; c <= nc; c++) {
+      const frac: CifVector = [a, b, c]
       for (let axis = 0; axis < 3; axis++) {
-        if (frac[axis]) continue
+        if (frac[axis] === cellRepeats[axis]) continue
         const endpoint: CifVector = [...frac]
-        endpoint[axis] = 1
+        endpoint[axis]++
         geometry.cellEdges.push([subtract(cartesian(frac, lattice), geometry.center), subtract(cartesian(endpoint, lattice), geometry.center)])
       }
     }
@@ -213,7 +232,9 @@ export function buildCifGeometry(structure: ArtemisStructure, options: CifGeomet
       return { element: site.element, label: `${site.element}${site.index}`, siteIndex: site.index, occupancy: site.occupancy, x, y, z, distance, isAbsorber: site.index === selected.index && site.element === selected.element && distance < TOLERANCE }
     }
     if (options.mode === "cell") {
-      geometry.atoms = sites.map(({ site, frac }) => makeAtom(site, frac))
+      for (let a = 0; a < na; a++) for (let b = 0; b < nb; b++) for (let c = 0; c < nc; c++) {
+        for (const { site, frac } of sites) geometry.atoms.push(makeAtom(site, [frac[0] + a, frac[1] + b, frac[2] + c]))
+      }
     } else {
       // Reciprocal lengths bound fractional displacements for a sphere even in
       // monoclinic/triclinic cells, where dividing by a/b/c misses neighbors.

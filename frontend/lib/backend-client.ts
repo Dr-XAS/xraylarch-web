@@ -40,7 +40,14 @@ export function decodeApiError(status: number, body: unknown): ApiRequestError {
     : undefined
 
   if (!envelope || typeof envelope !== "object") {
-    return new ApiRequestError(fallback, status)
+    // FastAPI's HTTPException answers {"detail": "..."}; its message (for
+    // example an integration quota conflict) is written for the reader.
+    const detail = body && typeof body === "object" && "detail" in body
+      ? (body as { detail?: unknown }).detail
+      : undefined
+    return typeof detail === "string" && detail.trim()
+      ? new ApiRequestError({ ...fallback, code: `http_${status}`, message: detail.trim().slice(0, 500) }, status)
+      : new ApiRequestError(fallback, status)
   }
 
   const candidate = envelope as Partial<ErrorEnvelope>

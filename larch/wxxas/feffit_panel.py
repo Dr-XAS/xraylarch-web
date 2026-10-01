@@ -2204,7 +2204,7 @@ class FeffitResultFrame(wx.Frame):
 
         pview.AppendTextColumn('Parameter',  width=xw[0])
         pview.AppendTextColumn('Best Value', width=xw[1])
-        pview.AppendTextColumn('1-\u03c3 Uncertainty', width=xw[2])
+        pview.AppendTextColumn('Stderr (1\u03c3)', width=xw[2])
         pview.AppendTextColumn('Info ',     width=xw[3])
 
         for col in range(4):
@@ -2462,6 +2462,9 @@ class FeffitResultFrame(wx.Frame):
         buff.append('#' + '---'*25)
 
         ds0 = result.datasets[0]
+        ds0.prepare_fit(result.params)
+        ds0._residual(result.params)
+        ds0.save_outputs()
 
         xname = 'r' if form.startswith('chir') else 'k'
         yname = form

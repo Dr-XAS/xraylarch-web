@@ -1,12 +1,15 @@
 import "@testing-library/jest-dom/vitest"
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
+import type { FirstShell } from "@/lib/first-shell"
 import { CifViewer } from "./cif-viewer"
 
 const { createViewer } = vi.hoisted(() => ({ createViewer: vi.fn() }))
 vi.mock("3dmol", () => ({ createViewer }))
+vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: () => {} }) }))
+vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: () => ({ data: null, loading: false, error: "", retry: () => {}, settings: { radius: 6, tolerance: 0.05 }, setSettings: () => {} }) }))
 
 function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure {
   return {
@@ -25,7 +28,7 @@ function renderer() {
   return {
     clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn(),
     setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(),
-    addLabel: vi.fn(), zoomTo: vi.fn(), render: vi.fn(), stopAnimate: vi.fn(),
+    addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn(), stopAnimate: vi.fn(),
     divwatcher: { disconnect: vi.fn() }, intwatcher: { disconnect: vi.fn() },
   }
 }
@@ -59,6 +62,110 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe("CifViewer", () => {
+  it("calculates finite-cluster CNs and preserves results across display-only controls", async () => {
+    const attached = structure()
+    const original = structuredClone(attached)
+    render(<CifViewer structure={attached} collapsible />)
+    await ready()
+    expect(screen.queryByRole("table", { name: "Cluster coordination numbers" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Coordination numbers" }))
+    const table = screen.getByRole("table", { name: "Cluster coordination numbers" })
+    const row = within(table).getByRole("row", { name: /Cu → O/ })
+    expect(within(row).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["1", "2.000", "1.000", "1", "ViewCN 1: 1 atom"])
+    expect(screen.getByText("Uses all 2 cluster atoms, including hidden elements. Neighbors outside this finite cluster are excluded.")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Show O atoms" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Bonds" }))
+    expect(screen.getByText("1 atom shown")).toBeVisible()
+    expect(table).toBeVisible()
+    expect(within(row).getByText("1.000")).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Coordination numbers" }))
+    expect(table).not.toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Coordination numbers" }))
+    fireEvent.click(screen.getByRole("button", { name: "Collapse CIF structure viewer" }))
+    fireEvent.click(screen.getByRole("button", { name: "Expand CIF structure viewer" }))
+    expect(table).toBeVisible()
+    expect(createViewer).toHaveBeenCalledOnce()
+    expect(attached).toEqual(original)
+  })
+
+  it("retains cluster results when asynchronous CrystalNN analysis completes", async () => {
+    const attached = structure()
+    const analysis = { shell: null, loading: true, error: "", retry: vi.fn() }
+    const view = render(<CifViewer structure={attached} selectedSite={3} analysis={analysis} />)
+    await ready()
+    fireEvent.click(screen.getByRole("button", { name: "Coordination numbers" }))
+    const table = screen.getByRole("table", { name: "Cluster coordination numbers" })
+    const shell: FirstShell = {
+      method: "CrystalNN", pymatgen_version: "test", cif: attached.cif, cif_sha256: "test",
+      absorber: "Cu", site_index: 3, coordination_number: 1, coordination_weight: 1,
+      alternatives: [], warnings: [],
+      neighbors: [{ element: "O", structure_index: 1, image: [0, 0, 0], fractional_offset: [0.2, 0, 0], cartesian_offset: [2, 0, 0], distance: 2, weight: 1 }],
+    }
+    view.rerender(<CifViewer structure={attached} selectedSite={3} analysis={{ ...analysis, shell, loading: false }} />)
+    expect(table).toBeVisible()
+    expect(screen.queryByText("Cluster or settings changed. Calculate to update coordination numbers.")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Highlight CrystalNN first shell" }))
+    expect(table).toBeVisible()
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "shell" } })
+    expect(screen.getByText("Switch to Local cluster to calculate coordination numbers.")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Calculate" })).toBeDisabled()
+    expect(screen.queryByRole("table", { name: "Cluster coordination numbers" })).not.toBeInTheDocument()
+  })
+
+  it("invalidates results on cutoff, tolerance, center, radius, and structure changes", async () => {
+    const view = render(<CifViewer structure={structure()} />)
+    await ready()
+    fireEvent.click(screen.getByRole("button", { name: "Coordination numbers" }))
+    const calculate = () => fireEvent.click(screen.getByRole("button", { name: "Calculate" }))
+    const expectStale = () => {
+      expect(screen.queryByRole("table", { name: "Cluster coordination numbers" })).not.toBeInTheDocument()
+      expect(screen.getByText("Cluster or settings changed. Calculate to update coordination numbers.")).toBeVisible()
+    }
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CN distance cutoff" }), { target: { value: "2" } })
+    expectStale()
+    calculate()
+    expect(screen.getAllByText("No neighbors within cutoff (CN 0)")).toHaveLength(2)
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CN distance cutoff" }), { target: { value: "3" } })
+    calculate()
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CN shell tolerance" }), { target: { value: "0.05" } })
+    expectStale()
+    calculate()
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF center site" }), { target: { value: "7" } })
+    expectStale()
+    calculate()
+    expect(screen.getByText(/Center CN refers to O · site 7/)).toBeVisible()
+    fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "1" } })
+    expectStale()
+    calculate()
+    expect(screen.getByText("1 atom · 0 coordination shells · distances < 3 Å")).toBeVisible()
+    view.rerender(<CifViewer structure={structure({ mineral: "Another CIF" })} />)
+    expectStale()
+    calculate()
+    expect(screen.getByRole("table", { name: "Cluster coordination numbers" })).toBeVisible()
+  })
+
+  it("blocks calculation for unit-cell views, incomplete previews, and disordered sites", async () => {
+    const view = render(<CifViewer structure={structure()} />)
+    await ready()
+    fireEvent.click(screen.getByRole("button", { name: "Coordination numbers" }))
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cell" } })
+    expect(screen.getByText("Switch to Local cluster to calculate coordination numbers.")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Calculate" })).toBeDisabled()
+    expect(screen.queryByRole("table", { name: "Cluster coordination numbers" })).not.toBeInTheDocument()
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cluster" } })
+    view.rerender(<CifViewer structure={structure({ ordered: false })} />)
+    expect(screen.getByText("Coordination numbers require fully occupied, ordered sites.")).toBeVisible()
+    const partial = structure()
+    partial.sites[0].occupancy = 0.5
+    view.rerender(<CifViewer structure={partial} />)
+    expect(screen.getByRole("button", { name: "Calculate" })).toBeDisabled()
+    const dense = structure({ cell: { a: 1, b: 1, c: 1, alpha: 90, beta: 90, gamma: 90 }, sites: [structure().sites[0]] })
+    view.rerender(<CifViewer structure={dense} />)
+    fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "10" } })
+    expect(screen.getByText("Reduce the display radius to calculate coordination numbers for a complete cluster.")).toBeVisible()
+    expect(screen.getByRole("button", { name: "Calculate" })).toBeDisabled()
+  })
+
   it("preserves the display radius and renderer when the docked viewer is collapsed", async () => {
     render(<CifViewer structure={structure()} collapsible structureControls={<p>Saved crystal structure</p>} />)
     await ready()
@@ -131,11 +238,69 @@ describe("CifViewer", () => {
 
     instance.addLine.mockClear()
     fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cell" } })
-    expect(screen.getByRole("slider", { name: "CIF display radius" })).toBeDisabled()
+    expect(screen.queryByRole("slider", { name: "CIF display radius" })).not.toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Unit cell repetitions" })).toBeVisible()
     expect(screen.getByRole("checkbox", { name: "Unit cell outline" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "Unit cell outline" })).toBeDisabled()
     expect(instance.addLine).toHaveBeenCalledTimes(12)
     expect(createViewer).toHaveBeenCalledTimes(1)
+  })
+
+  it("expands unit cells along each lattice direction and keeps both view settings", async () => {
+    const attached = structure()
+    const original = structuredClone(attached)
+    render(<CifViewer structure={attached} collapsible />)
+    const instance = await ready()
+    fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "5" } })
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cell" } })
+    for (const axis of ["a", "b", "c"]) expect(screen.getByRole("spinbutton", { name: `CIF repeats along ${axis}` })).toHaveValue(1)
+
+    instance.addLine.mockClear()
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CIF repeats along a" }), { target: { value: "2" } })
+    expect(atoms(instance)).toHaveLength(4)
+    expect(atoms(instance).map(atom => atom.coordinates[0]).sort((a, b) => a - b)).toEqual([0, expect.closeTo(2), 10, 12])
+    expect(instance.addLine).toHaveBeenCalledTimes(20)
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CIF repeats along b" }), { target: { value: "3" } })
+    expect(atoms(instance)).toHaveLength(12)
+    fireEvent.change(screen.getByRole("spinbutton", { name: "CIF repeats along c" }), { target: { value: "2" } })
+    expect(screen.getByText("24 atoms shown")).toBeVisible()
+    expect(atoms(instance)).toHaveLength(24)
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse CIF structure viewer" }))
+    fireEvent.click(screen.getByRole("button", { name: "Expand CIF structure viewer" }))
+    expect(screen.getByRole("spinbutton", { name: "CIF repeats along b" })).toHaveValue(3)
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cluster" } })
+    expect(screen.getByRole("slider", { name: "CIF display radius" })).toHaveValue("5")
+    expect(screen.queryByRole("group", { name: "Unit cell repetitions" })).not.toBeInTheDocument()
+    expect(atoms(instance)).toHaveLength(2)
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cell" } })
+    expect(screen.getByText("24 atoms shown")).toBeVisible()
+    expect(createViewer).toHaveBeenCalledOnce()
+    expect(attached).toEqual(original)
+  })
+
+  it("keeps unit-cell repeat values within whole-cell display limits", async () => {
+    render(<CifViewer structure={structure()} />)
+    await ready()
+    fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "cell" } })
+    const repeat = screen.getByRole("spinbutton", { name: "CIF repeats along a" })
+    fireEvent.change(repeat, { target: { value: "" } })
+    expect(repeat).toHaveValue(null)
+    expect(screen.getByText("2 atoms shown")).toBeVisible()
+    fireEvent.change(repeat, { target: { value: "2" } })
+    expect(repeat).toHaveValue(2)
+    expect(screen.getByText("4 atoms shown")).toBeVisible()
+    fireEvent.change(repeat, { target: { value: "2.8" } })
+    fireEvent.blur(repeat)
+    expect(repeat).toHaveValue(2)
+    fireEvent.change(repeat, { target: { value: "100" } })
+    fireEvent.blur(repeat)
+    expect(repeat).toHaveValue(6)
+    expect(screen.getByText("12 atoms shown")).toBeVisible()
+    fireEvent.change(repeat, { target: { value: "0" } })
+    fireEvent.blur(repeat)
+    expect(repeat).toHaveValue(1)
+    expect(screen.getByText("2 atoms shown")).toBeVisible()
   })
 
   it("keeps unavailable geometry readable and starts the viewer when valid geometry arrives", async () => {

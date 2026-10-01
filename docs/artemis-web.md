@@ -31,15 +31,23 @@ a path removes it from that sum. The fit concerns the current spectrum;
 selecting several spectra for Athena plotting does not create a simultaneous
 multi-dataset fit.
 
-For a Cu₂O model, use **Load copper examples** in Athena and select the
-**Cu₂O · room temperature** spectrum, or select another processed Cu K-edge
-spectrum. Then choose **Cu₂O example**. One click attaches the Cuprite CIF
-(AMCSD 0015851, 1930) to the current project and loads the first four
-precomputed Cu K-edge FEFF paths from its Cu site 1. The paths include Cu–O
-and Cu–Cu scattering; the example does
-not supply or change the experimental spectrum. Review the path parameters and
-fit ranges for the selected data before fitting. The button is available when
-the path list is empty and a local project and spectrum are selected.
+In the local workspace, **Load copper examples** loads the three foil spectra
+and the **Cu₂O · room temperature** reference, attaches the Cuprite CIF
+(AMCSD 0015851, 1930), and prepares the reference's EXAFS model with the first
+four precomputed Cu K-edge FEFF paths from Cu site 1. From the Processing tab,
+the first foil stays selected; from EXAFS fitting, the prepared Cu₂O model
+opens directly. Choose **Open Cu₂O EXAFS** below the loader to select the reference
+and open its prepared fitting model. Existing spectra and fitting drafts are
+preserved; Undo removes the added spectra and any newly attached CIF together.
+Linked Dr.XAS sessions retain their spectra-only example import.
+
+The separate **Cu₂O example** button remains available for another selected
+processed spectrum when its path list is empty. It attaches the same CIF and
+loads the model without changing the experimental spectrum. The paths include
+Cu–O and Cu–Cu scattering. Review the path parameters and fit ranges, then
+choose **Run EXAFS fit**; loading an example never runs a fit automatically.
+Fitting drafts stay in the workspace session; export model JSON to preserve
+an edited model after reload.
 
 The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
 and up to four legs. The first four files in FEFF order are:
@@ -93,6 +101,42 @@ the current project. The fitting panel lists attached structures; opening one
 reuses the saved snapshot without repeating the database search. The search,
 structure inspection, and FEFF controls stay inside the popup, which can be
 closed and reopened without discarding its calculation state.
+
+In the **CIF structure viewer**, **Local cluster** uses a display radius in Å
+around the chosen center site. Switching **View** to **Unit cell** replaces the
+radius slider with **Unit cell repeats** along the lattice **a**, **b**, and **c**
+directions (1–6 each). For example, 2 × 2 × 2 displays eight cells with their
+atoms and outlines, including non-orthogonal lattices. Each mode retains its
+display settings when switching views. Expansions beyond the 1,500-atom preview
+limit show a message to reduce the repeats. These controls do not modify the
+saved CIF or FEFF parameters.
+
+Click **Coordination numbers** in the viewer heading to calculate coordination
+shells for the current **Local cluster**. Set **Distance cutoff** (default 5 Å)
+and **Shell tolerance** (default 0.01 Å), then **Calculate** to update results.
+The table lists each ordered element pair, shell mean distance, average CN,
+CN of the selected center atom, and an expandable CN distribution. A dash in
+Center CN means that the pair's first element differs from the selected center.
+Hover over a mean distance to see the shell's minimum and maximum distances.
+
+The calculation uses every atom in the finite cluster, including hidden
+elements, and excludes neighbors outside its boundary. Average CN includes
+all atoms of the pair's first element, including those with no neighbors in
+that shell. Surface atoms therefore contribute lower CNs than bulk atoms.
+Distances must be strictly below the cutoff; consecutive sorted distances are
+grouped in the same shell when their gap is no larger than the tolerance.
+Changing the radius, center, CIF, or calculation settings clears the displayed
+results until **Calculate** is clicked again. Unit-cell views, truncated
+previews, and disordered or partially occupied structures cannot be calculated.
+
+The shell algorithm is adapted from Juanjuan Huang and Shelly D. Kelly's
+[`neighbor`](https://github.com/Cathyhjj/neighbor) `get_CN` / `get_CN_all` methods
+(Copyright © 2024, UChicago Argonne, LLC). It runs locally in the browser.
+Distributions use the same shell membership as the average CN, matching
+`neighbor`'s default gap-based shell calculation at commit `2771716f9b901f2246d55bb7fa67e4c3194a0e04`.
+The viewer exposes finite clusters with gap-based shells; `neighbor`'s periodic
+boundary modes and explicit shell-edge settings are not exposed here.
+The calculation does not modify the saved CIF or FEFF parameters.
 
 Select the absorber, absorption edge, and crystallographic absorber site before
 generating FEFF input. Sites are the symmetry-distinct choices returned by
@@ -288,30 +332,47 @@ Plots use the first selected fit k weight; the optimizer uses all selected
 weights. Statistics, fitted parameter values, uncertainties, correlations,
 and the complete Larch report appear below the plot.
 
-Fitting runs when **Run EXAFS fit** is clicked. Changing a model field invalidates
-its previous result. Failed requests retain the model for correction and retry.
-Each spectrum's draft and most recent result remain available while switching
-spectra and the Processing/EXAFS fitting tabs within the open workspace. Results
-are associated with the spectrum, model revision, and Athena project version;
-processing changes or project updates invalidate them.
+Fitting runs when **Run EXAFS fit** is clicked. A successful request saves the
+model and its result in the selected local Athena group. **Save model to project**
+also saves incomplete drafts, including unfinished numeric fields and expressions.
+The saved model includes every FEFF file, path expression, parameter, transform
+setting, and FEFF input atom cluster used by the preview. Reloading the browser
+restores the saved model; unsaved edits remain in the current workspace session.
+A browser exit warning and project-download checks help prevent losing those edits.
 
-Use **Export model JSON** to keep a model beyond the current browser session.
-The `artemis-web/v1` bundle contains the GDS definitions, transform settings,
-complete FEFF-file contents and path expressions, source identifiers, and any
-current fit result. **Download fit + model JSON** also saves the fitted curves,
-statistics, and parameter results; **Download report** saves the plain-text
-Larch report. Plotly's image download exports the displayed plot.
+**Saved fit history** keeps up to 10 results per group, each with its own model,
+curves, statistics, report, timestamp, original project/group identity, and Larch
+version. Selecting history shows that result without changing the editable model.
+**Use this fit’s model** copies its model into the editor. **Remove saved fit** is
+undoable; export the project first if you want to keep that archive elsewhere.
+At 10 fits, the next fit is rejected until one is removed. History is never pruned
+silently. Models and history share a 20 MB project budget; each model can contain
+up to 24 FEFF files, 500 KB per file and 4 MB total UTF-8 text.
 
-To resume, load the experimental spectrum in Athena and choose **Import model
-JSON**. The imported FEFF files are inspected again and the model is applied to
-the current spectrum. Archived results are not treated as a new fit: run the
-model again to obtain results for that spectrum and its current processing.
-This JSON format is specific to Artemis Web and is not a desktop `.fpj` file.
+Input staleness is determined from the actual processed k/chi arrays, data type,
+Larch processing version and effective Rbkg. Changing labels, selection or display
+settings does not invalidate a fit. Changed scientific input or a processing
+error labels the result **Outdated input**; the plot continues to show the saved
+data/model pair. A separate notice identifies edits to the current model. Neither
+condition automatically runs another fit.
 
-Without a downloaded model JSON, reloading or closing the workspace loses the
-browser-memory fit state. Saving an Athena `.prj` does not include the fitting
-model. Automatic persistence, fit history, and CSV curve export are follow-up
-work.
+Athena `.prj` downloads and complete web-project JSON include the saved models and
+fit history, including partial group exports. Import creates new group identities
+while preserving each fit's original provenance. Imported numerical results are
+explicitly labeled **Imported fit archive**, even when their input matches. They
+are never treated as a new local fit. The Artemis data lives in the web metadata
+sidecar of `.prj` files; desktop Athena does not offer this fitting editor, and
+resaving through software that drops that sidecar can discard the web fit history.
+
+**Export model JSON** remains available for standalone `artemis-web/v1` model
+exchange. It includes the current model and only includes a result when that model
+matches. **Download fit + model JSON** exports the selected history entry's own
+model and result together; **Download report** exports its Larch report.
+**Import model JSON** inspects the supplied FEFF files and loads an editable draft;
+save it to the project or run a new fit. This format is not a desktop `.fpj` file.
+
+This persistence applies to local Athena projects. Dr.XAS integration projects
+retain their existing fitting boundary; import into a local project to fit.
 
 ## Larch integration
 
@@ -328,6 +389,23 @@ The numerical references are the checked-out
 [`xafs_feffit.rst`](../doc/xafs_feffit.rst), alongside the published
 [Larch fitting](https://xraypy.github.io/xraylarch/xafs_feffit.html) and
 [FEFF-path documentation](https://xraypy.github.io/xraylarch/xafs_feffpaths.html).
+
+Project persistence adds three POST endpoints under
+`/api/artemis/projects/{project_id}/groups/{group_id}`:
+
+- `/model`: `{version, model}` saves an editable model and returns the updated project.
+- `/fit-saved`: `{version, model}` computes a fit, then saves model and result atomically;
+  returns `{project, fit_id}`. Computation runs outside the project lock, and the
+  version is checked again before saving. A concurrent update returns 409 without
+  overwriting history; the editor refreshes project state and keeps unfinished edits.
+- `/remove-fit`: `{version, fit_id}` removes one archive and returns the updated project.
+
+The model uses `parameters` with stable row IDs and numeric values as strings,
+full inspected `paths`, string-valued numeric `transform` settings, and an editor
+`revision`. It is stored as `group.artemis.model` in schema version 1, alongside
+`history` and a derived `current_input_sha256`. Import validates bounded finite
+archives without evaluating expressions or executing FEFF. Saving a model inspects
+its FEFF contents again; only an explicit fit evaluates the model.
 
 The API exposes `POST /api/artemis/paths/inspect`,
 `GET /api/artemis/examples/cuprite`, and
@@ -409,8 +487,8 @@ The original fitting implementation was also checked separately:
 ## Scope beyond this iteration
 
 Future work includes arbitrary external CIF/Atoms input, disordered structures
-and automatic averaging over absorber sites, full Artemis project import/export and fit
-history, simultaneous multi-dataset fits, q-space and wavelet fitting,
+and automatic averaging over absorber sites, desktop Artemis project interchange,
+simultaneous multi-dataset fits, q-space and wavelet fitting,
 background co-refinement, additional cumulants, physical disorder functions,
 restraints, and the remaining desktop GDS parameter types. Directly importing a
 FEFF path uses an existing calculation; the AMCSD workflow separately creates
@@ -495,3 +573,104 @@ and displays the available path atoms. It never reconstructs neighbors from
 degeneracy. Model reimport reinspects `.dat` files, losing optional FEFF input
 context but still allowing context from a matching attached CIF. Invalid geometry
 or unavailable WebGL is reported; header values remain accessible.
+
+### CrystalNN first coordination shell
+
+The CIF viewer automatically analyzes its center site with pymatgen CrystalNN.
+In **EXAFS fitting → Open attached CIF**, choosing an inequivalent absorber site
+also analyzes that site for FEFF path selection. Results show predicted CN,
+neighbor elements, distance ranges, alternative coordination weights, and any
+radius/oxidation-state warnings. The shell is the most probable bonded-neighbor
+set; it is not a fitted CN or an R-space Fourier-transform window.
+
+The viewer highlights the absorber in amber and exact periodic neighbors in
+cyan. **View → CrystalNN first shell** displays the entire shell, including
+neighbors across cell boundaries, independently of the display radius. Changing
+the viewer center only changes the display; use the explicit FEFF absorber-site
+controls to change a calculation.
+
+Generated FEFF paths receive a **First shell** label only for two-leg paths whose
+scatterer element and centered atomic position match the predicted shell.
+**Select first-shell paths** prepares the selection for the existing Add button.
+For already loaded fit paths, matching paths are labeled **first-shell candidates**
+relative to the selected CIF/site: confirm the source, then optionally choose
+**Use only first-shell candidates**. This changes the model's inclusion toggles;
+it does not run a fit, change degeneracy, multiply by crystallographic
+multiplicity, or replace fitted parameters. Save the model normally to retain
+those toggles. Shell analysis itself is recomputed from the saved CIF.
+
+`POST /api/artemis/structures/first-shell` accepts full bounded CIF text,
+`absorber`, and the same 1-based global inequivalent `site_index` used by FEFF.
+It returns the exact CIF and its SHA-256, library version, fixed algorithm settings,
+CN alternatives, warnings, and neighbors with signed periodic images. Fractional
+offsets drive the viewer; native pymatgen Cartesian offsets match larixite/FEFF,
+including nonorthogonal cells. The endpoint reads no client-specified files and
+uses the submitted snapshot rather than looking up a potentially different CIF.
+Partial occupancies and unsupported structures fail explicitly; an algorithm
+failure is not represented as CN 0. Periodic candidate counts bound the adaptive
+Voronoi search. Successful results are cached by exact CIF/element/site.
+
+The fixed settings are the [pymatgen CrystalNN defaults](https://pymatgen.org/pymatgen.core.html):
+`weighted_cn=False`, `cation_anion=False`, `distance_cutoffs=(0.5, 1.0)`,
+`x_diff_weight=3.0`, `porous_adjustment=True`, `search_cutoff=7.0` Å. Oxidation
+states are not guessed. Review predictions especially for molecular/porous
+crystals. Hydrogen neighbors remain in CrystalNN results and are explicitly
+flagged because FEFF generation currently excludes H.
+
+### Periodic radial shells
+
+**CIF structure viewer → View → Radial shells** colors neighbors by their radial
+shell around the selected center. The absorber is amber. The table below the
+viewer shows each shell's actual minimum/maximum distance, neighbor count,
+element composition and symmetry pair groups. Select shell checkboxes to show
+any combination; initially shells 1–3 are visible. These complete periodic
+neighbor lists are independent of the Local cluster display radius. Element
+visibility does not change shell counts. The existing finite-cluster coordination
+calculator remains a separate calculation of the displayed local cluster.
+
+Shell analysis enumerates periodic neighbors, then uses one-dimensional
+[complete-linkage clustering](https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html)
+on their distances. **Shell width** bounds the entire group's distance spread,
+not just gaps between consecutive distances. The default width is 0.05 Å and
+is a reviewable grouping choice, not an experimental resolution or universal
+chemical cutoff. **Search radius** defaults to 6 Å; controls accept 0.5–12 Å
+and widths of 0.001–0.5 Å. Apply settings explicitly. Viewer, FEFF dialog and
+EXAFS model share applied settings for the exact CIF/center during the browser
+session; settings reset on page reload, while saved model path inclusions persist.
+
+Symmetry groups use operations fixing the chosen absorber modulo a lattice
+translation, with a separate 1e-5 Å symmetry tolerance. Element and pair-group
+membership remain available even when a broad display shell combines split
+distances, such as four short and two long bonds. Shell numbers are ordered by
+distance across all elements; they can change when the width changes. CrystalNN
+continues to describe bonded coordination and does not determine radial shell
+numbers. Structures with unresolved disorder/partial occupancy remain unsupported.
+
+In **EXAFS fitting**, open an attached CIF and explicitly choose its absorber site
+to display the shell ranges. Generated FEFF and existing model paths are grouped
+by matching single-scattering geometry to these periodic neighbors. Group buttons
+select/include/exclude paths together; **Use only shell N candidates** explicitly
+excludes other model paths. Generated selection unions groups, skips paths already
+added and rejects selections exceeding available model slots. **Add selected
+paths** still performs the addition. Multiple scattering has its own group:
+its effective half-path length is not a radial neighbor distance. Unmatched paths
+remain available, including paths beyond the selected shell search radius.
+
+Existing model matches are candidates relative to the chosen CIF/site, not proof
+of imported-file provenance. A representative FEFF path can cover several symmetry
+pair groups (for example the 12 Cu neighbors in Cuprite); it is never split or
+counted twice. Original degeneracies, expressions and fit bounds are preserved.
+Model inclusion edits can be saved normally. Changing shell settings or visibility
+does not run FEFF or a fit and preserves editable path input identity/undo history.
+
+`POST /api/artemis/structures/radial-shells` accepts full CIF text, `absorber`,
+global inequivalent `site_index`, `radius`, and `tolerance`. It returns exact CIF
+identity, applied settings, numbered shells, symmetry subgroups, signed periodic
+images, fractional offsets for rendering and native Cartesian offsets for FEFF
+matching. Results are cached by all inputs. Searches are bounded to 100,000
+candidate periodic sites and 2,000 actual neighbors; oversized searches fail
+instead of silently truncating results. A shell near the search boundary is
+flagged as potentially incomplete. Hydrogen is included with a warning because
+FEFF generation currently omits it. Distances are structural ranges, not automatic
+Fourier-transform fit windows or evidence that split shells are experimentally
+resolvable.

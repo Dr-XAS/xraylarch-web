@@ -7,8 +7,12 @@ import { artemisApi } from "@/lib/artemis"
 import type { ArtemisFeffJob, ArtemisFeffRequest, ArtemisGeneratedPath, ArtemisStructure, ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import type { AthenaProject } from "@/lib/athena"
 import { ArtemisStructures } from "./artemis-structures"
+import { radialFixture } from "@/tests/fixtures/radial-shells"
 
 vi.mock("@/lib/artemis", () => ({ artemisApi: vi.fn() }))
+vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: () => {} }) }))
+const radialAnalysis = vi.hoisted(() => vi.fn())
+vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
   CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} />,
 }))
@@ -57,6 +61,7 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 
 beforeEach(() => {
   api.mockReset()
+  radialAnalysis.mockReturnValue({ contextKey: "test", data: null, loading: false, error: "", retry: () => {}, settings: { radius: 6, tolerance: 0.05 }, setSettings: () => {} })
   savedAttachments = []
   savedVersion = 1
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute("open", "") } })
@@ -75,6 +80,29 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe("ArtemisStructures", () => {
+  it("unions shell selections and rejects a bulk selection beyond the remaining model capacity", async () => {
+    const generated = job()
+    for (const path of generated.paths) path.metadata.geometry.push({ atom: "Cu", ipot: 1, x: path.metadata.reff, y: 0, z: 0 })
+    const analysis = { ...radialFixture, cif: structure().cif, absorber: "Cu", site_index: 3,
+      neighbors: generated.paths.map((path, i) => ({ ...radialFixture.neighbors[i], id: i, element: "Cu", distance: path.metadata.reff, shell_index: i + 1, group_id: `${i + 1}.1`, cartesian_offset: [path.metadata.reff, 0, 0] })),
+      shells: radialFixture.shells.map((shell, i) => ({ ...shell, r_min: generated.paths[i].metadata.reff, r_max: generated.paths[i].metadata.reff })),
+    }
+    radialAnalysis.mockImplementation((_structure, site) => ({ contextKey: "test", data: site ? analysis : null, loading: false, error: "", retry: () => {}, settings: { radius: 6, tolerance: 0.05 }, setSettings: () => {} }))
+    setup(1)
+    await findAndSelect()
+    api.mockResolvedValueOnce(generated)
+    await generate()
+    await click("Select shell 1 paths")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
+    await click("Select shell 2 paths")
+    expect(screen.getByRole("alert")).toHaveTextContent("2 path slots; only 1")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).not.toBeChecked()
+    await click("Deselect shell 1 paths")
+    await click("Select shell 2 paths")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeChecked()
+  })
+
   it("opens an accessible popup, preserves selection across Escape/reopen, and restores launcher focus", async () => {
     render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />)
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
@@ -108,7 +136,7 @@ describe("ArtemisStructures", () => {
     await click("Attach to project")
     expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, amcsd_id: 13088 }, expect.any(AbortSignal))
     expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "p", version: 2, artemis_structures: [attachment()] }))
-    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1")
+    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1", 3)
     expect(screen.getByRole("dialog")).toBeVisible()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", attachment().structure.cif)
@@ -159,7 +187,7 @@ describe("ArtemisStructures", () => {
     await act(async () => { render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />) })
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     await click("Open attached Copper CIF")
-    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1")
+    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1", undefined)
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", "data_saved_snapshot")

@@ -28,7 +28,7 @@ export interface ArtemisPathMetadata {
   absorber: string
   edge: string
   geometry: { atom: string; x: number; y: number; z: number; ipot: number }[]
-  /** Actual FEFF input atoms, retained only for the browser's structure preview. */
+  /** Actual FEFF input atoms for the structure preview, saved with the model. */
   viewerCluster?: FeffViewerCluster
   kmin: number
   kmax: number
@@ -56,6 +56,18 @@ export interface ArtemisExample {
   transform: ArtemisTransform
   description: string
 }
+export interface ArtemisExampleSetup {
+  projectId: string
+  groupId: string
+  attachmentId: string
+  example: ArtemisExample
+}
+
+export function validCupriteExample(example: ArtemisExample) {
+  return example.amcsd_id === 15851 && /^[0-9a-f]{64}$/.test(example.cif_sha256) &&
+    Array.isArray(example.paths) && example.paths.length === 4 &&
+    example.paths.every((path, index) => path.filename === `feff${String(index + 1).padStart(4, "0")}.dat`)
+}
 export interface ArtemisFitRequest {
   version: number
   parameters: ArtemisParameter[]
@@ -63,6 +75,8 @@ export interface ArtemisFitRequest {
   transform: ArtemisTransform
 }
 export interface ArtemisFitResult {
+  /** Presentation context for a project archive; the stored result retains its original identity. */
+  archive?: { id: string; created: string; imported: boolean; stale: boolean; modelChanged: boolean; origin: ArtemisFitArchive["origin"] }
   /** Browser-retained request for reproducible result export; not supplied by the API. */
   request?: ArtemisFitRequest
   project_id: string
@@ -93,6 +107,37 @@ export interface ArtemisFitResult {
     data_im: number[]; model_im: number[]; residual_im: number[]
   }
   transform: ArtemisTransform
+}
+
+export type ArtemisParameterDraft = Omit<ArtemisParameter, "value" | "min" | "max"> & { value: string; min: string; max: string; id: string }
+export type ArtemisTransformDraft = Omit<ArtemisTransform, "kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr"> &
+  Record<"kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr", string>
+export interface ArtemisModelDraft { parameters: ArtemisParameterDraft[]; paths: ArtemisPath[]; transform: ArtemisTransformDraft; revision: number }
+export interface ArtemisFitArchive {
+  id: string
+  created: string
+  input_sha256: string
+  imported: boolean
+  origin: { project_id: string; group_id: string; project_version: number; larch_version: string }
+  model: ArtemisModelDraft
+  result: ArtemisFitResult
+}
+export interface ArtemisProjectState {
+  schema_version: 1
+  model: ArtemisModelDraft
+  history: ArtemisFitArchive[]
+  current_input_sha256: string | null
+}
+
+/** Ignore the editor revision and JSON property order when comparing saved models. */
+export function artemisModelKey(model: ArtemisModelDraft) {
+  function sorted(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(sorted)
+    if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, sorted(item)]))
+    return value
+  }
+  const { revision: _revision, ...content } = model
+  return JSON.stringify(sorted(content))
 }
 
 export async function artemisApi<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {

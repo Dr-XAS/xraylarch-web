@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useId, useMemo, useRef, useState, type ComponentProps } from "react"
+import { memo, useEffect, useId, useMemo, useRef, useState, type ComponentProps, type ReactNode } from "react"
 import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
 import { plotlyColorscale, type AthenaColormap } from "@/lib/athena-colormaps"
@@ -20,6 +20,20 @@ const axis = (text: string) => ({
 })
 
 type Range = { min: number; max: number }
+export type WaveletViewMode = "both" | "2d" | "3d"
+
+function useWaveletTrace(data: WaveletResult, type: "heatmap" | "surface", maximum: number, colormap: AthenaColormap, reversed: boolean) {
+  // Plotly may mutate its inputs. Each plot owns a copy, retained through range
+  // drags and palette changes without copying the scientific grid again.
+  const grid = useMemo(() => ({ x: data.k.slice(), y: data.r.slice(), z: data.magnitude.map(row => row.slice()) }), [data])
+  return useMemo(() => ({
+    type, ...grid, colorscale: plotlyColorscale(colormap, reversed),
+    ...(type === "surface" ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
+    showscale: type === "surface",
+    colorbar: { title: { text: "|WT|", font: titleFont }, tickfont: font, thickness: 12, len: 0.6, outlinewidth: 0, xpad: 8 },
+    hovertemplate: "k = %{x:.2f} Å⁻¹<br>R = %{y:.2f} Å<br>|WT| = %{z:.4g}<extra></extra>",
+  }), [grid, type, maximum, colormap, reversed])
+}
 
 function fitRange(min: number, max: number, domainMin: number, domainMax: number, gap: number): Range {
   const lower = Math.max(domainMin, Math.min(Math.min(min, max), domainMax - gap))
@@ -45,8 +59,9 @@ function validPreview(preview: PlotWeightResult, data: WaveletResult, range: Ran
     Math.abs(preview.effective.kmin - range.min) < 1e-6 && Math.abs(preview.effective.kmax - range.max) < 1e-6
 }
 
-function MeasuredPlot({ label, className, main = false, plotKey, ...props }: ComponentProps<typeof Plot> & {
-  label: string; className: string; main?: boolean; plotKey: string
+function MeasuredPlot({ label, className, main = false, square = false, plotKey, renderAbove, ...props }: ComponentProps<typeof Plot> & {
+  label: string; className: string; main?: boolean; square?: boolean; plotKey: string
+  renderAbove?: (insets: { left: number; right: number }) => ReactNode
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ width: 0, height: 0 })
@@ -63,17 +78,55 @@ function MeasuredPlot({ label, className, main = false, plotKey, ...props }: Com
     window.addEventListener("resize", measure)
     return () => { observer?.disconnect(); window.removeEventListener("resize", measure) }
   }, [])
-  return <div ref={ref} className={className} aria-label={label} data-wavelet-main-plot={main || undefined}>
-    {failedKey === plotKey ? <div className={styles.notice} role="alert">
-      Could not render the {label.toLowerCase()}.{label === "3D wavelet surface" && " Try the 2D heatmap if 3D graphics are unavailable."}
-    </div> : <Plot {...props} layout={{ ...props.layout, autosize: true,
-      ...(size.width > 0 ? { width: size.width } : {}), ...(size.height > 0 ? { height: size.height } : {}),
-    }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setFailedKey(plotKey)} />}
-  </div>
+  let margin = props.layout?.margin as { l?: number; r?: number; t?: number; b?: number; autoexpand?: boolean } | undefined
+  if (square && size.width > 0 && size.height > 0) {
+    // Keep the plotted k–R rectangle square, without equating the two axes'
+    // different physical units or changing their scientific ranges.
+    const { l = 0, r = 0, t = 0, b = 0 } = margin ?? {}
+    const width = Math.max(1, size.width - l - r)
+    const height = Math.max(1, size.height - t - b)
+    const side = Math.min(width, height)
+    const horizontalSpace = (width - side) / 2
+    const verticalSpace = (height - side) / 2
+    margin = { ...margin, l: l + horizontalSpace, r: r + horizontalSpace,
+      t: t + verticalSpace, b: b + verticalSpace, autoexpand: false }
+  }
+  return <>
+    {renderAbove?.({ left: margin?.l ?? 0, right: margin?.r ?? 0 })}
+    <div ref={ref} className={className} aria-label={label} data-wavelet-main-plot={main || undefined}>
+      {failedKey === plotKey ? <div className={styles.notice} role="alert">
+        Could not render the {label.toLowerCase()}.{label === "3D wavelet surface" && " Try the 2D heatmap if 3D graphics are unavailable."}
+      </div> : <Plot {...props} layout={{ ...props.layout, margin, autosize: true,
+        ...(size.width > 0 ? { width: size.width } : {}), ...(size.height > 0 ? { height: size.height } : {}),
+      }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setFailedKey(plotKey)} />}
+    </div>
+  </>
 }
 
+// Range selection only affects the Fourier companions. Keeping the surface in
+// its own memoized component avoids Plotly updates and preserves its camera
+// while the slider moves or a preview response arrives.
+const WaveletSurface = memo(function WaveletSurface({ data, context, maximum, colormap, reverseColormap }: {
+  data: WaveletResult; context: string; maximum: number; colormap: AthenaColormap; reverseColormap: boolean
+}) {
+  const trace = useWaveletTrace(data, "surface", maximum, colormap, reverseColormap)
+  return <MeasuredPlot label="3D wavelet surface" main className={styles.mainPlot} plotKey={`${context}:3d`} data={[trace]}
+    layout={{ font, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", showlegend: false, uirevision: context,
+      title: { text: `Wavelet Surface (Cauchy, k-weight = ${data.kweight})` },
+      margin: { l: 30, r: 65, t: 50, b: 30 }, scene: {
+        xaxis: { ...axis("k (Å⁻¹)"), mirror: true },
+        yaxis: { ...axis("R (Å)"), range: [0, 6], mirror: true },
+        zaxis: { ...axis("|WT|"), range: [0, maximum], mirror: true },
+        camera: { eye: { x: -3, y: -1.5, z: 1.5 } },
+      },
+    }} config={{ responsive: true, displaylogo: false,
+      toImageButtonOptions: { filename: `wavelet-k${data.kweight}-3d`, scale: 2 },
+      modeBarButtonsToRemove: ["pan2d", "lasso2d", "select2d"],
+    }} />
+})
+
 export function WaveletFigure({ data, version = data.version, dataVersion = version, mode, colormap, reverseColormap = false, group }: {
-  data: WaveletResult; mode: "2d" | "3d"; colormap: AthenaColormap; reverseColormap?: boolean; group: AthenaGroup
+  data: WaveletResult; mode: WaveletViewMode; colormap: AthenaColormap; reverseColormap?: boolean; group: AthenaGroup
   version?: number; dataVersion?: number
 }) {
   const athenaApi = useAthenaApi()
@@ -100,10 +153,11 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
   latest.current = { key: previewKey, version }
   const current = response?.key === previewKey && !response.abort.signal.aborted ? response : null
   const maximum = useMemo(() => data.magnitude.reduce((max, row) => row.reduce((m, value) => Math.max(m, value), max), 0) || 1, [data])
-  const surface = mode === "3d"
+  const surfaceOnly = mode === "3d"
+  const trace = useWaveletTrace(data, "heatmap", maximum, colormap, reverseColormap)
 
   useEffect(() => {
-    if (surface) return
+    if (surfaceOnly) return
     if (current?.data) return () => { if (latest.current.key !== previewKey) current.abort.abort() }
     const abort = new AbortController()
     let completed = false
@@ -122,7 +176,7 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
       }
     }, 150)
     return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== previewKey) abort.abort() }
-  }, [previewKey, surface, data.project_id, data.group_id, version, data.kweight, range.min, range.max])
+  }, [previewKey, surfaceOnly, data.project_id, data.group_id, version, data.kweight, range.min, range.max])
 
   function updateRange(min: number, max: number) {
     const next = fitRange(min, max, domainMin, domainMax, gap)
@@ -142,27 +196,8 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
     setShapeRevision(value => value + 1)
   }
 
-  const trace = {
-    type: surface ? "surface" : "heatmap", x: data.k.slice(), y: data.r.slice(), z: data.magnitude.map(row => row.slice()),
-    colorscale: plotlyColorscale(colormap, reverseColormap), ...(surface ? { cmin: 0, cmax: maximum } : { zmin: 0, zmax: maximum, zsmooth: false }),
-    showscale: surface,
-    colorbar: { title: { text: "|WT|", font: titleFont }, tickfont: font, thickness: 12, len: 0.6, outlinewidth: 0, xpad: 8 },
-    hovertemplate: "k = %{x:.2f} Å⁻¹<br>R = %{y:.2f} Å<br>|WT| = %{z:.4g}<extra></extra>",
-  }
   const baseLayout = { font, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff", showlegend: false, uirevision: context }
-  const config = { responsive: true, displaylogo: false, toImageButtonOptions: { filename: `wavelet-k${data.kweight}-${mode}`, scale: 2 } }
-
-  if (surface) return <div className={styles.viewer}>
-    <MeasuredPlot label="3D wavelet surface" main className={styles.mainPlot} plotKey={`${context}:3d`} data={[trace]}
-      layout={{ ...baseLayout, title: { text: `Wavelet Surface (Cauchy, k-weight = ${data.kweight})` },
-        margin: { l: 0, r: 90, t: 50, b: 0 }, scene: {
-          xaxis: { ...axis("k (Å⁻¹)"), mirror: true },
-          yaxis: { ...axis("R (Å)"), range: [0, 6], mirror: true },
-          zaxis: { ...axis("|WT|"), range: [0, maximum], mirror: true },
-          camera: { eye: { x: -2, y: -1, z: 1 } },
-        },
-      }} config={{ ...config, modeBarButtonsToRemove: ["pan2d", "lasso2d", "select2d"] }} />
-  </div>
+  const config = { responsive: true, displaylogo: false, toImageButtonOptions: { filename: `wavelet-k${data.kweight}-2d`, scale: 2 } }
 
   const percent = (value: number) => (value - domainMin) / (domainMax - domainMin) * 100
   const kLabel = data.kweight === 0 ? "χ(k)" : `k<sup>${data.kweight}</sup>χ(k)`
@@ -170,11 +205,11 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
   const selectedIndices = arrays?.k.map((k, index) => k >= range.min && k <= range.max ? index : -1).filter(index => index >= 0) ?? []
 
   return <div className={styles.viewer}>
-    <div className={styles.analysis}>
-      <div className={styles.heatmapColumn}>
-        <fieldset className={styles.range}>
+    <div className={styles.analysis} data-view={mode}>
+      {!surfaceOnly && <MeasuredPlot key="heatmap" label="2D wavelet heatmap" main square className={`${styles.mainPlot} ${styles.heatmapPlot}`} plotKey={`${context}:2d`} data={[trace]}
+        renderAbove={({ left, right }) => <fieldset className={styles.range}>
           <legend className={styles.srOnly}>k range</legend>
-          <div className={styles.alignedRange} style={{ marginLeft: leftMargin, marginRight: rightMargin }}>
+          <div className={styles.alignedRange} style={{ marginLeft: left, marginRight: right }}>
             <span aria-hidden="true" className={styles.rangeLabel}>k</span>
             <span aria-hidden="true" className={styles.rangeUnit}>Å⁻¹</span>
             <div className={styles.track}>
@@ -195,22 +230,21 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
               </span>)}
             </div>
           </div>
-        </fieldset>
-        <MeasuredPlot label="2D wavelet heatmap" main className={styles.mainPlot} plotKey={`${context}:2d`} data={[trace]}
-          layout={{ ...baseLayout, title: { text: `Wavelet Transform (Cauchy, k-weight = ${data.kweight})` },
-            margin: { l: leftMargin, r: rightMargin, t: 50, b: 55, autoexpand: false },
-            xaxis: { ...axis("k (Å⁻¹)"), range: [domainMin, domainMax], fixedrange: true },
-            yaxis: { ...axis("R (Å)"), range: [0, 6] }, editrevision: `${range.min}:${range.max}:${shapeRevision}`,
-            shapes: [range.min, range.max].map(k => ({ type: "line", xref: "x", yref: "y", x0: k, x1: k, y0: 0, y1: 6,
-              editable: true, line: { color: "rgba(255,255,255,0.85)", width: 1.2, dash: "dot" },
-            })),
-            annotations: [range.min, range.max].map((k, index) => ({ x: k, y: 5.7, xref: "x", yref: "y",
-              text: `k_${index === 0 ? "min" : "max"} = ${k.toFixed(2)}`, showarrow: false, xanchor: "center",
-              font: { ...font, color: "#ffffff" }, bgcolor: "rgba(30,35,40,0.45)", borderpad: 4,
-            })),
-          }} config={{ ...config, scrollZoom: true, editable: false, edits: { shapePosition: true } }} onRelayout={moveBoundary} />
-      </div>
-      <div className={styles.companions} aria-label="Selected k-range Fourier preview" aria-busy={!current}>
+        </fieldset>}
+        layout={{ ...baseLayout, title: { text: `Wavelet Transform (Cauchy, k-weight = ${data.kweight})` },
+          margin: { l: leftMargin, r: rightMargin, t: 50, b: 55, autoexpand: false },
+          xaxis: { ...axis("k (Å⁻¹)"), range: [domainMin, domainMax], fixedrange: true },
+          yaxis: { ...axis("R (Å)"), range: [0, 6] }, editrevision: `${range.min}:${range.max}:${shapeRevision}`,
+          shapes: [range.min, range.max].map(k => ({ type: "line", xref: "x", yref: "y", x0: k, x1: k, y0: 0, y1: 6,
+            editable: true, line: { color: "rgba(255,255,255,0.85)", width: 1.2, dash: "dot" },
+          })),
+          annotations: [range.min, range.max].map((k, index) => ({ x: k, y: 5.7, xref: "x", yref: "y",
+            text: `k_${index === 0 ? "min" : "max"} = ${k.toFixed(2)}`, showarrow: false, xanchor: "center",
+            font: { ...font, color: "#ffffff" }, bgcolor: "rgba(30,35,40,0.45)", borderpad: 4,
+          })),
+        }} config={{ ...config, scrollZoom: true, editable: false, edits: { shapePosition: true } }} onRelayout={moveBoundary} />}
+      {mode !== "2d" && <WaveletSurface key="surface" data={data} context={context} maximum={maximum} colormap={colormap} reverseColormap={reverseColormap} />}
+      {!surfaceOnly && <div className={styles.companions} aria-label="Selected k-range Fourier preview" aria-busy={!current}>
         {!current ? <div className={styles.notice} role="status">Calculating selected k-range transform…</div>
           : current.error ? <div className={styles.notice} role="alert"><p>{current.error}</p><button type="button" onClick={() => setAttempt(value => value + 1)}>Try again</button></div>
           : arrays && <>
@@ -230,8 +264,8 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
                 xaxis: { ...axis("R (Å)"), range: [0, 6] }, yaxis: axis("|χ(R)|"), uirevision: previewKey,
               }} config={{ ...config, toImageButtonOptions: { filename: `wavelet-fourier-k${data.kweight}`, scale: 2 } }} />
           </>}
-      </div>
+      </div>}
     </div>
-    <p className={styles.hint}>Drag the k-range handles or dotted lines to update χ(k) and |χ(R)|.</p>
+    {!surfaceOnly && <p className={styles.hint}>Drag the k-range handles or dotted lines to update χ(k) and |χ(R)|.</p>}
   </div>
 }

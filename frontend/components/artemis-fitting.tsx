@@ -1,27 +1,31 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FlaskConical, Plus, RefreshCw, Trash2, Upload } from "lucide-react"
-import type { AthenaGroup, AthenaProject } from "@/lib/athena"
+import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
+import { ApiRequestError } from "@/lib/backend-client"
 import {
-  artemisApi, validArtemisResult, type ArtemisExample, type ArtemisFitRequest, type ArtemisFitResult,
+  artemisApi, validArtemisResult, validCupriteExample, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult,
   type ArtemisInspectedPath, type ArtemisParameter, type ArtemisPath, type ArtemisTransform,
+  artemisModelKey, type ArtemisModelDraft as Draft, type ArtemisParameterDraft as ParameterDraft, type ArtemisTransformDraft as TransformDraft,
 } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { parseFeffCluster } from "@/lib/feff-cluster"
+import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
+import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
+import { useRadialShells } from "@/lib/use-radial-shells"
+import { RadialShellPanel } from "./radial-shell-panel"
+import { RadialPathGroups } from "./radial-path-groups"
 import { ArtemisStructures } from "./artemis-structures"
 import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
 
-type ParameterDraft = Omit<ArtemisParameter, "value" | "min" | "max"> & { value: string; min: string; max: string; id: string }
-type TransformDraft = Omit<ArtemisTransform, "kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr"> &
-  Record<"kmin" | "kmax" | "dk" | "rmin" | "rmax" | "dr", string>
-interface Draft { parameters: ParameterDraft[]; paths: ArtemisPath[]; transform: TransformDraft; revision: number }
-interface SavedDraft { draft: Draft; result: { revision: number; data: ArtemisFitResult } | null }
+interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; result: { revision: number; data: ArtemisFitResult } | null }
 interface PanelProps {
+  exampleSetup?: ArtemisExampleSetup
   projectId?: string
   version?: number
   group?: AthenaGroup
@@ -29,11 +33,12 @@ interface PanelProps {
   onFitResult?: (result: ArtemisFitResult | null) => void
   onPathsChange?: (paths: FeffPathSummary[], projectId?: string, groupId?: string) => void
   onProjectChange?: (project: AthenaProject) => void
-  onViewStructure?: (attachmentId: string) => void
+  onViewStructure?: (attachmentId: string, siteIndex?: number) => void
+  onDirtyChange?: (groupId: string, dirty: boolean) => void
 }
 
-let sequence = 0
-const nextId = () => `artemis-${++sequence}`
+// getRandomValues also works on HTTP workspaces opened on a lab network.
+const nextId = () => `artemis-${crypto.getRandomValues(new Uint32Array(4)).join("-")}`
 const defaultParameters: ArtemisParameter[] = [
   { name: "amp", kind: "guess", value: 1, expression: "", min: 0, max: 2 },
   { name: "del_e0", kind: "guess", value: 0, expression: "", min: -20, max: 20 },
@@ -53,6 +58,13 @@ function newDraft(): Draft {
 }
 function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
   return { ...path, id: nextId(), label: path.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" }
+}
+function exampleDraft(example: ArtemisExample, revision = 0): Draft {
+  const viewerCluster = parseFeffCluster(example.feff_input)
+  return { revision, paths: example.paths.map(path => ({ ...pathDraft(path),
+    label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
+    metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata })),
+    parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }
 }
 function numberValue(value: string, label: string) {
   if (!value.trim() || !Number.isFinite(Number(value))) throw new Error(`${label} must be a finite number.`)
@@ -78,7 +90,7 @@ function requestFromDraft(draft: Draft, version: number): ArtemisFitRequest {
   const t = draft.transform
   const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
     kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
-    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: 0 }
+    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
   if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
   if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
   if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
@@ -106,26 +118,58 @@ function importRequest(text: string): ArtemisFitRequest {
   return request
 }
 
+/** Native disclosures keep form and CIF-dialog state mounted while folded. */
+function FittingSection({ title, summary, disabled, children }: {
+  title: string; summary?: string; disabled?: boolean; children: ReactNode
+}) {
+  const [open, setOpen] = useState(true)
+  return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
+    <summary>{title}{summary && <small>{summary}</small>}</summary>
+    <fieldset className={styles.sectionBody} aria-label={`${title} controls`} disabled={disabled}>{children}</fieldset>
+  </details>
+}
+
 /** The workbench keeps this wrapper mounted; drafts survive group and processing-tab changes. */
 export function ArtemisFittingPanel(props: PanelProps) {
   const cache = useRef(new Map<string, SavedDraft>())
+  const setup = props.exampleSetup
+  if (setup && setup.projectId === props.projectId) {
+    const exampleKey = `${setup.projectId}:${setup.groupId}`
+    // Prepare the Cu₂O model even while a foil is selected. Never replace a
+    // saved draft, including a model whose paths the user deliberately removed.
+    if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
+  }
   const key = `${props.projectId ?? "none"}:${props.group?.id ?? "none"}`
   return <FittingEditor key={key} {...props} initial={cache.current.get(key)} onSave={saved => cache.current.set(key, saved)} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, initial, onSave }: PanelProps & {
+function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft) => void
 }) {
-  const [draft, setDraft] = useState<Draft>(() => initial?.draft ?? newDraft())
+  const [draft, setDraft] = useState<Draft>(() => {
+    if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
+    if (!group?.artemis && initial?.persisted && initial.base && artemisModelKey(initial.draft) === artemisModelKey(initial.base)) return newDraft()
+    return initial?.draft ?? group?.artemis?.model ?? newDraft()
+  })
+  const base = useRef(group?.artemis?.model ?? (initial?.persisted ? draft : initial?.base ?? draft))
+  const persisted = group?.artemis
+  const previousSaved = useRef(persisted?.model)
+  const [selectedFitId, setSelectedFitId] = useState(initial?.selectedFitId)
+  const archive = persisted?.history.find(item => item.id === selectedFitId) ?? persisted?.history.at(-1)
+  const modelDirty = artemisModelKey(draft) !== artemisModelKey(persisted?.model ?? base.current) || (!persisted && draft.paths.length > 0)
   const [result, setResult] = useState<SavedDraft["result"]>(initial?.result ?? null)
-  const [busy, setBusy] = useState<"fit" | "upload" | "example" | null>(null)
+  const [busy, setBusy] = useState<"fit" | "upload" | "example" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
+  const [radialContext, setRadialContext] = useState<RadialShellContext | null>(null)
+  const radialState = useRadialShells(radialContext?.structure ?? null, radialContext?.siteIndex)
+  const shellPathIds = useMemo(() => shellSelection ? draft.paths.filter(path => isFirstShellPath(path.metadata, shellSelection.structure, shellSelection.shell)).map(path => path.id) : [], [draft.paths, shellSelection])
   const controller = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const modelInputRef = useRef<HTMLInputElement>(null)
-  const callbacks = useRef({ onFitResult, onPathsChange, onSave })
-  callbacks.current = { onFitResult, onPathsChange, onSave }
+  const callbacks = useRef({ onFitResult, onPathsChange, onSave, onDirtyChange })
+  callbacks.current = { onFitResult, onPathsChange, onSave, onDirtyChange }
   const reason = !projectId || !group ? "Select a spectrum to build an EXAFS fit."
     : pending ? "Waiting for spectrum processing…"
     : group.processing_error ? "Resolve this spectrum’s processing error before fitting."
@@ -134,13 +178,35 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const context = `${projectId}:${group?.id}:${version}:${draft.revision}:${reason}`
   const contextRef = useRef(context)
   contextRef.current = context
-  const currentResult = !reason && result?.revision === draft.revision && result.data.project_id === projectId &&
-    result.data.group_id === group?.id && result.data.version === version ? result.data : null
+  const savedResult = useMemo(() => {
+    if (!archive || !projectId || !group) return null
+    let request: ArtemisFitRequest | undefined
+    try { request = requestFromDraft(archive.model, archive.origin.project_version) } catch { /* Imported archives are inert, even if their model is incomplete. */ }
+    return { ...archive.result, project_id: projectId, group_id: group.id, group_label: group.label,
+      request,
+      archive: { id: archive.id, created: archive.created, imported: archive.imported,
+        stale: !persisted?.current_input_sha256 || persisted.current_input_sha256 !== archive.input_sha256,
+        modelChanged: artemisModelKey(draft) !== artemisModelKey(archive.model), origin: archive.origin } }
+  }, [archive, projectId, group?.id, group?.label, persisted?.current_input_sha256, draft])
+  const currentResult = savedResult ?? (!reason && result?.revision === draft.revision && result.data.project_id === projectId &&
+    result.data.group_id === group?.id && result.data.version === version ? result.data : null)
 
   useEffect(() => {
-    callbacks.current.onSave({ draft, result })
+    const saved = persisted?.model
+    if (saved === previousSaved.current) return
+    previousSaved.current = saved
+    // External saves and Undo/Redo update clean editors; unfinished edits stay in memory.
+    const previousBase = base.current
+    const nextBase = saved ?? newDraft()
+    setDraft(previous => artemisModelKey(previous) === artemisModelKey(previousBase) ? nextBase : previous)
+    base.current = nextBase
+  }, [persisted?.model])
+
+  useEffect(() => {
+    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, result })
     callbacks.current.onFitResult?.(currentResult)
-  }, [draft, result, currentResult])
+    if (group) callbacks.current.onDirtyChange?.(group.id, modelDirty)
+  }, [draft, result, currentResult, selectedFitId, modelDirty, group?.id, persisted])
   useEffect(() => {
     callbacks.current.onPathsChange?.(draft.paths.map(({ id, label, filename, enabled, metadata }) => ({ id, label, filename, enabled, metadata })), projectId, group?.id)
   }, [draft.paths, projectId, group?.id])
@@ -189,6 +255,15 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     setNotice("")
     return abort
   }
+  async function recoverConflict(error: unknown) {
+    if (!(error instanceof ApiRequestError) || error.code !== "stale_revision" || !projectId || !onProjectChange) return false
+    try {
+      const updated = await athenaApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}`)
+      onProjectChange(updated)
+      setNotice("Project state refreshed after another change. Your unsaved model is retained; review it and retry saving or fitting.")
+      return true
+    } catch { return false }
+  }
   async function upload(files: File[]) {
     if (!files.length) return
     if (draft.paths.length + files.length > 24) { setError("A model can contain up to 24 FEFF paths."); return }
@@ -215,9 +290,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     try {
       const example = await artemisApi<ArtemisExample>("/examples/cuprite", undefined, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
-      if (example.amcsd_id !== 15851 || !/^[0-9a-f]{64}$/.test(example.cif_sha256) ||
-        !Array.isArray(example.paths) || example.paths.length !== 4 ||
-        example.paths.some((path, index) => path.filename !== `feff${String(index + 1).padStart(4, "0")}.dat`)) {
+      if (!validCupriteExample(example)) {
         throw new Error("The Cu₂O example does not contain the expected Cuprite structure and four FEFF paths.")
       }
       // The attach operation can commit even if the selected spectrum changes.
@@ -235,12 +308,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         throw new Error("The attached CIF does not match the Cu₂O FEFF calculation. Reload the project and try again.")
       }
       if (applyToGroup) {
-        const viewerCluster = parseFeffCluster(example.feff_input)
-        const paths = example.paths.map(path => ({ ...pathDraft(path),
-          label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
-          metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata }))
-        setDraft(previous => ({ revision: previous.revision + 1, paths,
-          parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }))
+        setDraft(previous => exampleDraft(example, previous.revision + 1))
         setNotice(example.description)
       }
       onProjectChange(updated)
@@ -251,7 +319,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   function saveModel() {
     try {
       const request = requestFromDraft(draft, version ?? 0)
-      download("artemis-model.json", exportBundle(request, currentResult, { project_id: projectId, group_id: group?.id, group_label: group?.label }))
+      download("artemis-model.json", exportBundle(request, currentResult?.archive?.modelChanged ? null : currentResult, { project_id: projectId, group_id: group?.id, group_label: group?.label }))
       setError("")
       setNotice("Downloaded the model, FEFF files, and any current fit result as JSON.")
     } catch (error) { setError(errorText(error)) }
@@ -265,9 +333,11 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       for (const path of request.paths) {
         if (abort.signal.aborted) return
         const inspected = await artemisApi<ArtemisInspectedPath>("/paths/inspect", { filename: path.filename, content: path.content }, abort.signal)
-        paths.push({ ...path, ...inspected, id: nextId() })
+        paths.push({ ...inspected, id: nextId(), label: path.label, enabled: path.enabled, s02: path.s02, e0: path.e0, deltar: path.deltar, sigma2: path.sigma2 })
       }
-      const imported = { revision: draft.revision + 1, paths, parameters: request.parameters.map(parameterDraft), transform: transformDraft({ ...request.transform, dr: 0 }) }
+      const t = request.transform
+      const imported = { revision: draft.revision + 1, paths, parameters: request.parameters.map(({ name, kind, value, min, max, expression }) => parameterDraft({ name, kind, value, min, max, expression })),
+        transform: transformDraft({ fitspace: t.fitspace, window: t.window, kweight: t.kweight, kmin: t.kmin, kmax: t.kmax, dk: t.dk, rmin: t.rmin, rmax: t.rmax, dr: 0 }) }
       requestFromDraft(imported, version ?? 0)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
       setDraft(imported)
@@ -285,11 +355,44 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     const requestContext = context
     setResult(null)
     try {
+      if (onProjectChange) {
+        // A mutation may commit after the user changes tabs. Receive its new version even then.
+        const response = await artemisApi<{ project: AthenaProject; fit_id: string }>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit-saved`, { version, model: draft })
+        const state = response.project?.groups.find(item => item.id === group.id)?.artemis
+        const record = state?.history.find(item => item.id === response.fit_id)
+        const apply = !abort.signal.aborted && contextRef.current === requestContext
+        if (response.project?.id === projectId && response.project.version >= version) onProjectChange(response.project)
+        if (!record || !validArtemisResult(record.result, projectId, group.id, version)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Reload this project to check its saved history.")
+        if (apply) {
+          setDraft(state!.model)
+          setSelectedFitId(record.id)
+          setResult({ revision: draft.revision, data: { ...record.result, request } })
+          setNotice("Saved the model and fit result in this project.")
+        }
+        return
+      }
       const response = await artemisApi<ArtemisFitResult>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/fit`, request, abort.signal)
       if (abort.signal.aborted || contextRef.current !== requestContext) return
       if (!validArtemisResult(response, projectId, group.id, version)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Try the fit again.")
       setResult({ revision: draft.revision, data: { ...response, request } })
-    } catch (error) { if (!abort.signal.aborted && contextRef.current === requestContext) setError(errorText(error)) }
+    } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted && contextRef.current === requestContext) setError(errorText(error)) }
+    finally { if (!abort.signal.aborted) setBusy(null) }
+  }
+
+  async function persistModel(removeId?: string) {
+    if (!projectId || !group || version === undefined || !onProjectChange || busy || pending) return
+    const abort = begin(removeId ? "remove" : "save")
+    const requestContext = context
+    try {
+      const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/groups/${encodeURIComponent(group.id)}/${removeId ? "remove-fit" : "model"}`,
+        removeId ? { version, fit_id: removeId } : { version, model: draft })
+      if (updated.id !== projectId || updated.version < version) throw new Error("The project response is invalid. Reload this project before saving again.")
+      if (!abort.signal.aborted && contextRef.current === requestContext) {
+        if (!removeId) setDraft(updated.groups.find(item => item.id === group.id)!.artemis!.model)
+        setNotice(removeId ? "Removed the saved fit. Undo restores it." : "Model saved in this project. Save project downloads it with the spectra.")
+      }
+      onProjectChange(updated)
+    } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted) setError(errorText(error)) }
     finally { if (!abort.signal.aborted) setBusy(null) }
   }
 
@@ -300,15 +403,30 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     <div className={styles.actions}>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
-      <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
-      <p className={styles.help}>Fit runs only when requested. Drafts stay in this workspace session; use model JSON to keep them after reload. Athena project exports do not include fitting models.</p>
     </div>
     {notice && <p className={styles.message} role="status">{notice}</p>}
-    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : "Loading Cu₂O CIF and FEFF paths…"}</p>}
+    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : busy === "example" ? "Loading Cu₂O CIF and FEFF paths…" : "Saving project…"}</p>}
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
-    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} disabled={disabled} existingPaths={draft.paths}
+    <FittingSection title="Model & project" summary={modelDirty ? "Unsaved" : persisted ? "Saved" : undefined}>
+      <div className={styles.toolbar}><button type="button" disabled={!!busy || !draft.paths.length} onClick={saveModel}>Export model JSON</button><button type="button" disabled={!!busy} onClick={() => modelInputRef.current?.click()}>Import model JSON</button><input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} /></div>
+      {onProjectChange && <div className={styles.toolbar}>
+        <button type="button" disabled={disabled || !group || !projectId || version === undefined} onClick={() => void persistModel()}>Save model to project</button>
+        {persisted && <button type="button" disabled={disabled || !modelDirty} onClick={() => { setDraft(persisted.model); setNotice("Reloaded the saved model.") }}>Reload saved model</button>}
+      </div>}
+      <p className={styles.help}>{modelDirty ? "Model has unsaved changes. Save the model or run a fit before reloading or downloading this project." : persisted ? "Model saved in this project. Project downloads include FEFF files and fit history." : "Save the model to keep it with this spectrum."} Fits run only when requested.</p>
+    </FittingSection>
+    {!!persisted?.history.length && <FittingSection title="Saved fit history" summary={`${persisted.history.length}/10`} disabled={disabled}>
+        <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
+          {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
+        </select></label>
+        <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
+          <button type="button" disabled={disabled || !archive} onClick={() => void persistModel(archive?.id)}>Remove saved fit</button></div>
+        <p className={styles.help}>Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.</p>
+    </FittingSection>}
+    <FittingSection title="Crystal structures" summary="CIF">
+    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
         if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
@@ -318,8 +436,17 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           parameters: [...previous.parameters, ...missing.map(parameterDraft)] }))
         return null
       }} />
-    <fieldset className={styles.section} disabled={disabled}>
-      <legend>FEFF paths <span>{draft.paths.filter(path => path.enabled).length} included</span></legend>
+    </FittingSection>
+    <FittingSection title="FEFF paths" summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}>
+      {radialContext ? <>
+        <RadialShellPanel state={radialState} disabled={disabled} />
+        <p className={styles.help}>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>
+      </> : <p className={styles.help}>Open an attached CIF and choose its absorber site to see shell ranges and group path candidates.</p>}
+      {shellSelection && <div className={styles.help}>
+        <p>CrystalNN · {shellSelection.structure.mineral || shellSelection.structure.formula} · {shellSelection.shell.absorber} site {shellSelection.shell.site_index} · CN {shellSelection.shell.coordination_number}. {shellPathIds.length} first-shell path candidate{shellPathIds.length === 1 ? "" : "s"}.</p>
+        <p>Candidates match the selected shell by element and atomic position. Confirm that the paths use this CIF and absorber site.</p>
+        <button type="button" disabled={!shellPathIds.length || disabled} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: shellPathIds.includes(path.id) })) }))}>Use only first-shell candidates</button>
+      </div>}
       <div className={styles.toolbar}>
         <button type="button" onClick={() => inputRef.current?.click()}><Upload size={13} />Add feff*.dat</button>
         <button type="button" onClick={loadExample} disabled={draft.paths.length > 0 || !projectId || version === undefined || !group || !onProjectChange} title={draft.paths.length ? "Remove existing paths to load the Cu₂O example." : "Attach Cuprite AMCSD 0015851 and load four precomputed Cu K-edge FEFF paths."}>Cu₂O example</button>
@@ -327,12 +454,20 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
       </div>
       {draft.paths.length === 0 && <p className={styles.help}>Add calculated FEFF scattering paths, or load the Cuprite CIF and its first four precomputed paths with the Cu₂O example.</p>}
-      {draft.paths.map((path, i) => <div className={styles.path} key={path.id}>
+      <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
+        onSelection={(ids, include) => edit(previous => ({ ...previous, paths: previous.paths.map(path => ids.includes(path.id) ? { ...path, enabled: include } : path) }))}
+        onUseOnly={ids => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: ids.includes(path.id) })) }))}
+        renderPath={path => {
+          const i = draft.paths.findIndex(item => item.id === path.id)
+          const member = radialContext && radialState.data ? radialPathNeighbor(path.metadata, radialContext.structure, radialState.data) : undefined
+          return <div className={styles.path}>
         <div className={styles.pathHeader}>
           <label className={styles.check}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /><span>{path.filename}</span></label>
           <button type="button" aria-label={`Remove path ${i + 1}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
         <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
+        {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
+        {member && <p className={styles.metadata}>Radial shell {member.shell_index} · {member.element} pair {member.group_id}</p>}
         <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
@@ -342,12 +477,11 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
             ["sigma2", "σ² (Å²)", "Mean-square relative displacement."],
           ] as const).map(([field, label, title]) => <label key={field} title={title}>{label}<input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
         </div>
-      </div>)}
+      </div>}} />
       {draft.paths.length > 0 && <p className={styles.help}>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>}
-    </fieldset>
+    </FittingSection>
 
-    <fieldset className={styles.section} disabled={disabled}>
-      <legend>Parameters <span>{freeCount} free</span></legend>
+    <FittingSection title="Parameters" summary={`${freeCount} free`} disabled={disabled}>
       <div className={styles.toolbar}><button type="button" className={styles.syncButton} disabled={!draft.paths.some(path => path.enabled)} onClick={syncParameters}><RefreshCw size={13} />Sync parameters</button></div>
       <p className={styles.help}>Sync adds missing parameters and removes those unused by included paths, including Def dependencies. Existing values and constraints are kept.</p>
       <p className={styles.help}>Guess refines a value, Set fixes it, Def evaluates an expression.</p>
@@ -364,10 +498,9 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           </div>}
       </div>)}
       <button type="button" disabled={draft.parameters.length >= 32} onClick={() => edit(previous => ({ ...previous, parameters: [...previous.parameters, parameterDraft({ name: `param${previous.parameters.length + 1}`, kind: "guess", value: 0, expression: "", min: null, max: null })] }))}><Plus size={13} />Add parameter</button>
-    </fieldset>
+    </FittingSection>
 
-    <fieldset className={styles.section} disabled={disabled}>
-      <legend>Fit range & transform</legend>
+    <FittingSection title="Fit range & transform" summary={draft.transform.fitspace === "r" ? "R space" : "k space"} disabled={disabled}>
       <div className={styles.choice} role="group" aria-label="Fit space">{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
       <div className={styles.grid}>
         {([
@@ -377,6 +510,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       </div>
       <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
       <p className={styles.help}>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</p>
-    </fieldset>
+    </FittingSection>
   </section>
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { Activity, ArrowUpDown, Atom, BookOpen, ChartNoAxesCombined, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, LockKeyhole, Pencil, Plus, Redo2, Route, Search, Settings2, Trash2, Undo2, Upload, WavesHorizontal, X } from "lucide-react"
+import { Activity, ArrowUpDown, BookOpen, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
 import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -20,9 +20,11 @@ import type { Space } from "./artefact-viewers/athena-plot"
 import { AthenaSpectrumViewer } from "./artefact-viewers/athena-spectrum-viewer"
 import { spectrumTraceCoordinates } from "./artefact-viewers/athena-plot-range"
 import { ResizableAthenaWorkspace } from "./athena-workspace"
+import { viewerIcons } from "./athena-viewer-icons"
 import { AthenaWavelet } from "./artefact-viewers/athena-wavelet"
 import { AthenaParameterTabs, type ParameterTab } from "./athena-parameter-tabs"
 import { ArtemisFittingPanel, type ArtemisFitResult } from "./artemis-fitting"
+import { validCupriteExample, type ArtemisExampleSetup } from "@/lib/artemis"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import { ProjectCifViewer } from "./artefact-viewers/project-cif-viewer"
 import { FeffPathViewer, type FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
@@ -64,15 +66,6 @@ import { AthenaDispersive } from './athena-dispersive'
 import { RebinDefaultsControls, useRebinDefaults } from './athena-rebin-defaults'
 import "@/app/athena-controls.css"
 import "@/app/athena-context-controls.css"
-
-const viewerIcons = {
-  single: Activity,
-  multiple: Layers,
-  wavelet: WavesHorizontal,
-  cif: Atom,
-  feff: Route,
-  fit: ChartNoAxesCombined,
-} satisfies Record<ViewerId, typeof Activity>
 
 // hbar² / (2 m_e), in eV Å²; same constant as larch.xafs.xafsutils.KTOE.
 const ktoe = 3.8099821109685847
@@ -372,8 +365,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [chosenParameterTab, setParameterTab] = useState<ParameterTab>("processing")
   const parameterTab: ParameterTab = integrated ? "processing" : chosenParameterTab
   const [artemisResult, setArtemisResult] = useState<ArtemisFitResult | null>(null)
+  const [artemisDirty, setArtemisDirty] = useState<Record<string, boolean>>({})
+  const hasUnsavedArtemis = !!project?.groups.some(group => artemisDirty[`${project.id}:${group.id}`])
+  useEffect(() => {
+    if (!hasUnsavedArtemis) return
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = "" }
+    window.addEventListener("beforeunload", warn)
+    return () => window.removeEventListener("beforeunload", warn)
+  }, [hasUnsavedArtemis])
+  const [cupriteExample, setCupriteExample] = useState<ArtemisExampleSetup>()
   const [feffPathState, setFeffPathState] = useState<{ projectId: string; groupId: string; paths: FeffPathSummary[] } | null>(null)
-  const [cifSelection, setCifSelection] = useState<{ projectId?: string; attachmentId: string } | null>(null)
+  const [cifSelection, setCifSelection] = useState<{ projectId?: string; attachmentId: string; siteIndex?: number } | null>(null)
   const [shownViewers, setShownViewers] = useState<Set<ViewerId>>(() => new Set(viewerIds))
   const [viewerSort, setViewerSort] = useState<ViewerSort>("default")
   const [viewerActivity, setViewerActivity] = useState<Record<string, Partial<Record<ViewerId, number>>>>({})
@@ -429,6 +431,33 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (menu === "Help") helpInputRef.current?.focus()
   }, [menu])
   const active = project?.groups.find(g => g.id === activeId) ?? project?.groups[0]
+  const readyCupriteExample = !integrated && cupriteExample?.projectId === project?.id &&
+    project?.groups.some(group => group.id === cupriteExample?.groupId) &&
+    project.artemis_structures?.some(item => item.id === cupriteExample?.attachmentId && item.sha256 === cupriteExample.example.cif_sha256)
+    ? cupriteExample : undefined
+  function openCupriteExample() {
+    if (!readyCupriteExample || busy || parameterActionBlocked()) return
+    cancelPick()
+    setSearch("")
+    setCollapsedGroupFolders(current => new Set([...current].filter(id =>
+      !project?.group_folders?.find(folder => folder.id === id)?.group_ids.includes(readyCupriteExample.groupId))))
+    setActiveId(readyCupriteExample.groupId)
+    setCifSelection({ projectId: readyCupriteExample.projectId, attachmentId: readyCupriteExample.attachmentId })
+    setAnalysisVisible(false)
+    openFittingFromResults()
+  }
+  async function loadCopperExamples() {
+    if (parameterActionBlocked()) return
+    const previousIds = new Set(projectRef.current?.groups.map(group => group.id) ?? [])
+    await task("Loading copper examples", async () => {
+      const next = await command("example")
+      resetViewerLayout()
+      const setup = parameterTab === "fitting" ? next.last_operation?.artemis_example : undefined
+      const fittingGroup = setup && next.groups.find(group => group.id === setup.group_id)
+      setActiveId(fittingGroup?.id ?? next.groups.find(group => !previousIds.has(group.id))?.id ?? next.groups.at(-1)?.id ?? "")
+      if (fittingGroup && setup) setCifSelection({ projectId: next.id, attachmentId: setup.attachment_id })
+    })
+  }
   function resetViewerLayout() {
     setShownViewers(new Set(viewerIds))
     setViewerSort("default")
@@ -513,7 +542,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const dirty = active && parameters && !sameParameters(parameters, active.parameters)
   const activeAutoApplyPlan = active ? autoApplyPlans[active.id] : undefined
   const parameterUpdatePending = Object.keys(autoApplyPlans).length > 0
-  const currentFitResult = !dirty && !parameterUpdatePending && artemisResult?.project_id === project?.id && artemisResult?.version === project?.version && artemisResult?.group_id === active?.id ? artemisResult : null
+  const currentFitResult = !dirty && !parameterUpdatePending && artemisResult?.project_id === project?.id && (artemisResult?.archive || artemisResult?.version === project?.version) && artemisResult?.group_id === active?.id ? artemisResult : null
   const parameterUpdateRunning = Object.values(autoApplyPlans).some(plan => plan.status === "queued")
   const undoDisabled = !project?.undo.length || !!busy || parameterUpdatePending || !canCommand("undo")
   const redoDisabled = !project?.redo.length || !!busy || parameterUpdatePending || !canCommand("redo")
@@ -842,6 +871,12 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       })
     }
     projectRef.current = p; setProject(p)
+    const example = p.last_operation?.artemis_example
+    if (!integrated && example && validCupriteExample(example.example) &&
+      p.groups.some(group => group.id === example.group_id) &&
+      p.artemis_structures?.some(item => item.id === example.attachment_id && item.sha256 === example.example.cif_sha256)) {
+      setCupriteExample({ projectId: p.id, groupId: example.group_id, attachmentId: example.attachment_id, example: example.example })
+    }
     setAnalysis(p.analyses?.at(-1) ?? null)
     if (!integrated) localStorage.setItem("athena.project", p.id)
     setActiveId(id => p.groups.some(g => g.id === id) ? id : p.groups[0]?.id ?? "")
@@ -850,7 +885,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const current = projectRef.current
     if (!current || updated.id !== current.id || updated.version < current.version) return
     accept(updated)
-    setMessage("CIF attached to project")
+    setError("")
+    setMessage("Artemis changes saved in project")
   }
   async function task(label: string, work: () => Promise<void>) {
     cancelPick()
@@ -860,9 +896,35 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       setMessage(label + " · complete" + (skippedCount.current ? ` · ${skippedCount.current} group${skippedCount.current === 1 ? "" : "s"} skipped` : "") + (preferenceWarnings.current.length ? ' · ' + preferenceWarnings.current.join(' ') : ''))
       return true
     } catch (e) {
-      setError(e instanceof Error ? e.message : "The operation failed."); setMessage("Action needs attention")
+      const staleRevision = e instanceof ApiRequestError && e.code === "stale_revision"
+      if (staleRevision) {
+        // A second queued draft must not auto-save against the newer revision
+        // before the user has reviewed it and chosen to retry.
+        setAutoApplyPlans(current => Object.fromEntries(Object.entries(current).map(([id, plan]) =>
+          [id, plan.status === "queued" ? { ...plan, status: "failed" as const } : plan])))
+      }
+      const reloaded = staleRevision && await reloadChangedProject()
+      setError(reloaded
+        ? "This project changed in another tab or window. Its latest version is now loaded, with your unsaved parameter changes kept; review it and retry."
+        : e instanceof Error ? e.message : "The operation failed.")
+      setMessage("Action needs attention")
       return false
     } finally { setBusy("") }
+  }
+  // Every command sends the version it was based on, so after another tab
+  // saves, each retry would repeat the conflict until the page reloads.
+  // accept() rebases unsaved parameter drafts onto the newer groups.
+  async function reloadChangedProject() {
+    const stale = projectRef.current
+    if (!stale) return false
+    try {
+      const latest = await athenaApi<AthenaProject>(`/projects/${stale.id}`)
+      if (projectRef.current !== stale || latest.id !== stale.id || latest.version <= stale.version) return false
+      accept(latest)
+      return true
+    } catch {
+      return false
+    }
   }
   useEffect(() => {
     if (init.current) return
@@ -1116,6 +1178,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     }, parameterAutoApplyDelay)
     return () => window.clearTimeout(timer)
   }, [autoApplyPlans, busy, drafts, parameterFieldEditing, project]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!project) return
+    setAutoApplyPlans(current => {
+      const updated = Object.fromEntries(Object.entries(current).filter(([id, plan]) => {
+        if (plan.status !== "failed") return true
+        const group = project.groups.find(item => item.id === id)
+        return !!group && !!drafts[id] && !sameParameters(drafts[id], group.parameters)
+      }))
+      return Object.keys(updated).length === Object.keys(current).length ? current : updated
+    })
+  }, [project, drafts])
   function discardParameterChanges(id: string) {
     setDrafts(current => { const updated = { ...current }; delete updated[id]; return updated })
     setAutoApplyPlans(current => { const updated = { ...current }; delete updated[id]; return updated })
@@ -1811,7 +1884,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (integrated && (tool === "merge" || tool === "dispersive")) return false
     return canOpen(tool)
   }
-  const download = (path: string, filename: string) => transport.download(path, filename).catch(error => setError(error instanceof Error ? error.message : "The download failed."))
+  const download = (path: string, filename: string) => {
+    if (/\/projects\/[^/]+\/export\?/.test(path) && hasUnsavedArtemis) {
+      setError("Save your edited EXAFS models in the EXAFS fitting tab before downloading the project.")
+      return Promise.resolve()
+    }
+    return transport.download(path, filename).catch(error => setError(error instanceof Error ? error.message : "The download failed."))
+  }
   const menuCommands: MenuCommand[] = [
     { id: "file-export-columns", menu: "File", label: "Export column data…", keywords: "download save csv text", disabled: !project || !active || !!busy || parameterUpdatePending || !canOpen("data_export"), icon: <Download size={15} />, action: () => openTool("data_export") },
     { id: "file-save-marked", menu: "File", label: "Save marked project (.prj)", keywords: "download export selected groups", disabled: !marked.length || parameterUpdatePending, visible: !!project && can("export"), icon: <Download size={15} />, action: () => void download(`/api/athena/projects/${project!.id}/export?format=prj&marked_only=true`, `${project!.name}-marked.prj`) },
@@ -1985,12 +2064,16 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           </div>}
         </div>
       </nav><ThemeSelector /><span className="ath-local"><i /> Local workspace</span></header>
-    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={undoDisabled} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={redoDisabled} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
+    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : hasUnsavedArtemis ? "EXAFS model changes unsaved" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={undoDisabled} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={redoDisabled} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}
     {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => { if (integrated) accept(await athenaApi<AthenaProject>(`/projects/${projectRef.current?.id ?? session.projectId}`)); else accept(await openLocalProject(projectRef.current?.id ?? localStorage.getItem("athena.project"))) }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
     <ResizableAthenaWorkspace
       groups={<aside id="athena-data-groups" className="ath-groups"><div className="ath-panel-heading"><h2><ContextLabel label="current group" open={event => showContext(event, { kind: "group" })}>Data groups <span>{project?.groups.length ?? 0}</span></ContextLabel></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div>
-        <div className="ath-sidebar-example"><button disabled={!!busy || !project || !canCommand("example")} onClick={() => { const previousIds = new Set(projectRef.current?.groups.map(group => group.id) ?? []); void task("Loading copper examples", async () => { const next = await command("example"); resetViewerLayout(); setActiveId(next.groups.find(group => !previousIds.has(group.id))?.id ?? next.groups.at(-1)?.id ?? "") }) }}><Activity size={16} />Load copper examples</button></div>
+        <div className="ath-sidebar-example"><button disabled={!!busy || parameterUpdatePending || !project || !canCommand("example")} aria-describedby={!integrated ? "ath-copper-example-hint" : undefined} onClick={() => { void loadCopperExamples() }}><Activity size={16} />Load copper examples</button>
+          {!integrated && <div className="ath-example-details"><small id="ath-copper-example-hint">{readyCupriteExample ? "Cu₂O EXAFS example added" : "Includes Cu₂O EXAFS setup"}</small>
+            {readyCupriteExample && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={openCupriteExample}>Open Cu₂O EXAFS<ChevronRight size={12} /></button>}
+          </div>}
+        </div>
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>
         <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => { cancelGroupDrag(); setSearch(e.target.value) }} /></label>
         <div className="ath-group-sort-row"><label><ArrowUpDown size={13} aria-hidden="true" /><span>Sort</span><select aria-label="Sort spectra" aria-describedby="ath-group-sort-help" value={groupSort} onChange={event => changeGroupSort(event.target.value as GroupSort)}><option value="manual">Manual order</option><option value="added">Added order</option><option value="name">Name A–Z</option><option value="tag">Tag type</option></select></label><span id="ath-group-sort-help" className="ath-sr-only">Sorting changes only the view and keeps folders together. Added order is when each spectrum was added to or created in the project. Tag order is trans, fluo, ref, then untagged. Switch to Manual order to reorder spectra.</span></div>
@@ -2037,12 +2120,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         </> : viewer === "multiple" ? renderSpectrumViewer("multiple") : viewer === "wavelet" ? <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} onComplete={(projectId, groupId) => { if (projectRef.current?.id === projectId && active?.id === groupId) recordViewerActivity("wavelet", projectId, groupId, true) }} />
           : viewer === "cif" ? <ProjectCifViewer key={project?.id} attachments={project?.artemis_structures}
           selectedId={cifSelection?.projectId === project?.id ? cifSelection?.attachmentId : undefined}
-          onSelect={attachmentId => setCifSelection({ projectId: project?.id, attachmentId })} />
+          selectedSite={cifSelection?.projectId === project?.id ? cifSelection?.siteIndex : undefined}
+          onSelect={(attachmentId, siteIndex) => setCifSelection({ projectId: project?.id, attachmentId, siteIndex })} />
           : viewer === "feff" ? <FeffPathViewer paths={currentFeffPaths} groupLabel={active?.label} onOpenModel={openFittingFromResults} attachments={project?.artemis_structures} />
           : <ArtemisFitResultViewer group={active} pending={!!busy || !!dirty || parameterUpdatePending} result={currentFitResult} />}
         </div>)}</div>
       </section>}
-      processing={<aside id="athena-processing-parameters" className="ath-parameters"><div className="ath-panel-heading"><h2>{parameterTab === "processing" ? "Processing parameters" : "Artemis · EXAFS fitting"}</h2><Settings2 size={16} /></div><AthenaParameterTabs tab={parameterTab} select={tab => { cancelPick(); setParameterTab(tab) }} processing={<>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong><ContextLabel label="Group parameters" open={event => showContext(event, { kind: "section", section: "group" })}>{active.label}</ContextLabel></strong><button aria-label={`Data type: ${dataTypeLabel(active)}`} title="Change data type; Ctrl+Alt+click toggles μ(E) / XANES while preserving normalization" disabled={!!busy} onClick={event => {
+      processing={<aside id="athena-processing-parameters" className="ath-parameters"><div className="ath-panel-heading"><h2>{parameterTab === "processing" ? "Processing parameters" : "EXAFS fitting"}</h2><Settings2 size={16} /></div><AthenaParameterTabs tab={parameterTab} select={tab => { cancelPick(); setParameterTab(tab) }} processing={<>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong><ContextLabel label="Group parameters" open={event => showContext(event, { kind: "section", section: "group" })}>{active.label}</ContextLabel></strong><button aria-label={`Data type: ${dataTypeLabel(active)}`} title="Change data type; Ctrl+Alt+click toggles μ(E) / XANES while preserving normalization" disabled={!!busy} onClick={event => {
           if (event.ctrlKey && event.altKey && ['mu', 'xanes', 'norm'].includes(active.data_type)) {
             void task('Changing data type', async () => { await command('change_datatype', [active.id], { toggle: true }); setSpace('E'); setAnalysisVisible(false) })
           } else openTool('datatype')
@@ -2055,9 +2139,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         <fieldset className="ath-e0-fields" disabled={active.data_type === "xanes" || active.data_type === "detector"}><details open><summary><ContextLabel label="Forward Fourier transform" open={event => showContext(event, { kind: "section", section: "forward" })}>Forward Fourier transform <small>k → R</small></ContextLabel></summary><div className="ath-fields">{field("kmin", "FT k min", "Å⁻¹")}{field("kmax", "FT k max", "Å⁻¹", true)}{field("dk", "dk", "Å⁻¹")}{field("kweight", "FT k-weight")}{selectParameter("window", "Window")}</div></details>
         <details><summary><ContextLabel label="Backward Fourier transform" open={event => showContext(event, { kind: "section", section: "reverse" })}>Backward Fourier transform <small>R → q</small></ContextLabel></summary><div className="ath-fields">{field("rmin", "R min", "Å")}{field("rmax", "R max", "Å")}{field("dr", "dR", "Å")}{selectParameter("rwindow", "Window")}</div></details>
         <details><summary>Transform grid</summary><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details></fieldset>
-      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label><p className="ath-hint" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</p>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending || (!can("copy_parameters") && !can("reset_parameters"))} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</>} fitting={integrated ? null : <ArtemisFittingPanel projectId={project?.id} version={project?.version} group={active} pending={!!busy || !!dirty || parameterUpdatePending} onFitResult={receiveFitResult} onPathsChange={receiveFeffPaths} onProjectChange={acceptArtemisProject} onViewStructure={attachmentId => setCifSelection({ projectId: project?.id, attachmentId })} />} /></aside>}
+      </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})</label><p className="ath-hint" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</p>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending || (!can("copy_parameters") && !can("reset_parameters"))} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</>} fitting={integrated ? null : <ArtemisFittingPanel exampleSetup={readyCupriteExample} projectId={project?.id} version={project?.version} group={active} pending={!!busy || !!dirty || parameterUpdatePending} onFitResult={receiveFitResult} onDirtyChange={(groupId, dirty) => { const key = `${project?.id}:${groupId}`; setArtemisDirty(previous => !!previous[key] === dirty ? previous : { ...previous, [key]: dirty }) }} onPathsChange={receiveFeffPaths} onProjectChange={acceptArtemisProject} onViewStructure={(attachmentId, siteIndex) => setCifSelection({ projectId: project?.id, attachmentId, siteIndex })} />} /></aside>}
     />
-    <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version}` : ""}<b>Athena Web</b>Powered by Larch</span></footer>
+    <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version} · ` : ""}Powered by Larch</span></footer>
 
     {modal === 'datatype' && project && <Modal title="Change data type" close={() => { if (!busy) setModal(null) }}><AthenaDatatype project={project} activeId={active?.id ?? ''} selectGroup={setActiveId} busy={!!busy} error={error} clearError={() => setError('')} close={() => setModal(null)} apply={async (ids, type) => {
       let saved: AthenaProject | null = null

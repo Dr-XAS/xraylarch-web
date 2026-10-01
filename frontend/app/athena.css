@@ -124,6 +124,9 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-dirty-dot { background: #c6913d; border-radius: 50%; height: 5px; width: 5px; }
 .ath-sidebar-example { padding: 12px 12px 4px; }
 .ath-app .ath-sidebar-example > button { white-space: normal; text-align: left; justify-content: flex-start; width: 100%; color: var(--ath-primary); border: 1px dashed var(--ath-primary-line); background: var(--ath-surface-muted); font-size: var(--text-body); padding: 11px 8px; }
+.ath-example-details { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 4px; }
+.ath-example-details small { color: var(--ath-muted); font-size: var(--text-caption); }
+.ath-app .ath-example-details button { min-height: 28px; padding: 2px 0; color: var(--ath-primary); background: transparent; border: 0; font-size: var(--text-caption); }
 .ath-sidebar-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 12px 12px; padding-top: 10px; border-top: 1px solid var(--ath-line); }
 .ath-app .ath-sidebar-actions button { font-size: var(--text-body); color: var(--ath-muted); }
 .ath-empty-groups { text-align: center; padding: 40px 21px; color: var(--ath-muted); }
@@ -203,15 +206,26 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-plot-controls .ath-check:has(input:disabled) { opacity: .5; }
 .ath-plot-controls { display: flex; align-items: center; gap: 6px 12px; padding: 6px 12px; flex-wrap: wrap; }
 .ath-plot-controls:empty { display: none; }
-.ath-plot-controls > .ath-color-legend { flex: 1 1 230px; margin: 0; padding: 0; border: 0; background: transparent; }
+.ath-plot-controls > .ath-color-legend { flex: 0 1 480px; max-width: 100%; margin: 0 0 0 auto; padding: 0; border: 0; background: transparent; justify-content: flex-end; }
+.ath-plot-controls > .ath-color-legend .ath-color-preview { max-width: 390px; }
 .ath-app .ath-plot-controls select { width: auto; font-size: var(--text-input); padding: 5px 8px; min-height: var(--ath-control-height); border-color: var(--ath-line); }
 .ath-plot-summary { color: var(--ath-muted); font-size: var(--text-caption); white-space: nowrap; }
 .ath-color-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 12px; margin-top: 0; border-top: 1px solid var(--ath-line); background: var(--ath-surface-muted); }
-.ath-color-preview { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 120px; max-width: 230px; font-size: var(--text-caption); color: var(--ath-muted); }
-.ath-color-ramp { flex: 1; min-width: 60px; height: 9px; border-radius: 3px; box-shadow: inset 0 0 0 1px #00000012; }
-.ath-app .ath-color-ramp-picker { display: flex; flex: 1; align-items: center; gap: 3px; min-width: 80px; min-height: 28px; padding: 0 3px; border-radius: 4px; cursor: pointer; }
+.ath-color-preview { display: flex; align-items: flex-start; gap: 6px; flex: 1; min-width: 120px; max-width: 230px; font-size: var(--text-caption); color: var(--ath-muted); }
+.ath-color-preview > span { line-height: 28px; }
+.ath-color-ramp-shell { flex: 1; min-width: 80px; }
+.ath-color-ramp { position: relative; flex: 1; min-width: 60px; height: 9px; overflow: hidden; border-radius: 3px; box-shadow: inset 0 0 0 1px #00000012; }
+.ath-color-ramp-dim { position: absolute; top: 0; bottom: 0; background: var(--ath-surface); opacity: .68; }
+.ath-app .ath-color-ramp-picker { display: flex; align-items: center; gap: 3px; width: 100%; min-width: 80px; min-height: 28px; padding: 0 3px; border-radius: 4px; cursor: pointer; }
 .ath-app .ath-color-ramp-picker:hover:not(:disabled), .ath-app .ath-color-ramp-picker[aria-expanded="true"] { background: var(--ath-canvas); }
 .ath-color-ramp-picker > svg { flex: 0 0 auto; color: var(--ath-muted); pointer-events: none; }
+.ath-color-range { position: relative; height: 17px; margin: -5px 20px 0 3px; }
+.ath-app .ath-color-range-handle { position: absolute; top: 0; z-index: 1; display: grid; place-items: center; width: 18px; min-width: 18px; height: 18px; min-height: 18px; padding: 0; transform: translateX(-50%); border: 0; border-radius: 50%; background: transparent; color: var(--ath-muted); cursor: ew-resize; touch-action: none; }
+.ath-color-range-arrow { width: 8px; height: 13px; background: currentColor; clip-path: polygon(50% 0, 100% 100%, 0 100%); pointer-events: none; }
+.ath-app .ath-color-range-handle:hover:not(:disabled), .ath-app .ath-color-range-handle:focus-visible { background: var(--ath-canvas); color: var(--ath-muted); }
+.ath-app .ath-color-range-handle:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 1px; }
+.ath-app .ath-color-range-handle:disabled { opacity: .42; cursor: not-allowed; }
+.ath-color-range-handle:not(:disabled):hover::after, .ath-color-range-handle:not(:disabled):focus-visible::after { position: absolute; top: 22px; left: 50%; z-index: 4; width: max-content; padding: 3px 6px; transform: translateX(-50%); border: 1px solid var(--ath-line); border-radius: 4px; background: var(--ath-popover); box-shadow: 0 4px 12px rgb(24 24 27 / 12%); color: var(--ath-ink); font-size: 11px; line-height: 1.3; white-space: nowrap; content: attr(data-tooltip); pointer-events: none; }
 .ath-cmap-menu { position: fixed; z-index: 1000; display: grid; gap: 2px; max-height: min(60vh, 460px); overflow-y: auto; padding: 5px; border: 1px solid var(--ath-line); border-radius: 9px; background: var(--ath-popover); box-shadow: 0 12px 35px rgb(24 24 27 / 18%); }
 .ath-cmap-option { display: flex; align-items: center; gap: 5px; width: 100%; min-height: 38px; padding: 5px 7px; border: 1px solid transparent; border-radius: 5px; background: transparent; cursor: pointer; }
 .ath-cmap-option:hover, .ath-cmap-option[data-active="true"] { background: var(--ath-primary-soft); }
@@ -247,8 +261,8 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-param-current { padding: 8px 12px; display: flex; align-items: center; gap: 7px; background: var(--ath-surface-muted); border-bottom: 1px solid var(--ath-line); }
 .ath-param-current strong { font-size: var(--text-label); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .ath-app .ath-param-current button { color: var(--ath-muted); font-size: var(--text-body); padding: 4px 3px; }
-/* Fill the stretched workspace column without letting all parameter sections size the grid row. */
-.ath-param-fields { flex: 1 1 0px; height: 0; margin: 0; border: 0; padding: 0; min-height: 410px; overflow: auto; }
+/* Keep absolute screen-reader hints inside the scroller as viewer heights change. */
+.ath-param-fields { position: relative; flex: 1 1 0px; height: 0; margin: 0; border: 0; padding: 0; min-height: 0; overflow: auto; }
 .ath-param-fields:disabled { opacity: .65; }
 .ath-app details { border-bottom: 1px solid var(--ath-line); padding: 0 12px; }
 .ath-app summary { line-height: var(--leading-control); display: flex; align-items: center; gap: 8px; list-style: none; color: var(--ath-ink); padding: 10px 0; font-size: var(--text-body); font-weight: 600; }

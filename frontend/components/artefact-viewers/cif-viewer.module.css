@@ -1,6 +1,7 @@
 .viewer { margin: 8px 0 12px; min-width: 0; container-type: inline-size; border: 1px solid var(--ath-line); border-radius: 7px; overflow: hidden; background: var(--ath-popover); }
 .docked { min-width: 0; container-type: inline-size; }
-.heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--ath-line); }
+.heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ath-line); }
+.headerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .viewer .heading h4 { margin: 0; font-size: var(--text-body); font-weight: 500; }
 .canvas { position: relative; height: 310px; background: var(--ath-plot-bg, var(--ath-popover)); }
 .surface { position: relative; width: 100%; height: 100%; touch-action: none; }
@@ -12,6 +13,10 @@
 .radius { display: flex; flex: 1 1 230px; align-items: center; min-width: 0; gap: 8px; font-size: var(--text-label); color: var(--ath-muted); white-space: nowrap; }
 .radius input { flex: 1; min-width: 60px; width: auto; accent-color: var(--ath-primary); padding: 0; }
 .radius output { font-variant-numeric: tabular-nums; color: var(--ath-ink); }
+.cellRepeats { display: flex; flex: 1 1 300px; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; font-size: var(--text-label); color: var(--ath-muted); }
+.cellAxes { display: flex; align-items: center; gap: 10px; }
+.cellAxes label { display: flex; align-items: center; gap: 5px; }
+.cellAxes input { width: 48px; min-width: 0; font-variant-numeric: tabular-nums; }
 .options { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font-size: var(--text-caption); }
 .options label { display: inline-flex; align-items: center; gap: 5px; }
 .options input { margin: 0; accent-color: var(--ath-primary); }

@@ -1,4 +1,5 @@
 import type { ArtemisStructureAttachment } from "./artemis-structures"
+import type { ArtemisExample, ArtemisProjectState } from "./artemis"
 import { backendUrl } from "./app-url"
 import { createAthenaTransport, type AthenaSession } from "./athena-transport"
 
@@ -17,6 +18,7 @@ export interface AthenaResult {
   warnings: string[]
 }
 export interface AthenaGroup {
+  artemis?: ArtemisProjectState
   id: string; label: string; energy: number[]; mu: number[]; data_type: "mu" | "xanes" | "norm" | "chi" | "xmudat" | "detector"
   marked: boolean; frozen: boolean; multiplier: number; offset: number; notes: string
   reference_id: string | null; parameters: Parameters; result: AthenaResult | null
@@ -122,7 +124,7 @@ export interface AthenaProject {
   group_added_orders?: Record<string, number>
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]
   analyses?: Analysis[]
-  last_operation?: { action: string; warnings?: string[]; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string> }
+  last_operation?: { action: string; warnings?: string[]; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string>; artemis_example?: { group_id: string; attachment_id: string; example: ArtemisExample } }
 }
 export interface Analysis {
   id?: string; created?: string
