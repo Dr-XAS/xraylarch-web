@@ -45,7 +45,8 @@ def test_a_whole_session_runs_from_the_command_line(run, project):
 
     summary = run("--project", project, "summary")
     assert "Copper" in summary
-    assert summary.count("Cu foil") == 7, "three temperatures, their reference, three links to it"
+    table = summary.split("\nsame data:")[0]
+    assert table.count("Cu foil") == 7, "three temperatures, their reference, three links to it"
     assert "Cu₂O" in summary
     assert "5 groups · 5 processed · 0 failed" in summary
     assert summary.count("ref:Cu foil · shared") == 3
@@ -347,3 +348,19 @@ def test_a_parameters_command_prints_what_larch_used(run, project):
     line = [line for line in out.splitlines() if "10 K" in line][0]
     assert "kmax 18.000->18.000" in line
     assert "e0 auto->89" in line, "null is Larch's choice, and the effective side names it"
+
+
+def test_compare_takes_labels_and_prints_a_table(run, project):
+    run("--project", project, "do", "example")
+    out = run("--project", project, "compare", "10 K", "50 K", "300 K", "shared reference", "cu2o")
+    assert out.startswith("against Cu foil · 10 K")
+    warm = next(line for line in out.splitlines() if line.startswith("Cu foil · 300 K"))
+    assert "-2.959" in warm and "Cu foil · shared reference" in warm
+    assert "chi amplitude Cu foil · 300 K" in out
+    assert "Cu₂O · room temperature" in out, "a typed 2 finds the label's subscript"
+
+
+def test_the_summary_says_when_two_groups_are_one_measurement(run, project):
+    run("--project", project, "do", "example")
+    out = run("--project", project, "summary")
+    assert "same data: Cu foil · 300 K = Cu foil · shared reference" in out

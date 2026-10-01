@@ -15,11 +15,14 @@ assertions here read ``derived.parents`` and nothing else.
 
     python -m xraylarch_web.agent_suite setup --out run.json
     python -m xraylarch_web.agent_suite check T2 run.json
-    python -m xraylarch_web.agent_suite report run.json --meter meter.jsonl
+    python -m xraylarch_web.agent_suite finish run.json
+    python -m xraylarch_web.agent_suite report T2 run.json --meter meter.jsonl
 
 ``setup`` makes a fresh project with the example loaded and records its id,
 version and group ids. ``check`` and ``report`` read that file, so the checks
 know which groups were there before the arm started and which it made.
+``finish`` stamps the moment the arm stopped, so the meter counts the arm's
+requests and not the ones made afterwards to look at what it did.
 
 To meter a backend, serve it through the factory with a log path set:
 
@@ -214,7 +217,7 @@ def check(http: httpx.Client, task: str, run: dict) -> list[Assertion]:
     return TASKS[task].check(observe(http, run))
 
 
-def meter_totals(path: Path, since: float = 0.0) -> dict:
+def meter_totals(path: Path, since: float = 0.0, until: float | None = None) -> dict:
     """Requests and response bytes from a meter log, the API only, health checks out."""
     totals = {"requests": 0, "gets": 0, "posts": 0, "bytes": 0, "status": {}}
     if not path.exists():
@@ -222,6 +225,8 @@ def meter_totals(path: Path, since: float = 0.0) -> dict:
     for line in path.read_text().splitlines():
         entry = json.loads(line)
         if not entry["path"].startswith("/api/") or entry["time"] < since:
+            continue
+        if until is not None and entry["time"] > until:
             continue
         totals["requests"] += 1
         totals["gets" if entry["method"] == "GET" else "posts"] += 1
@@ -279,6 +284,8 @@ def main(argv: list[str] | None = None, http: httpx.Client | None = None) -> int
     made.add_argument("--out", type=Path, required=True)
     made.add_argument("--name", default="suite")
     sub.add_parser("tasks", help="print each task's prompt and answer key")
+    finished = sub.add_parser("finish", help="record that the arm has stopped")
+    finished.add_argument("run", type=Path)
     checked = sub.add_parser("check", help="run one task's state assertions")
     checked.add_argument("task", choices=sorted(TASKS))
     checked.add_argument("run", type=Path)
@@ -292,6 +299,11 @@ def main(argv: list[str] | None = None, http: httpx.Client | None = None) -> int
         for task in TASKS.values():
             print(f"{task.key}\n  prompt: {task.prompt}\n  answer: {task.answer}\n")
         return 0
+    if args.command == "finish":
+        run = json.loads(args.run.read_text())
+        run["finished"] = time.time()
+        args.run.write_text(json.dumps(run, indent=2, ensure_ascii=False))
+        return 0
     http = http or httpx.Client(base_url=args.url, timeout=120)
     if args.command == "setup":
         run = setup(http, args.name)
@@ -300,8 +312,10 @@ def main(argv: list[str] | None = None, http: httpx.Client | None = None) -> int
         print(run["project_id"])
         return 0
     run = json.loads(args.run.read_text())
-    # Read the meter before observing, so the checks' own requests aren't counted.
-    totals = meter_totals(args.meter, since=run.get("started", 0.0)) if getattr(args, "meter", None) else None
+    # Read the meter before observing, so the checks' own requests aren't
+    # counted; `finished` keeps out whatever was read after the arm stopped.
+    totals = (meter_totals(args.meter, since=run.get("started", 0.0), until=run.get("finished"))
+              if getattr(args, "meter", None) else None)
     observed = observe(http, run)
     passed = _print_check(args.task, TASKS[args.task].check(observed))
     if args.command == "report":

@@ -4725,6 +4725,26 @@ def build_athena_router(
                     **group_digest(store.group(project, group_id))}
         return guarded(report)
 
+    @router.get('/projects/{ident}/compare')
+    def compare_groups(ident: str, groups: str = Query(min_length=1, max_length=2000)):
+        """The groups after the first, each measured against the first.
+
+        `groups` is comma-separated ids. Like the transcript, this route is
+        absent from route_operations, so an integration project 404s here.
+        """
+        from .agent_compare import compare
+
+        def report():
+            project = store.load(ident)
+            ids = [part.strip() for part in groups.split(',') if part.strip()]
+            if len(ids) < 2 or len(set(ids)) != len(ids):
+                fail('Name at least two distinct group ids, comma-separated; the first is the reference.')
+            prefs = store.smoothing_preferences.read()['values']
+            return {"project_id": ident, "version": project["version"],
+                    **compare([store.group(project, gid) for gid in ids],
+                              {"sg_window": prefs["window"], "sg_order": prefs["order"]})}
+        return guarded(report)
+
     @router.get('/projects/{ident}/groups/{group_id}/xdi')
     def xdi_metadata(ident: str, group_id: str):
         return guarded(lambda: store.xdi_metadata(ident, group_id))

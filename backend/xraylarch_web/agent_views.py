@@ -27,6 +27,21 @@ _COUNTED = ("marked", "frozen")
 ARRAY_FLOOR = 8
 
 
+def describe_numbers(values: list) -> str:
+    """The marker an elided array leaves: its length, its ends, and its extremes.
+
+    For an axis the ends are the extremes and the marker stops there. For a
+    curve they are not: a merge's stddev is small at both ends and largest at
+    the edge, and an alignment's derivative is near zero at both ends of its
+    window, so a marker showing only the ends hides the part a caller wanted.
+    """
+    head = f"<{len(values)} numbers, {values[0]:.6g} .. {values[-1]:.6g}"
+    steps = [b - a for a, b in zip(values, values[1:])]
+    if all(step >= 0 for step in steps) or all(step <= 0 for step in steps):
+        return head + ">"
+    return head + f", min {min(values):.6g}, max {max(values):.6g}>"
+
+
 def elide_arrays(value: Any) -> Any:
     """Replace plotting arrays with a description of what was left out.
 
@@ -42,7 +57,7 @@ def elide_arrays(value: Any) -> Any:
         numbers = [item for item in value
                    if isinstance(item, (int, float)) and not isinstance(item, bool)]
         if len(value) > ARRAY_FLOOR and len(numbers) == len(value):
-            return f"<{len(value)} numbers, {value[0]:.6g} .. {value[-1]:.6g}>"
+            return describe_numbers(value)
         return [elide_arrays(item) for item in value]
     return value
 
@@ -160,6 +175,23 @@ def _analysis_summary(analysis: dict, version: int) -> dict:
     }
 
 
+def _same_data(project: dict) -> list[list[str]]:
+    """Labels that hold identical raw arrays, one list per measurement.
+
+    The bundled example carries the 300 K scan twice, once as a sample and once
+    as the foils' shared reference, and a caller reading only numbers took
+    several digests and a byte comparison of two exports to establish it.
+    """
+    from .athena_alignment import signature
+
+    seen: dict[str, list[str]] = {}
+    for group in project["groups"]:
+        # A chi group keeps k in the energy slot, so its arrays are not a scan.
+        if group["data_type"] != "chi" and group["energy"]:
+            seen.setdefault(signature(group), []).append(group["label"])
+    return [labels for labels in seen.values() if len(labels) > 1]
+
+
 def project_summary(project: dict) -> dict:
     """The whole project with no arrays anywhere."""
     groups = [group_summary(group) for group in project["groups"]]
@@ -178,6 +210,7 @@ def project_summary(project: dict) -> dict:
         "format": project.get("format"),
         "counts": counts,
         "groups": groups,
+        "same_data": _same_data(project),
         "analyses": [
             _analysis_summary(analysis, project["version"])
             for analysis in project.get("analyses") or ()

@@ -268,3 +268,16 @@ def test_a_merge_preview_without_method_refuses_rather_than_previewing_something
         "version": example["version"], "action": "merge", "group_ids": scans, "options": {}})
     assert response.status_code == 400
     assert "method='demeter-larch'" in response.json()["error"]["message"]
+
+
+def test_the_summary_lists_groups_that_hold_the_same_measurement(client, example):
+    summary = view(client, example, "summary")
+    assert summary["same_data"] == [["Cu foil · 300 K", "Cu foil · shared reference"]]
+
+
+def test_an_elided_curve_keeps_its_extremes_and_an_axis_keeps_only_its_ends():
+    from xraylarch_web.agent_views import describe_numbers
+
+    assert describe_numbers(list(range(10))) == "<10 numbers, 0 .. 9>"
+    peaked = [0.01, 0.02, 0.4, 1.3, 0.6, 0.1, 0.05, 0.02, 0.01]
+    assert describe_numbers(peaked) == "<9 numbers, 0.01 .. 0.01, min 0.01, max 1.3>"

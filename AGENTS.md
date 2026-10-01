@@ -38,6 +38,7 @@ command, and every preview.
 | `POST .../merge/preview?view=summary` | ~900 tokens | the preview with each curve replaced by `<611 numbers, 8786.2 .. 11352.9>` |
 | `?view=parameters` | ~2,150 tokens | each group's recipe, requested against effective |
 | `.../groups/{gid}/digest` | ~720 tokens | one spectrum characterised in numbers |
+| `.../compare?groups=a,b,c` | ~850 tokens for five | each group against the first: shift, XANES and chi(k) differences, shared range, duplicates |
 | `.../transcript` | ~120 tokens each | what has already been tried here, failures included |
 | *(no view)* | ~239,000 tokens | everything, arrays included |
 
@@ -97,6 +98,7 @@ export LARCHCTL_PROJECT=$(python -m xraylarch_web.larchctl new --name "Cu series
 python -m xraylarch_web.larchctl do example
 python -m xraylarch_web.larchctl summary
 python -m xraylarch_web.larchctl digest "10 K"
+python -m xraylarch_web.larchctl compare "10 K" "50 K" "300 K"
 python -m xraylarch_web.larchctl describe merge
 python -m xraylarch_web.larchctl do parameters "10 K" -o kmax=12 -o kweight=3
 python -m xraylarch_web.larchctl do merge "10 K" "50 K" -o method=demeter-larch --preview
@@ -152,11 +154,29 @@ Always send `method: "demeter-larch"` to merge. Without it the command takes an 
 plain average that excludes nothing, and the preview refuses, because it cannot show
 that average.
 
-**The same file twice is the same measurement.** Each group in the summary carries the
-`file` it was read from, and the digest carries its `citation`. In the example, "Cu
-foil · 300 K" and "Cu foil · shared reference" both come from `cu_rt01.xmu`, so the
-foils' shared reference is a copy of the 300 K scan, and the citation says the 300 K
-scan was taken at a different beamline, nine years after the other two.
+**The same file twice is the same measurement.** The summary's `same_data` lists the
+groups whose raw arrays are identical, one list per measurement; `larchctl summary`
+prints it as `same data: A = B`. Each group also carries the `file` it was read from,
+and the digest carries its `citation`. In the example, "Cu foil · 300 K" and "Cu foil ·
+shared reference" are one measurement from `cu_rt01.xmu`, so the foils' shared reference
+is a copy of the 300 K scan, and the citation says the 300 K scan was taken at a
+different beamline, nine years after the other two.
+
+**To ask whether groups are comparable, compare them.** `GET .../compare?groups=<id>,<id>,...`
+(`larchctl compare "10 K" "50 K" "300 K"`) measures every group after the first against
+the first, with no arrays:
+
+- `energy_shift`: the shift align would fit now, relative to the group's current one.
+  It is read, not applied, so it works on linked groups that align refuses to move.
+- `e0_difference` and `edge_step_ratio`.
+- `xanes_max_difference`: the largest |norm difference| from E0 −20 to +50 eV.
+- `common_range`: the energy support the two share.
+- `chi_amplitude`: rms of k-weighted chi(k) against the reference, per 2 Å⁻¹ window.
+- `same_data_as`: the groups that hold the identical measurement.
+
+On the example, 50 K reads a −0.018 eV shift, a 0.009 XANES difference and chi ratios of
+0.87–1.01. 300 K reads −2.959 eV and 0.384, and chi ratios fall from 0.80 at k 3–5 to
+0.08 at k 15–17.45: an energy offset and a Debye–Waller damping, on 1200 eV less data.
 
 **Linked groups move together, so align refuses them.** In the example, the three foil
 scans all carry `reference_id` pointing at "Cu foil · shared reference", which puts them
@@ -165,7 +185,7 @@ that shares the standard's reference, and when nothing else is left it refuses t
 command with "The alignment standard and its linked references stay fixed." `larchctl
 summary` shows the link as `ref:<label>`. To align the scans to each other, first send
 `assign_reference` on them with `reference_id: null`. The preview refuses linked groups
-too, so even measuring the shift needs the unlink first; it is undoable.
+too; to measure the shift without unlinking, use `compare`. The unlink is undoable.
 
 **Alignment does not move E0.** It changes `energy_shift` and pins each moved group's E0
 at the value it had before, as native Athena does. After aligning the 300 K scan by

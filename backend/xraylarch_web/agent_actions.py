@@ -467,6 +467,15 @@ def index() -> dict:
             for name, entry in sorted(ACTIONS.items())
         ],
         "analyses": {"post": "/api/athena/projects/{id}/analyze", "actions": ANALYSES},
+        # The reads that answer most questions without arrays; none costs a version.
+        "reads": {
+            "/api/athena/projects/{id}?view=summary": "every group, no arrays",
+            "/api/athena/projects/{id}?view=parameters": "each recipe, requested against effective",
+            "/api/athena/projects/{id}/groups/{gid}/digest": "one spectrum in numbers",
+            "/api/athena/projects/{id}/compare?groups={gid},{gid}": "groups against the first",
+            "/api/athena/projects/{id}/transcript?since={seq}": "commands and previews tried so far",
+            "/api/athena/projects/{id}/groups/{gid}/export?space=E|k|R|q": "arrays, as a file",
+        },
     }
 
 

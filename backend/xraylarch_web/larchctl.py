@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import sys
+import unicodedata
 from typing import Any
 
 # The one piece of the backend this imports. It is pure, and the server applies
@@ -123,6 +124,11 @@ def _value(value) -> str:
 GROUP_OPTIONS = ("standard_id", "reference_id", "background_standard_id")
 
 
+def _fold(text: str) -> str:
+    # NFKC turns the example's "Cu₂O" into "Cu2O", which is what gets typed.
+    return unicodedata.normalize("NFKC", text).casefold()
+
+
 def resolve_group(summary: dict, token: str) -> str:
     """Accept a group id or enough of its label to be unambiguous.
 
@@ -134,8 +140,8 @@ def resolve_group(summary: dict, token: str) -> str:
     groups = summary["groups"]
     if any(group["id"] == token for group in groups):
         return token
-    folded = token.casefold()
-    matches = [group for group in groups if folded in group["label"].casefold()]
+    folded = _fold(token)
+    matches = [group for group in groups if folded in _fold(group["label"])]
     if len(matches) == 1:
         return matches[0]["id"]
     if not matches:
@@ -203,7 +209,38 @@ def render_summary(summary: dict) -> str:
         ])
     body = _table(rows, ["ID", "LABEL", "TYPE", "EL", "E0", "SHIFT", "STEP",
                          "RANGE", "PTS", "FLAGS"])
-    return "\n".join([*head, "", body])
+    same = [f"same data: {' = '.join(labels)}" for labels in summary.get("same_data") or ()]
+    return "\n".join([*head, "", body, *same])
+
+
+def render_compare(report: dict) -> str:
+    base = report["reference"]
+    lines = [f"against {base['label']}  (e0 {_number(base['e0'], 2)}, step {_number(base['edge_step'])},"
+             f" {base['points']} pts, kmax avail {_number(base['available_kmax'], 2)})"]
+    rows = []
+    for row in report["groups"]:
+        shift = row.get("energy_shift") or {}
+        common = row.get("common_range")
+        rows.append([
+            row["label"][:34],
+            _number(row.get("e0_difference"), 2),
+            _number(shift.get("value")) if "value" in shift else ("n/a" if shift else "-"),
+            _number(row.get("edge_step_ratio")),
+            _number(row.get("xanes_max_difference")),
+            f"{common[0]:.0f}-{common[1]:.0f}" if common else "-",
+            str(row["points"]), _number(row.get("available_kmax"), 2),
+            ", ".join(row.get("same_data_as") or ()) or "-",
+        ])
+    lines.append(_table(rows, ["LABEL", "dE0", "SHIFT", "STEP/REF", "XANES", "COMMON",
+                               "PTS", "KMAX", "SAME DATA AS"]))
+    for row in report["groups"]:
+        if amplitude := row.get("chi_amplitude"):
+            lines.append(f"  chi amplitude {row['label'][:28]} (k^{amplitude['kweight']:g}): " + "  ".join(
+                f"{entry['k'][0]:g}-{entry['k'][1]:g} {entry['ratio']:.2f}" for entry in amplitude["bins"]))
+        if (shift := row.get("energy_shift") or {}).get("unavailable"):
+            lines.append(f"  shift {row['label'][:28]}: {shift['unavailable']}")
+    lines.append(report["note"])
+    return "\n".join(lines)
 
 
 def render_parameters(view: dict) -> str:
@@ -459,6 +496,14 @@ def command_digest(client, args):
     return digest, render_digest(digest)
 
 
+def command_compare(client, args):
+    ident = need_project(args)
+    summary = client.get(f"/projects/{ident}", params={"view": "summary"})
+    ids = [resolve_group(summary, token) for token in args.groups]
+    report = client.get(f"/projects/{ident}/compare", params={"groups": ",".join(ids)})
+    return report, render_compare(report)
+
+
 def command_export(client, args):
     """The one route that hands back arrays, written to a file rather than stdout.
 
@@ -556,7 +601,8 @@ def _clarify(client, action: str, failure: Failed) -> Failed:
 
 COMMANDS = {
     "projects": command_projects, "new": command_new, "summary": command_summary,
-    "params": command_params, "digest": command_digest, "describe": command_describe,
+    "params": command_params, "digest": command_digest, "compare": command_compare,
+    "describe": command_describe,
     "do": command_do, "log": command_log, "export": command_export,
 }
 
@@ -599,6 +645,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     digest = sub.add_parser("digest", help="describe one spectrum in numbers")
     digest.add_argument("group", help="group id, or part of its label")
+
+    compared = sub.add_parser("compare", help="groups measured against the first, in numbers")
+    compared.add_argument("groups", nargs="+", help="two or more groups; the first is the reference")
 
     describe = sub.add_parser("describe", help="what `do` accepts")
     describe.add_argument("action", nargs="?")

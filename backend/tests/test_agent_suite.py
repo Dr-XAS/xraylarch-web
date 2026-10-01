@@ -134,3 +134,19 @@ def test_report_prints_assertions_rejections_and_meter_totals(http, run, tmp_pat
     assert code == 1
     assert "T1 FAIL" in out
     assert "rejected align: The alignment standard and its linked references stay fixed" in out
+
+
+def test_finish_keeps_what_was_read_afterwards_out_of_the_meter(tmp_path, capsys):
+    log = tmp_path / "meter.jsonl"
+    app = agent_suite.Meter(create_app(Settings(data_root=tmp_path / "data")), log)
+    path = tmp_path / "run.json"
+    with TestClient(app) as client:
+        path.write_text(json.dumps(agent_suite.setup(client) | {"started": 0.0}))
+        assert agent_suite.main(["finish", str(path)]) == 0
+        project = json.loads(path.read_text())["project_id"]
+        client.get(f"/api/athena/projects/{project}")  # the operator looking, arrays and all
+        agent_suite.main(["report", "T1", str(path), "--meter", str(log)], http=client)
+    out = capsys.readouterr().out
+    before = agent_suite.meter_totals(log, until=json.loads(path.read_text())["finished"])
+    assert f"meter: {before['requests']} requests" in out
+    assert before["requests"] < agent_suite.meter_totals(log)["requests"]

@@ -275,3 +275,10 @@ def test_an_align_command_takes_the_body_its_preview_took(client, example):
 def test_the_catalog_says_when_a_default_is_not_applied(client):
     method = client.get("/api/athena/capabilities/merge").json()["options"]["method"]
     assert "plain average" in method and "preview refuses" in method
+
+
+def test_every_read_the_index_names_is_a_route(client):
+    routes = {route.path for route in client.app.routes}
+    for path in index()["reads"]:
+        template = path.split("?")[0].replace("{id}", "{ident}").replace("{gid}", "{group_id}")
+        assert template in routes, path
