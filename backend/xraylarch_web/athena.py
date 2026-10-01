@@ -812,6 +812,8 @@ class ImportRequest(BaseModel):
     mode: Literal["mu", "transmission", "fluorescence"] = "mu"
     units: Literal["eV", "keV"] = "eV"
     data_type: Literal["mu", "xanes", "norm", "chi", "xmudat"] = "mu"
+    is_normalized: bool | None = Field(default=None, strict=True)
+    exafs: bool | None = Field(default=None, strict=True)
     is_reference: bool = Field(default=False, strict=True)
     reference_numerator: str | None = None
     reference_denominator: str | None = None
@@ -827,7 +829,13 @@ class ImportRequest(BaseModel):
     additional_fluorescence: AdditionalFluorescence | None = None
 
     @model_validator(mode="after")
-    def valid_combined_modes(self):
+    def valid_processing_and_modes(self):
+        if ((self.data_type == "chi" and self.is_normalized is True)
+                or (self.data_type in ("norm", "xmudat") and self.is_normalized is False)):
+            raise ValueError("Supply a normalization flag consistent with the input format.")
+        if self.exafs is not None and (self.data_type not in ("mu", "norm", "xanes")
+                or self.exafs != (self.data_type != "xanes")):
+            raise ValueError("Supply an EXAFS flag consistent with the energy input format.")
         additional = self.additional_fluorescence
         if additional is not None:
             if self.mode != "transmission" or self.data_type == "chi":
@@ -1390,12 +1398,17 @@ class AthenaStore:
         g["processing_error"] = None
 
     def change_datatype(self, project, groups, options):
-        """Athena Group dialog and Main::quick_change_type, without reimporting."""
+        """Change normalization/EXAFS settings, retaining native type commands."""
         toggle = options.get("toggle", False)
-        if not isinstance(toggle, bool) or set(options) - {"data_type", "toggle"}:
-            fail("Choose a data type or the current-group type toggle.")
+        explicit = bool(set(options) & {"is_normalized", "exafs"})
+        if not isinstance(toggle, bool) or set(options) - {"data_type", "toggle", "is_normalized", "exafs"}:
+            fail("Choose input normalization and EXAFS settings, a data type, or the current-group toggle.")
         destination = options.get("data_type")
-        if toggle:
+        if explicit:
+            if set(options) != {"is_normalized", "exafs"} or any(not isinstance(options[key], bool) for key in options):
+                fail("Supply both is_normalized and exafs as booleans, without a data type or toggle.")
+            destination = ("norm" if options["is_normalized"] else "mu") if options["exafs"] else "xanes"
+        elif toggle:
             if destination is not None or len(groups) != 1:
                 fail("Toggle the type of exactly one current group, without a destination.")
             if groups[0]["data_type"] == "detector":
@@ -1411,7 +1424,7 @@ class AthenaStore:
             normalized = group.get("is_normalized", previous == "norm")
             target = ("norm" if normalized else "mu") if previous == "xanes" else "xanes"
             if not toggle:
-                target, normalized = destination, destination == "norm"
+                target, normalized = destination, options["is_normalized"] if explicit else destination == "norm"
             group.update(data_type=target, is_normalized=normalized)
             changed.append({"group_id": group["id"], "label": group["label"],
                             "previous_type": previous, "data_type": target, "is_normalized": normalized})
@@ -1426,7 +1439,7 @@ class AthenaStore:
                   and g.get("processing_error")}
         return {"datatype_results": changed, "skipped_reasons": reasons, "processing_errors": errors}
 
-    def make_import_group(self, label, energy, mu, *, data_type="mu", source=None, edge_policy=None):
+    def make_import_group(self, label, energy, mu, *, data_type="mu", is_normalized=None, exafs=None, source=None, edge_policy=None):
         """Initialize raw imports; project restore and derived groups bypass this."""
         source = copy.deepcopy(source or {})
         parameters, prepared = None, None
@@ -1434,7 +1447,8 @@ class AthenaStore:
             from .athena_import_policy import initialize_import
             policy = ImportEdgePolicy.model_validate(edge_policy)
             try:
-                prepared = initialize_import(energy, mu, policy=policy.model_dump(), data_type=data_type)
+                prepared = initialize_import(energy, mu, policy=policy.model_dump(), data_type=data_type,
+                                             is_normalized=is_normalized, exafs=exafs)
             except ValueError as exc:
                 fail(f"{label}: {exc}")
             parameters, data_type = prepared["parameters"], prepared["data_type"]
@@ -1444,7 +1458,8 @@ class AthenaStore:
             source["e0_fraction"] = policy.fraction
             source["import_defaults"] = prepared["defaults"]
             source.setdefault("warnings", []).extend(prepared.get("warnings", []))
-        g = self.make_group(label, energy, mu, parameters=parameters, data_type=data_type, source=source)
+        g = self.make_group(label, energy, mu, parameters=parameters, data_type=data_type,
+                            is_normalized=is_normalized, source=source)
         if prepared is not None:
             if g["processing_error"]:
                 fail(f"{label}: enforced edge could not be processed. {g['processing_error']}")
@@ -1493,7 +1508,7 @@ class AthenaStore:
             warnings.append(f"Reference E0 could not be initialized: {exc}")
         source.setdefault("warnings", []).extend(warnings)
         reference = self.make_group(sample["label"] + " · reference", energy, mu,
-            data_type=sample["data_type"], source=source, parameters=parameters)
+            data_type=sample["data_type"], is_normalized=sample.get("is_normalized"), source=source, parameters=parameters)
         reference["marked"] = False
         if selection:
             reference["source"]["e0_selection"] = {**selection, "group_id": reference["id"],
@@ -1802,6 +1817,11 @@ class AthenaStore:
             mapping = {key: value for key, value in mapping.items() if key in ImportRequest.model_fields}
             mapping.update(reference_numerator=None, reference_denominator=None, individual_channels=False,
                            additional_fluorescence=None, reader_reviewed=True)
+            if group['data_type'] != 'detector':
+                # Type corrections do not rewrite the historical source recipe.
+                # Reopening it must still retain the group's current processing.
+                mapping.update(data_type=group['data_type'], is_normalized=group.get('is_normalized'),
+                               exafs=group['data_type'] != 'xanes' if group['data_type'] in ('mu', 'norm', 'xanes') else None)
             # Import-time policies belong to this spectrum, not whichever file
             # was most recently inspected in another tab.
             if source.get('edge_policy'):
@@ -2037,6 +2057,7 @@ class AthenaStore:
                         label += " · " + names.get(sample["columns"][0], "Constant 1")
                     group_source, group_x, group_y = self.rebinned_source(source, x, y, sample.get('rebin'))
                     g = self.make_import_group(label, group_x, group_y, data_type=mode_request.data_type,
+                                              is_normalized=mode_request.is_normalized, exafs=mode_request.exafs,
                                               source=group_source, edge_policy=mode_request.edge_policy)
                     if sample.get('rebin') is not None:
                         from .athena_xdi_history import inherit_source
@@ -2054,7 +2075,7 @@ class AthenaStore:
                             individual_channels=False, signal_multiplier=1., invert=False,
                             preprocessing=ImportPreprocessing().model_dump() if mode_request.preprocessing is not None else None,
                             data_type=g["data_type"], mode="transmission" if mode_request.reference_log else "fluorescence",
-                            is_reference=True)
+                            is_normalized=g["is_normalized"], is_reference=True)
                         reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
                         reference = self.make_reference_group(g, ref_x, ref_y,
                             source=reference_source, same_element=mode_request.reference_same_element)

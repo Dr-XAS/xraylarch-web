@@ -33,7 +33,7 @@ test('remembered column choices restore real previews across sessions without ac
   await page.goto('/')
   let { panel } = await open(page, 'first.dat')
   await panel.getByRole('combobox', { name: 'Measurement', exact: true }).selectOption('fluorescence')
-  await panel.getByRole('combobox', { name: 'Data type', exact: true }).selectOption('xanes')
+  await panel.getByRole('checkbox', { name: 'Enable EXAFS processing', exact: true }).uncheck()
   await panel.getByRole('combobox', { name: 'Energy units', exact: true }).selectOption('keV')
   await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
   await panel.getByLabel('Numerator channel', { exact: true }).check()

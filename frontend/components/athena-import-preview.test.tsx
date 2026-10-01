@@ -29,7 +29,7 @@ describe("live column preview", () => {
     expect(api).not.toHaveBeenCalled()
     await tick(1)
     expect(api).toHaveBeenCalledExactlyOnceWith("/projects/p/preview-columns", {
-      version: 2, upload_id: "u", ...mapping, units: "keV", numerator: ["c2"], denominator: "c1", sort: true,
+      version: 2, upload_id: "u", ...mapping, exafs: true, units: "keV", numerator: ["c2"], denominator: "c1", sort: true,
       reference_numerator: null, reference_denominator: null,
       preprocessing: { mark: false, standard_id: null, copy_parameters: false, align: false },
     }, "POST", expect.any(AbortSignal))

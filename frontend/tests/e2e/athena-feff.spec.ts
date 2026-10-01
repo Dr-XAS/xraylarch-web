@@ -24,11 +24,11 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
     await page.getByRole('button', { name: 'Import data', exact: true }).click()
     await page.getByLabel('Choose data files', { exact: true }).setInputFiles({ name: 'xmu.dat', mimeType: 'text/plain', buffer })
     const panel = page.getByRole('dialog')
-    await expect(panel.getByRole('combobox', { name: 'Data type', exact: true })).toBeVisible()
+    await expect(panel.getByRole('combobox', { name: 'Input format', exact: true })).toBeVisible()
     if (await panel.getByRole('button', { name: 'Use suggested columns' }).count()) {
       await panel.getByRole('button', { name: 'Use suggested columns' }).click()
     }
-    await expect(panel.getByRole('combobox', { name: 'Data type', exact: true })).toHaveValue('xmudat')
+    await expect(panel.getByRole('combobox', { name: 'Input format', exact: true })).toHaveValue('xmudat')
     await expect(panel.getByRole('combobox', { name: 'Energy column', exact: true })).toHaveValue('column_0001')
     await expect(panel.getByRole('combobox', { name: 'Energy units', exact: true })).toHaveValue('eV')
     await expect(panel.getByLabel('Numerator mu', { exact: true })).toBeChecked()
@@ -41,12 +41,12 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
     await panel.getByLabel('Numerator mu0', { exact: true }).check()
     await expect.poll(() => firstCurve(preview)).toEqual({ x: expected.x, y: raw.map(r => r[4]) })
     // The file's actual chi(k) remains explicitly selectable in the same UI.
-    await panel.getByRole('combobox', { name: 'Data type', exact: true }).selectOption('chi')
+    await panel.getByRole('combobox', { name: 'Input format', exact: true }).selectOption('chi')
     await panel.getByRole('combobox', { name: 'k column', exact: true }).selectOption('column_0003')
     await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
     await panel.getByLabel('Numerator chi', { exact: true }).check()
     await expect.poll(() => firstCurve(preview)).toEqual({ x: raw.map(r => r[2]), y: raw.map(r => r[5]) })
-    await panel.getByRole('combobox', { name: 'Data type', exact: true }).selectOption('xmudat')
+    await panel.getByRole('combobox', { name: 'Input format', exact: true }).selectOption('xmudat')
     await panel.getByRole('combobox', { name: 'Energy column', exact: true }).selectOption('column_0001')
     await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
     await panel.getByLabel('Numerator mu', { exact: true }).check()
@@ -110,7 +110,7 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
     expect(reread.groups[1].data_type).toBe('xmudat')
     expect(reread.groups[1].result.arrays).toEqual(group.result.arrays)
     await page.reload()
-    await expect(page.getByRole('heading', { name: 'Data groups 2', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
     expect(errors).toEqual([])
   })
 }
