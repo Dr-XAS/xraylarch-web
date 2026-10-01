@@ -72,7 +72,11 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 async function ready() {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled()
+    // Renderer creation enables the controls before the drawing effect runs.
+    expect(scenes.at(-1)?.render).toHaveBeenCalled()
+  })
   return scenes.at(-1)!
 }
 

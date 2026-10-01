@@ -108,6 +108,13 @@ assert status == 200 and json.loads(body)["count"] == 1, "AMCSD lookup failed"
 status, _, body = request(alice, artemis + "/structures/13088")
 assert status == 200 and json.loads(body)["supported"], "AMCSD structure unsupported"
 structure = json.loads(body)
+analysis_request = {"cif": structure["cif"], "absorber": "Cu", "site_index": 1}
+status, _, body = request(alice, artemis + "/structures/first-shell", analysis_request)
+assert status == 200, f"CrystalNN first shell: HTTP {status}: {body[:200]!r}"
+assert json.loads(body)["coordination_number"] == 12, "Incorrect Cu first-shell coordination"
+status, _, body = request(alice, artemis + "/structures/radial-shells", analysis_request)
+assert status == 200, f"Radial shells: HTTP {status}: {body[:200]!r}"
+assert [shell["coordination_number"] for shell in json.loads(body)["shells"][:3]] == [12, 6, 24], "Incorrect Cu radial shells"
 attachments_path = artemis + "/projects/" + project["id"] + "/structures"
 status, _, _ = request(bob, attachments_path)
 assert status == 404, "Second visitor read private structures"
@@ -124,4 +131,4 @@ assert status == 404, "Second visitor launched a FEFF job on private structure"
 
 status, _, body = request(alice, "/api/backend/health")
 assert status == 200 and json.loads(body)["status"] == "ok"
-print("PASS: production page, session cookies, independent visitors, access isolation, four example spectra, project export, Artemis fit, AMCSD structure/attachment, private FEFF access, health")
+print("PASS: production page, session cookies, independent visitors, access isolation, four example spectra, project export, Artemis fit, CrystalNN first shell, radial shells, AMCSD structure/attachment, private FEFF access, health")

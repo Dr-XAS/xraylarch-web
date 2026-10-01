@@ -19,11 +19,12 @@ const artemisRoutes: readonly [string, RegExp][] = [
   ["POST", /^api\/artemis\/paths\/inspect$/],
   ["GET", /^api\/artemis\/examples\/cuprite$/],
   ["GET", /^api\/artemis\/structures(?:\/[^/]+)?$/],
+  ["POST", /^api\/artemis\/structures\/(?:first-shell|radial-shells)$/],
   ["POST", /^api\/artemis\/feff\/jobs$/],
   ["GET", /^api\/artemis\/feff\/jobs\/[^/]+$/],
   ["GET", /^api\/artemis\/projects\/[^/]+\/structures$/],
   ["POST", /^api\/artemis\/projects\/[^/]+\/structures$/],
-  ["POST", /^api\/artemis\/projects\/[^/]+\/groups\/[^/]+\/fit$/],
+  ["POST", /^api\/artemis\/projects\/[^/]+\/groups\/[^/]+\/(?:fit|model|fit-saved|remove-fit)$/],
 ]
 
 function allowedMethods(path: string[]): ReadonlySet<string> | null {
