@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import { readFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 
@@ -50,7 +51,7 @@ test("measured spectrum survives processing, project reopen, and raw/EXAFS expor
   expect(before.result?.arrays.chi).not.toEqual(original.result?.arrays.chi)
 
   const saving = page.waitForEvent("download")
-  await page.getByRole("button", { name: "Save project", exact: true }).click()
+  await page.getByRole("button", { name: "Save project", exact: true }).click(); await confirmProjectSave(page)
   const savedPath = info.outputPath("processed-copper.prj")
   await (await saving).saveAs(savedPath)
 

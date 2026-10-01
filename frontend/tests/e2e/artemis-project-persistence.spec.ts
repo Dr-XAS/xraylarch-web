@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import { expect, test } from "@playwright/test"
 import { readFile } from "node:fs/promises"
 import type { AthenaProject } from "../../lib/athena"
@@ -28,7 +29,7 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   expect(await page.getByRole("button", { name: "Save model to project", exact: true }).count()).toBe(0)
   const projectDownload = page.waitForEvent("download")
   await page.getByRole("button", { name: "File", exact: true }).click()
-  await page.getByRole("button", { name: "Save complete web project", exact: true }).click()
+  await page.getByRole("button", { name: "Save complete web project", exact: true }).click(); await confirmProjectSave(page)
   const jsonPath = info.outputPath("cuprite-autosaved.json")
   await (await projectDownload).saveAs(jsonPath)
   const saved = JSON.parse(await readFile(jsonPath, "utf8")) as AthenaProject
@@ -87,7 +88,7 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   expect(fits).toHaveLength(1)
 
   const downloading = page.waitForEvent("download")
-  await page.getByRole("button", { name: "Save project", exact: true }).click()
+  await page.getByRole("button", { name: "Save project", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath("cuprite-with-fit.prj")
   await (await downloading).saveAs(path)
   await page.getByRole("button", { name: "File", exact: true }).click()

@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator } from '@playwright/test'
@@ -88,7 +89,7 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
       }
     }
     const download = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Save project', exact: true }).click()
+    await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
     const saved = info.outputPath('feff-roundtrip.prj'); await (await download).saveAs(saved)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(saved)

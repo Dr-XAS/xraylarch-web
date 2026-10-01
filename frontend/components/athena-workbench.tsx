@@ -98,6 +98,7 @@ type GroupDropTarget = { id: string; position: "before" | "after" }
 type SpectrumDropTarget = GroupDropTarget | { folderId: string }
 type GroupReorderFocus = { id: string; handle: HTMLButtonElement }
 type GroupFolderDraft = { id: string | null; name: string; groupIds: string[] }
+type ProjectSaveDraft = { projectId: string; format: "prj" | "json"; markedOnly: boolean; filename: string }
 type GroupSort = "manual" | "added" | "name" | "tag"
 type ContextEvent = MouseEvent<HTMLElement> | ReactKeyboardEvent<HTMLElement>
 type ContextState = { target: ContextTarget; projectId: string; version: number; groupId: string; invokedGroupId?: string; anchor: { x: number; y: number }; trigger: HTMLElement }
@@ -144,7 +145,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
+type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
 const mainMenuNames = ["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"] as const
 type MainMenuName = typeof mainMenuNames[number]
 type MenuCommand = {
@@ -173,7 +174,7 @@ const modalOperations: Partial<Record<Exclude<ModalName, null>, readonly string[
   group_folder: ["project"], reference: ["assign_reference"],
   e0: ["set_e0"], edge_policy: ["upload"], edge_identity: ["metadata"], datatype: ["change_datatype"],
   xdi: ["read_group", "xdi_comments"], data_export: ["export"], parameter_report: ["report"], context_report: ["report"],
-  special_plot: ["plot"], rename: ["metadata"],
+  special_plot: ["plot"], rename: ["metadata"], save_project: ["export"],
 }
 
 function normalizeMenuQuery(value: string) {
@@ -423,6 +424,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [options, setOptions] = useState<Record<string, string | number | boolean>>({})
   const [journal, setJournal] = useState("")
   const [projectName, setProjectName] = useState("")
+  const [projectSaveDraft, setProjectSaveDraft] = useState<ProjectSaveDraft | null>(null)
+  const [projectSavePending, setProjectSavePending] = useState(false)
+  const projectSaveInFlight = useRef(false)
   const [applyMarked, setApplyMarked] = useState(false)
   const [parameterScope, setParameterScope] = useState<ParameterSection | "single">("all")
   const [parameterKey, setParameterKey] = useState<keyof Parameters>("rbkg")
@@ -1929,7 +1933,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (integrated && (tool === "merge" || tool === "dispersive")) return false
     return canOpen(tool)
   }
-  const download = async (path: string, filename: string) => {
+  const download = async (path: string, filename: string, filenameOverride = false) => {
     setMenu("")
     try {
       if (/\/projects\/[^/]+\/export\?/.test(path) && !integrated) {
@@ -1937,9 +1941,40 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         await artemisActionsRef.current?.flush()
         if (projectRef.current?.id !== projectId) throw new Error("The active project changed. Download the project again.")
       }
-      await transport.download(path, filename)
+      if (filenameOverride) await transport.download(path, filename, { filenameOverride: true })
+      else await transport.download(path, filename)
+      return true
     } catch (error) {
       setError(error instanceof Error ? error.message : "The download failed.")
+      return false
+    }
+  }
+  function openProjectSave(format: ProjectSaveDraft["format"] = "prj", markedOnly = false) {
+    const current = projectRef.current
+    if (!current || busy || projectSaveInFlight.current || !can("export") || parameterActionBlocked()) return
+    setProjectSaveDraft({ projectId: current.id, format, markedOnly, filename: `${current.name}${markedOnly ? "-marked" : ""}.${format}` })
+    setMenu(""); setError(""); setModal("save_project")
+  }
+  function closeProjectSave() {
+    if (projectSaveInFlight.current) return
+    setModal(null); setProjectSaveDraft(null); setError("")
+  }
+  async function confirmProjectSave() {
+    if (!projectSaveDraft || projectSaveInFlight.current || busy || parameterActionBlocked()) return
+    if (projectRef.current?.id !== projectSaveDraft.projectId) {
+      setError("The active project changed. Open Save project again.")
+      return
+    }
+    const name = projectSaveDraft.filename.trim().replace(/\.(prj|json)$/i, "").trim()
+    if (!name || /^\.+$/.test(name)) { setError("Enter a file name."); return }
+    if (/[\\/\x00-\x1f\x7f]/.test(name)) { setError("Use a file name without slashes or control characters."); return }
+    const { projectId, format, markedOnly } = projectSaveDraft
+    projectSaveInFlight.current = true; setProjectSavePending(true); setError("")
+    try {
+      const saved = await download(`/api/athena/projects/${projectId}/export?format=${format}${markedOnly ? "&marked_only=true" : ""}`, `${name}.${format}`, true)
+      if (saved) { setModal(null); setProjectSaveDraft(null) }
+    } finally {
+      projectSaveInFlight.current = false; setProjectSavePending(false)
     }
   }
   async function exportLarix() {
@@ -1958,12 +1993,12 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }
   const menuCommands: MenuCommand[] = [
     { id: "file-export-columns", menu: "File", label: "Export column data…", keywords: "download save csv text", disabled: !project || !active || !!busy || parameterUpdatePending || !canOpen("data_export"), icon: <Download size={15} />, action: () => openTool("data_export") },
-    { id: "file-save-marked", menu: "File", label: "Save marked project (.prj)", keywords: "download export selected groups", disabled: !marked.length || parameterUpdatePending, visible: !!project && can("export"), icon: <Download size={15} />, action: () => void download(`/api/athena/projects/${project!.id}/export?format=prj&marked_only=true`, `${project!.name}-marked.prj`) },
+    { id: "file-save-marked", menu: "File", label: "Save marked project (.prj)", keywords: "download export selected groups", disabled: !marked.length || !!busy || parameterUpdatePending, visible: !!project && can("export"), icon: <Download size={15} />, action: () => openProjectSave("prj", true) },
     { id: "file-new", menu: "File", label: "New project", keywords: "create reset workspace", disabled: !!busy || parameterUpdatePending, visible: !integrated, icon: <Plus size={15} />, action: () => { setMenu(""); void task("Creating project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi("/projects", {})); setDrafts({}) }) } },
     { id: "file-import", menu: "File", label: "Import data…", keywords: "upload add spectra files", disabled: !project || !!busy || parameterUpdatePending, visible: can("upload"), icon: <Upload size={15} />, action: () => { setMenu(""); setModal("import") } },
     { id: "file-open", menu: "File", label: "Open project…", keywords: "load recent workspace", disabled: !!busy || parameterUpdatePending, visible: !integrated, icon: <FolderOpen size={15} />, action: () => openTool("open") },
-    { id: "file-save-athena", menu: "File", label: "Save Athena project (.prj)", keywords: "download export", disabled: parameterUpdatePending, visible: !!project && can("export"), section: 1, icon: <Download size={15} />, action: () => void download(`/api/athena/projects/${project!.id}/export?format=prj`, `${project!.name}.prj`) },
-    { id: "file-save-web", menu: "File", label: "Save complete web project", keywords: "download export json", disabled: parameterUpdatePending, visible: !!project && can("export"), section: 1, icon: <Download size={15} />, action: () => void download(`/api/athena/projects/${project!.id}/export?format=json`, `${project!.name}.json`) },
+    { id: "file-save-athena", menu: "File", label: "Save Athena project (.prj)", keywords: "download export", disabled: !!busy || parameterUpdatePending, visible: !!project && can("export"), section: 1, icon: <Download size={15} />, action: () => openProjectSave() },
+    { id: "file-save-web", menu: "File", label: "Save complete web project", keywords: "download export json", disabled: !!busy || parameterUpdatePending, visible: !!project && can("export"), section: 1, icon: <Download size={15} />, action: () => openProjectSave("json") },
     { id: "file-export-larix", menu: "File", label: "Export Larix session (.larix)", keywords: "larch desktop exafs model current spectrum", disabled: !active || !!busy || parameterUpdatePending || !artemisActions?.canExportModel, visible: !!project && !integrated, section: 1, icon: <Download size={15} />, action: () => void exportLarix() },
     { id: "file-export-model", menu: "File", label: "Export model JSON", keywords: "artemis exafs model exchange", disabled: !!busy || parameterUpdatePending || !artemisActions?.canExportModel, visible: !!project && !integrated, section: 1, icon: <Download size={15} />, action: () => { setMenu(""); artemisActions?.exportModel() } },
     { id: "file-import-model", menu: "File", label: "Import model JSON…", keywords: "artemis exafs model exchange", disabled: !active || !!busy || parameterUpdatePending || !artemisActions, visible: !!project && !integrated, section: 1, icon: <Upload size={15} />, action: () => { setMenu(""); setParameterTab("fitting"); artemisActions?.importModel() } },
@@ -2142,7 +2177,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           </div>}
         </div>
       </nav><ThemeSelector /><span className="ath-local"><i /> Local workspace</span></header>
-    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : artemisActions?.status === "failed" ? "EXAFS model save failed" : artemisSavePending ? "Saving EXAFS model…" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={undoDisabled} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={redoDisabled} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" onClick={() => { if (!parameterActionBlocked()) void download(`/api/athena/projects/${project.id}/export?format=prj`, `${project.name}.prj`) }}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
+    <section className="ath-project-bar"><div><FolderOpen size={17} /><button className="ath-project-name" onClick={() => openTool("journal")} disabled={!project || parameterUpdatePending || !can("project")}>{project?.name ?? "Opening workspace…"}<ChevronDown size={12} /></button><span className="ath-autosaved">{busy ? "Working…" : parameterUpdatePending ? "Parameter changes pending" : project ? integrated ? "Linked project" : artemisActions?.status === "failed" ? "EXAFS model save failed" : artemisSavePending ? "Saving EXAFS model…" : "Saved locally" : "Connecting"}</span></div><div><button title="Undo last project change" aria-label="Undo" disabled={undoDisabled} onClick={() => act("undo", [])}><Undo2 size={16} /></button><button title="Redo project change" aria-label="Redo" disabled={redoDisabled} onClick={() => act("redo", [])}><Redo2 size={16} /></button><span className="ath-divider" />{can("upload") && <button disabled={!project || !!busy || parameterUpdatePending} onClick={() => { setInspection(null); setModal("import") }}><Upload size={15} />Import data</button>}{project && can("export") && <button className="ath-button ath-primary" disabled={!!busy || parameterUpdatePending} onClick={() => openProjectSave()}><Download size={15} />Save project</button>}{integrated && session.returnTo && <><a className="ath-button" href={session.returnTo} onClick={clearIntegrationReturnSelection}>Return to Dr.XAS</a><a className="ath-button ath-primary" href={session.returnTo} aria-label={`Import ${marked.length} selected ${marked.length === 1 ? "group" : "groups"} into Dr.XAS`} aria-disabled={!marked.length || !can("export")} onClick={event => { if (!marked.length || !can("export") || !project) { event.preventDefault(); return } saveReturnSelection(session, project.version, marked.map(group => ({ id: group.id, version: project.group_versions?.[group.id] ?? project.version }))) }}>Import into Dr.XAS</a></>}</div></section>
     {edgePolicyStorageError && <p className="ath-warning" role="alert">{edgePolicyStorageError}</p>}
     {!!larixExportWarnings.length && <div className="ath-warning" role="status"><strong>Larix session exported.</strong> {larixExportWarnings.join(" ")} <button type="button" onClick={() => setLarixExportWarnings([])} aria-label="Dismiss Larix export notice">Dismiss</button></div>}
     {error && !modal && <div className="ath-error" role="alert">{error}<button onClick={() => { void task("Reloading project", async () => { if (integrated) accept(await athenaApi<AthenaProject>(`/projects/${projectRef.current?.id ?? session.projectId}`)); else accept(await openLocalProject(projectRef.current?.id ?? localStorage.getItem("athena.project"))) }) }}>Reload workspace</button><button onClick={() => setError("")} aria-label="Dismiss error"><X size={15} /></button></div>}
@@ -2208,6 +2243,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     />
     <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version} · ` : ""}Powered by Larch</span></footer>
 
+    {modal === "save_project" && projectSaveDraft && <Modal title="Save project" close={closeProjectSave}><form className="ath-modal-body" onSubmit={event => { event.preventDefault(); void confirmProjectSave() }}>
+      <p className="ath-hint">{projectSaveDraft.format === "json" ? "Complete web project (.json)" : projectSaveDraft.markedOnly ? "Marked spectra · Athena project (.prj)" : "Athena project (.prj)"}</p>
+      <label className="ath-field"><span>File name</span><input autoFocus maxLength={200} disabled={projectSavePending} value={projectSaveDraft.filename} onChange={event => { setProjectSaveDraft(draft => draft && { ...draft, filename: event.target.value }); setError("") }} aria-describedby="ath-project-save-hint" /></label>
+      <p id="ath-project-save-hint" className="ath-hint">The .{projectSaveDraft.format} extension is added automatically. Your browser controls the download location.</p>
+      {error && <p className="ath-error" role="alert">{error}</p>}
+      <div className="ath-modal-actions"><button type="button" disabled={projectSavePending} onClick={closeProjectSave}>Cancel</button><button className="ath-primary" disabled={projectSavePending || !!busy || parameterUpdatePending}>{projectSavePending ? "Saving…" : "Save"}</button></div>
+    </form></Modal>}
     {modal === "reference" && project && <Modal title="Assign reference foil" close={() => { if (!busy) setModal(null) }}><AthenaReferencePicker groups={project.groups} initialSampleIds={referenceSampleIds} busy={!!busy} error={error} onClose={() => setModal(null)} onApply={(ids, referenceId) => {
       if (busy || parameterActionBlocked()) return
       void task(referenceId ? "Assigning reference foil" : "Removing reference links", async () => {

@@ -1,3 +1,4 @@
+import { confirmProjectSave } from "./project-save"
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { expect, test, type Locator } from '@playwright/test'
@@ -77,7 +78,7 @@ for (const name of ['x10c', 'lytle']) {
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
     const save = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Save project', exact: true }).click()
+    await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
     const prj = info.outputPath('roundtrip.prj'); await (await save).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)
