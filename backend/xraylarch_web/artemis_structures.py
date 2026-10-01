@@ -34,6 +34,7 @@ from xraydb import atomic_number, xray_edge
 
 from .artemis import PathInput, StrictModel, inspect_path
 from .artemis_coordination import FirstShellRequest, first_shell
+from .artemis_shells import RadialShellRequest, radial_shells
 from .errors import WebInputError
 
 _DATABASE = Path(larixite.__file__).parent / "amcsd_cif1.db"
@@ -512,6 +513,10 @@ def build_structures_router(store):
     @router.post("/structures/first-shell")
     def coordination(request: FirstShellRequest):
         return first_shell(request.cif, request.absorber, request.site_index)
+
+    @router.post("/structures/radial-shells")
+    def shells(request: RadialShellRequest):
+        return radial_shells(request.cif, request.absorber, request.site_index, request.radius, request.tolerance)
 
     @router.get("/structures")
     def search(q: str = Query(default="", max_length=120), element: str = Query(default="", max_length=2),

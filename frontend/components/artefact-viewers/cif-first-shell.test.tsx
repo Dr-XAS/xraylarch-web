@@ -8,6 +8,7 @@ const { renderer } = vi.hoisted(() => ({ renderer: { clear: vi.fn(), setBackgrou
 vi.mock("3dmol", () => ({}))
 vi.mock("@/lib/cif-renderer", () => ({ createCifRenderer: () => ({ viewer: renderer, dispose: vi.fn() }) }))
 vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: vi.fn() }) }))
+vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: () => ({ data: null, loading: false, error: "", retry: () => {}, settings: { radius: 6, tolerance: 0.05 }, setSettings: () => {} }) }))
 const structure: ArtemisStructure = { id: 1, mineral: "CuO", formula: "CuO", space_group: "P1", authors: "", year: null, journal: "", title: "", cif: "data_cuo", elements: ["Cu", "O"], supported: true, ordered: true, warnings: [], cell: { a: 10, b: 10, c: 10, alpha: 90, beta: 90, gamma: 90 }, sites: [
   { index: 1, element: "Cu", species: "Cu", occupancy: 1, multiplicity: 1, wyckoff: "1a", x: 0, y: 0, z: 0 },
   { index: 2, element: "O", species: "O", occupancy: 1, multiplicity: 1, wyckoff: "1a", x: 0.2, y: 0, z: 0 },
@@ -18,7 +19,7 @@ it("shows complete shell beyond display radius, styles neighbors and respects hi
   render(<CifViewer structure={structure} selectedSite={1} analysis={{ shell, error: "", loading: false, retry: vi.fn() }} />)
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
   expect(screen.getByText("CrystalNN first shell · CN 1")).toBeVisible()
-  expect(renderer.addStyle).toHaveBeenCalledWith({ index: 1 }, { sphere: { color: "#06b6d4", radius: 0.36 } })
+  await waitFor(() => expect(renderer.addStyle).toHaveBeenCalledWith({ index: 1 }, { sphere: { color: "#06b6d4", radius: 0.36 } }))
   fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "1" } })
   expect(screen.getByText("1 atom shown")).toBeVisible()
   fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "shell" } })

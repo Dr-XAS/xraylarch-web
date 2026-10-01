@@ -13,6 +13,10 @@ import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
+import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
+import { useRadialShells } from "@/lib/use-radial-shells"
+import { RadialShellPanel } from "./radial-shell-panel"
+import { RadialPathGroups } from "./radial-path-groups"
 import { ArtemisStructures } from "./artemis-structures"
 import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
@@ -147,6 +151,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
+  const [radialContext, setRadialContext] = useState<RadialShellContext | null>(null)
+  const radialState = useRadialShells(radialContext?.structure ?? null, radialContext?.siteIndex)
   const shellPathIds = useMemo(() => shellSelection ? draft.paths.filter(path => isFirstShellPath(path.metadata, shellSelection.structure, shellSelection.shell)).map(path => path.id) : [], [draft.paths, shellSelection])
   const controller = useRef<AbortController | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -406,7 +412,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
-    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} disabled={disabled} existingPaths={draft.paths}
+    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
         if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
@@ -418,6 +424,10 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       }} />
     <fieldset className={styles.section} disabled={disabled}>
       <legend>FEFF paths <span>{draft.paths.filter(path => path.enabled).length} included</span></legend>
+      {radialContext ? <>
+        <RadialShellPanel state={radialState} disabled={disabled} />
+        <p className={styles.help}>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>
+      </> : <p className={styles.help}>Open an attached CIF and choose its absorber site to see shell ranges and group path candidates.</p>}
       {shellSelection && <div className={styles.help}>
         <p>CrystalNN · {shellSelection.structure.mineral || shellSelection.structure.formula} · {shellSelection.shell.absorber} site {shellSelection.shell.site_index} · CN {shellSelection.shell.coordination_number}. {shellPathIds.length} first-shell path candidate{shellPathIds.length === 1 ? "" : "s"}.</p>
         <p>Candidates match the selected shell by element and atomic position. Confirm that the paths use this CIF and absorber site.</p>
@@ -430,13 +440,20 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
       </div>
       {draft.paths.length === 0 && <p className={styles.help}>Add calculated FEFF scattering paths, or load the Cuprite CIF and its first four precomputed paths with the Cu₂O example.</p>}
-      {draft.paths.map((path, i) => <div className={styles.path} key={path.id}>
+      <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
+        onSelection={(ids, include) => edit(previous => ({ ...previous, paths: previous.paths.map(path => ids.includes(path.id) ? { ...path, enabled: include } : path) }))}
+        onUseOnly={ids => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: ids.includes(path.id) })) }))}
+        renderPath={path => {
+          const i = draft.paths.findIndex(item => item.id === path.id)
+          const member = radialContext && radialState.data ? radialPathNeighbor(path.metadata, radialContext.structure, radialState.data) : undefined
+          return <div className={styles.path}>
         <div className={styles.pathHeader}>
           <label className={styles.check}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /><span>{path.filename}</span></label>
           <button type="button" aria-label={`Remove path ${i + 1}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
         <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
         {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
+        {member && <p className={styles.metadata}>Radial shell {member.shell_index} · {member.element} pair {member.group_id}</p>}
         <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
@@ -446,7 +463,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
             ["sigma2", "σ² (Å²)", "Mean-square relative displacement."],
           ] as const).map(([field, label, title]) => <label key={field} title={title}>{label}<input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
         </div>
-      </div>)}
+      </div>}} />
       {draft.paths.length > 0 && <p className={styles.help}>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>}
     </fieldset>
 
