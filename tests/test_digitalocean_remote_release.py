@@ -52,6 +52,7 @@ if args[0]=='inspect':
 if args[0]=='run':
     event('backup')
     assert 'compresslevel=1' in args[-1], 'Use fast, lossless compression while production is stopped'
+    assert args[args.index('--log-driver')+1]=='none', 'Do not duplicate binary backups into Docker logs'
     if fail=='backup': finish(1)
     sys.stdout.buffer.write(gzip.compress(b'protected-backup')); finish()
 assert args[0]=='compose', args

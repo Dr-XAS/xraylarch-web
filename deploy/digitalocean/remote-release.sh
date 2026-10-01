@@ -232,7 +232,7 @@ activation_started=1
 old_production stop frontend backend
 backup=$root/xraylarch-backups/before-${revision:0:12}-$(date -u +%Y%m%dT%H%M%SZ)-$$.tar.gz
 # Favor short downtime over maximum compression; the complete tar is still verified below.
-docker run --rm --network none --read-only -v "$actual_volume:/data:ro" \
+docker run --rm --log-driver none --network none --read-only -v "$actual_volume:/data:ro" \
   --entrypoint python "$old_image" -c \
   'import sys,tarfile; archive=tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz", compresslevel=1); archive.add("/data", arcname="data"); archive.close()' > "$backup"
 [[ -s $backup ]] || failure 1 "Data backup is empty"
