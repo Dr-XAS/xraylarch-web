@@ -546,3 +546,46 @@ and displays the available path atoms. It never reconstructs neighbors from
 degeneracy. Model reimport reinspects `.dat` files, losing optional FEFF input
 context but still allowing context from a matching attached CIF. Invalid geometry
 or unavailable WebGL is reported; header values remain accessible.
+
+### CrystalNN first coordination shell
+
+The CIF viewer automatically analyzes its center site with pymatgen CrystalNN.
+In **EXAFS fitting → Open attached CIF**, choosing an inequivalent absorber site
+also analyzes that site for FEFF path selection. Results show predicted CN,
+neighbor elements, distance ranges, alternative coordination weights, and any
+radius/oxidation-state warnings. The shell is the most probable bonded-neighbor
+set; it is not a fitted CN or an R-space Fourier-transform window.
+
+The viewer highlights the absorber in amber and exact periodic neighbors in
+cyan. **View → CrystalNN first shell** displays the entire shell, including
+neighbors across cell boundaries, independently of the display radius. Changing
+the viewer center only changes the display; use the explicit FEFF absorber-site
+controls to change a calculation.
+
+Generated FEFF paths receive a **First shell** label only for two-leg paths whose
+scatterer element and centered atomic position match the predicted shell.
+**Select first-shell paths** prepares the selection for the existing Add button.
+For already loaded fit paths, matching paths are labeled **first-shell candidates**
+relative to the selected CIF/site: confirm the source, then optionally choose
+**Use only first-shell candidates**. This changes the model's inclusion toggles;
+it does not run a fit, change degeneracy, multiply by crystallographic
+multiplicity, or replace fitted parameters. Save the model normally to retain
+those toggles. Shell analysis itself is recomputed from the saved CIF.
+
+`POST /api/artemis/structures/first-shell` accepts full bounded CIF text,
+`absorber`, and the same 1-based global inequivalent `site_index` used by FEFF.
+It returns the exact CIF and its SHA-256, library version, fixed algorithm settings,
+CN alternatives, warnings, and neighbors with signed periodic images. Fractional
+offsets drive the viewer; native pymatgen Cartesian offsets match larixite/FEFF,
+including nonorthogonal cells. The endpoint reads no client-specified files and
+uses the submitted snapshot rather than looking up a potentially different CIF.
+Partial occupancies and unsupported structures fail explicitly; an algorithm
+failure is not represented as CN 0. Periodic candidate counts bound the adaptive
+Voronoi search. Successful results are cached by exact CIF/element/site.
+
+The fixed settings are the [pymatgen CrystalNN defaults](https://pymatgen.org/pymatgen.core.html):
+`weighted_cn=False`, `cation_anion=False`, `distance_cutoffs=(0.5, 1.0)`,
+`x_diff_weight=3.0`, `porous_adjustment=True`, `search_cutoff=7.0` Å. Oxidation
+states are not guessed. Review predictions especially for molecular/porous
+crystals. Hydrogen neighbors remain in CrystalNN results and are explicitly
+flagged because FEFF generation currently excludes H.

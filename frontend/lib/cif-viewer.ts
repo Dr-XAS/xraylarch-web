@@ -55,7 +55,7 @@ function cross(a: CifVector, b: CifVector): CifVector {
 }
 function norm(v: CifVector) { return Math.hypot(...v) }
 function subtract(a: CifVector, b: CifVector): CifVector { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]] }
-function cartesian(frac: CifVector, lattice: CifLattice): CifVector {
+export function cartesian(frac: CifVector, lattice: CifLattice): CifVector {
   return [0, 1, 2].map(axis => frac.reduce((sum, value, i) => sum + value * lattice[i][axis], 0)) as CifVector
 }
 function wrapped(value: number) {
@@ -64,7 +64,7 @@ function wrapped(value: number) {
 }
 
 /** Conventional fractional-to-Cartesian basis, including oblique cells. */
-function latticeVectors(cell: ArtemisStructure["cell"]): CifLattice | null {
+export function latticeVectors(cell: ArtemisStructure["cell"]): CifLattice | null {
   const { a, b, c, alpha, beta, gamma } = cell
   if (![a, b, c, alpha, beta, gamma].every(value => typeof value === "number" && Number.isFinite(value))) return null
   if (a! <= 0 || b! <= 0 || c! <= 0 || [alpha!, beta!, gamma!].some(value => value <= 0 || value >= 180)) return null
