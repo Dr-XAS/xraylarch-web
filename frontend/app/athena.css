@@ -146,10 +146,9 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-modal-spacer { flex: 1 1 24px; }
 .ath-app .ath-remove-folder { color: var(--ath-muted); }
 .ath-center { grid-area: spectrum; padding: 16px; min-width: 0; }
-.ath-app .ath-viewer-picker-heading .ath-kweight-control select { min-width: 56px; }
 .ath-viewer-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; }
-.ath-kweight-control, .ath-colormap-control { display: flex; align-items: center; gap: 9px; color: var(--ath-muted); font-size: var(--text-label); white-space: nowrap; }
-.ath-app .ath-kweight-control select, .ath-app .ath-colormap-control select { width: auto; min-width: 56px; font-size: var(--text-input); padding: 5px 8px; }
+.ath-colormap-control { display: flex; align-items: center; gap: 9px; color: var(--ath-muted); font-size: var(--text-label); white-space: nowrap; }
+.ath-app .ath-colormap-control select { width: auto; min-width: 56px; font-size: var(--text-input); padding: 5px 8px; }
 .ath-viewer-picker { margin: 0 0 12px; min-width: 0; }
 .ath-viewer-picker-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 8px; }
 .ath-viewer-picker-heading h3 { margin: 0 auto 0 0; font-size: var(--text-section); font-weight: 600; }

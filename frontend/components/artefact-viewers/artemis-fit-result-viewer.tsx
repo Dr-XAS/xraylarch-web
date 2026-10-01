@@ -8,20 +8,28 @@ import { ThemedPlot as Plot } from "../themed-plot"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
 import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls, ViewerToggle } from "./viewer-display-controls"
+import { ViewerKWeightControl } from "./viewer-kweight-control"
+import { useArtemisPlotWeight } from "./artemis-plot-weight"
 import styles from "../artemis-fitting.module.css"
 
-export function ArtemisFitResultViewer({ result, group, pending = false }: { result?: ArtemisFitResult | null; group?: AthenaGroup; pending?: boolean }) {
+export function ArtemisFitResultViewer({ result, group, projectId, version, pending = false }: {
+  result?: ArtemisFitResult | null; group?: AthenaGroup; projectId?: string; version?: number; pending?: boolean
+}) {
   const [space, setSpace] = useState<"k" | "r">("r")
   const [component, setComponent] = useState<"mag" | "re" | "im">("mag")
   const [showPaths, setShowPaths] = useState(false)
   const [offsetPlot, setOffsetPlot] = useState(false)
   const [offsetDraft, setOffsetDraft] = useState<{ result: ArtemisFitResult; space: "k" | "r"; component: "mag" | "re" | "im"; value: string } | null>(null)
   const [plotError, setPlotError] = useState(false)
-  const visible = !pending && result?.group_id === group?.id ? result : null
-  useEffect(() => { setPlotError(false) }, [visible, space, component, showPaths, offsetPlot])
-  const series = visible ? space === "k" ? { x: visible.k.x, data: visible.k.data, model: visible.k.model, residual: visible.k.residual }
-    : { x: visible.r.x, data: visible.r[`data_${component}`], model: visible.r[`model_${component}`], residual: visible.r[`residual_${component}`] } : null
-  const paths = visible?.paths ?? []
+  const [kWeight, setKWeight] = useState<number | null>(null)
+  const visible = !pending && result?.group_id === group?.id ? result ?? null : null
+  const weightedPlot = useArtemisPlotWeight({ projectId, version, result: visible, kWeight })
+  const plotted = weightedPlot.result
+  const plottedWeight = plotted?.k.weight ?? visible?.k.weight ?? 0
+  useEffect(() => { setPlotError(false) }, [visible, space, component, showPaths, offsetPlot, kWeight])
+  const series = plotted ? space === "k" ? { x: plotted.k.x, data: plotted.k.data, model: plotted.k.model, residual: plotted.k.residual }
+    : { x: plotted.r.x, data: plotted.r[`data_${component}`], model: plotted.r[`model_${component}`], residual: plotted.r[`residual_${component}`] } : null
+  const paths = plotted?.paths ?? []
   const pathCurves = paths.map(path => space === "k" ? path.k?.chi : path.r?.[component])
   const pathsAvailable = paths.length > 0 && pathCurves.every(values => Array.isArray(values) && values.length === series?.x.length && values.every(Number.isFinite))
   const pathsShown = showPaths && pathsAvailable
@@ -39,7 +47,7 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
     return Math.max(span, high - low)
   }, 0)
   const automaticSpacing = largestSpan > 0 && Number.isFinite(largestSpan * 1.15) ? Number((largestSpan * 1.15).toPrecision(4)) : 1
-  const offsetText = offsetDraft && offsetDraft.result === visible && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
+  const offsetText = offsetDraft && offsetDraft.result === plotted && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
   const validSpacing = offsetText.trim() !== "" && Number.isFinite(Number(offsetText)) && Number(offsetText) >= 0 && Number(offsetText) <= Number.MAX_VALUE / Math.max(curves.length, 1)
   const spacing = validSpacing ? Number(offsetText) : automaticSpacing
   const traces = series ? curves.map(curve => {
@@ -64,33 +72,38 @@ export function ArtemisFitResultViewer({ result, group, pending = false }: { res
       {visible && <p className={styles.resultSummary}>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</p>}
       <div id="artemis-fit-plot" className={styles.plot}>
         {!visible || !series ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : "Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model."}</p>
+          : weightedPlot.loading ? <p className={styles.empty} role="status">Updating fit plot transform…</p>
+          : weightedPlot.error ? <div className={styles.empty} role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
           : plotError ? <p className={styles.empty} role="alert">Could not render the fit plot. The numerical results and report remain available below.</p>
             : <Plot data={traces}
               layout={{ autosize: true, margin: { l: 65, r: 22, t: 18, b: 56 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
                 font: { color: "#52665b" },
                 xaxis: { title: { text: space === "k" ? "k (Å⁻¹)" : "R (Å, not phase corrected)" }, gridcolor: "#e6ece4", ...(space === "r" ? { range: [0, Math.max(6, visible.transform.rmax + 1)] } : {}) },
-                yaxis: { title: { text: (space === "k" ? `k<sup>${visible.k.weight}</sup>χ(k) (Å<sup>−${visible.k.weight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${visible.k.weight + 1}</sup>)`) + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
-                legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24, ...(pathsShown ? { entrywidth: 0.49, entrywidthmode: "fraction" } : {}) }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}`,
+                yaxis: { title: { text: (space === "k" ? `k<sup>${plottedWeight}</sup>χ(k) (Å<sup>−${plottedWeight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${plottedWeight + 1}</sup>)`) + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
+                legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24, ...(pathsShown ? { entrywidth: 0.49, entrywidthmode: "fraction" } : {}) }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
                 shapes: [{ type: "rect", xref: "x", yref: "paper", x0: space === "k" ? visible.transform.kmin : visible.transform.rmin,
                   x1: space === "k" ? visible.transform.kmax : visible.transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }],
-              }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-fit-${space}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}
+              }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-fit-${space}-k${plottedWeight}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}
       </div>
       {visible && <ViewerDisplayControls label="Fit plot display options">
         <ViewerControlGroup>
           <ViewerToggle label="Offset plot" checked={offsetPlot} onChange={setOffsetPlot} />
           {offsetPlot && <>
             <ViewerControlField label="Spacing"><input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
-              onChange={event => setOffsetDraft({ result: visible, space, component, value: event.target.value })} /></ViewerControlField>
+              onChange={event => setOffsetDraft({ result: plotted!, space, component, value: event.target.value })} /></ViewerControlField>
             <button type="button" onClick={() => setOffsetDraft(null)} title="Use automatic spacing for the visible curves">Auto</button>
           </>}
         </ViewerControlGroup>
         <ViewerControlGroup>
+          <ViewerKWeightControl label="EXAFS fit k-weight" value={kWeight} savedWeight={visible.k.weight}
+            onChange={setKWeight} disabled={!projectId || version === undefined} />
           <ViewerToggle label="Show paths" checked={pathsShown} disabled={!pathsAvailable} onChange={setShowPaths} title={pathsAvailable ? "Display the individual FEFF paths evaluated at the fitted parameters." : "Run the fit again to include individual path curves in its results."} />
           {!pathsAvailable && <span className={styles.optionHint}>Run the fit again to include path curves.</span>}
         </ViewerControlGroup>
         {offsetPlot && !validSpacing && <span className={styles.optionHint} role="status">Enter a finite, nonnegative spacing. Automatic spacing is shown until the value is valid.</span>}
       </ViewerDisplayControls>}
-      {visible && <p className={styles.plotNote}>{space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {visible.k.weight}; fit weights {visible.transform.kweight.join(", ")}.</p>}
+      {visible && !weightedPlot.loading && !weightedPlot.error && <p className={styles.plotNote}>{space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {plottedWeight}; fit weights {visible.transform.kweight.join(", ")}.</p>}
+      {weightedPlot.warnings.length > 0 && <ul className={styles.warnings}>{weightedPlot.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
     </ResizablePlotCard>
     {visible && <div className={styles.results}>
       {!visible.success && <p className={styles.error} role="alert">Fit did not converge: {visible.message}</p>}

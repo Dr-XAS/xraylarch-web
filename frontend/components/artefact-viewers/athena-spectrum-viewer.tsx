@@ -9,6 +9,7 @@ import { AthenaColorLegend } from "./athena-color-legend"
 import { automaticPlotRange } from "./athena-plot-range"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
+import { ViewerKWeightControl } from "./viewer-kweight-control"
 import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls, ViewerToggle } from "./viewer-display-controls"
 import type { useAthenaPlotWeight } from "./athena-plot-weight"
 import type { useSpectrumViewerState } from "./athena-spectrum-viewer-state"
@@ -46,7 +47,8 @@ interface Props {
   active?: AthenaGroup
   analysis: Analysis | null
   analysisVisible: boolean
-  viewerKWeight: number | null
+  savedKWeight: number | null
+  canChangeKWeight: boolean
   draftE0: number | null
   pickPrompt?: ReactNode
   onChangeSpace: (space: Space) => void
@@ -58,9 +60,9 @@ interface Props {
 
 /** Shared panel for independent current-spectrum and marked-spectrum views. */
 export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, analysis,
-  analysisVisible: showingAnalysis, viewerKWeight, draftE0, pickPrompt,
+  analysisVisible: showingAnalysis, savedKWeight, canChangeKWeight, draftE0, pickPrompt,
   onChangeSpace, onSpecialPlot, onOptionsMenuOpen, onPickX, onExport }: Props) {
-  const { space, energyMode, setEnergyMode, component, setComponent, plotScope,
+  const { space, kWeight: viewerKWeight, setKWeight, energyMode, setEnergyMode, component, setComponent, plotScope,
     background, setBackground, preEdge, setPreEdge, postEdge, setPostEdge,
     showWindow, setShowWindow, showLegend, setShowLegend, showGrid, setShowGrid,
     showDataPoints, setShowDataPoints, plotColors, setPlotColors, offset, setOffset,
@@ -80,7 +82,9 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
   const absoluteRangeValue = (value: number | null) => energyRangeValue(value, draftE0, relativeRange, 1)
   return <ViewerPanel title={viewerLabels[viewer]} viewerId={viewer}><ResizablePlotCard storageKey={`athena.plot.${viewer}.height.v1`} resizeLabel={`Resize ${viewer === "single" ? "single spectrum" : "multiple spectra"} plot height`} controlsId={`athena-${viewer}-spectrum-viewer`}><div className="ath-plot-top"><div className="ath-space-tabs" role="tablist" aria-label="Plot space">{(["E", "k", "R", "q"] as Space[]).map(s => <button key={s} role="tab" aria-selected={space === s && !showingAnalysis} onContextMenu={event => { event.preventDefault(); onSpecialPlot?.(s) }} title="Right-click for Athena’s special plot" onClick={() => onChangeSpace(s)}><b>{s}</b><span>{{ E: "Energy", k: "EXAFS", R: "Fourier", q: "Back transform" }[s]}</span></button>)}</div></div>
         {plotScope === "selected" && <div className="ath-plot-scope"><span className="ath-plot-scope-note">{selectedGroups.length} checked {selectedGroups.length === 1 ? "group" : "groups"}</span></div>}
-        <div className="ath-plot-controls">{space === "E" ? plotScope === "current" && <>
+        <div className="ath-plot-controls">
+        {space !== "E" && <ViewerKWeightControl label={`${viewer === "single" ? "Single spectrum" : "Multiple spectra"} k-weight`} value={viewerKWeight} savedWeight={savedKWeight} onChange={setKWeight} disabled={!canChangeKWeight || !selectedGroups.length || showingAnalysis} />}
+        {space === "E" ? plotScope === "current" && <>
           <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background</label>
           <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
           <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>

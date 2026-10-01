@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest"
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { useState } from "react"
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { athenaApi, type AthenaGroup, type Parameters } from "@/lib/athena"
 import { plotlyColorscale } from "@/lib/athena-colormaps"
@@ -81,7 +82,7 @@ describe("AthenaWavelet", () => {
   it("explains empty, unprocessed and failed spectra without calculating", async () => {
     const view = render(<AthenaWavelet kWeight={null} />)
     expect(screen.getByRole("status")).toHaveTextContent("Select a spectrum")
-    expect(screen.queryByLabelText("Wavelet k-weight")).not.toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Wavelet k-weight" })).toBeDisabled()
     view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={{ ...group(), result: null }} />)
     expect(screen.getByRole("status")).toHaveTextContent("require processed EXAFS")
     view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={{ ...group(), processing_error: "No edge" }} />)
@@ -113,7 +114,7 @@ describe("AthenaWavelet", () => {
     const colorGroup = screen.getByRole("group", { name: "Wavelet colors" })
     expect(palette).toHaveAttribute("title", "Magma · black–purple–yellow")
     fireEvent.click(palette)
-    expect(screen.getAllByRole("option")).toHaveLength(11)
+    expect(within(screen.getByRole("listbox", { name: "Wavelet color legend" })).getAllByRole("option")).toHaveLength(11)
     expect(screen.getByRole("listbox", { name: "Wavelet color legend" })).not.toHaveTextContent("Magma")
     expect(colorGroup).toHaveTextContent("Low")
     expect(colorGroup).toHaveTextContent("High")
@@ -201,6 +202,28 @@ describe("AthenaWavelet", () => {
     view.rerender(<AthenaWavelet kWeight={null} projectId="p" version={4} group={current} />)
     await calculate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 2, rmax: 6 })
+  })
+
+  it("changes wavelet weighting from its own panel control and restores the saved weight", async () => {
+    serve()
+    const current = group()
+    function Viewer() {
+      const [weight, setWeight] = useState<number | null>(null)
+      return <AthenaWavelet kWeight={weight} onKWeightChange={setWeight} projectId="p" version={4} group={current} />
+    }
+    render(<Viewer />)
+    await calculate()
+    const selector = screen.getByRole("combobox", { name: "Wavelet k-weight" })
+    expect(selector).toHaveValue("3")
+    fireEvent.change(selector, { target: { value: "0" } })
+    expect(screen.queryByTestId("wavelet-plot")).not.toBeInTheDocument()
+    await calculate()
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 0, rmax: 6 })
+    fireEvent.change(selector, { target: { value: "3" } })
+    await calculate()
+    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 4, kweight: 3, rmax: 6 })
+    expect(current.result!.effective.kweight).toBe(3)
+    expect(current.parameters.kweight).toBe(2)
   })
 
   it("retains the same grid and color range across combined, 2D and 3D views without recalculating", async () => {

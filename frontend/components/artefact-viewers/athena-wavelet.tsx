@@ -9,6 +9,7 @@ import { WaveletFigure, type WaveletViewMode } from "./athena-wavelet-viewer"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { AthenaColorLegendControl } from "./athena-color-legend-control"
 import { ViewerPanel } from "./viewer-panel"
+import { savedKWeight, ViewerKWeightControl } from "./viewer-kweight-control"
 import styles from "./athena-wavelet.module.css"
 
 export const athenaWaveletHeightKey = "athena.wavelet.height.v1"
@@ -43,6 +44,7 @@ interface Props {
   /** May stay stable only when a confirmed project update leaves scientific data unchanged. */
   dataVersion?: number
   kWeight: number | null
+  onKWeightChange?: (value: number | null) => void
   onComplete?: (projectId: string, groupId: string) => void
 }
 
@@ -70,15 +72,14 @@ function exportWavelet(data: WaveletResult) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight, onComplete }: Props) {
+export function AthenaWavelet({ projectId, version, dataVersion = version, group, pending = false, kWeight, onKWeightChange, onComplete }: Props) {
   const athenaApi = useAthenaApi()
   const [mode, setMode] = useState<WaveletViewMode>("both")
   const [colors, setColors] = useState<WaveletColorSettings>({ colormap: DEFAULT_COLORMAP, reversed: false })
   const [retry, setRetry] = useState(0)
   const [response, setResponse] = useState<{ key: string; abort: AbortController; data?: WaveletResult; error?: string } | null>(null)
   const arrays = group?.result?.arrays
-  const effectiveWeight = group?.result?.effective.kweight
-  const defaultWeight = typeof effectiveWeight === "number" ? effectiveWeight : group?.parameters.kweight ?? 2
+  const defaultWeight = savedKWeight(group ? [group] : []) ?? 2
   const selectedWeight = kWeight ?? defaultWeight
   const reason = !projectId || !group ? "Select a spectrum to explore its wavelet transform."
     : pending ? "Waiting for spectrum processing…"
@@ -137,6 +138,7 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
       resizeLabel="Resize wavelet plot height" controlsId="athena-wavelet-viewer">
       <div className={styles.controls}>
         <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
+        <ViewerKWeightControl label="Wavelet k-weight" value={kWeight} savedWeight={defaultWeight} onChange={value => onKWeightChange?.(value)} disabled={!projectId || !group || !onKWeightChange} />
         <WaveletColorLegend value={colors} onChange={setColors} />
         <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button>
       </div>

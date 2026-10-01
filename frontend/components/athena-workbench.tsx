@@ -30,6 +30,7 @@ import { ProjectCifViewer } from "./artefact-viewers/project-cif-viewer"
 import { FeffPathViewer, type FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import { orderViewers, viewerIds, viewerLabels, type ViewerId, type ViewerSort } from "@/lib/athena-viewer-order"
 import { useAthenaPlotWeight } from "./artefact-viewers/athena-plot-weight"
+import { savedKWeight } from "./artefact-viewers/viewer-kweight-control"
 import { useSpectrumViewerState } from "./artefact-viewers/athena-spectrum-viewer-state"
 import { AthenaProjectImport, type ProjectPreview } from "./athena-project-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
@@ -383,7 +384,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const firstViewerEvents = useRef(new Set<string>())
   const feffPathIds = useRef(new Map<string, string>())
   const seenFitResults = useRef(new Set<ArtemisFitResult>())
-  const [viewerKWeight, setViewerKWeight] = useState<number | null>(null)
+  const [waveletKWeight, setWaveletKWeight] = useState<number | null>(null)
   const [drafts, setDrafts] = useState<Record<string, Parameters>>({})
   const [autoApplyPlans, setAutoApplyPlans] = useState<Record<string, AutoApplyPlan>>({})
   const autoApplySerial = useRef(0)
@@ -582,25 +583,18 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }, [])
   const singleGroups = useMemo(() => active ? [active] : [], [active])
   const singleWeightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, dataVersion: plotDataVersion, groups: singleGroups,
-    kWeight: viewerKWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
+    kWeight: singleSpectrum.kWeight, space: analysisVisible ? "E" : space, pending: parameterUpdatePending || !!dirty })
   const multipleWeightedPlot = useAthenaPlotWeight({ projectId: can("plot") ? project?.id : undefined, version: project?.version, dataVersion: plotDataVersion, groups: marked,
-    kWeight: viewerKWeight, space: multipleSpectra.space, pending: parameterUpdatePending || !!dirty })
+    kWeight: multipleSpectra.kWeight, space: multipleSpectra.space, pending: parameterUpdatePending || !!dirty })
   const multipleDetectorOnly = marked.length > 0 && marked.every(group => group.data_type === "detector")
   const multipleEnergyMode = multipleDetectorOnly ? "mu" : multipleSpectra.energyMode
   const displayedSpectrumGroups = multipleWeightedPlot.loading || multipleWeightedPlot.error ? []
     : multipleWeightedPlot.groups.map((group, index) => ({ group, index }))
-      .filter(({ group }) => spectrumTraceCoordinates(group, multipleSpectra.space, multipleEnergyMode, multipleSpectra.component, viewerKWeight))
+      .filter(({ group }) => spectrumTraceCoordinates(group, multipleSpectra.space, multipleEnergyMode, multipleSpectra.component, multipleSpectra.kWeight))
   // Sidebar swatches follow the comparison viewer, including unavailable traces.
   const displayedColors = plotSpectrumColors(multipleWeightedPlot.groups.length, multipleSpectra.plotColors)
   const spectrumColors = new Map(displayedSpectrumGroups.map(({ group, index }) =>
     [group.id, plotColorForTheme(displayedColors[index], theme)]))
-  const savedPlotWeight = (group: AthenaGroup) => {
-    const effective = group.result?.effective.kweight
-    return typeof effective === "number" && Number.isFinite(effective) ? effective : group.parameters.kweight
-  }
-  const automaticWeights = [...new Set([...marked, ...singleGroups].map(savedPlotWeight))]
-  const savedViewerWeight = automaticWeights.length > 1 ? null : automaticWeights[0] ?? (active ? savedPlotWeight(active) : 2)
-  const displayedViewerWeight = viewerKWeight ?? savedViewerWeight ?? ""
   const parameterTargets = parameterTarget === "all" ? project?.groups ?? [] : parameterTarget === "marked" ? marked : active ? [active] : []
   const backgroundStandard = active ? standardDrafts[active.id] ?? active.background_standard_id ?? "" : ""
   const backgroundStandards = project?.groups.filter(g => g.id !== active?.id && !!g.result?.arrays.chi?.length) ?? []
@@ -612,7 +606,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const referenceE0 = parameters?.e0 ?? active?.result?.effective.e0
   const draftE0 = typeof referenceE0 === "number" && Number.isFinite(referenceE0) ? referenceE0 : null
   function pickContext(plotSpace = space, showAnalysis = analysisVisible) {
-    return JSON.stringify([project?.id, project?.version, active?.id, active?.frozen, plotSpace, showAnalysis, energyMode, component, plotScope, viewerKWeight, singleGroups.map(g => g.id), modal, busy, parameters])
+    return JSON.stringify([project?.id, project?.version, active?.id, active?.frozen, plotSpace, showAnalysis, energyMode, component, plotScope, singleSpectrum.kWeight, singleGroups.map(g => g.id), modal, busy, parameters])
   }
   const context = pickContext()
   const contextRef = useRef(context)
@@ -2038,7 +2032,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     return <AthenaSpectrumViewer viewer={viewer} state={state}
       weightedPlot={viewer === "single" ? singleWeightedPlot : multipleWeightedPlot}
       active={active} analysis={analysis} analysisVisible={viewer === "single" && analysisVisible}
-      viewerKWeight={viewerKWeight} draftE0={draftE0}
+      savedKWeight={savedKWeight(viewer === "single" ? singleGroups : marked)} canChangeKWeight={can("plot")} draftE0={draftE0}
       onChangeSpace={space => { if (viewer === "single") changeSpace(space); else { state.setSpace(space); state.setRange([null, null]) } }}
       onSpecialPlot={canOpen("special_plot") ? space => specialPlotShortcut(space, state.plotScope) : undefined}
       onOptionsMenuOpen={() => { setMenu(""); setContextMenu(null) }}
@@ -2085,16 +2079,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       spectrum={<section id="athena-spectrum-viewer" className="ath-center">
         <section className="ath-viewer-picker" aria-label="Results viewers">
           <div className="ath-viewer-picker-heading"><h3>Results</h3><div className="ath-viewer-tools">
-            <label className="ath-kweight-control" title="Shared k-weight for k, R, back-transform, and wavelet views. Choosing the saved weight follows each spectrum’s saved settings.">k-weight
-              <select aria-label="Viewer k-weight" value={displayedViewerWeight} disabled={!active || !can("plot")} onChange={event => {
-                const value = event.target.value === "" ? null : Number(event.target.value)
-                setViewerKWeight(value === savedViewerWeight ? null : value)
-              }}>
-                {savedViewerWeight === null && <option value="">Per spectrum</option>}
-                {typeof displayedViewerWeight === "number" && ![0, 1, 2, 3, 4].includes(displayedViewerWeight) && <option value={displayedViewerWeight}>{displayedViewerWeight}</option>}
-                {[0, 1, 2, 3, 4].map(weight => <option key={weight} value={weight}>{weight}</option>)}
-              </select>
-            </label>
             {active && <button className="ath-subtle" disabled={!canOpen("metadata")} onClick={() => openTool("metadata")} aria-label="Edit group information"><Settings2 size={16} /></button>}
           </div><label>Order <select aria-label="Sort viewers" value={viewerSort} onChange={event => setViewerSort(event.target.value as ViewerSort)}><option value="default">Default order</option><option value="process">Process order (this session)</option></select></label></div>
           <div className="ath-viewer-chips" role="group" aria-label="Choose viewers">
@@ -2116,13 +2100,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         {renderSpectrumViewer("single")}
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
         {analysis && <section className="ath-analysis-result"><header><h3>{toolTitles[analysis.kind]}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><p className="ath-hint">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</p><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
-        </> : viewer === "multiple" ? renderSpectrumViewer("multiple") : viewer === "wavelet" ? <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={viewerKWeight} pending={!!dirty || !!activeAutoApplyPlan} onComplete={(projectId, groupId) => { if (projectRef.current?.id === projectId && active?.id === groupId) recordViewerActivity("wavelet", projectId, groupId, true) }} />
+        </> : viewer === "multiple" ? renderSpectrumViewer("multiple") : viewer === "wavelet" ? <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={waveletKWeight} onKWeightChange={setWaveletKWeight} pending={!!dirty || !!activeAutoApplyPlan} onComplete={(projectId, groupId) => { if (projectRef.current?.id === projectId && active?.id === groupId) recordViewerActivity("wavelet", projectId, groupId, true) }} />
           : viewer === "cif" ? <ProjectCifViewer key={project?.id} attachments={project?.artemis_structures}
           selectedId={cifSelection?.projectId === project?.id ? cifSelection?.attachmentId : undefined}
           selectedSite={cifSelection?.projectId === project?.id ? cifSelection?.siteIndex : undefined}
           onSelect={(attachmentId, siteIndex) => setCifSelection({ projectId: project?.id, attachmentId, siteIndex })} />
           : viewer === "feff" ? <FeffPathViewer paths={currentFeffPaths} groupLabel={active?.label} onOpenModel={openFittingFromResults} attachments={project?.artemis_structures} />
-          : <ArtemisFitResultViewer group={active} pending={!!busy || !!dirty || parameterUpdatePending} result={currentFitResult} />}
+          : <ArtemisFitResultViewer projectId={can("plot") ? project?.id : undefined} version={project?.version} group={active} pending={!!busy || !!dirty || parameterUpdatePending} result={currentFitResult} />}
         </div>)}</div>
       </section>}
       processing={<aside id="athena-processing-parameters" className="ath-parameters"><div className="ath-panel-heading"><h2>{parameterTab === "processing" ? "Processing parameters" : "EXAFS fitting"}</h2><Settings2 size={16} /></div><AthenaParameterTabs tab={parameterTab} select={tab => { cancelPick(); setParameterTab(tab) }} processing={<>{!active ? <div className="ath-param-empty"><Settings2 size={30} strokeWidth={1} /><p>Parameters follow the selected group.</p><small>Import a spectrum to begin normalization and background removal.</small></div> : <><div className="ath-param-current"><span className="ath-green-dot" /><strong><ContextLabel label="Group parameters" open={event => showContext(event, { kind: "section", section: "group" })}>{active.label}</ContextLabel></strong><button aria-label={`Data type: ${dataTypeLabel(active)}`} title="Change data type; Ctrl+Alt+click toggles μ(E) / XANES while preserving normalization" disabled={!!busy} onClick={event => {
