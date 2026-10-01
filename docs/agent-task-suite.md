@@ -682,3 +682,75 @@ Nine questions were left open after the fifth run. These are the decisions taken
   Equivalence is scored per quantity with a tolerance, which is how the answer
   assertions are already written. See question 3.
 
+
+## Sixth run, 2026-10-01
+
+All five tasks on both interfaces: ten arms, the first run since AGENTS.md was slimmed
+and T4 reworded.
+
+The harness changed, so this run is a new baseline. Through the fifth run each arm was
+a subagent of the session that wrote the code, and it received a cached copy of
+AGENTS.md before it read the current one. Here each arm was a headless `claude -p`
+(Opus 5.5) in a fresh directory that held only the current AGENTS.md and a link to
+`backend/`. Each arm had its own `metered_app` backend and data root, and was allowed
+Bash, Read and Write. Context and tool-call counts are not comparable with earlier
+runs. Wire bytes and requests are.
+
+| arm | task | result | requests | wire bytes | tool calls | end context | wall | cost |
+|---|---|---|---|---|---|---|---|---|
+| CLI | T1 | pass | 10 | 28,758 | 4 | 37,088 | 38 s | $0.30 |
+| HTTP | T1 | pass | 5 | 15,546 | 3 | 43,568 | 37 s | $0.34 |
+| CLI | T2 | pass, spread 0.440 | 20 | 59,752 | 8 | 40,461 | 55 s | $0.39 |
+| HTTP | T2 | pass, spread 0.440 | 15 | 46,415 | 11 | 48,534 | 68 s | $0.51 |
+| CLI | T3 | pass, kmax 17 | 26 | 73,992 | 6 | 38,227 | 42 s | $0.33 |
+| HTTP | T3 | pass, kmax 17 | 19 | 62,377 | 9 | 53,596 | 56 s | $0.51 |
+| CLI | T4 | pass, ends 10134.3 eV | 28 | 84,755 | 10 | 43,116 | 70 s | $0.46 |
+| HTTP | T4 | pass, ends 10134.32 eV | 9 | 25,950 | 5 | 46,004 | 48 s | $0.40 |
+| CLI | T5 | pass, 2.547 ± 0.01 Å | 65 | 171,529 | 6 | 41,009 | 54 s | $0.36 |
+| HTTP | T5 | pass, 2.549 ± 0.005 Å | 29 | 71,052 | 7 | 48,740 | 55 s | $0.45 |
+
+Every arm passed both its state assertions and its answer. No command was rejected and
+no request drew a 4xx, including the 422s that the fifth run's HTTP T5 arm hit ten
+times. The ten arms cost $4.05 in all.
+
+**The slim guide did not cost the answers.** Without the copper numbers to quote,
+every arm read its facts off the tools. Both T1 arms named the 300 K scan with its E0
+offset (+2.92 eV), edge-step ratio (1.19), shorter range (10146 eV against 11362),
+and different beamline and year from the citations, and both saw that the shared
+reference is a copy of it. Both T3 arms chose kmax 17 from the `signal_to_noise`
+table, where the fifth run's arms had copied the guide's 18. Both said the 2.27 Å peak
+is not a bond length.
+
+**The reworded T4 works.** Both arms said the cut is unnecessary because the merge
+already keeps to the shared range, and that the point-count check drops the 300 K scan.
+Both turned `exclude_short_data` off, merged `norm` because the edge steps differ, and
+gave the end as 10134.3 eV. They differed only in scope. The CLI arm unlinked the 300 K
+scan, aligned it (−2.959 eV), found its E0 again, and previewed a second time to show
+the largest scatter falling from 0.20 to 0.035 of the range. The HTTP arm merged the
+scans as they were, reported the 3 eV offset, and offered to align and redo the merge.
+
+**The FEFF job paths were used.** Both HTTP arms that fitted (T3 and T5) named job
+paths as `{id, feff_job, feff_path}` and never sent a file's text. Each polled the job
+once under `?view=summary`. The HTTP T5 arm made 29 requests for 71 KB, where the fifth
+run's made 33 for 119 KB with ten refusals. The CLI T5 arm made 65 for 172 KB, where
+the fifth run's made 109 for 755 KB.
+
+**The CLI still runs FEFF once per `fit --structure`.** The CLI T5 arm called it six
+times to test kmin, kmax, R range, k weight and a held E0, and each call ran a new FEFF
+job on the same structure. `--vary` exists for exactly this, but it covers one change
+at a time against a shared baseline. Reusing a complete job for the same structure,
+absorber, site and radius would remove the reruns.
+
+**The CLI T5 arm fitted at k 3–12, the route's default**, because nobody had set the
+group's kmax. The CLI said where the range came from, and the arm then showed that
+moving kmax from 12 to 17 does not move r. Its uncertainty, ±0.01 Å, it placed in the
+E0–distance correlation (0.85–0.90), like the fifth run's arms.
+
+**One answer stated something false.** The CLI T5 arm added that the 10 K group's E0
+sits "about 3 eV lower than the other foils'". Only the 300 K scan's does, and the
+50 K scan's matches. The claim was an aside and does not affect the distance. The
+summary and the compare table it read were both correct.
+
+**Both T3 arms again fitted a distance they were not asked for**, 2.547–2.548 Å. The
+guide's line that peaks are not bond lengths is enough to send them to Artemis. That
+costs a FEFF job and about 30 KB, and is still left as is.
