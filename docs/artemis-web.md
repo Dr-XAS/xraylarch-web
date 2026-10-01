@@ -46,8 +46,8 @@ processed spectrum when its path list is empty. It attaches the same CIF and
 loads the model without changing the experimental spectrum. The paths include
 Cu–O and Cu–Cu scattering. Review the path parameters and fit ranges, then
 choose **Run EXAFS fit**; loading an example never runs a fit automatically.
-Fitting drafts stay in the workspace session; export model JSON to preserve
-an edited model after reload.
+Fitting drafts automatically save with their spectrum in the local project.
+Wait for **Saved** before reloading; a failed save offers **Retry saving model**.
 
 The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
 and up to four legs. The first four files in FEFF order are:
@@ -332,13 +332,16 @@ Plots use the first selected fit k weight; the optimizer uses all selected
 weights. Statistics, fitted parameter values, uncertainties, correlations,
 and the complete Larch report appear below the plot.
 
-Fitting runs when **Run EXAFS fit** is clicked. A successful request saves the
-model and its result in the selected local Athena group. **Save model to project**
-also saves incomplete drafts, including unfinished numeric fields and expressions.
+Model edits automatically save in the selected local Athena group, including
+incomplete numeric fields and expressions. The editor shows pending, saving,
+saved, and failed states. Failed saves retain the draft and offer a retry.
+Fitting runs only when **Run EXAFS fit** is clicked; a completed request saves
+the model and its result together.
 The saved model includes every FEFF file, path expression, parameter, transform
 setting, and FEFF input atom cluster used by the preview. Reloading the browser
-restores the saved model; unsaved edits remain in the current workspace session.
-A browser exit warning and project-download checks help prevent losing those edits.
+restores the saved model. Switching spectra retains drafts and their pending saves.
+Project downloads first flush all pending models in that project; a failed save
+stops the download. A browser exit warning protects edits still waiting to save.
 
 **Saved fit history** keeps up to 10 results per group, each with its own model,
 curves, statistics, report, timestamp, original project/group identity, and Larch
@@ -364,12 +367,25 @@ are never treated as a new local fit. The Artemis data lives in the web metadata
 sidecar of `.prj` files; desktop Athena does not offer this fitting editor, and
 resaving through software that drops that sidecar can discard the web fit history.
 
-**Export model JSON** remains available for standalone `artemis-web/v1` model
+**File → Export model JSON** remains available for standalone `artemis-web/v1` model
 exchange. It includes the current model and only includes a result when that model
 matches. **Download fit + model JSON** exports the selected history entry's own
 model and result together; **Download report** exports its Larch report.
-**Import model JSON** inspects the supplied FEFF files and loads an editable draft;
-save it to the project or run a new fit. This format is not a desktop `.fpj` file.
+**File → Import model JSON** inspects the supplied FEFF files and loads an editable
+draft, which also saves automatically. This format is not a desktop `.fpj` file.
+
+**File → Export Larix session (.larix)** exports the current spectrum and its
+saved model using Larch's native session format. It first saves pending edits,
+then includes the measured data, processed arrays, FEFF path data, fit parameters,
+and transform. Saved fit history remains in the web project. Export does not run a fit. Incomplete drafts can be kept in the web
+project, but must be completed before native model export. Desktop Artemis `.fpj`
+export is not yet available.
+
+Native session storage and Larix GUI controls have different capabilities. The
+export preserves the Larch model and reports any settings that the desktop GUI
+may change when rebuilding it. For example, the current Larix GUI does not offer
+k⁰ fitting. Review export notices before refitting in Larix; exporting a session
+does not establish that every GUI control supports the web model.
 
 This persistence applies to local Athena projects. Dr.XAS integration projects
 retain their existing fitting boundary; import into a local project to fit.

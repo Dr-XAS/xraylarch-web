@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 
 const ordinaryHeaders = ["content-type", "accept", "content-length"] as const
-const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version"] as const
+const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version", "x-artemis-export-warnings"] as const
 
 const anyMethod: ReadonlySet<string> = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
 

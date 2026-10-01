@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 import larch
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request, Response
 from pydantic import Field, ValidationError, field_validator, model_validator
 
 from .artemis import FitPath, FitRequest, PathInput, StrictModel, fit_group, inspect_path
@@ -363,6 +363,23 @@ def request_from_model(model, version):
 
 def build_persistence_router(store):
     router = APIRouter(tags=["Artemis project models"])
+
+    @router.get("/projects/{ident}/groups/{group_id}/export")
+    def export_model(ident: str, group_id: str, format: Literal["larix"] = "larix",
+                     version: int | None = Query(default=None, ge=0)):
+        from .artemis_export import export_larix
+
+        with store.storage.lock(ident):
+            project = local_project(store, ident)
+            if version is not None:
+                store.check(project, version)
+            source = copy.deepcopy(store.group(project, group_id))
+        content, warnings = export_larix(source, project["version"])
+        headers = {"Content-Disposition": f'attachment; filename="artemis-{group_id}.larix"',
+                   "Cache-Control": "no-store"}
+        if warnings:
+            headers["X-Artemis-Export-Warnings"] = json.dumps(warnings, ensure_ascii=True)
+        return Response(content=content, media_type="application/octet-stream", headers=headers)
 
     @router.post("/projects/{ident}/groups/{group_id}/model")
     def save_model(ident: str, group_id: str, request: SaveModelRequest = Depends(bounded_model_request)):

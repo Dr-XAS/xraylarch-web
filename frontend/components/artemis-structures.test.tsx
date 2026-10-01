@@ -134,7 +134,7 @@ describe("ArtemisStructures", () => {
     expect(screen.getByRole("button", { name: "Generate FEFF paths" })).toBeDisabled()
     expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
-    expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, amcsd_id: 13088 }, expect.any(AbortSignal))
+    expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, amcsd_id: 13088 })
     expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ id: "p", version: 2, artemis_structures: [attachment()] }))
     expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cif1", 3)
     expect(screen.getByRole("dialog")).toBeVisible()
@@ -146,7 +146,7 @@ describe("ArtemisStructures", () => {
     expect(api.mock.calls.at(-1)?.[1]).not.toHaveProperty("amcsd_id")
   })
 
-  it("blocks dismissal during attachment and ignores a late attachment after the context changes", async () => {
+  it("blocks dismissal during attachment and receives the committed project after the context changes", async () => {
     const onProjectChange = vi.fn(), onAddPaths = addPathsMock()
     const view = render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} />)
     await click("Search / attach CIF")
@@ -154,15 +154,14 @@ describe("ArtemisStructures", () => {
     const late = deferred<AthenaProject>()
     api.mockReturnValueOnce(late.promise)
     await click("Attach to project")
-    const signal = api.mock.calls.at(-1)?.[2]
+    expect(api.mock.calls.at(-1)?.[2]).toBeUndefined()
     expect(screen.getByRole("button", { name: "Close" })).toBeDisabled()
     fireEvent(screen.getByRole("dialog"), new Event("cancel", { cancelable: true }))
     expect(screen.getByRole("dialog")).toBeVisible()
     view.rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} onProjectChange={onProjectChange} />)
-    expect(signal?.aborted).toBe(true)
     savedAttachments = [attachment()]; savedVersion = 2
     await act(async () => { late.resolve(project()) })
-    expect(onProjectChange).not.toHaveBeenCalled()
+    expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ version: 2, artemis_structures: [attachment()] }))
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
   })
 

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { readFile } from "node:fs/promises"
 import type { AthenaProject } from "../../lib/athena"
 
 const cuprite = (project: AthenaProject) => project.groups.find(group => group.label === "Cu₂O · room temperature")!
@@ -23,25 +24,29 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   await page.getByLabel("Parameter 1 value", { exact: true }).fill("0.85")
   await page.getByLabel("Path 1 label", { exact: true }).fill("Cu–O saved model")
 
-  // Every project-download entry point must require saving the edited model first.
-  for (const label of ["Save Athena project (.prj)", "Save complete web project", "Save marked project (.prj)"]) {
-    await page.getByRole("button", { name: "File", exact: true }).click()
-    await page.getByRole("button", { name: label, exact: true }).click()
-    await expect(page.locator(".ath-error")).toContainText("Save your edited EXAFS models in the EXAFS fitting tab before downloading the project.")
-    await page.keyboard.press("Escape")
-    await page.getByRole("button", { name: "Dismiss error", exact: true }).click()
-  }
-  expect(exports).toEqual([])
-  const saving = page.waitForResponse(response => response.url().endsWith("/model") && response.request().method() === "POST")
-  await page.getByRole("button", { name: "Save model to project", exact: true }).click()
-  const savedResponse = await saving
-  expect(savedResponse.ok()).toBe(true)
-  const saved = await savedResponse.json() as AthenaProject
+  // An immediate project download flushes the latest model edits automatically.
+  expect(await page.getByRole("button", { name: "Save model to project", exact: true }).count()).toBe(0)
+  const projectDownload = page.waitForEvent("download")
+  await page.getByRole("button", { name: "File", exact: true }).click()
+  await page.getByRole("button", { name: "Save complete web project", exact: true }).click()
+  const jsonPath = info.outputPath("cuprite-autosaved.json")
+  await (await projectDownload).saveAs(jsonPath)
+  const saved = JSON.parse(await readFile(jsonPath, "utf8")) as AthenaProject
   const model = cuprite(saved).artemis!.model
   expect(model.paths).toHaveLength(4)
   expect(model.parameters[0].value).toBe("0.85")
   expect(model.paths[0].metadata.viewerCluster?.atoms.length).toBeGreaterThan(5)
   expect(cuprite(saved).artemis!.history).toEqual([])
+  expect(fits).toEqual([])
+
+  const larixDownload = page.waitForEvent("download")
+  await page.getByRole("button", { name: "File", exact: true }).click()
+  await page.getByRole("button", { name: "Export Larix session (.larix)", exact: true }).click()
+  const larixPath = info.outputPath("cuprite.larix")
+  await (await larixDownload).saveAs(larixPath)
+  const sessionBytes = await readFile(larixPath)
+  expect(sessionBytes.subarray(0, 2).toString("hex")).toBe("1f8b")
+  expect(sessionBytes.length).toBeGreaterThan(1000)
   expect(fits).toEqual([])
 
   await page.reload()
@@ -116,4 +121,32 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   await expect(viewer.getByText(/Outdated input: this spectrum has changed/)).toBeVisible()
   expect(fits).toHaveLength(1)
   expect(errors).toEqual([])
+})
+
+test("unfinished model edits autosave across spectrum and tab switches", async ({ page }) => {
+  const fits: string[] = []
+  page.on("request", request => { if (/\/fit(?:-saved)?$/.test(request.url())) fits.push(request.url()) })
+  await page.setViewportSize({ width: 1600, height: 1100 })
+  await page.goto("/")
+  const examples = page.waitForResponse(response => response.url().endsWith("/command") && response.request().postDataJSON().action === "example")
+  await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
+  const project = await (await examples).json() as AthenaProject
+  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
+  await expect(page.getByLabel("Parameter 1 value", { exact: true })).toBeVisible()
+  const saving = page.waitForResponse(response => response.url().endsWith("/model") && response.request().postDataJSON().model.parameters[0].value === "-")
+  await page.getByLabel("Parameter 1 value", { exact: true }).fill("-")
+  await page.getByRole("tab", { name: "Processing", exact: true }).click()
+  await page.locator(".ath-group-select").first().click()
+  expect((await saving).ok()).toBe(true)
+  const stored = await (await page.request.get(`/api/backend/api/athena/projects/${project.id}`)).json() as AthenaProject
+  expect(cuprite(stored).artemis!.model.parameters[0].value).toBe("-")
+  expect(cuprite(stored).artemis!.history).toEqual([])
+  await page.reload()
+  await page.locator(".ath-group-select").filter({ hasText: "Cu₂O · room temperature" }).last().click()
+  await page.getByRole("tab", { name: "EXAFS fitting", exact: true }).click()
+  await expect(page.getByLabel("Parameter 1 value", { exact: true })).toHaveValue("-")
+  await page.getByRole("button", { name: "File", exact: true }).click()
+  await page.getByRole("button", { name: "Export Larix session (.larix)", exact: true }).click()
+  await expect(page.locator(".ath-error")).toContainText("Complete the model")
+  expect(fits).toEqual([])
 })
