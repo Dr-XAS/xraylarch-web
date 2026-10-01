@@ -209,7 +209,11 @@ by reference, `{id, feff_job, feff_path: "feff0001"}`. Paths come from:
   Send its `paths` (each with an `id` added and `metadata` removed), `parameters` and
   `transform`.
 - FEFF on a bundled structure. `GET /api/artemis/structures?q=copper&element=Cu`
-  searches them, `GET /api/artemis/structures/{amcsd_id}` lists the sites, and `POST
+  searches them, each result with its `cell` and `measured_at`: the temperature (K)
+  and pressure (GPa) its title states, null where it states none. Pick an entry
+  measured near your sample's conditions; the fit's `del_r` absorbs a small
+  mismatch, but not a different phase. `GET /api/artemis/structures/{amcsd_id}` lists
+  the sites, and `POST
   /api/artemis/feff/jobs` with `{amcsd_id, absorber, site_index, path_radius}` runs
   FEFF in about a second. `site_index` counts from 1. Poll `GET
   .../feff/jobs/{job}?view=summary` until `status` is `complete`, then name its

@@ -109,6 +109,8 @@ def test_the_cli_refuses_a_fit_it_cannot_build(cli, argv, message):
 def test_structures_lists_what_fit_can_use(cli):
     out = cli("structures", "copper", "--element", "Cu")
     assert "11145" in out and "Copper" in out
+    row = next(line for line in out.splitlines() if line.startswith("13088"))
+    assert "3.6300" in row and "577 K" in row, "the cell and the temperature it was measured at"
 
 
 def test_a_fit_that_does_not_describe_the_data_says_so(http, run, cli):

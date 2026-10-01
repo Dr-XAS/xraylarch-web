@@ -890,10 +890,23 @@ def command_structures(client, args):
     found = client.get("/structures", api="artemis",
                        params={"q": " ".join(args.query), "element": args.element or "", "limit": args.limit})
     rows = [[str(row["id"]), (row.get("mineral") or "")[:24], row.get("formula") or "",
-             row.get("space_group") or "", str(row.get("year") or ""),
+             row.get("space_group") or "", _number((row.get("cell") or {}).get("a"), 4),
+             _measured(row.get("measured_at") or {}), str(row.get("year") or ""),
              " ".join((row.get("title") or "").split())[:60]] for row in found["results"]]
-    text = _table(rows, ["AMCSD", "MINERAL", "FORMULA", "GROUP", "YEAR", "TITLE"])
-    return found, f"{text}\n{found['source']}" if rows else f"No structure matches. {found['source']}"
+    text = _table(rows, ["AMCSD", "MINERAL", "FORMULA", "GROUP", "A", "MEASURED", "YEAR", "TITLE"])
+    note = ("MEASURED is what the entry's title states; '-' means it states nothing, which "
+            "usually but not always means room temperature and pressure.")
+    return found, f"{text}\n{note}\n{found['source']}" if rows else f"No structure matches. {found['source']}"
+
+
+def _measured(conditions: dict) -> str:
+    """'577 K', '22 GPa 1400 K', '?' when the title gives two, '-' when it gives none."""
+    parts = []
+    if conditions.get("pressure_gpa") is not None:
+        parts.append(f"{conditions['pressure_gpa']:g} GPa")
+    if conditions.get("temperature_k") is not None:
+        parts.append(f"{conditions['temperature_k']:g} K")
+    return " ".join(parts) or ("?" if conditions.get("stated") else "-")
 
 
 def command_export(client, args):

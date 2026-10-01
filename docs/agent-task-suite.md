@@ -780,3 +780,14 @@ k 3–16, found the del_e0/del_r correlation (0.85–0.86) to be what limits the
 and checked the result against copper's lattice constant. Neither stated anything
 false. The CLI arm chose its kmax itself, with `-t`, rather than taking the route's
 k 3–12.
+
+After this run, the fifth run's last open item was fixed. Structure search results now
+carry each entry's `cell`, and `measured_at`: the temperature in K and pressure in GPa
+that the entry's title states. AMCSD has no column for these, but about one title in
+five gives them as "Sample: at T = 577 K" or "Note: P = 5.2 GPa". Values from sample
+history, such as "synthesized at" or "after heating to", are skipped, and a title
+that states two different values gives neither but keeps its words in `stated`. The
+field is left out of `GET /structures/{id}`, because a project saves that reply as a
+strict attachment snapshot. `larchctl structures` prints `A` and `MEASURED` columns,
+so the copper series from 293 K to 1343 K no longer looks like eleven copies of one
+structure.

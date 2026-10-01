@@ -319,3 +319,39 @@ def test_a_reused_job_answers_200_and_says_so_in_its_summary(tmp_path, monkeypat
         assert summary.json()["paths"][0]["id"] == "feff0001"
         polled = client.get(f"/api/artemis/feff/jobs/{'c' * 32}", params={"view": "summary"}).json()
         assert polled["status"] == "complete" and "reused" not in polled
+
+
+@pytest.mark.parametrize("title, temperature, pressure", [
+    ("Sample: at T = 577 K", 577.0, None),
+    ("Sample: at T = 18 C", 291.15, None),
+    ("T = 25 deg C", 298.15, None),
+    ("Note: P = 5.2 GPa", None, 5.2),
+    ("P = 15 kbar", None, 1.5),
+    ("Note: gamma iron, Sample M1, P = 22 GPa, T = 1400 K", 1400.0, 22.0),
+    ("Sample: preparation T = 900 C", None, None),
+    ("Note: at room T after heating to T = 900 K", None, None),
+    ("compounds TPnCh (T = Ni, Pd; Pn = P, As, Sb)", None, None),
+    ("Sample: T = 10 K\nNote: T = 300 K", None, None),
+    ("Second edition. Interscience Publishers", None, None),
+])
+def test_a_title_says_where_its_structure_was_measured(title, temperature, pressure):
+    measured = structures._measured_at(title)
+    assert measured["temperature_k"] == temperature and measured["pressure_gpa"] == pressure
+
+
+def test_two_temperatures_give_neither_but_keep_the_words():
+    assert structures._measured_at("Sample: T = 10 K\nNote: T = 300 K")["stated"] == "Sample: T = 10 K; Note: T = 300 K"
+
+
+def test_search_results_carry_the_cell_and_conditions():
+    rows = {row["id"]: row for row in search_structures("copper", element="Cu")["results"]}
+    assert rows[13088]["cell"]["a"] == 3.63 and rows[13088]["measured_at"]["temperature_k"] == 577
+    assert rows[11145]["measured_at"] == dict(temperature_k=None, pressure_gpa=None, stated=None)
+    assert "measured_at" not in structure_details(13088), "a project saves this reply as a strict snapshot"
+
+
+def test_every_bundled_cell_reads_as_numbers():
+    with structures._connection() as connection:
+        rows = connection.execute(structures._SELECT).fetchall()
+    cells = [structures._summary(row)["cell"] for row in rows]
+    assert len(cells) > 9000 and all(isinstance(value, float) for cell in cells for value in cell.values())

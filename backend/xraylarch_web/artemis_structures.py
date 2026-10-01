@@ -50,7 +50,7 @@ _JOB_ID = re.compile(r"^[0-9a-f]{32}$")
 # leaves it an hour of its 24 for the fit that names its paths.
 _REUSE_SECONDS = 23 * 3600
 _SELECT = """SELECT c.id, m.name AS mineral, c.formula, s.hm_notation AS space_group,
- p.year, p.journalname AS journal, c.pub_title AS title,
+ c.a, c.b, c.c, c.alpha, c.beta, c.gamma, p.year, p.journalname AS journal, c.pub_title AS title,
  (SELECT group_concat(a.name, ', ') FROM authors a JOIN publication_authors pa
   ON pa.author_id=a.id WHERE pa.publication_id=p.id) AS authors
  FROM cif c JOIN minerals m ON m.id=c.mineral_id
@@ -85,8 +85,56 @@ def _element(value):
     return value
 
 
+# AMCSD has no column for the conditions a structure was measured at. Its
+# titles carry them in free text instead, as "Sample: at T = 577 K" or "Note:
+# P = 5.2 GPa", in about one entry in five.
+_CONDITION = re.compile(r"\b([TP])\s*=\s*(-?\d+(?:\.\d+)?)\s*(K|GPa|MPa|kPa|kbar|bar|atm|(?:deg\.?\s*|°\s*)?C)\b")
+_HISTORY = re.compile(r"prepar|synthes|anneal|quench|heating to|heated to|grown", re.I)
+_GPA = {"GPa": 1.0, "MPa": 1e-3, "kPa": 1e-6, "kbar": 0.1, "bar": 1e-4, "atm": 1.01325e-4}
+
+
+def _measured_at(title: str) -> dict:
+    """The temperature and pressure an entry's title states, in K and GPa.
+
+    A value read from sample history ("synthesized at", "after heating to") is
+    not where the structure was measured, so it is skipped. A title that states
+    two different values gives neither, and `stated` keeps its words.
+    """
+    temperatures, pressures, stated = set(), set(), []
+    for line in (title or "").splitlines():
+        found = False
+        for match in _CONDITION.finditer(line):
+            if _HISTORY.search(line[:match.start()]):
+                continue
+            kind, value, unit = match.group(1), float(match.group(2)), match.group(3)
+            if kind == "T" and unit == "K":
+                temperatures.add(round(value, 2))
+            elif kind == "T" and unit.endswith("C"):
+                temperatures.add(round(value + 273.15, 2))
+            elif kind == "P" and unit in _GPA:
+                pressures.add(round(value * _GPA[unit], 6))
+            else:
+                continue
+            found = True
+        if found:
+            stated.append(line.strip())
+    return dict(temperature_k=temperatures.pop() if len(temperatures) == 1 else None,
+                pressure_gpa=pressures.pop() if len(pressures) == 1 else None,
+                stated="; ".join(stated) or None)
+
+
+def _cell_value(text):
+    """A cell length or angle as AMCSD stores it, as text, in a few entries with
+    a decimal comma or a stray trailing one."""
+    try:
+        return float(str(text).strip().rstrip(",").replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
 def _summary(row):
     result = dict(row)
+    result["cell"] = {key: _cell_value(result.pop(key)) for key in ("a", "b", "c", "alpha", "beta", "gamma")}
     if result["mineral"] in (None, "", "<missing>"):
         result["mineral"] = result["formula"] or "Unnamed structure"
     for key in ("formula", "space_group", "authors", "journal", "title"):
@@ -122,7 +170,10 @@ def search_structures(query: str = "", element: str = "", limit: int = 25):
           WHEN m.name LIKE ? ESCAPE '\\' THEN 3 WHEN replace(c.formula, ' ', '') LIKE ? ESCAPE '\\' THEN 4
           ELSE 5 END, m.name, c.id LIMIT ?"""
         rows = connection.execute(_SELECT + where + ranking, args + [query, compact, literal + "%", "%" + literal + "%", "%" + compact_literal + "%", limit + 1]).fetchall()
-    return dict(query=query, source=_SOURCE, results=[_summary(row) for row in rows[:limit]],
+    # measured_at stays out of structure_details, whose reply a project saves as
+    # a strict attachment snapshot; the title it is read from is saved there.
+    results = [_summary(row) | dict(measured_at=_measured_at(row["title"] or "")) for row in rows[:limit]]
+    return dict(query=query, source=_SOURCE, results=results,
                 count=min(limit, len(rows)), limited=len(rows) > limit)
 
 
