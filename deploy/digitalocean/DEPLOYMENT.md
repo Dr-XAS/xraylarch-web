@@ -3,7 +3,7 @@
 > Pre-rollout record: the release revision and verification results below
 > describe the instance that was live immediately before this master sync. The
 > source branch has since been synchronized through `origin/master` at
-> `ff6399e18615acb82437c5c8d9136b6625a43308`; deploy and verify the local
+> `6d513201544535a5ee399cb9ecfd03c132df4eae`; deploy and verify the local
 > commit before replacing the historical values in this file.
 
 - Public URL: https://larch-web.dr-xas.org
