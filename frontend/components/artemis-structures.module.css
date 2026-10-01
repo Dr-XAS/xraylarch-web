@@ -1,9 +1,13 @@
 .panel { margin: 0 0 18px; padding: 10px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 5px; background: var(--ath-canvas, #f5f8f5); }
 .panel .openButton { width: 100%; min-height: 34px; }
 .attachedList { list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow-y: auto; overscroll-behavior: contain; }
-.attachedList li { display: flex; align-items: center; gap: 10px; justify-content: space-between; padding: 7px 0; }
+.attachedList li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; justify-content: space-between; padding: 7px 0; }
 .attachedList li + li { border-top: 1px solid var(--ath-line, #dce5dc); }
-.attachedList span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.attachmentInfo { display: flex; flex: 1 1 100px; flex-direction: column; gap: 3px; min-width: 0; }
+.attachedActions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.panel button.removeButton { min-height: 32px; padding: 5px 9px; border-color: var(--ath-error-line, #e9c8b4); background: var(--ath-error-bg, #fff1ec); color: var(--ath-error-ink, #9c3425); }
+.panel button.removeButton:not(:disabled):hover { border-color: var(--ath-error-ink, #9c3425); background: var(--ath-error-bg, #fff1ec); }
+.removeButton svg { flex-shrink: 0; }
 .attachedList strong { font-size: var(--text-body); font-weight: 500; overflow-wrap: anywhere; }
 .attachedList small { font-size: var(--text-caption); color: var(--ath-muted, #647669); }
 .dialog { display: none; width: min(940px, calc(100vw - 36px)); max-width: none; max-height: min(90dvh, 920px); padding: 0; margin: auto; border: 1px solid var(--ath-line, #dce5dc); border-radius: 9px; background: var(--ath-popover, #fff); color: var(--ath-ink, #24362c); box-shadow: 0 20px 70px #14241b40; }
@@ -21,6 +25,8 @@
 .placeholder { padding: 24px 10px; color: var(--ath-muted, #647669); text-align: center; font-size: var(--text-body); line-height: var(--leading-body); }
 .savedStructures { margin-top: 18px; border-top: 1px solid var(--ath-line, #dce5dc); }
 .savedStructures h4 { font-size: var(--text-section); font-weight: 500; line-height: var(--leading-heading); }
+.savedStructureRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
+.panel .savedStructureRow button.result { flex: 1 1 130px; width: auto; min-width: 0; margin: 0; }
 .panel button.attachButton { background: var(--ath-primary, #268553); color: var(--ath-primary-foreground); border-color: var(--ath-primary, #268553); padding: 8px 12px; }
 .panel button.attachButton:not(:disabled):hover { background: var(--ath-attach-hover, #216940); color: var(--ath-primary-foreground); }
 .help, .source, .citation { color: var(--ath-muted, #647669); font-size: var(--text-caption); line-height: var(--leading-body); margin: 7px 0; overflow-wrap: anywhere; }

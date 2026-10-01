@@ -8,6 +8,8 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from test_artemis import model, spectrum
+from test_artemis_persistence import draft
 from xraylarch_web import artemis_attachments as attachments
 from xraylarch_web import artemis_structures as structures
 from xraylarch_web.artemis_attachments import AttachRequest, attach_structure, validate_attachments
@@ -24,6 +26,114 @@ def store(tmp_path):
 
 def attach(store, project, ident=13088):
     return attach_structure(store, project["id"], AttachRequest(version=project["version"], amcsd_id=ident))
+
+
+@pytest.fixture
+def fitted_project(store, model, spectrum):
+    old = store.create()
+    project = copy.deepcopy(old)
+    project["groups"].append(store.make_group("Copper", spectrum["result"]["arrays"]["k"],
+                                              spectrum["result"]["arrays"]["chi"], data_type="chi"))
+    project = store.save(project, old, "Imported synthetic reference")
+    project = attach(store, project)
+    project = attach(store, project, 9994)
+    with TestClient(create_app(store.settings)) as client:
+        response = client.post(f"/api/artemis/projects/{project['id']}/groups/{project['groups'][0]['id']}/fit-saved",
+                               json=dict(version=project["version"], model=draft(model)))
+        assert response.status_code == 200, response.text
+        return response.json()["project"]
+
+
+def remove(client, project, attachment_id):
+    response = client.post(f"/api/artemis/projects/{project['id']}/structures/{attachment_id}/remove",
+                           json=dict(version=project["version"]))
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_remove_preserves_paths_and_history_and_is_persistent_and_undoable(store, fitted_project):
+    original = fitted_project
+    removed_id = original["artemis_structures"][0]["id"]
+    with TestClient(create_app(store.settings)) as client:
+        removed = remove(client, original, removed_id)
+        assert removed["version"] == original["version"] + 1
+        assert removed["groups"] == original["groups"]
+        assert removed["artemis_structures"] == original["artemis_structures"][1:]
+        assert AthenaStore(store.settings).load(original["id"]) == removed
+        response = client.get(f"/api/artemis/projects/{original['id']}/structures")
+        assert response.json()["structures"] == removed["artemis_structures"]
+        response = client.post("/api/artemis/feff/jobs", json=dict(project_id=original["id"],
+                               attachment_id=removed_id, version=removed["version"], absorber="Cu", site_index=1))
+        assert response.status_code == 400
+        assert response.json()["error"]["fields"] == ["attachment_id"]
+    undone = store.command(original["id"], Command(version=removed["version"], action="undo"))
+    assert undone["artemis_structures"] == original["artemis_structures"]
+    assert undone["groups"] == original["groups"]
+    redone = store.command(original["id"], Command(version=undone["version"], action="redo"))
+    assert redone["artemis_structures"] == removed["artemis_structures"]
+    assert redone["groups"] == original["groups"]
+
+
+@pytest.mark.parametrize("format", ["json", "prj"])
+def test_removing_all_cifs_keeps_feff_model_and_archives_in_project_exchange(store, fitted_project, format):
+    project = fitted_project
+    with TestClient(create_app(store.settings)) as client:
+        for attachment in fitted_project["artemis_structures"]:
+            project = remove(client, project, attachment["id"])
+    assert project["artemis_structures"] == []
+    output = store.export_project(project["id"], format)
+    restored = store.restore(store.create()["id"], 0, output, f"without-cifs.{format}")
+    assert restored.get("artemis_structures", []) == []
+    state = restored["groups"][0]["artemis"]
+    original = fitted_project["groups"][0]["artemis"]
+    assert state["model"] == original["model"]
+    assert state["current_input_sha256"] == original["current_input_sha256"]
+    assert state["history"] == [{**record, "imported": True} for record in original["history"]]
+
+
+def test_http_remove_rejects_stale_missing_and_foreign_attachments_atomically(store):
+    project = attach(store, store.create())
+    attachment_id = project["artemis_structures"][0]["id"]
+    foreign = attach(store, store.create())
+    endpoint = f"/api/artemis/projects/{project['id']}/structures"
+    with TestClient(create_app(store.settings)) as client:
+        response = client.post(f"{endpoint}/{attachment_id}/remove", json=dict(version=0))
+        assert response.status_code == 409
+        assert store.load(project["id"]) == project
+        for missing_id in ("missing-cif", foreign["artemis_structures"][0]["id"]):
+            response = client.post(f"{endpoint}/{missing_id}/remove", json=dict(version=project["version"]))
+            assert response.status_code == 400
+            assert response.json()["error"]["fields"] == ["attachment_id"]
+            assert store.load(project["id"]) == project
+        removed = remove(client, project, attachment_id)
+        response = client.post(f"{endpoint}/{attachment_id}/remove", json=dict(version=removed["version"]))
+        assert response.status_code == 400
+        assert store.load(project["id"]) == removed
+        assert store.load(foreign["id"]) == foreign
+
+
+@pytest.mark.parametrize("body", [{}, {"version": -1}, {"version": "1"}, {"version": True},
+                                  {"version": 1.0}, {"version": 1, "amcsd_id": 13088}])
+def test_http_remove_requires_a_strict_version_request(store, body):
+    project = attach(store, store.create())
+    attachment_id = project["artemis_structures"][0]["id"]
+    with TestClient(create_app(store.settings)) as client:
+        response = client.post(f"/api/artemis/projects/{project['id']}/structures/{attachment_id}/remove", json=body)
+    assert response.status_code == 422
+    assert store.load(project["id"]) == project
+
+
+def test_http_remove_denies_integration_drafts_without_changes(store):
+    project = attach(store, store.create())
+    project["integration"] = True
+    store.storage.write_json(project["id"], "project.json", project)
+    attachment_id = project["artemis_structures"][0]["id"]
+    with TestClient(create_app(store.settings)) as client:
+        response = client.post(f"/api/artemis/projects/{project['id']}/structures/{attachment_id}/remove",
+                               json=dict(version=project["version"]))
+    assert response.status_code == 400
+    assert response.json()["error"]["fields"] == ["project"]
+    assert store.load(project["id"]) == project
 
 
 def test_attach_is_persistent_idempotent_versioned_and_undoable(store):
