@@ -5993,12 +5993,12 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     await openSaved(project)
 
     expect(singleViewer().getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
-    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
+    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
     expect(singleViewer().getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
     expect(multipleViewer().getByRole('checkbox', { name: 'Show legend' })).toBeChecked()
     expect(plotProps('current')).toMatchObject({ plotScope: 'current', showLegend: false, energyMode: 'mu',
       background: count > 0, preEdge: count > 0, postEdge: count > 0 })
-    expect(plotProps()).toMatchObject({ plotScope: 'selected', showLegend: true, energyMode: 'norm',
+    expect(plotProps()).toMatchObject({ plotScope: 'selected', showLegend: true, energyMode: 'flat',
       background: false, preEdge: false, postEdge: false })
     for (const line of ['Background', 'Pre-edge line', 'Post-edge line']) {
       expect(singleViewer().getByRole('checkbox', { name: line })).toHaveProperty('checked', count > 0)
@@ -6057,7 +6057,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(plotProps('current').groups).toEqual([afterSecond.groups.at(-1)])
     expect(plotProps().groups).toEqual(afterSecond.groups.filter(g => g.marked))
     expect(plotProps('current')).toMatchObject({ energyMode: 'mu', showLegend: false })
-    expect(plotProps()).toMatchObject({ energyMode: 'norm', showLegend: true })
+    expect(plotProps()).toMatchObject({ energyMode: 'flat', showLegend: true })
   })
 
   it('leaves the multiple viewer empty with no marks while the single viewer follows the current spectrum', async () => {
@@ -6168,7 +6168,7 @@ it('lists every energy view directly above the plot and switches each plotted si
   expect(multipleViewer().queryByRole('combobox', { name: 'Energy plot' })).not.toBeInTheDocument()
   expect(multipleViewer().getByTestId('athena-plot').previousElementSibling).toBe(choices)
   expect(within(choices).getAllByRole('radio').map(radio => radio.getAttribute('value'))).toEqual(['mu', 'norm', 'flat', 'dmude', 'd2mude'])
-  expect(within(choices).getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
+  expect(within(choices).getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
   for (const [name, value] of [
     ['μ(E) · raw', 'mu'],
     ['μ(E) · normalized', 'norm'],
@@ -6199,8 +6199,8 @@ describe('Legacy detector records in the workbench', () => {
     selectGroup('Sample scan')
     expect(singleViewer().getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
     expect(plotProps('current').energyMode).toBe('mu')
-    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · normalized' })).toBeChecked()
-    expect(plotProps().energyMode).toBe('norm')
+    expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
+    expect(plotProps().energyMode).toBe('flat')
   })
   it('offers energy-type correction for a detector while retaining the three native destinations', async () => {
     const p = projectFixture(); p.groups[0].data_type = 'detector'; await openSaved(p)
