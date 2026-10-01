@@ -203,7 +203,7 @@ def test_invalid_import_edge_policy_is_rejected_before_mutation(client, xas_arra
 
 def test_example_api_all_four_spaces_and_exchange_files(client):
     p = example(client)
-    assert len(p["groups"]) == 4
+    assert len(p["groups"]) == 5
     assert [folder["name"] for folder in p["group_folders"]] == ["Temperature series", "reference"]
     assert all(g["processing_error"] is None for g in p["groups"])
     gid = p["groups"][0]["id"]
@@ -275,7 +275,7 @@ def test_transform_dialog_payloads_create_a_finite_derived_group(client, action,
     assert response.status_code == 200, response.text
     next = response.json()
     inplace = action in ('deglitch', 'truncate')
-    assert len(next["groups"]) == (4 if inplace else 5)
+    assert len(next["groups"]) == len(p["groups"]) + (0 if inplace else 1)
     if inplace:
         assert next['groups'][1:] == p['groups'][1:]
         assert next['groups'][0]['id'] == original['id']

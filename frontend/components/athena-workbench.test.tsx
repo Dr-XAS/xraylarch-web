@@ -971,8 +971,31 @@ describe("AthenaWorkbench measurement mode tags", () => {
     expect(within(fluoRow).getByText("fluo")).toHaveAttribute("data-tag", "fluo")
     expect(within(fluoRow).getByText("ref")).toHaveAttribute("title", "Reference")
     expect(within(fluoRow).getByText("ref")).toHaveAttribute("data-tag", "ref")
-    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref")).toHaveAttribute("title", "Reference")
+    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref · 1")).toHaveAttribute("title", "Reference for Transmission scan")
     expect(within(screen.getByRole("button", { name: /^Direct signal/ })).queryByText(/^(trans|fluo|ref)$/)).toBeNull()
+  })
+})
+
+describe("AthenaWorkbench reference navigation", () => {
+  it("revisits an already active foil and anchors range selection there without editing data", async () => {
+    const project = projectFixture()
+    project.groups.find(item => item.id === "sample")!.reference_id = "foil"
+    await openSaved(project)
+    const foil = screen.getByRole("button", { name: /^Foil scan/ })
+    const scroll = vi.fn()
+    Object.defineProperty(foil.closest(".ath-group"), "scrollIntoView", { value: scroll, configurable: true })
+    selectGroup("Sample scan")
+    const reference = screen.getByRole("button", { name: "View reference Foil scan for Sample scan" })
+    fireEvent.click(reference)
+    expect(foil).toHaveFocus()
+    fireEvent.click(reference)
+    expect(scroll).toHaveBeenCalledTimes(2)
+    expect(plotProps().active?.id).toBe("foil")
+
+    fireEvent.click(screen.getByRole("button", { name: /^Oxide standard/ }), { shiftKey: true })
+    expect(foil.closest(".ath-group")).toHaveAttribute("data-move-selected", "true")
+    expect(api).toHaveBeenCalledOnce()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
   })
 })
 
@@ -1166,7 +1189,7 @@ describe("AthenaWorkbench data group sorting", () => {
     expect(listedGroupIds()).toEqual(["trans", "sample", "fluo", "linked", "trans-ref", "plain"])
     expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("trans")).toBeVisible()
     expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("ref")).toBeVisible()
-    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref")).toBeVisible()
+    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref · 1")).toBeVisible()
     expect(api).toHaveBeenCalledTimes(1)
   })
 
@@ -1221,7 +1244,7 @@ describe("AthenaWorkbench data group folders", () => {
     const openProject = screen.getByRole("button", { name: "Open project" })
     expect(button.compareDocumentPosition(openProject) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(screen.queryByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).not.toBeInTheDocument()
-    expect(screen.getByText("Includes Cu₂O EXAFS setup")).toBeVisible()
+    expect(screen.getByText("Includes shared foil + Cu₂O EXAFS")).toBeVisible()
     expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
 
     const loaded = copperExampleProject(project)
