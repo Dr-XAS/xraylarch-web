@@ -157,6 +157,17 @@ def _check_t4(observed: Observed) -> list[Assertion]:
     ]
 
 
+def _check_t5(observed: Observed) -> list[Assertion]:
+    # A fit reads the group and saves nothing, so the right path leaves the
+    # project as it found it. Whatever was refused on the way is worth a look.
+    version = observed.summary["version"]
+    return [
+        Assertion("version unchanged", version == observed.setup["version"],
+                  f"{observed.setup['version']} -> {version}"),
+        _count(observed, EXAMPLE_GROUPS),
+    ]
+
+
 TASKS = {task.key: task for task in (
     Task("T1",
          "I have three copper foil scans taken at different temperatures. Before I do "
@@ -185,6 +196,12 @@ TASKS = {task.key: task for task in (
          "top end.",
          "States the energy it truncated at, within 15 eV of 10146.",
          _check_t4),
+    Task("T5",
+         "How far apart are the copper atoms in the 10 K foil? I need the nearest-neighbour "
+         "distance to a couple of hundredths of an angstrom, and how far to trust it.",
+         "Between 2.52 and 2.58 A, from a fit of FEFF paths (twelve Cu neighbours) rather "
+         "than the |chi(R)| peak near 2.30, with an uncertainty or a reason to doubt it.",
+         _check_t5),
 )}
 
 

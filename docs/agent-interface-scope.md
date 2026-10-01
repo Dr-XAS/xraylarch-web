@@ -308,16 +308,23 @@ codebase argue in the same words.
 Without this part, the work above is a nice API and proves nothing.
 
 - **A task suite.** Tasks phrased the way a user would phrase them, each with a
-  machine-checkable assertion on the final project state. Drafted, and run once against
-  the app-driving arm by hand: see `agent-task-suite.md`. Four tasks, all four passing,
-  and five interface defects found that no amount of further design would have surfaced.
+  machine-checkable assertion on the final project state: see `agent-task-suite.md`.
+  Five tasks. The first run was by hand; the third and fourth ran eight blind subagent
+  arms each, one CLI-only and one HTTP-only per task, and every run found interface
+  defects that no amount of further design would have surfaced.
 - **Two adapters** over one suite: native-tools Dr.XAS, app-driving Dr.XAS.
 - **Metrics**: task success, tokens in and out, turns, wall clock, invalid commands
   issued, errors recovered from without help, and a numerical equivalence check on the
   final arrays.
 
+The app-driving half of the harness exists: `backend/xraylarch_web/agent_suite.py`
+sets a fresh example project up behind a metering proxy, runs each task's state
+assertions with `report`, and totals requests and wire bytes up to the moment `finish`
+stamps. The native-tools adapter, and with it the comparison, does not exist yet.
+
 Fixtures are already here. `examples/xafsdata` holds the Cu foil series, and the
-`example` command action builds a three-group benchmark project in a single call.
+`example` command action builds the five-group benchmark project in a single call: the
+three foils, a Cu₂O reference, and the foils' shared reference.
 
 ## Sequencing
 
