@@ -329,7 +329,10 @@ test('imports transmission and fluorescence together across a shared real-Cu bat
       expect(group.source.mapping.denominator).toHaveLength(2)
       expect(group.source.mapping.invert).toBe(false)
     }
-    expect(group.processing_error).toBeNull()
+    // The deliberately inverted fluorescence signal has a descending edge.
+    // Preserve its measured values and report the invalid normalization.
+    if (index % 2) expect(group.processing_error).toContain('The fitted edge step is not positive')
+    else expect(group.processing_error).toBeNull()
     expect(group.energy).toEqual(preview[index % 2].x)
     expect(group.mu).toEqual(preview[index % 2].y)
   }
@@ -464,7 +467,7 @@ test("Flip swaps numerator and denominator checks while scale affects preview an
 test("switching to chi clears absorption transforms and keeps raw k values", async ({ page }) => {
   const panel = await openColumns(page)
   await panel.getByRole("spinbutton", { name: "Multiplicative constant", exact: true }).fill("3")
-  await panel.getByRole("combobox", { name: "Data type", exact: true }).selectOption("chi")
+  await panel.getByRole("combobox", { name: "Input format", exact: true }).selectOption("chi")
   await expect(panel.getByRole("combobox", { name: "Measurement", exact: true })).toHaveValue("mu")
   await expect(panel.getByRole("combobox", { name: "Measurement", exact: true })).toBeDisabled()
   await expect(panel.getByRole("button", { name: "Flip numerator and denominator", exact: true })).toBeDisabled()

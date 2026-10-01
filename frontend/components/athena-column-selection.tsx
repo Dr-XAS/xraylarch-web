@@ -2,8 +2,8 @@
 
 import { useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import type { InspectionResponse } from "@/lib/contracts"
-import { type AthenaGroup } from "@/lib/athena"
-import { numeratorRange, denominatorColumns, columnExpression, columnProblem, changeInputType, flipSignalColumns, initialColumnMapping, setDualMode, defaultPreprocessing, type ColumnMapping } from "@/lib/athena-import"
+import { energyProcessingSettings, type AthenaGroup } from "@/lib/athena"
+import { numeratorRange, denominatorColumns, columnExpression, columnProblem, changeInputType, changeImportProcessing, flipSignalColumns, initialColumnMapping, setDualMode, defaultPreprocessing, type ColumnMapping } from "@/lib/athena-import"
 import { AthenaImportPreview } from "./athena-import-preview"
 import { AthenaDownloadButton } from "./athena-download-button"
 import { AthenaImportPreprocessing } from "./athena-import-preprocessing"
@@ -38,6 +38,8 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
   const problem = columnProblem(mapping)
   const hasReference = !!(mapping.reference_numerator || mapping.reference_denominator)
   const dualMode = !!mapping.additional_fluorescence
+  const inputFormat = mapping.data_type === 'chi' || mapping.data_type === 'xmudat' ? mapping.data_type : 'mu'
+  const processing = energyProcessingSettings(mapping)
   return <>
     <div className={styles.importHeader}>
       <p className={styles.fileSummary}><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{remaining > 1 ? ` · ${remaining} files remaining` : ""}</span></p>
@@ -65,7 +67,7 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
               preprocessing: { ...defaultPreprocessing }, ...(m.rebin ? { rebin: { ...m.rebin, enabled: false, e0: null } } : {}) }, false, false))}>Use suggested columns</button>
           </section>}
           <div className="ath-fields">
-            <label className="ath-field"><span>Data type</span><select value={mapping.data_type} onChange={e => setMapping(m => changeInputType(m, e.target.value as ColumnMapping["data_type"]))}><option value="mu">μ(E) · absorption</option><option value="xanes">XANES · short energy range</option><option value="norm">Normalized μ(E)</option><option value="chi">χ(k) · extracted EXAFS</option><option value="xmudat">FEFF xmu.dat · normalized μ(E)</option></select></label>
+            <label className="ath-field"><span>Input format</span><select value={inputFormat} onChange={e => setMapping(m => changeInputType(m, e.target.value as ColumnMapping["data_type"]))}><option value="mu">μ(E) · absorption</option><option value="chi">χ(k) · extracted EXAFS</option><option value="xmudat">FEFF xmu.dat · normalized μ(E)</option></select></label>
             <label className="ath-field"><span>Measurement</span><select value={dualMode ? "both" : mapping.mode} disabled={mapping.data_type === "chi"} onChange={e => {
               const mode = e.target.value
               setMapping(m => mode === "both" ? setDualMode(m, inspection, true) : {
@@ -79,6 +81,10 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
             <label className="ath-field"><span>{mapping.data_type === "chi" ? "k column" : "Energy column"}</span><select value={mapping.energy_column} onChange={e => setMapping(m => ({ ...m, energy_column: e.target.value, units: m.data_type === "chi" ? "eV" : inspection.column_units?.[e.target.value] ?? m.units }))}>{inspection.columns.map(c => <option value={c.column_id} key={c.column_id}>{c.name} · column {c.index + 1}</option>)}</select></label>
             <label className="ath-field"><span>Energy units</span><select value={mapping.units} disabled={mapping.data_type === "chi"} onChange={e => setMapping(m => ({ ...m, units: e.target.value as ColumnMapping["units"] }))}><option>eV</option><option>keV</option></select></label>
           </div>
+          {inputFormat === 'mu' && <div className="ath-fields" role="group" aria-label="Processing options">
+            <label className="ath-check"><input type="checkbox" checked={processing.is_normalized} onChange={e => setMapping(m => changeImportProcessing(m, { is_normalized: e.target.checked }))} />Input already normalized</label>
+            <label className="ath-check"><input type="checkbox" checked={processing.exafs} onChange={e => setMapping(m => changeImportProcessing(m, { exafs: e.target.checked }))} />Enable EXAFS processing</label>
+          </div>}
           {!replacement && <label className="ath-check"><input type="checkbox" checked={mapping.is_reference ?? false} onChange={e => setMapping(m => ({ ...m, is_reference: e.target.checked }))} />This is reference</label>}
           {inspection.plugin_suggestions && mapping.data_type !== 'chi' && <div aria-label="Reader column suggestions">
             <p className="ath-hint">Apply this reader’s suggested detector columns, then check the preview.</p>

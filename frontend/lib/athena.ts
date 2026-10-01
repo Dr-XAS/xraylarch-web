@@ -34,8 +34,11 @@ export interface AthenaGroupFolder {
   group_ids: string[]
 }
 export function dataTypeLabel(group: AthenaGroup) {
-  if (group.data_type === 'xanes' && group.is_normalized) return 'Normalized XANES'
-  return { mu: 'μ(E)', xanes: 'XANES', norm: 'Normalized μ(E)', chi: 'χ(k)', xmudat: 'FEFF μ(E)', detector: 'Detector signal' }[group.data_type]
+  return { mu: 'μ(E)', xanes: 'μ(E)', norm: 'μ(E)', chi: 'χ(k)', xmudat: 'FEFF μ(E)', detector: 'Detector signal' }[group.data_type]
+}
+export function energyProcessingSettings(group?: Pick<AthenaGroup, 'data_type' | 'is_normalized'>) {
+  return { is_normalized: group?.data_type === 'norm' || group?.data_type === 'xmudat' || !!group?.is_normalized,
+    exafs: group?.data_type !== 'xanes' }
 }
 export function measurementModeLabel(group: AthenaGroup): "trans" | "fluo" | null {
   const mapping = group.source.mapping

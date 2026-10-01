@@ -26,6 +26,37 @@ function Harness({ busy = false, columnUnits, inspection = {}, remaining = 1, in
     chooseAnother={() => {}} importCurrent={() => {}} replacement={replacement} /><output data-testid="mapping">{JSON.stringify(mapping)}</output></>
 }
 function accepted() { return JSON.parse(screen.getByTestId("mapping").textContent!) }
+it('keeps normalization independent of EXAFS processing for the same absorption input format', () => {
+  render(<Harness />)
+  expect(screen.getByLabelText('Input format')).toHaveValue('mu')
+  expect(screen.queryByRole('option', { name: /XANES/ })).not.toBeInTheDocument()
+  expect(screen.queryByRole('option', { name: 'Normalized μ(E)' })).not.toBeInTheDocument()
+  expect(screen.getByLabelText('Input already normalized')).not.toBeChecked()
+  expect(screen.getByLabelText('Enable EXAFS processing')).toBeChecked()
+
+  fireEvent.click(screen.getByLabelText('Input already normalized'))
+  expect(accepted()).toMatchObject({ data_type: 'norm', is_normalized: true })
+  fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
+  expect(accepted()).toMatchObject({ data_type: 'xanes', is_normalized: true })
+  expect(screen.getByLabelText('Input already normalized')).toBeChecked()
+  expect(screen.getByLabelText('Input format')).toHaveValue('mu')
+
+  fireEvent.click(screen.getByLabelText('Input already normalized'))
+  expect(accepted()).toMatchObject({ data_type: 'xanes', is_normalized: false })
+  expect(screen.getByLabelText('Enable EXAFS processing')).not.toBeChecked()
+  fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
+  expect(accepted()).toMatchObject({ ...initial, is_normalized: false })
+})
+it.each([
+  ['xanes', undefined, false, false],
+  ['xanes', true, true, false],
+  ['norm', undefined, true, true],
+] as const)('restores existing %s processing choices without changing the absorption format', (data_type, is_normalized, normalized, exafs) => {
+  render(<Harness initialMapping={{ ...initial, data_type, is_normalized }} />)
+  expect(screen.getByLabelText('Input format')).toHaveValue('mu')
+  expect(screen.getByLabelText('Input already normalized')).toHaveProperty('checked', normalized)
+  expect(screen.getByLabelText('Enable EXAFS processing')).toHaveProperty('checked', exafs)
+})
 it('limits replacement to one existing group while retaining column, signal and ordering choices', () => {
   render(<Harness replacement />)
   expect(screen.getByRole('button', { name: 'Apply column changes' })).toBeEnabled()
@@ -155,12 +186,12 @@ it('keeps dual-mode reader suggestions separate and retains fluorescence choices
 it('clears dual-mode importing for extracted chi and does not restore it implicitly', () => {
   render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
   fireEvent.change(screen.getByLabelText('Measurement'), { target: { value: 'both' } })
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'chi' } })
+  fireEvent.change(screen.getByLabelText('Input format'), { target: { value: 'chi' } })
   expect(accepted()).toMatchObject({ data_type: 'chi', mode: 'mu' })
   expect(accepted().additional_fluorescence).toBeFalsy()
   expect(screen.getByLabelText('Measurement')).toBeDisabled()
   expect(screen.queryByRole('group', { name: 'Fluorescence columns' })).not.toBeInTheDocument()
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'mu' } })
+  fireEvent.change(screen.getByLabelText('Input format'), { target: { value: 'mu' } })
   expect(screen.getByLabelText('Measurement')).toBeEnabled()
   expect(screen.getByLabelText('Measurement')).toHaveValue('mu')
 })
@@ -189,7 +220,7 @@ it('applies both modes to a shared batch while preserving the batch import actio
 it('asks once at the top of a batch whether to share parameters and makes the import scope explicit', () => {
   render(<Harness remaining={3} />)
   const question = screen.getByRole('group', { name: 'Use the same import parameters for all files?' })
-  expect(question.compareDocumentPosition(screen.getByLabelText('Data type')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(question.compareDocumentPosition(screen.getByLabelText('Input format')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
   expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeDisabled()
   fireEvent.click(screen.getByRole('radio', { name: 'Yes, use the same parameters' }))
   expect(screen.getByRole('button', { name: 'Import 3 files' })).toBeEnabled()
@@ -209,12 +240,12 @@ it('places the file and import actions above the column controls', () => {
   const actions = screen.getByRole('group', { name: 'Import actions' })
   expect(actions).toContainElement(screen.getByRole('button', { name: 'Choose another file' }))
   expect(actions).toContainElement(screen.getByRole('button', { name: 'Import spectrum' }))
-  expect(actions.compareDocumentPosition(screen.getByLabelText('Data type')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(actions.compareDocumentPosition(screen.getByLabelText('Input format')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 })
 it('applies native transmission/fluorescence suggestions only on request and preserves other import choices', () => {
   render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
   expect(accepted()).toEqual(initial)
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'xanes' } })
+  fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
   fireEvent.change(screen.getByLabelText('reference numerator'), { target: { value: 'c2' } })
   fireEvent.click(screen.getByLabelText('Save each channel as its own group'))
   fireEvent.click(screen.getByRole('button', { name: 'Use fluorescence columns' }))
@@ -234,7 +265,7 @@ it('does not offer a nonexistent reader fluorescence mapping', () => {
 })
 it('hides energy reader suggestions for extracted chi input', () => {
   render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'chi' } })
+  fireEvent.change(screen.getByLabelText('Input format'), { target: { value: 'chi' } })
   expect(screen.queryByLabelText('Reader column suggestions')).not.toBeInTheDocument()
 })
 it('prevents reader suggestion changes while importing', () => {
@@ -277,14 +308,17 @@ it('offers the original full file for ordinary tables without a conversion label
 })
 it("offers FEFF normalized input while retaining energy column controls and preview choices", () => {
   render(<Harness />)
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'xmudat' } })
+  fireEvent.change(screen.getByLabelText('Input format'), { target: { value: 'xmudat' } })
   expect(accepted()).toMatchObject({ data_type: 'xmudat', energy_column: 'c0', numerator: ['c1'] })
   expect(screen.getByText(/FEFF μ\(E\) is already normalized/)).toBeInTheDocument()
   expect(screen.getByLabelText('Energy units')).toBeEnabled()
   expect(screen.getByLabelText('reference numerator')).toBeEnabled()
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'chi' } })
+  expect(screen.queryByLabelText('Input already normalized')).not.toBeInTheDocument()
+  fireEvent.change(screen.getByLabelText('Input format'), { target: { value: 'chi' } })
+  expect(accepted().is_normalized).toBe(false)
+  expect(screen.queryByLabelText('Enable EXAFS processing')).not.toBeInTheDocument()
   expect(screen.getByLabelText('Energy units')).toBeDisabled()
-  fireEvent.change(screen.getByLabelText('Data type'), { target: { value: 'xmudat' } })
+  fireEvent.change(screen.getByLabelText('Input format'), { target: { value: 'xmudat' } })
   expect(screen.getByLabelText('Energy units')).toBeEnabled()
   expect(accepted()).toMatchObject({ data_type: 'xmudat', mode: 'mu', denominator: '' })
 })
@@ -318,7 +352,7 @@ it("sends individual-channel and reference toggles and clears references for chi
   fireEvent.click(screen.getByLabelText("Same element"))
   expect(accepted()).toMatchObject({ individual_channels: true, reference_log: false, reference_same_element: false,
     reference_numerator: "c2", reference_denominator: "c5" })
-  fireEvent.change(screen.getByLabelText("Data type"), { target: { value: "chi" } })
+  fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "chi" } })
   expect(accepted()).toMatchObject({ data_type: "chi", reference_numerator: "", reference_denominator: "" })
   expect(screen.getByLabelText("Energy units")).toBeDisabled()
   expect(screen.getByLabelText("reference numerator")).toBeDisabled()
@@ -328,6 +362,8 @@ it("exposes source contents and freezes mapping controls during import", () => {
   expect(screen.getByText("# Original beamline headers")).toBeInTheDocument()
   expect(screen.getByLabelText("Measurement")).toBeDisabled()
   expect(screen.getByLabelText("Numerator i0")).toBeDisabled()
+  expect(screen.getByLabelText('Input already normalized')).toBeDisabled()
+  expect(screen.getByLabelText('Enable EXAFS processing')).toBeDisabled()
   expect(screen.getByRole("button", { name: "Select range" })).toBeDisabled()
 })
 
@@ -389,13 +425,13 @@ it("disables flipping for direct and chi data without creating an inversion tran
   fireEvent.change(screen.getByLabelText("Measurement"), { target: { value: "transmission" } })
   expect(flip).toBeEnabled()
   fireEvent.change(screen.getByLabelText("Multiplicative constant"), { target: { value: "4" } })
-  fireEvent.change(screen.getByLabelText("Data type"), { target: { value: "chi" } })
+  fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "chi" } })
   expect(accepted()).toMatchObject({ data_type: "chi", mode: "mu", units: "eV", denominator: "", invert: false, signal_multiplier: 1 })
   expect(flip).toBeDisabled()
   for (const label of ["Natural log", "Multiplicative constant", "Denominator it", "Measurement", "Energy units"]) {
     expect(screen.getByLabelText(label)).toBeDisabled()
   }
-  fireEvent.change(screen.getByLabelText("Data type"), { target: { value: "mu" } })
+  fireEvent.change(screen.getByLabelText("Input format"), { target: { value: "mu" } })
   expect(flip).toBeDisabled()
   expect(screen.getByLabelText("Multiplicative constant")).toHaveValue(1)
 })
