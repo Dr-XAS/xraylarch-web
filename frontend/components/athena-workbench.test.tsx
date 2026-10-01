@@ -296,7 +296,7 @@ function group(id: string, label: string, marked = false, rbkg = 1): AthenaGroup
     multiplier: 1, offset: 0, notes: "", reference_id: null,
     parameters: { ...parameters, rbkg },
     result: {
-      arrays: { energy: [8960, 8980, 9000], norm: [0, 0.7, 1] },
+      arrays: { energy: [8960, 8980, 9000], norm: [0, 0.7, 1], flat: [0, 0.7, 1] },
       effective: { e0: 8979, edge_step: 1 }, warnings: [],
     },
     processing_error: null, source: { filename: `${id}.xmu` },
