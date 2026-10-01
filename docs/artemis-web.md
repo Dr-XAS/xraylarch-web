@@ -616,3 +616,61 @@ The fixed settings are the [pymatgen CrystalNN defaults](https://pymatgen.org/py
 states are not guessed. Review predictions especially for molecular/porous
 crystals. Hydrogen neighbors remain in CrystalNN results and are explicitly
 flagged because FEFF generation currently excludes H.
+
+### Periodic radial shells
+
+**CIF structure viewer → View → Radial shells** colors neighbors by their radial
+shell around the selected center. The absorber is amber. The table below the
+viewer shows each shell's actual minimum/maximum distance, neighbor count,
+element composition and symmetry pair groups. Select shell checkboxes to show
+any combination; initially shells 1–3 are visible. These complete periodic
+neighbor lists are independent of the Local cluster display radius. Element
+visibility does not change shell counts. The existing finite-cluster coordination
+calculator remains a separate calculation of the displayed local cluster.
+
+Shell analysis enumerates periodic neighbors, then uses one-dimensional
+[complete-linkage clustering](https://docs.scipy.org/doc/scipy/reference/generated/scipy.cluster.hierarchy.linkage.html)
+on their distances. **Shell width** bounds the entire group's distance spread,
+not just gaps between consecutive distances. The default width is 0.05 Å and
+is a reviewable grouping choice, not an experimental resolution or universal
+chemical cutoff. **Search radius** defaults to 6 Å; controls accept 0.5–12 Å
+and widths of 0.001–0.5 Å. Apply settings explicitly. Viewer, FEFF dialog and
+EXAFS model share applied settings for the exact CIF/center during the browser
+session; settings reset on page reload, while saved model path inclusions persist.
+
+Symmetry groups use operations fixing the chosen absorber modulo a lattice
+translation, with a separate 1e-5 Å symmetry tolerance. Element and pair-group
+membership remain available even when a broad display shell combines split
+distances, such as four short and two long bonds. Shell numbers are ordered by
+distance across all elements; they can change when the width changes. CrystalNN
+continues to describe bonded coordination and does not determine radial shell
+numbers. Structures with unresolved disorder/partial occupancy remain unsupported.
+
+In **EXAFS fitting**, open an attached CIF and explicitly choose its absorber site
+to display the shell ranges. Generated FEFF and existing model paths are grouped
+by matching single-scattering geometry to these periodic neighbors. Group buttons
+select/include/exclude paths together; **Use only shell N candidates** explicitly
+excludes other model paths. Generated selection unions groups, skips paths already
+added and rejects selections exceeding available model slots. **Add selected
+paths** still performs the addition. Multiple scattering has its own group:
+its effective half-path length is not a radial neighbor distance. Unmatched paths
+remain available, including paths beyond the selected shell search radius.
+
+Existing model matches are candidates relative to the chosen CIF/site, not proof
+of imported-file provenance. A representative FEFF path can cover several symmetry
+pair groups (for example the 12 Cu neighbors in Cuprite); it is never split or
+counted twice. Original degeneracies, expressions and fit bounds are preserved.
+Model inclusion edits can be saved normally. Changing shell settings or visibility
+does not run FEFF or a fit and preserves editable path input identity/undo history.
+
+`POST /api/artemis/structures/radial-shells` accepts full CIF text, `absorber`,
+global inequivalent `site_index`, `radius`, and `tolerance`. It returns exact CIF
+identity, applied settings, numbered shells, symmetry subgroups, signed periodic
+images, fractional offsets for rendering and native Cartesian offsets for FEFF
+matching. Results are cached by all inputs. Searches are bounded to 100,000
+candidate periodic sites and 2,000 actual neighbors; oversized searches fail
+instead of silently truncating results. A shell near the search boundary is
+flagged as potentially incomplete. Hydrogen is included with a warning because
+FEFF generation currently omits it. Distances are structural ranges, not automatic
+Fourier-transform fit windows or evidence that split shells are experimentally
+resolvable.
