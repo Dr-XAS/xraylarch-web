@@ -160,7 +160,7 @@ def validate_result(value):
     """Validate archives without evaluating saved expressions or running FEFF."""
     required = {"project_id", "group_id", "group_label", "version", "success", "message", "report", "warnings",
                 "statistics", "parameters", "correlations", "paths", "transform", "metadata", "k", "r"}
-    if not isinstance(value, dict) or set(value) != required:
+    if not isinstance(value, dict) or not required <= set(value) or set(value) - required - {"plot_source"}:
         raise ValueError("A saved fit must contain the complete Artemis result.")
     _finite_json(value)
     if len(_json(value)) > 3_000_000:
@@ -223,6 +223,20 @@ def validate_result(value):
         _curve(path["k"]["chi"], len(value["k"]["x"]))
         for values in path["r"].values():
             _curve(values, len(value["r"]["x"]))
+    if "plot_source" in value:
+        source = value["plot_source"]
+        if (not isinstance(source, dict) or set(source) != {"schema_version", "data", "model", "paths"}
+                or type(source["schema_version"]) is not int or source["schema_version"] != 1):
+            raise ValueError("Invalid saved fit display source.")
+        for name in ("data", "model"):
+            _curve(source[name], len(value["k"]["x"]))
+        if not isinstance(source["paths"], list) or len(source["paths"]) != len(value["paths"]):
+            raise ValueError("Incomplete saved fit display paths.")
+        for source_path, path in zip(source["paths"], value["paths"]):
+            if (not isinstance(source_path, dict) or set(source_path) != {"id", "chi"}
+                    or source_path["id"] != path["id"]):
+                raise ValueError("Invalid saved fit display path identity.")
+            _curve(source_path["chi"], len(value["k"]["x"]))
     return value
 
 

@@ -7,6 +7,7 @@ import type { Space } from "./athena-plot"
 export function useSpectrumViewerState(scope: "current" | "selected") {
   const current = scope === "current"
   const [space, setSpace] = useState<Space>("E")
+  const [kWeight, setKWeight] = useState<number | null>(null)
   const [energyMode, setEnergyMode] = useState(current ? "mu" : "flat")
   const [rComponent, setRComponent] = useState("mag")
   const [qComponent, setQComponent] = useState("re")
@@ -27,6 +28,7 @@ export function useSpectrumViewerState(scope: "current" | "selected") {
 
   return {
     space, setSpace,
+    kWeight, setKWeight,
     energyMode, setEnergyMode,
     rComponent, setRComponent,
     qComponent, setQComponent,

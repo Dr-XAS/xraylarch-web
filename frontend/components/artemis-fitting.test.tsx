@@ -9,6 +9,7 @@ import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { ApiRequestError } from "@/lib/backend-client"
 import { ArtemisFittingPanel } from "./artemis-fitting"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
+import type { ArtemisPlotWeightResult } from "./artefact-viewers/artemis-plot-weight"
 
 type PlotProps = { data: { x: number[]; y: number[]; name: string; visible?: boolean | "legendonly"; customdata: number[][]; hovertemplate: string; line: { color: string } }[]; layout: { xaxis: { title: { text: string } }; yaxis: { title: { text: string } }; shapes: { x0: number; x1: number }[]; uirevision: string }; onError: () => void }
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="fit-plot" />))
@@ -83,6 +84,15 @@ function resultWithPaths(): ArtemisFitResult {
     { ...result.paths[0], id: "b", filename: "feff0002.dat", k: { chi: result.k.model.map(value => value * 0.4) },
       r: { mag: [0, 0.6, 0.8, 0.7], re: [0, -0.6, -0.7, 0.6], im: [0, -0.1, -0.3, -0.3] } },
   ] }
+}
+function plotWeightResult(result: ArtemisFitResult, weight: number, version = 8): ArtemisPlotWeightResult {
+  const shifted = (values: number[]) => values.map(value => value * 3)
+  return { project_id: result.project_id, group_id: result.group_id, version, kweight: weight,
+    k: { ...result.k, weight, data: shifted(result.k.data), model: shifted(result.k.model), residual: shifted(result.k.residual) },
+    r: Object.fromEntries(Object.entries(result.r).map(([key, values]) => [key, key === "x" ? values : shifted(values)])) as ArtemisFitResult["r"],
+    paths: result.paths.map(path => ({ id: path.id, k: path.k && { chi: shifted(path.k.chi) }, r: path.r && {
+      mag: shifted(path.r.mag), re: shifted(path.r.re), im: shifted(path.r.im),
+    } })), warnings: [] }
 }
 function file(name: string, contents: string) {
   const value = new File([contents], name)
@@ -465,6 +475,89 @@ describe("ArtemisFittingPanel", () => {
 })
 
 describe("ArtemisFitResultViewer", () => {
+  it("changes this viewer's k/R/path curves from saved-fit transforms without changing fit settings or statistics", async () => {
+    const result = resultWithPaths()
+    const original = JSON.stringify(result)
+    const preview = plotWeightResult(result, 4)
+    api.mockResolvedValueOnce(preview)
+    render(<ArtemisFitResultViewer result={result} group={group()} projectId="p" version={8} />)
+    expect(screen.getByLabelText("EXAFS fit k-weight")).toHaveValue("2")
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "4" } })
+    expect(screen.queryByTestId("fit-plot")).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("Updating fit plot")
+    await screen.findByTestId("fit-plot")
+    expect(api).toHaveBeenCalledExactlyOnceWith("/projects/p/groups/copper/plot-transform", {
+      version: 8, kweight: 4, result,
+    }, expect.any(AbortSignal))
+    expect(plot.mock.calls.at(-1)![0].data[0].y).toEqual(preview.r.data_mag)
+    expect(plot.mock.calls.at(-1)![0].data[3].y).toEqual(preview.paths[0].r!.mag)
+    expect(plot.mock.calls.at(-1)![0].layout.yaxis.title.text).toContain("−5")
+    fireEvent.click(screen.getByRole("button", { name: "k space" }))
+    expect(plot.mock.calls.at(-1)![0].data[0].y).toEqual(preview.k.data)
+    expect(plot.mock.calls.at(-1)![0].data[3].y).toEqual(preview.paths[0].k!.chi)
+    expect(screen.getByText(/Plot k-weight 4; fit weights 0, 1, 2, 3/)).toBeVisible()
+    expect(screen.getByText("0.003", { selector: "dd" })).toBeVisible()
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "2" } })
+    expect(plot.mock.calls.at(-1)![0].data[0].y).toEqual(result.k.data)
+    expect(api).toHaveBeenCalledTimes(1)
+    expect(JSON.stringify(result)).toBe(original)
+  })
+
+  it("uses a stale archive's saved curves and the current project version without sending UI metadata or refitting", async () => {
+    const result = resultWithPaths()
+    result.archive = { id: "old-fit", created: "2026-09-20T00:00:00Z", imported: true, stale: true,
+      modelChanged: true, origin: { project_id: "imported", group_id: "old-group", project_version: 1, larch_version: "test" } }
+    result.request = { version: 1, parameters: [], paths: [], transform: result.transform }
+    const changed = group()
+    changed.result!.arrays.chi = [900, 800, 700]
+    api.mockResolvedValueOnce(plotWeightResult(result, 1, 20))
+    render(<ArtemisFitResultViewer result={result} group={changed} projectId="p" version={20} />)
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "1" } })
+    await screen.findByTestId("fit-plot")
+    const request = api.mock.calls[0][1] as { result: ArtemisFitResult; version: number }
+    expect(request.version).toBe(20)
+    expect(request.result.k.data).toEqual(result.k.data)
+    expect(request.result.archive).toBeUndefined()
+    expect(request.result.request).toBeUndefined()
+    expect(screen.getByText(/Outdated input: this spectrum has changed/)).toBeVisible()
+    expect(api.mock.calls[0][0]).toContain("/plot-transform")
+  })
+
+  it("rejects mismatched previews and preserves saved reports while a weight is unavailable", async () => {
+    const result = resultWithPaths()
+    api.mockResolvedValueOnce({ ...plotWeightResult(result, 3), kweight: 1 })
+    render(<ArtemisFitResultViewer result={result} group={group()} projectId="p" version={8} />)
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "3" } })
+    expect(await screen.findByRole("alert")).toHaveTextContent("does not match this saved result")
+    expect(screen.queryByTestId("fit-plot")).not.toBeInTheDocument()
+    expect(screen.getByText("Larch fit report")).toBeInTheDocument()
+    api.mockRejectedValueOnce(new Error("This saved fit does not retain unweighted χ(0)."))
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "0" } })
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("does not retain unweighted χ(0)"))
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "2" } })
+    expect(screen.getByTestId("fit-plot")).toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("ignores a superseded weight response and retains independent manual offsets for the new display", async () => {
+    const result = resultWithPaths()
+    const old = deferred<ArtemisPlotWeightResult>()
+    api.mockReturnValueOnce(old.promise).mockResolvedValueOnce(plotWeightResult(result, 1))
+    render(<ArtemisFitResultViewer result={result} group={group()} projectId="p" version={8} />)
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "3" } })
+    await waitFor(() => expect(api).toHaveBeenCalledOnce())
+    fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "1" } })
+    await screen.findByTestId("fit-plot")
+    await act(async () => { old.resolve(plotWeightResult(result, 3)) })
+    expect(screen.getByText(/Plot k-weight 1;/)).toBeVisible()
+    expect((api.mock.calls[0][2] as AbortSignal).aborted).toBe(true)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "7" } })
+    expect(screen.getByRole("spinbutton", { name: "Offset spacing" })).toHaveValue(7)
+    expect(plot.mock.calls.at(-1)![0].data[2].customdata[0][1]).toBe(-7)
+  })
+
   it("shows fitted path curves only on request in k and every R component, using distinct path labels and colors", () => {
     const result = resultWithPaths()
     render(<ArtemisFitResultViewer result={result} group={group()} />)

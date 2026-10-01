@@ -104,9 +104,10 @@ describe("AthenaWorkbench integrated request gating", () => {
     for (const name of ["Single spectrum viewer", "Multiple spectra viewer"]) {
       fireEvent.click(within(screen.getByRole("region", { name })).getByRole("tab", { name: /Fourier/ }))
     }
-    const viewerWeight = screen.getByRole("combobox", { name: "Viewer k-weight" })
-    expect(viewerWeight).toBeDisabled()
-    fireEvent.change(viewerWeight, { target: { value: "3" } })
+    for (const name of ["Single spectrum k-weight", "Multiple spectra k-weight", "Wavelet k-weight"]) {
+      const viewerWeight = screen.getByRole("combobox", { name })
+      expect(viewerWeight).toBeDisabled()
+    }
     await new Promise(resolve => window.setTimeout(resolve, 250))
 
     await waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1))
