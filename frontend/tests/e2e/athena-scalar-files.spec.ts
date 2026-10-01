@@ -69,7 +69,7 @@ for (const name of ['cmc', 'hxma', 'lnls']) {
       expect((await invalid).status()).toBe(400)
       await expect(dialog).toBeVisible()
       await dialog.getByRole('button', { name: 'Use fluorescence columns', exact: true }).click()
-      await dialog.getByRole('combobox', { name: 'Data type', exact: true }).selectOption('xanes')
+      await dialog.getByRole('checkbox', { name: 'Enable EXAFS processing', exact: true }).uncheck()
     }
     await signal(preview, x, y)
     await expect(dialog.getByRole('combobox', { name: 'Energy units', exact: true })).toHaveValue('eV')

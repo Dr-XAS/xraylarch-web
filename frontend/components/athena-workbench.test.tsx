@@ -206,7 +206,7 @@ describe("integration mode", () => {
     expect(screen.getByRole("button", { name: /select e₀/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Group" }))
     expect(screen.getByRole("button", { name: /mark \/ freeze groups/i })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /change data type/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /processing settings…/i })).toBeDisabled()
     expect(screen.getAllByRole("button", { name: /edit absorber and edge/i }).every(button => button.hasAttribute("disabled"))).toBe(true)
     expect(screen.getByRole("button", { name: /file metadata/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /duplicate current group/i })).toBeDisabled()
@@ -224,7 +224,8 @@ describe("integration mode", () => {
     await waitForIntegratedProject()
     expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeDisabled()
     expect(screen.getByRole("checkbox", { name: "Mark all groups" })).toBeDisabled()
-    expect(screen.getByRole("combobox", { name: "Viewer k-weight" })).toBeDisabled()
+    fireEvent.click(within(screen.getByRole("region", { name: "Single spectrum viewer" })).getByRole("tab", { name: /EXAFS/ }))
+    expect(screen.getByRole("combobox", { name: "Single spectrum k-weight" })).toBeDisabled()
     expect(screen.queryByRole("button", { name: /^Save project$/ })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "CSV" })).not.toBeInTheDocument()
     expect(screen.queryByRole("tab", { name: /EXAFS fitting/i })).not.toBeInTheDocument()
@@ -235,7 +236,7 @@ describe("integration mode", () => {
     rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "reorder", "metadata", "plot", "export"] }} />)
     expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled()
     expect(screen.getByRole("checkbox", { name: "Mark all groups" })).toBeEnabled()
-    expect(screen.getByRole("combobox", { name: "Viewer k-weight" })).toBeEnabled()
+    expect(screen.getByRole("combobox", { name: "Single spectrum k-weight" })).toBeEnabled()
     expect(screen.getByRole("button", { name: /^Save project$/ })).toBeEnabled()
     expect(screen.getByRole("button", { name: "CSV" })).toBeEnabled()
     expect(screen.queryByRole("tab", { name: /EXAFS fitting/i })).not.toBeInTheDocument()
@@ -296,9 +297,7 @@ function group(id: string, label: string, marked = false, rbkg = 1): AthenaGroup
     multiplier: 1, offset: 0, notes: "", reference_id: null,
     parameters: { ...parameters, rbkg },
     result: {
-      // The backend sends every result array; flat matters because it is the
-      // multiple viewer's default energy mode.
-      arrays: { energy: [8960, 8980, 9000], norm: [0, 0.7, 1], flat: [0, 0.7, 1] },
+      arrays: { energy: [8960, 8980, 9000], norm: [0, 0.7, 1], flat: [0, 0.8, 1] },
       effective: { e0: 8979, edge_step: 1 }, warnings: [],
     },
     processing_error: null, source: { filename: `${id}.xmu` },
@@ -505,7 +504,7 @@ async function chooseImportFiles(inspections: InspectionResponse[], shareParamet
 function chooseFluorescenceMapping(dialog: HTMLElement) {
   const view = within(dialog)
   fireEvent.change(view.getByRole("combobox", { name: "Measurement" }), { target: { value: "fluorescence" } })
-  fireEvent.change(view.getByRole("combobox", { name: "Data type" }), { target: { value: "xanes" } })
+  fireEvent.click(view.getByRole("checkbox", { name: "Enable EXAFS processing" }))
   fireEvent.change(view.getByRole("combobox", { name: "Energy units" }), { target: { value: "keV" } })
   fireEvent.click(view.getByRole("checkbox", { name: "Numerator It" }))
   fireEvent.click(view.getByRole("checkbox", { name: "Numerator If1" }))
@@ -546,7 +545,7 @@ const fluorescenceMapping = {
   preprocessing: { mark: false, standard_id: null, copy_parameters: false, align: false },
   edge_policy: null,
   energy_column: "col_0", numerator: ["col_3", "col_4"], denominator: "col_2",
-  mode: "fluorescence", units: "keV", data_type: "xanes",
+  mode: "fluorescence", units: "keV", data_type: "xanes", is_normalized: false, exafs: false,
   reference_numerator: "col_1", reference_denominator: "col_5", sort: true,
 }
 
@@ -777,7 +776,9 @@ describe("AthenaWorkbench branding", () => {
     expect(screen.queryByRole("region", { name: "Import edge policy" })).not.toBeInTheDocument()
     expect(screen.queryByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Load copper examples" })).toBeVisible()
-    expect(screen.getByRole("combobox", { name: "Viewer k-weight" })).toBeVisible()
+    expect(screen.queryByRole("combobox", { name: "Viewer k-weight" })).not.toBeInTheDocument()
+    fireEvent.click(within(screen.getByRole("region", { name: "Single spectrum viewer" })).getByRole("tab", { name: /EXAFS/ }))
+    expect(screen.getByRole("combobox", { name: "Single spectrum k-weight" })).toBeVisible()
   })
 })
 
@@ -970,8 +971,31 @@ describe("AthenaWorkbench measurement mode tags", () => {
     expect(within(fluoRow).getByText("fluo")).toHaveAttribute("data-tag", "fluo")
     expect(within(fluoRow).getByText("ref")).toHaveAttribute("title", "Reference")
     expect(within(fluoRow).getByText("ref")).toHaveAttribute("data-tag", "ref")
-    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref")).toHaveAttribute("title", "Reference")
+    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref · 1")).toHaveAttribute("title", "Reference for Transmission scan")
     expect(within(screen.getByRole("button", { name: /^Direct signal/ })).queryByText(/^(trans|fluo|ref)$/)).toBeNull()
+  })
+})
+
+describe("AthenaWorkbench reference navigation", () => {
+  it("revisits an already active foil and anchors range selection there without editing data", async () => {
+    const project = projectFixture()
+    project.groups.find(item => item.id === "sample")!.reference_id = "foil"
+    await openSaved(project)
+    const foil = screen.getByRole("button", { name: /^Foil scan/ })
+    const scroll = vi.fn()
+    Object.defineProperty(foil.closest(".ath-group"), "scrollIntoView", { value: scroll, configurable: true })
+    selectGroup("Sample scan")
+    const reference = screen.getByRole("button", { name: "View reference Foil scan for Sample scan" })
+    fireEvent.click(reference)
+    expect(foil).toHaveFocus()
+    fireEvent.click(reference)
+    expect(scroll).toHaveBeenCalledTimes(2)
+    expect(plotProps().active?.id).toBe("foil")
+
+    fireEvent.click(screen.getByRole("button", { name: /^Oxide standard/ }), { shiftKey: true })
+    expect(foil.closest(".ath-group")).toHaveAttribute("data-move-selected", "true")
+    expect(api).toHaveBeenCalledOnce()
+    expect(screen.getByRole("checkbox", { name: "Mark Sample scan" })).toBeChecked()
   })
 })
 
@@ -1165,7 +1189,7 @@ describe("AthenaWorkbench data group sorting", () => {
     expect(listedGroupIds()).toEqual(["trans", "sample", "fluo", "linked", "trans-ref", "plain"])
     expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("trans")).toBeVisible()
     expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("ref")).toBeVisible()
-    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref")).toBeVisible()
+    expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref · 1")).toBeVisible()
     expect(api).toHaveBeenCalledTimes(1)
   })
 
@@ -1220,7 +1244,7 @@ describe("AthenaWorkbench data group folders", () => {
     const openProject = screen.getByRole("button", { name: "Open project" })
     expect(button.compareDocumentPosition(openProject) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0)
     expect(screen.queryByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).not.toBeInTheDocument()
-    expect(screen.getByText("Includes Cu₂O EXAFS setup")).toBeVisible()
+    expect(screen.getByText("Includes shared foil + Cu₂O EXAFS")).toBeVisible()
     expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
 
     const loaded = copperExampleProject(project)
@@ -2828,7 +2852,7 @@ describe("AthenaWorkbench import edge policy", () => {
     const project = await openSaved()
     const inspection = inspectionFixture("chi.dat")
     const { dialog } = await chooseImportFiles([inspection])
-    fireEvent.change(within(dialog).getByRole("combobox", { name: "Data type" }), { target: { value: "chi" } })
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Input format" }), { target: { value: "chi" } })
     expect(within(dialog).getByRole("region", { name: "Import batch edge policy" })).toHaveTextContent("χ(k) ignores it")
     api.mockResolvedValueOnce(importedProject(project, inspection.display_name))
     submitImport(dialog)
@@ -4647,21 +4671,29 @@ describe("AthenaWorkbench group selection and drafts", () => {
     expect(screen.queryByTitle("Pending automatic processing")).not.toBeInTheDocument()
   })
 
-  it("shares the viewer k-weight selector with spectra and wavelet without modifying the project", async () => {
+  it("keeps spectrum and wavelet k-weight selectors independent without modifying the project", async () => {
     const project = await openSaved()
     const before = structuredClone(project)
-    const selector = screen.getByRole("combobox", { name: "Viewer k-weight" })
+    for (const name of ["Single spectrum viewer", "Multiple spectra viewer"]) {
+      fireEvent.click(within(screen.getByRole("region", { name })).getByRole("tab", { name: /EXAFS/ }))
+    }
+    const selector = screen.getByRole("combobox", { name: "Single spectrum k-weight" })
+    const multipleSelector = screen.getByRole("combobox", { name: "Multiple spectra k-weight" })
     expect(selector).toHaveValue("2")
     expect(plotProps().kWeight).toBeNull()
     expect(within(selector).getAllByRole("option").map(option => option.textContent)).toEqual(["0", "1", "2", "3", "4"])
-    expect(document.querySelector(".ath-viewer-picker-heading")).toContainElement(selector)
-    expect(screen.queryByRole("combobox", { name: "Wavelet k-weight" })).not.toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "Single spectrum viewer" })).toContainElement(selector)
+    expect(screen.getByRole("region", { name: "Multiple spectra viewer" })).toContainElement(multipleSelector)
+    expect(document.querySelector(".ath-viewer-picker-heading")).not.toContainElement(selector)
+    expect(screen.queryByRole("combobox", { name: "Viewer k-weight" })).not.toBeInTheDocument()
+    fireEvent.change(multipleSelector, { target: { value: "1" } })
+    act(() => vi.mocked(AthenaWavelet).mock.calls.at(-1)![0].onKWeightChange?.(4))
     for (const value of ["3", "0", "2"]) {
       fireEvent.change(selector, { target: { value } })
       const kWeight = value === "2" ? null : Number(value)
-      expect(plotProps().kWeight).toBe(kWeight)
+      expect(plotProps().kWeight).toBe(1)
       expect(plotProps("current").kWeight).toBe(kWeight)
-      expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0].kWeight).toBe(kWeight)
+      expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0].kWeight).toBe(4)
     }
     expect(api).toHaveBeenCalledTimes(1)
     expect(project).toEqual(before)
@@ -4673,12 +4705,17 @@ describe("AthenaWorkbench group selection and drafts", () => {
     initial.groups[2].result!.effective.kweight = 3
     const project = await openSaved(initial)
     const before = structuredClone(project)
-    const selector = screen.getByRole("combobox", { name: "Viewer k-weight" })
+    for (const name of ["Single spectrum viewer", "Multiple spectra viewer"]) {
+      fireEvent.click(within(screen.getByRole("region", { name })).getByRole("tab", { name: /EXAFS/ }))
+    }
+    const selector = screen.getByRole("combobox", { name: "Multiple spectra k-weight" })
+    expect(screen.getByRole("combobox", { name: "Single spectrum k-weight" })).toHaveValue("2")
     expect(selector).toHaveValue("")
     expect(within(selector).getByRole("option", { name: "Per spectrum" })).toHaveProperty("selected", true)
     expect(within(selector).queryByRole("option", { name: /Auto/ })).not.toBeInTheDocument()
     fireEvent.change(selector, { target: { value: "2" } })
     expect(plotProps().kWeight).toBe(2)
+    expect(plotProps("current").kWeight).toBeNull()
     fireEvent.change(selector, { target: { value: "" } })
     expect(plotProps().kWeight).toBeNull()
     expect(vi.mocked(AthenaWavelet).mock.calls.at(-1)?.[0].kWeight).toBeNull()
@@ -5677,11 +5714,11 @@ describe("AthenaWorkbench import preprocessing", () => {
   })
 })
 
-describe('Athena data-type correction', () => {
+describe('Athena processing settings', () => {
   async function dialog() {
     openGroupMenu()
-    fireEvent.click(screen.getByRole('button', { name: 'Change data type…' }))
-    return screen.findByRole('dialog', { name: 'Change data type' })
+    fireEvent.click(screen.getByRole('button', { name: 'Processing settings…' }))
+    return screen.findByRole('dialog', { name: 'Processing settings' })
   }
   it.each([
     ['current', ['foil']], ['marked', ['sample', 'oxide']], ['all', ['foil', 'sample', 'oxide', 'unused']],
@@ -5692,11 +5729,11 @@ describe('Athena data-type correction', () => {
     const next = nextProject(applied, Object.fromEntries(ids.map(id => [id, { data_type: 'xanes' }])))
     api.mockResolvedValueOnce(next)
     const panel = await dialog()
-    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type for' }), { target: { value: scope } })
-    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type to' }), { target: { value: 'xanes' } })
-    fireEvent.click(within(panel).getByRole('button', { name: 'Change data type' }))
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Apply settings to' }), { target: { value: scope } })
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Enable EXAFS processing' }))
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply settings' }))
     await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${p.id}/command`, {
-      version: applied.version, action: 'change_datatype', group_ids: [...ids], options: { data_type: 'xanes' },
+      version: applied.version, action: 'change_datatype', group_ids: [...ids], options: { is_normalized: false, exafs: false },
     }))
     await waitFor(() => expect(within(panel).getByRole('button', { name: 'Close' })).toBeEnabled())
     fireEvent.click(within(panel).getByRole('button', { name: 'Close' }))
@@ -5726,27 +5763,27 @@ describe('Athena data-type correction', () => {
     const p = projectFixture(); p.groups[0].data_type = 'chi'; p.groups[1].data_type = 'xmudat'
     p.groups.forEach(g => { g.marked = false }); p.groups[2].frozen = true
     await openSaved(p); const panel = await dialog()
-    const apply = within(panel).getByRole('button', { name: 'Change data type' })
+    const apply = within(panel).getByRole('button', { name: 'Apply settings' })
     expect(apply).toBeDisabled()
     expect(within(panel).getByText(/skipped: χ\(k\) and FEFF/)).toBeVisible()
-    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type for' }), { target: { value: 'marked' } })
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Apply settings to' }), { target: { value: 'marked' } })
     expect(apply).toBeDisabled()
-    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type for' }), { target: { value: 'all' } })
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Apply settings to' }), { target: { value: 'all' } })
     expect(within(panel).getByText('2 eligible of 4 selected groups')).toBeVisible()
     expect(apply).toBeEnabled()
   })
   it('shows a rejected request and retains the form for correction', async () => {
     await openSaved(); api.mockRejectedValueOnce(new Error('Project changed; reload first.'))
     const panel = await dialog()
-    fireEvent.change(within(panel).getByRole('combobox', { name: 'Change data type to' }), { target: { value: 'norm' } })
-    fireEvent.click(within(panel).getByRole('button', { name: 'Change data type' }))
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Input already normalized' }))
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply settings' }))
     expect(await within(panel).findByRole('alert')).toHaveTextContent('Project changed; reload first.')
-    expect(within(panel).getByRole('combobox', { name: 'Change data type to' })).toHaveValue('norm')
+    expect(within(panel).getByRole('checkbox', { name: 'Input already normalized' })).toBeChecked()
     expect(plotProps().active?.data_type).toBe('mu')
   })
   it('reports dependent processing errors and prevents duplicate writes while processing', async () => {
     const p = await openSaved(); const response = deferred<AthenaProject>(); api.mockReturnValueOnce(response.promise)
-    const panel = await dialog(); const button = within(panel).getByRole('button', { name: 'Change data type' })
+    const panel = await dialog(); const button = within(panel).getByRole('button', { name: 'Apply settings' })
     const before = api.mock.calls.length
     fireEvent.click(button); fireEvent.click(button)
     expect(api).toHaveBeenCalledTimes(before + 1)
@@ -5758,20 +5795,32 @@ describe('Athena data-type correction', () => {
     await act(async () => response.resolve(next))
     expect(within(panel).getByText(/Sample scan: Background standard/)).toBeVisible()
   })
-  it('Ctrl+Alt-click toggles a frozen normalized record without discarding its recipe', async () => {
+  it('edits EXAFS independently for frozen normalized input', async () => {
     const p = projectFixture(); p.groups[0].data_type = 'norm'; p.groups[0].is_normalized = true; p.groups[0].frozen = true
-    localStorage.setItem(storageKey, p.id); api.mockResolvedValueOnce(p)
-    render(<AthenaWorkbench />)
-    const label = await screen.findByRole('button', { name: 'Data type: Normalized μ(E)' })
-    await waitFor(() => expect(label).toBeEnabled())
+    await openSaved(p)
+    fireEvent.click(screen.getByRole('button', { name: 'Spectrum processing settings' }))
+    const panel = await screen.findByRole('dialog', { name: 'Processing settings' })
+    expect(within(panel).getByRole('checkbox', { name: 'Input already normalized' })).toBeChecked()
+    expect(within(panel).getByRole('checkbox', { name: 'Enable EXAFS processing' })).toBeChecked()
+    expect(within(panel).queryByRole('combobox', { name: 'Change data type to' })).not.toBeInTheDocument()
     api.mockResolvedValueOnce(nextProject(p, { foil: { data_type: 'xanes', is_normalized: true } }))
-    fireEvent.click(label, { ctrlKey: true, altKey: true })
+    fireEvent.click(within(panel).getByRole('checkbox', { name: 'Enable EXAFS processing' }))
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply settings' }))
     await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${p.id}/command`, {
-      version: p.version, action: 'change_datatype', group_ids: ['foil'], options: { toggle: true },
+      version: p.version, action: 'change_datatype', group_ids: ['foil'], options: { is_normalized: true, exafs: false },
     }))
-    expect(await screen.findByRole('button', { name: 'Data type: Normalized XANES' })).toBeVisible()
+    expect(plotProps().active?.is_normalized).toBe(true)
     expect(plotProps().active?.frozen).toBe(true)
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  })
+  it('loads both saved settings when selecting another current group', async () => {
+    const p = projectFixture(); p.groups[1].data_type = 'xanes'; p.groups[1].is_normalized = true
+    await openSaved(p)
+    const panel = await dialog()
+    expect(within(panel).getByRole('checkbox', { name: 'Input already normalized' })).not.toBeChecked()
+    expect(within(panel).getByRole('checkbox', { name: 'Enable EXAFS processing' })).toBeChecked()
+    fireEvent.change(within(panel).getByRole('combobox', { name: 'Current group' }), { target: { value: 'sample' } })
+    expect(within(panel).getByRole('checkbox', { name: 'Input already normalized' })).toBeChecked()
+    expect(within(panel).getByRole('checkbox', { name: 'Enable EXAFS processing' })).not.toBeChecked()
   })
 })
 
@@ -6136,7 +6185,7 @@ describe('Legacy detector records in the workbench', () => {
     const p = projectFixture(); p.groups[0].data_type = 'detector'
     p.groups[0].result = { arrays: { energy: p.groups[0].energy, mu: p.groups[0].mu }, effective: { e0: null, edge_step: null }, warnings: [] }
     await openSaved(p)
-    expect(screen.getByRole('button', { name: 'Data type: Detector signal' })).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Spectrum processing settings' })).toBeVisible()
     expect(singleViewer().getByRole('radio', { name: 'Detector signal' })).toBeChecked()
     expect(singleViewer().getByRole('radio', { name: 'Detector signal' })).toBeDisabled()
     expect(screen.getByRole('spinbutton', { name: /^E₀/ })).toBeDisabled()
@@ -6150,14 +6199,14 @@ describe('Legacy detector records in the workbench', () => {
     expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
     expect(plotProps().energyMode).toBe('flat')
   })
-  it('offers energy-type correction for a detector while retaining the three native destinations', async () => {
+  it('offers independent absorption processing settings for a detector', async () => {
     const p = projectFixture(); p.groups[0].data_type = 'detector'; await openSaved(p)
-    fireEvent.click(screen.getByRole('button', { name: 'Data type: Detector signal' }))
-    const panel = await screen.findByRole('dialog', { name: 'Change data type' })
+    fireEvent.click(screen.getByRole('button', { name: 'Spectrum processing settings' }))
+    const panel = await screen.findByRole('dialog', { name: 'Processing settings' })
     expect(within(panel).getByText('1 eligible of 1 selected groups')).toBeVisible()
-    expect(within(panel).getByRole('button', { name: 'Change data type' })).toBeEnabled()
-    const select = within(panel).getByRole('combobox', { name: 'Change data type to' })
-    expect(within(select).getAllByRole('option').map(option => (option as HTMLOptionElement).value)).toEqual(['mu', 'xanes', 'norm'])
+    expect(within(panel).getByRole('button', { name: 'Apply settings' })).toBeEnabled()
+    expect(within(panel).getByRole('checkbox', { name: 'Input already normalized' })).not.toBeChecked()
+    expect(within(panel).getByRole('checkbox', { name: 'Enable EXAFS processing' })).toBeChecked()
   })
 })
 

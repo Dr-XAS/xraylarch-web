@@ -62,7 +62,7 @@ def test_summary_is_a_fraction_of_the_full_record(client, example):
 def test_summary_reports_what_processing_resolved(client, example):
     summary = view(client, example, "summary")
     assert summary["counts"] == {
-        "marked": 4, "frozen": 0, "groups": 4, "processed": 4, "failed": 0}
+        "marked": 4, "frozen": 0, "groups": 5, "processed": 5, "failed": 0}
     for group in summary["groups"]:
         assert group["element"] == "Cu" and group["edge"] == "K"
         assert 8970 < group["e0"] < 8990

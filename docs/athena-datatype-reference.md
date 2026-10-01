@@ -1,4 +1,4 @@
-# Athena group data-type correction
+# Spectrum processing settings and Athena compatibility
 
 Source contract and executable evidence, 2026-09-10. This contributes to UI-04
 and IM-02 in the full [107-row parity matrix](athena-parity.md). Neither row is
@@ -30,18 +30,24 @@ detector records. [Legacy detector project handling](athena-detector-reference.m
 
 ## Implemented behavior
 
-Group → Change data type offers all three native scopes/destinations and allows
-choosing a different current group. It identifies each selected source type,
-shows eligibility, preserves parameter edits queued for automatic processing, and reports processing
-errors. Cancel makes no request. Frozen energy groups are included, matching
-the inspected type handler; frozen parameter controls remain protected.
+Group → Processing settings exposes two independent controls: **Input already
+normalized** and **Enable EXAFS processing**. They initialize from the selected
+group and can be applied to the current, marked, or all groups. Energy spectra
+share the μ(E) label. The import dialog uses the same controls alongside an
+input-format choice for μ(E), extracted χ(k), or FEFF xmu.dat.
 
-The main parameter panel shows the data type next to Freeze. Clicking opens
-the same dialog. Ctrl+Alt-click toggles only μ(E)/XANES. A norm(E) group becomes
-normalized XANES and toggles back to norm(E); an explicit XANES dialog choice
-clears the normalized flag, as the native dialog does. `is_normalized` records
-this independent state, including in project exchange and normalized E0 searches.
-XANES disables AUTOBK/FT controls and χ(k) disables normalization/AUTOBK controls.
+The previous three-way type selector and Ctrl+Alt type shortcut have been
+removed from the web interface. The backend retains native type commands and
+project flags for compatibility. Explicit processing settings map to μ(E) or
+norm(E) with EXAFS enabled, and XANES with EXAFS disabled; `is_normalized`
+preserves normalization independently, including normalized XANES. Input
+normalization also applies to import previews, edge initialization and rebinning.
+New imports send an explicit EXAFS setting. Edge enforcement honors it; legacy
+requests that omit it retain automatic XANES selection for short scans.
+
+The dialog preserves queued parameter edits and reports processing errors.
+Cancel makes no request. Frozen energy groups remain eligible; χ(k) and FEFF
+records are listed as unsupported. EXAFS disabled turns off AUTOBK/FT controls.
 
 `change_datatype` checks the project version, stages all selected type changes,
 then recomputes using Larch. Raw energy/mu and detector arrays, group identity,
@@ -69,8 +75,9 @@ normalization metadata is rejected before project mutation.
 
 ## Verification and remaining work
 
+- [Independent settings tests](../backend/tests/test_athena_processing_options.py) cover all four combinations, strict input validation, normalized imports and references, rebinning, reimport, and explicit EXAFS choices for short scans.
 - [Backend regression tests](../backend/tests/test_athena_datatype.py) exercise measured copper through every energy source/destination pair, compare normalization directly with Larch pre_edge, trap unwanted normalization of normalized XANES, check all E/k/R/q result availability, preserve data/recipes/state, cover frozen/bulk/unsupported records, multi-hop background dependencies, failed science/recovery, difference/reference identity, normalized E0, undo/redo, stale versions, invalid options, native/web exchange and real HTTP.
-- [Workbench tests](../frontend/components/athena-workbench.test.tsx) exercise all scopes, current selection, cancellation, unsupported/empty selection, frozen groups, dirty drafts, error reporting, duplicate submission prevention and the modifier-key shortcut.
+- [Workbench tests](../frontend/components/athena-workbench.test.tsx) exercise all scopes, current selection, cancellation, unsupported/empty selection, frozen groups, dirty drafts, error reporting, duplicate submission prevention and independent normalization/EXAFS settings.
 - [Chromium flows](../frontend/tests/e2e/athena-datatype.spec.ts) load actual copper examples, compare complete rendered plot arrays, exercise current/marked/all/frozen changes and undo/redo, and download/reopen normalized-XANES PRJ files. Tests use isolated ports and temporary data roots.
 - Actual run counts and image review are recorded in [verification](athena-verification.md).
 

@@ -130,6 +130,43 @@ def example(client):
         "group_ids": [], "options": {}}).json()
 
 
+def foils(project):
+    """The three temperature scans, without the shared reference they link to."""
+    return {g["label"]: g["id"] for g in project["groups"]
+            if g["label"].startswith("Cu foil · ") and "reference" not in g["label"]}
+
+
+def unlinked(client, example):
+    """The example with its foil scans detached from their shared reference."""
+    response = client.post(f"/api/athena/projects/{example['id']}/command", json={
+        "version": example["version"], "action": "assign_reference",
+        "group_ids": list(foils(example).values()), "options": {"reference_id": None}})
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_align_refuses_a_group_in_the_standard_s_family(client, example):
+    """The example links all three foils to one reference, so they shift as one.
+
+    Aligning one to another is refused rather than skipped silently, and the
+    catalog has to say why and what to send instead, because the refusal
+    names the rule and not the way out.
+    """
+    scans = foils(example)
+    response = client.post(f"/api/athena/projects/{example['id']}/command", json={
+        "version": example["version"], "action": "align",
+        "group_ids": [scans["Cu foil · 50 K"], scans["Cu foil · 300 K"]],
+        "options": {"method": "demeter-larch", "operation": "auto",
+                    "standard_id": scans["Cu foil · 10 K"]}})
+    assert response.status_code == 400
+    assert "linked references stay fixed" in response.json()["error"]["message"]
+
+    note = client.get("/api/athena/capabilities/align").json()["note"]
+    assert "assign_reference" in note
+    assert "reference_id=null" in client.get(
+        "/api/athena/capabilities/assign_reference").json()["note"]
+
+
 def test_the_align_note_names_the_operation_that_actually_previews(client, example):
     """It used to send a caller to operation='inspect', which cannot fit a shift.
 
@@ -141,11 +178,12 @@ def test_the_align_note_names_the_operation_that_actually_previews(client, examp
     assert "operation='auto'" in note
     assert "'inspect'" in note
 
-    project, groups = example["id"], example["groups"]
-    standard = next(g["id"] for g in groups if "10 K" in g["label"])
+    example = unlinked(client, example)
+    project, scans = example["id"], foils(example)
+    standard = scans["Cu foil · 10 K"]
     # The foil scans against the 10 K foil; the Cu2O reference is a different
     # material, not a misaligned copy of the standard.
-    moving = [g["id"] for g in groups if "Cu foil" in g["label"] and "10 K" not in g["label"]]
+    moving = [scans["Cu foil · 50 K"], scans["Cu foil · 300 K"]]
     body = {"version": example["version"], "action": "align", "group_ids": moving,
             "options": {"method": "demeter-larch", "standard_id": standard}}
 

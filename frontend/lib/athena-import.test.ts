@@ -1,7 +1,7 @@
 import type { AthenaGroup } from "./athena"
 import { expect, it } from "vitest"
 import type { InspectionResponse } from "./contracts"
-import { columnPayload, columnProblem, defaultRebin, flipSignalColumns, initialColumnMapping, reuseColumnMapping, setDualMode, changeInputType, lastImportedSample, type ColumnMapping } from "./athena-import"
+import { columnPayload, columnProblem, defaultRebin, flipSignalColumns, initialColumnMapping, reuseColumnMapping, setDualMode, changeInputType, changeImportProcessing, lastImportedSample, type ColumnMapping } from "./athena-import"
 const previous: ColumnMapping = { energy_column: "old", numerator: ["old"], denominator: ["d1", "d2"], mode: "fluorescence",
   units: "eV", data_type: "xanes", reference_numerator: "r1", reference_denominator: "r2", signal_multiplier: 9, invert: true, sort: false }
 const inspection: InspectionResponse = { upload_id: "u", display_name: "file.dat", row_count: 5, warnings: [], issues: [],
@@ -18,6 +18,28 @@ it("initializes extracted chi and constant-1 detector suggestions", () => {
   expect(columnPayload(chi)).toMatchObject({ data_type: "chi", mode: "mu", denominator: null, units: "eV", signal_multiplier: 1, invert: false })
   const constant = initialColumnMapping({ ...inspection, athena_suggestion: { ...inspection.athena_suggestion!, numerator: [] } }, previous)
   expect(columnPayload(constant).numerator).toEqual([])
+})
+it('sends and reuses normalized absorption without EXAFS while resetting normalization for fresh raw suggestions', () => {
+  const mapping = changeImportProcessing({ ...previous, energy_column: 'c0', numerator: ['c1'], denominator: 'c2',
+    reference_numerator: '', reference_denominator: '', invert: false }, { is_normalized: true, exafs: false })
+  expect(columnPayload(mapping)).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
+  expect(reuseColumnMapping(inspection, inspection, mapping)).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
+  const remembered = { ...inspection, remembered_columns: { version: 1, matching_columns: true, mapping, warnings: [] } }
+  expect(columnPayload(initialColumnMapping(remembered, previous))).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
+  expect(initialColumnMapping(inspection, mapping)).toMatchObject({ data_type: 'mu' })
+  expect(columnPayload(initialColumnMapping(inspection, mapping)).exafs).toBe(true)
+  expect(initialColumnMapping(inspection, mapping).is_normalized).not.toBe(true)
+  expect(changeInputType(mapping, 'chi')).toMatchObject({ data_type: 'chi', is_normalized: false })
+})
+it.each(['mu', 'norm', 'xanes'] as const)('sends an explicit EXAFS choice for %s, including legacy and reopened mappings', data_type => {
+  for (const exafs of [undefined, null, true, false]) {
+    expect(columnPayload({ ...previous, data_type, exafs }).exafs).toBe(data_type !== 'xanes')
+  }
+})
+it.each(['chi', 'xmudat'] as const)('omits ordinary-energy EXAFS settings for %s input', data_type => {
+  const mapping = { ...previous, exafs: false }
+  expect(columnPayload({ ...mapping, data_type })).not.toHaveProperty('exafs')
+  expect(changeInputType(mapping, data_type)).not.toHaveProperty('exafs')
 })
 it.each([[[], null], [["one"], "one"], [["one", "two"], ["one", "two"]]])("keeps old single-column payloads compatible while supporting denominator %j", (denominator, expected) => {
   expect(columnPayload({ ...previous, denominator: denominator as string[] }).denominator).toEqual(expected)

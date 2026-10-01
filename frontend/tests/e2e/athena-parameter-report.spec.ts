@@ -33,7 +33,7 @@ test('all and marked Excel downloads retain every previewed parameter, frozen gr
   const changed=await page.request.post(`/api/backend/api/athena/projects/${project.id}/command`,{data:{version:project.version,action:'metadata',group_ids:[project.groups[1].id],options:{frozen:true,label:'铜 foil = 1'}}})
   expect(changed.ok()).toBe(true);project=await changed.json();await page.reload()
   let {dialog,report}=await openReport(page)
-  expect(report.rows).toHaveLength(4)
+  expect(report.rows).toHaveLength(project.groups.length)
   await dialog.getByLabel('Preview section').selectOption('background')
   await page.screenshot({path:info.outputPath('parameter-report-desktop.png')})
   const file=await download(page,info,'all.xls')

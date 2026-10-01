@@ -45,9 +45,10 @@ def test_a_whole_session_runs_from_the_command_line(run, project):
 
     summary = run("--project", project, "summary")
     assert "Copper" in summary
-    assert summary.count("Cu foil") == 3
+    assert summary.count("Cu foil") == 7, "three temperatures, their reference, three links to it"
     assert "Cu₂O" in summary
-    assert "4 groups · 4 processed · 0 failed" in summary
+    assert "5 groups · 5 processed · 0 failed" in summary
+    assert summary.count("ref:Cu foil · shared") == 3
 
     digest = run("--project", project, "digest", "10 K")
     assert "Cu K" in digest
@@ -80,7 +81,7 @@ def test_a_preview_reports_its_shape_instead_of_its_curves(run, project):
     assert not [path for path, length in numeric_runs(json.loads(output)) if length > 8]
 
     # The project must be untouched: preview means preview.
-    assert "4 groups" in run("--project", project, "summary")
+    assert "5 groups" in run("--project", project, "summary")
 
 
 def test_the_project_is_changed_and_the_change_is_reported(run, project):
@@ -125,7 +126,7 @@ def test_describe_lists_actions_then_explains_one(run):
 def test_json_gives_the_untouched_response(run, project):
     run("--project", project, "do", "example")
     payload = json.loads(run("--project", project, "--json", "summary"))
-    assert payload["counts"]["groups"] == 4
+    assert payload["counts"]["groups"] == 5
     assert "groups" in payload
 
 
@@ -227,6 +228,8 @@ def test_the_summary_table_shows_the_shift_an_alignment_leaves(run, project):
     run("--project", project, "do", "example")
     summary = run("--project", project, "summary")
     assert "SHIFT" in summary
+    run("--project", project, "do", "assign_reference", "10 K", "50 K", "300 K",
+        "-o", "reference_id=null")
 
     standard = json.loads(run("--project", project, "--json", "summary"))
     standard_id = next(g["id"] for g in standard["groups"] if "10 K" in g["label"])
@@ -270,6 +273,8 @@ def test_export_writes_a_file_rather_than_a_context_window(run, project, tmp_pat
 def test_a_preview_is_recorded_even_when_it_is_refused(run, project):
     """The rejections in the preview path used to leave no trace at all."""
     run("--project", project, "do", "example")
+    run("--project", project, "do", "assign_reference", "10 K", "50 K", "300 K",
+        "-o", "reference_id=null")
     standard = json.loads(run("--project", project, "--json", "summary"))
     standard_id = next(g["id"] for g in standard["groups"] if "10 K" in g["label"])
 
@@ -284,7 +289,7 @@ def test_a_preview_is_recorded_even_when_it_is_refused(run, project):
     assert log.count("align (preview)") == 2
     assert "FAILED athena_invalid: Inspect or manually shift one current group" in log
     assert "nothing saved" in log
-    assert "4 groups" in run("--project", project, "summary"), "a preview saves nothing"
+    assert "5 groups" in run("--project", project, "summary"), "a preview saves nothing"
 
 
 @pytest.fixture

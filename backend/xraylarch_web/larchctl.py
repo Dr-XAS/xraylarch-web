@@ -160,6 +160,7 @@ def render_summary(summary: dict) -> str:
         f"  redo: {'yes' if summary['can_redo'] else 'no'}",
     ]
     rows = []
+    labels = {group["id"]: group["label"] for group in summary["groups"]}
     for group in summary["groups"]:
         flags = [name for name in ("marked", "frozen") if group[name]]
         if group["exafs"]:
@@ -168,6 +169,10 @@ def render_summary(summary: dict) -> str:
             flags.append("ERROR")
         if group["warnings"]:
             flags.append(f"{len(group['warnings'])} warnings")
+        if group.get("reference_id"):
+            # A shared reference makes linked groups shift as one family, and
+            # align refuses to move one away from its standard's family.
+            flags.append(f"ref:{labels.get(group['reference_id'], group['reference_id'])[:16]}")
         if derived := group.get("derived"):
             flags.append(f"{derived['operation']} of {len(derived['parents'])}")
             if derived.get("excluded"):

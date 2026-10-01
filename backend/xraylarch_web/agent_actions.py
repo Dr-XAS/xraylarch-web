@@ -66,7 +66,11 @@ ACTIONS: dict[str, Action] = {
              "has been saved — and it refuses a multi-group selection. Send "
              "the previewed body again to /command, which rejects "
              "operation='inspect' and takes 'auto' or 'manual'; 'manual' also "
-             "needs an explicit energy_shift.",
+             "needs an explicit energy_shift. A group linked to the same "
+             "reference as the standard is in its family and stays fixed, so "
+             "it is skipped, and if nothing is left the command is refused. "
+             "Check reference_id in ?view=summary and unlink with "
+             "assign_reference first.",
     ),
     "background_standard": Action(
         "Link selected groups to a group used as their background standard.",
@@ -299,6 +303,19 @@ ACTIONS: dict[str, Action] = {
                   creates=True,
                   options={"array": "'mu' | 'norm' | 'chi' — which array to add.",
                            "label": "str — name for the result."}),
+    "assign_reference": Action(
+        "Point the selected groups at one shared reference spectrum.",
+        "one+",
+        options={"reference_id": "str | null — the reference group's id, or "
+                                 "null to remove the selected groups' links."},
+        note="Linked groups take energy shifts as one family: assigning adopts "
+             "the reference's shift, and a later shift on any member moves them "
+             "all. That is why align refuses to move a group that shares a "
+             "reference with the standard. Removing a link keeps the current "
+             "shift. The bundled example links its three Cu foil scans to "
+             "'Cu foil · shared reference'; send reference_id=null on them "
+             "before aligning one to another.",
+    ),
     "tie_reference": Action(
         "Declare the second selected group the reference channel of the first.",
         "two",
@@ -329,7 +346,8 @@ ACTIONS: dict[str, Action] = {
                    note="project.can_undo says whether there is anything to undo."),
     "untie_reference": Action(
         "Break the reference link on the selected groups.", "one+",
-        note="Clears the whole reference family, not just one side.",
+        note="Clears each selected group's own link and every link that "
+             "points at a selected group. Shifts are kept.",
     ),
     "xdi_comments": Action(
         "Replace the XDI comment block on one group.",

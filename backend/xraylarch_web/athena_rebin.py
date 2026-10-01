@@ -60,7 +60,8 @@ def grid_e0(x, y, request):
     if request.edge_policy is not None:
         from .athena_import_policy import initialize_import
         prepared = initialize_import(x, y, policy=request.edge_policy.model_dump(),
-                                     data_type=request.data_type, _for_rebin=True)
+                                     data_type=request.data_type, is_normalized=request.is_normalized,
+                                     exafs=request.exafs, _for_rebin=True)
         return prepared['e0_selection']['e0'], 'enforced-fraction'
     return rebin_edge(x, y), 'derivative'
 

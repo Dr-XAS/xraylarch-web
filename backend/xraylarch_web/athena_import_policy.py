@@ -69,7 +69,7 @@ def _pre2_default(seed):
     return -75.0 if seed > 30000 else -30.0
 
 
-def _at_e0(x, base, automatic, e0, data_type):
+def _at_e0(x, base, automatic, e0, data_type, is_normalized=False):
     """Update automatic bounds; retain explicit outer bounds for Larch to clip.
 
     Reuse the seed-resolved base on every pass so an earlier iteration's
@@ -79,7 +79,7 @@ def _at_e0(x, base, automatic, e0, data_type):
     recipe = dict(base, e0=float(e0))
     if not x[1] <= e0 <= x[-2]:
         raise ScientificError("Enforced/fractional E0 needs measured data on both sides in the shifted energy range.")
-    if data_type not in ("norm", "xmudat"):
+    if not is_normalized and data_type not in ("norm", "xmudat"):
         start, end = float(x[0] - e0), float(x[-1] - e0)
         if "pre1" in automatic:
             recipe["pre1"] = max(recipe["pre1"], start)
@@ -122,14 +122,14 @@ def _at_e0(x, base, automatic, e0, data_type):
     return AthenaParameters.model_validate(recipe).model_dump()
 
 
-def _seed_defaults(x, p, seed, data_type):
+def _seed_defaults(x, p, seed, data_type, is_normalized=False, exafs=None):
     base = p.model_dump()
     automatic = set()
     short = bool(x[-1] - seed < XANES_CUTOFF)
-    output_type = "xanes" if data_type == "mu" and short else data_type
-    if output_type != "mu" and p.fnorm:
+    output_type = "xanes" if data_type == "mu" and short and exafs is None else data_type
+    if (output_type != "mu" or is_normalized) and p.fnorm:
         raise ScientificError("fnorm requires raw mu with EXAFS support; disable fnorm for this import or provide a longer mu scan.")
-    if output_type not in ("norm", "xmudat"):
+    if not is_normalized and output_type not in ("norm", "xmudat"):
         values = {"pre1": -150.0, "pre2": _pre2_default(seed), "nnorm": 2,
                   "norm1": 15.0 if output_type == "xanes" else 150.0,
                   "norm2": float(x[-1] - seed - (0 if output_type == "xanes" else 100))}
@@ -156,11 +156,11 @@ def _seed_defaults(x, p, seed, data_type):
             base["kmax"] = round(available - 2, 3)  # fft.kmax=-2
             automatic.add("kmax")
     base["e0"] = seed
-    resolved = _at_e0(x, base, automatic, seed, output_type)
+    resolved = _at_e0(x, base, automatic, seed, output_type, is_normalized)
     return resolved, automatic, output_type, short, available
 
 
-def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", _for_rebin=False):
+def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", is_normalized=None, exafs=None, _for_rebin=False):
     """Initialize one ordinary import without modifying arrays or policy state.
 
     policy is {element, edge, fraction=0.5}, with 0<f<=1. Return parameters
@@ -182,20 +182,29 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", _f
     normalized curve. This preserves the source's first-crossing interpolation
     while avoiding a derivative reseed, invalid fixed endpoint bounds, and
     native is_nor recursion. e0_selection has compute_e0's shape, with the
-    outer normalization iteration count/convergence. norm input uses its
-    supplied unit-step signal; its normalization controls remain untouched.
+    outer normalization iteration count/convergence. Already-normalized input,
+    including XANES, uses its supplied unit-step signal without refitting.
 
     defaults records source_revision, seed_e0, seed_energy_range,
     seed_available_kmax, short_scan, automatic_fields, resolved_at_seed, and
     final_adjustments ({field: {seed, final}}). Seed-resolved values stay fixed
     unless an AUTOMATIC bound would exceed support at the refined E0. Mu scans
-    ending <100 eV after the seed become xanes; norm keeps its representation
-    and must have usable explicit/default k ranges. XANES retains unused EXAFS
+    ending <100 eV after the seed become xanes when exafs is omitted. An explicit
+    EXAFS choice retains its processing mode and requires usable ranges.
+    norm keeps its representation and must have usable k ranges. XANES retains unused EXAFS
     recipe values rather than creating invalid/inactive numeric FT ranges.
     The caller performs final processing once and owns atomic persistence.
     """
     if data_type not in ("mu", "xanes", "norm", "chi", "xmudat"):
         raise ScientificError("Import data_type must be mu, xanes, norm, chi or xmudat.")
+    if is_normalized is not None and (not isinstance(is_normalized, bool)
+            or (data_type == "chi" and is_normalized)
+            or (data_type in ("norm", "xmudat") and not is_normalized)):
+        raise ScientificError("Supply a boolean normalization flag consistent with the input format.")
+    is_normalized = data_type in ("norm", "xmudat") if is_normalized is None else is_normalized
+    if exafs is not None and (not isinstance(exafs, bool) or data_type not in ("mu", "norm", "xanes")
+            or exafs != (data_type != "xanes")):
+        raise ScientificError("Supply a boolean EXAFS flag consistent with the energy input format.")
     if parameters is not None and not isinstance(parameters, (Mapping, AthenaParameters)):
         raise ScientificError("parameters must be an AthenaParameters recipe or mapping.")
     p = parameters if isinstance(parameters, AthenaParameters) else AthenaParameters.model_validate(parameters or {})
@@ -219,11 +228,11 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", _f
         raise ScientificError(f"Enforced {atom['element']} {atom['edge']} E0={seed:g} eV needs measured data on both sides in the shifted energy range; select the correct edge or extend the scan.")
     try:
         with np.errstate(over="raise", invalid="raise", divide="raise"):
-            seed_recipe, automatic, output_type, short, available = _seed_defaults(x, p, seed, data_type)
+            seed_recipe, automatic, output_type, short, available = _seed_defaults(x, p, seed, data_type, is_normalized, exafs)
             current = seed
             for iteration in range(1, MAX_ITERATIONS + 1):
-                recipe = _at_e0(x, seed_recipe, automatic, current, output_type)
-                normalized = y if output_type in ("norm", "xmudat") else _normalized(x, y, AthenaParameters(**recipe), current)
+                recipe = _at_e0(x, seed_recipe, automatic, current, output_type, is_normalized)
+                normalized = y if is_normalized else _normalized(x, y, AthenaParameters(**recipe), current)
                 # x is already shifted, so the selector must receive shift=0.
                 selection = compute_e0(x, normalized, {}, method="fraction", fraction=fraction,
                                        seed_e0=seed, data_type="norm", _for_rebin=_for_rebin)
@@ -232,12 +241,12 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", _f
                 current = next_e0
                 if converged:
                     break
-            final_recipe = _at_e0(x, seed_recipe, automatic, current, output_type)
+            final_recipe = _at_e0(x, seed_recipe, automatic, current, output_type, is_normalized)
     except (ArithmeticError, np.linalg.LinAlgError) as exc:
         raise ScientificError("Enforced import normalization is numerically unstable; rescale mu or adjust the normalization ranges.") from exc
     selection.update(iterations=iteration, converged=converged)
     warnings = []
-    if output_type not in ('norm', 'xmudat'):
+    if not is_normalized:
         from .athena_science import normalization_warnings
         ranges = _normalization_ranges(x, current, AthenaParameters.model_validate(final_recipe))
         warnings.extend(normalization_warnings(final_recipe, ranges))

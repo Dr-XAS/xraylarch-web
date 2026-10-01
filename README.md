@@ -34,7 +34,11 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
-examples: three temperature-series foils and a room-temperature Cu₂O reference.
+examples: three temperature-series foils, a room-temperature Cu₂O reference,
+and a shared Cu foil reference. Data groups show each sample’s reference as
+an indented link; **Ref** assigns one foil to several selected spectra.
+See [shared reference foils](docs/athena-reference-links.md) for energy-shift
+behavior and demo provenance.
 The local copper loader also attaches the Cuprite CIF and prepares the Cu₂O
 EXAFS model with four FEFF paths; **Open Cu₂O EXAFS** opens the prepared setup.
 The earlier single-spectrum interface is at `/classic`. The

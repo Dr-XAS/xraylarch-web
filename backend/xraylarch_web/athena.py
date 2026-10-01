@@ -824,6 +824,8 @@ class ImportRequest(BaseModel):
     mode: Literal["mu", "transmission", "fluorescence"] = "mu"
     units: Literal["eV", "keV"] = "eV"
     data_type: Literal["mu", "xanes", "norm", "chi", "xmudat"] = "mu"
+    is_normalized: bool | None = Field(default=None, strict=True)
+    exafs: bool | None = Field(default=None, strict=True)
     is_reference: bool = Field(default=False, strict=True)
     reference_numerator: str | None = None
     reference_denominator: str | None = None
@@ -839,7 +841,13 @@ class ImportRequest(BaseModel):
     additional_fluorescence: AdditionalFluorescence | None = None
 
     @model_validator(mode="after")
-    def valid_combined_modes(self):
+    def valid_processing_and_modes(self):
+        if ((self.data_type == "chi" and self.is_normalized is True)
+                or (self.data_type in ("norm", "xmudat") and self.is_normalized is False)):
+            raise ValueError("Supply a normalization flag consistent with the input format.")
+        if self.exafs is not None and (self.data_type not in ("mu", "norm", "xanes")
+                or self.exafs != (self.data_type != "xanes")):
+            raise ValueError("Supply an EXAFS flag consistent with the energy input format.")
         additional = self.additional_fluorescence
         if additional is not None:
             if self.mode != "transmission" or self.data_type == "chi":
@@ -1272,24 +1280,64 @@ class AthenaStore:
                 group["result"]["effective"].update(element=result["element"], edge=result["edge"])
         return results, reasons
 
-    def tie_reference(self, p, sample, reference):
-        if sample["id"] == reference["id"]:
-            fail("A group cannot reference itself.")
-        if sample.get("reference_id") == reference["id"]:
+    def assign_reference(self, p, samples, reference, *, energy_shift=None):
+        """Assign a shared reference, retaining other samples and raw arrays.
+
+        New assignments use the reference's calibration. Stage the links first
+        so reassigning a sample cannot change its former reference's shift.
+        Legacy reciprocal pairs become directional when edited.
+        """
+        reference_id = reference["id"] if reference is not None else None
+        # Metadata forms resend unchanged reference IDs when saving notes.
+        # Historical projects may have different shifts within a linked pair;
+        # an unchanged link must not silently recalibrate those spectra.
+        samples = [sample for sample in samples if sample.get("reference_id") != reference_id]
+        if not samples:
             return
-        if sample["data_type"] == "chi" or reference["data_type"] == "chi":
-            fail("Reference channels must use an energy axis.")
-        # A newly tied pair uses the sample's shift. Preserve directional
-        # sample/reference metadata while enforcing the relationship both ways.
-        if reference["frozen"] and reference["parameters"]["energy_shift"] != sample["parameters"]["energy_shift"]:
-            fail("Unfreeze the reference before changing its energy shift.")
-        pair = {sample["id"], reference["id"]}
+        selected = {sample["id"] for sample in samples}
+        if reference is not None:
+            if reference["id"] in selected:
+                fail("A group cannot reference itself.")
+            if reference["data_type"] == "chi" or any(sample["data_type"] == "chi" for sample in samples):
+                fail("Reference channels must use an energy axis.")
+        links = {group["id"]: group.get("reference_id") for group in p["groups"]}
+        if reference is not None:
+            reverse = links[reference["id"]]
+            if reverse and links.get(reverse) == reference["id"]:
+                links[reference["id"]] = None
+        for sample in samples:
+            previous = sample.get("reference_id")
+            # Older project and merge exports can contain a reciprocal pair.
+            # Removing that reverse pointer detaches only this relationship.
+            if previous and links.get(previous) == sample["id"]:
+                links[previous] = None
+            links[sample["id"]] = reference["id"] if reference is not None else None
+        if reference is not None:
+            for ident in selected:
+                visiting = set()
+                while ident is not None:
+                    if ident in visiting:
+                        fail("Reference links cannot form a cycle.")
+                    visiting.add(ident)
+                    ident = links.get(ident)
         for group in p["groups"]:
-            if group["id"] in pair or group.get("reference_id") in pair:
-                group["reference_id"] = None
-        if reference["parameters"]["energy_shift"] != sample["parameters"]["energy_shift"]:
-            self.parameter_updates(p, {reference["id"]: {"energy_shift": sample["parameters"]["energy_shift"]}})
-        sample["reference_id"] = reference["id"]
+            group["reference_id"] = (None if group["id"] in selected and energy_shift is None
+                                     else links[group["id"]])
+        if reference is not None:
+            shift = reference["parameters"]["energy_shift"] if energy_shift is None else energy_shift
+            moving = ({group["id"] for sample in samples for group in self.reference_family(p, sample["id"])}
+                      if energy_shift is None else {group["id"] for group in self.reference_family(p, reference["id"])})
+            updates = {group["id"]: {"energy_shift": shift}
+                       for group in p["groups"]
+                       if group["id"] in moving and group["parameters"]["energy_shift"] != shift}
+            if updates:
+                self.parameter_updates(p, updates)
+        for group in p["groups"]:
+            group["reference_id"] = links[group["id"]]
+
+    def tie_reference(self, p, sample, reference):
+        # Keep the older two-group command's sample-first calibration choice.
+        self.assign_reference(p, [sample], reference, energy_shift=sample["parameters"]["energy_shift"])
 
     @staticmethod
     def raw_arrays(energy, mu):
@@ -1374,12 +1422,17 @@ class AthenaStore:
         g["processing_error"] = None
 
     def change_datatype(self, project, groups, options):
-        """Athena Group dialog and Main::quick_change_type, without reimporting."""
+        """Change normalization/EXAFS settings, retaining native type commands."""
         toggle = options.get("toggle", False)
-        if not isinstance(toggle, bool) or set(options) - {"data_type", "toggle"}:
-            fail("Choose a data type or the current-group type toggle.")
+        explicit = bool(set(options) & {"is_normalized", "exafs"})
+        if not isinstance(toggle, bool) or set(options) - {"data_type", "toggle", "is_normalized", "exafs"}:
+            fail("Choose input normalization and EXAFS settings, a data type, or the current-group toggle.")
         destination = options.get("data_type")
-        if toggle:
+        if explicit:
+            if set(options) != {"is_normalized", "exafs"} or any(not isinstance(options[key], bool) for key in options):
+                fail("Supply both is_normalized and exafs as booleans, without a data type or toggle.")
+            destination = ("norm" if options["is_normalized"] else "mu") if options["exafs"] else "xanes"
+        elif toggle:
             if destination is not None or len(groups) != 1:
                 fail("Toggle the type of exactly one current group, without a destination.")
             if groups[0]["data_type"] == "detector":
@@ -1395,7 +1448,7 @@ class AthenaStore:
             normalized = group.get("is_normalized", previous == "norm")
             target = ("norm" if normalized else "mu") if previous == "xanes" else "xanes"
             if not toggle:
-                target, normalized = destination, destination == "norm"
+                target, normalized = destination, options["is_normalized"] if explicit else destination == "norm"
             group.update(data_type=target, is_normalized=normalized)
             changed.append({"group_id": group["id"], "label": group["label"],
                             "previous_type": previous, "data_type": target, "is_normalized": normalized})
@@ -1410,7 +1463,7 @@ class AthenaStore:
                   and g.get("processing_error")}
         return {"datatype_results": changed, "skipped_reasons": reasons, "processing_errors": errors}
 
-    def make_import_group(self, label, energy, mu, *, data_type="mu", source=None, edge_policy=None):
+    def make_import_group(self, label, energy, mu, *, data_type="mu", is_normalized=None, exafs=None, source=None, edge_policy=None):
         """Initialize raw imports; project restore and derived groups bypass this."""
         source = copy.deepcopy(source or {})
         parameters, prepared = None, None
@@ -1418,7 +1471,8 @@ class AthenaStore:
             from .athena_import_policy import initialize_import
             policy = ImportEdgePolicy.model_validate(edge_policy)
             try:
-                prepared = initialize_import(energy, mu, policy=policy.model_dump(), data_type=data_type)
+                prepared = initialize_import(energy, mu, policy=policy.model_dump(), data_type=data_type,
+                                             is_normalized=is_normalized, exafs=exafs)
             except ValueError as exc:
                 fail(f"{label}: {exc}")
             parameters, data_type = prepared["parameters"], prepared["data_type"]
@@ -1428,7 +1482,8 @@ class AthenaStore:
             source["e0_fraction"] = policy.fraction
             source["import_defaults"] = prepared["defaults"]
             source.setdefault("warnings", []).extend(prepared.get("warnings", []))
-        g = self.make_group(label, energy, mu, parameters=parameters, data_type=data_type, source=source)
+        g = self.make_group(label, energy, mu, parameters=parameters, data_type=data_type,
+                            is_normalized=is_normalized, source=source)
         if prepared is not None:
             if g["processing_error"]:
                 fail(f"{label}: enforced edge could not be processed. {g['processing_error']}")
@@ -1477,7 +1532,7 @@ class AthenaStore:
             warnings.append(f"Reference E0 could not be initialized: {exc}")
         source.setdefault("warnings", []).extend(warnings)
         reference = self.make_group(sample["label"] + " · reference", energy, mu,
-            data_type=sample["data_type"], source=source, parameters=parameters)
+            data_type=sample["data_type"], is_normalized=sample.get("is_normalized"), source=source, parameters=parameters)
         reference["marked"] = False
         if selection:
             reference["source"]["e0_selection"] = {**selection, "group_id": reference["id"],
@@ -1786,6 +1841,11 @@ class AthenaStore:
             mapping = {key: value for key, value in mapping.items() if key in ImportRequest.model_fields}
             mapping.update(reference_numerator=None, reference_denominator=None, individual_channels=False,
                            additional_fluorescence=None, reader_reviewed=True)
+            if group['data_type'] != 'detector':
+                # Type corrections do not rewrite the historical source recipe.
+                # Reopening it must still retain the group's current processing.
+                mapping.update(data_type=group['data_type'], is_normalized=group.get('is_normalized'),
+                               exafs=group['data_type'] != 'xanes' if group['data_type'] in ('mu', 'norm', 'xanes') else None)
             # Import-time policies belong to this spectrum, not whichever file
             # was most recently inspected in another tab.
             if source.get('edge_policy'):
@@ -1876,8 +1936,13 @@ class AthenaStore:
             # Native MED imports share the first detector's fitted shift.
             # Use paired references only when both spectra have one.
             if shared_alignment is None:
-                family = self.reference_family(project, standard['id'])
-                standard_reference = next((g for g in family if g['id'] != standard['id']), None)
+                standard_reference = (self.group(project, standard['reference_id'])
+                                      if standard.get('reference_id') else None)
+                if standard_reference is None:
+                    # Preserve a legacy reverse-only pair. A shared foil has
+                    # several consumers, none of which is its reference.
+                    incoming = [g for g in project['groups'] if g.get('reference_id') == standard['id']]
+                    standard_reference = incoming[0] if len(incoming) == 1 else None
                 use_reference = reference is not None and standard_reference is not None
                 moving, fixed = (reference, standard_reference) if use_reference else (sample, standard)
                 prefs = self.smoothing_preferences.read()['values']
@@ -2016,6 +2081,7 @@ class AthenaStore:
                         label += " · " + names.get(sample["columns"][0], "Constant 1")
                     group_source, group_x, group_y = self.rebinned_source(source, x, y, sample.get('rebin'))
                     g = self.make_import_group(label, group_x, group_y, data_type=mode_request.data_type,
+                                              is_normalized=mode_request.is_normalized, exafs=mode_request.exafs,
                                               source=group_source, edge_policy=mode_request.edge_policy)
                     if sample.get('rebin') is not None:
                         from .athena_xdi_history import inherit_source
@@ -2033,7 +2099,7 @@ class AthenaStore:
                             individual_channels=False, signal_multiplier=1., invert=False,
                             preprocessing=ImportPreprocessing().model_dump() if mode_request.preprocessing is not None else None,
                             data_type=g["data_type"], mode="transmission" if mode_request.reference_log else "fluorescence",
-                            is_reference=True)
+                            is_normalized=g["is_normalized"], is_reference=True)
                         reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
                         reference = self.make_reference_group(g, ref_x, ref_y,
                             source=reference_source, same_element=mode_request.reference_same_element)
@@ -2920,9 +2986,21 @@ class AthenaStore:
                             "denominator": "column_0005", "mode": "transmission", "units": "eV",
                             "data_type": "mu", "is_reference": True}})
                 p["groups"].append(cu2o)
+                filename = "cu_rt01.xmu"
+                raw = np.loadtxt(Path(__file__).resolve().parents[2] / "examples" / "xafsdata" / filename)
+                reference = self.make_group("Cu foil · shared reference", raw[:, 0], raw[:, 1], source={
+                    "filename": filename,
+                    "citation": "Cu metal foil measured at APS 13-ID on 2001-06-26; XrayLarch example data.",
+                    "mapping": {"energy_column": "column_0001", "numerator": ["column_0002"],
+                        "mode": "mu", "units": "eV", "data_type": "mu", "is_reference": True},
+                    "example_reference": {"description": "Room-temperature foil data reused to demonstrate a shared reference; "
+                            "these links do not represent simultaneous reference measurements for the temperature series."}})
+                reference.update(marked=False, notes=reference["source"]["example_reference"]["description"])
+                p["groups"].append(reference)
+                self.assign_reference(p, [self.group(p, group_id) for group_id in foil_ids], reference)
                 p.setdefault("group_folders", []).extend([
                     {"id": uid(), "name": "Temperature series", "group_ids": foil_ids},
-                    {"id": uid(), "name": "reference", "group_ids": [cu2o["id"]]},
+                    {"id": uid(), "name": "reference", "group_ids": [cu2o["id"], reference["id"]]},
                 ])
                 if p["name"] == "Untitled project":
                     p["name"] = "Copper examples · foils and reference"
@@ -2939,7 +3017,7 @@ class AthenaStore:
             else:
                 if not groups:
                     fail("Select at least one group.")
-                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "context_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
+                if action not in ("change_datatype", "metadata", "xdi_comments", "selection", "background_standard", "duplicate", "copy_series", "delete", "parameters", "set_e0", "copy_parameters", "reset_parameters", "context_parameters", "align", "merge", "sum", "difference", "rebin", "multi_electron", "convolve", "deglitch", "truncate", "assign_reference", "tie_reference", "untie_reference") and not (action == 'smooth' and 'method' in options) and any(g["frozen"] for g in groups):
                     fail("Unfreeze the selected groups before changing their data or processing.")
                 if action == 'rebin':
                     choice, prepared, reasons = self._rebin_results(p, request)
@@ -3010,7 +3088,7 @@ class AthenaStore:
                             if isinstance(value, bool) or not isinstance(value, (int, float)) or not np.isfinite(value) or value < 0:
                                 fail('Importance must be a finite nonnegative number.')
                             g['source']['importance'] = float(value)
-                        for key in ("label", "notes", "marked", "frozen", "multiplier", "offset", "reference_id"):
+                        for key in ("label", "notes", "marked", "frozen", "multiplier", "offset"):
                             if key in options:
                                 value = options[key]
                                 if key in ("multiplier", "offset"):
@@ -3020,13 +3098,14 @@ class AthenaStore:
                                 elif key in ("marked", "frozen"):
                                     if not isinstance(value, bool):
                                         fail("Mark and freeze values must be boolean.")
-                                elif key == "reference_id":
-                                    if value is not None:
-                                        self.tie_reference(p, g, self.group(p, value))
-                                        continue
                                 else:
                                     value = str(value)[:(200 if key == "label" else 20_000)]
                                 g[key] = value
+                    if "reference_id" in options:
+                        value = options["reference_id"]
+                        if value is not None and not isinstance(value, str):
+                            fail("Choose a reference group or None.")
+                        self.assign_reference(p, groups, self.group(p, value) if value is not None else None)
                 elif action == "background_standard":
                     standard_id = options.get("standard_id")
                     skipped = self.parameter_updates(p, {g["id"]: {"background_standard_id": standard_id}
@@ -3091,10 +3170,17 @@ class AthenaStore:
                     if len(groups) != 2:
                         fail("Choose exactly two groups: sample first, reference second.")
                     self.tie_reference(p, groups[0], groups[1])
+                elif action == "assign_reference":
+                    if set(options) != {"reference_id"} or (options["reference_id"] is not None
+                            and not isinstance(options["reference_id"], str)):
+                        fail("Choose a reference group or None.")
+                    reference = self.group(p, options["reference_id"]) if options["reference_id"] is not None else None
+                    self.assign_reference(p, groups, reference)
                 elif action == "untie_reference":
-                    for group in groups:
-                        for tied in self.reference_family(p, group["id"]):
-                            tied["reference_id"] = None
+                    selected = {group["id"] for group in groups}
+                    for group in p["groups"]:
+                        if group["id"] in selected or group.get("reference_id") in selected:
+                            group["reference_id"] = None
                 elif action == "duplicate":
                     created = {}
                     for g in groups:
@@ -4112,7 +4198,7 @@ def build_athena_router(
         "multi_electron", "convolve", "deglitch", "truncate", "delete",
         "change_datatype", "xdi_comments", "selection", "background_standard",
         "copy_series", "copy_parameters", "reset_parameters", "context_parameters",
-        "align", "smooth", "deconvolve", "self_absorption", "tie_reference", "untie_reference",
+        "align", "smooth", "deconvolve", "self_absorption", "assign_reference", "tie_reference", "untie_reference",
     ]
     route_operations: dict[tuple[str, str], IntegrationOperation] = {
         ("GET", "/api/athena/projects/{ident}"): "read_project",

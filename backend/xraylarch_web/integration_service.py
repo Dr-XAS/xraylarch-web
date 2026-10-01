@@ -77,7 +77,7 @@ _NATIVE_ATHENA_OPERATIONS = (
     "convolve", "deglitch", "truncate", "delete", "change_datatype",
     "xdi_comments", "selection", "background_standard", "copy_series",
     "copy_parameters", "reset_parameters", "context_parameters", "align", "smooth",
-    "deconvolve", "self_absorption", "tie_reference", "untie_reference",
+    "deconvolve", "self_absorption", "assign_reference", "tie_reference", "untie_reference",
 )
 
 

@@ -459,6 +459,13 @@ def fit_group(group: dict, request: FitRequest) -> dict:
             if actual["sigma2"] < 0 or actual["s02"] < 0 or fitted_path.reff + actual["deltar"] <= 0:
                 notices.append(f"{definition.label or definition.id}: fitted path parameters are outside physical bounds. Constrain S0², sigma², and distance.")
         model_chi = np.interp(data.k, model.k, model.chi)
+        # Retain unweighted values, including k=0, so display transforms can
+        # change weights without reading current group data or rerunning a fit.
+        plot_source = dict(schema_version=1, data=_finite_array(data.chi, "unweighted data"),
+                           model=_finite_array(model_chi, "unweighted model"),
+                           paths=[dict(id=record["id"], chi=_finite_array(
+                               np.interp(data.k, path.k, path.chi), "unweighted path"))
+                                  for record, path in zip(path_records, dataset.pathlist)])
         weighted_data, weighted_model = data.chi * k_weight, model_chi * k_weight
         r_data, r_model = dataset.data.chir, model.chir
         difference = r_data - r_model
@@ -469,7 +476,7 @@ def fit_group(group: dict, request: FitRequest) -> dict:
         return dict(group_id=group["id"], group_label=group.get("label", ""), success=bool(result.success),
                     message=str(result.message), report=report, warnings=notices, statistics=statistics,
                     parameters=parameter_rows, correlations=correlations, paths=path_records,
-                    transform=request.transform.model_dump(),
+                    transform=request.transform.model_dump(), plot_source=plot_source,
                     metadata=dict(engine="larch.feffit", kstep=0.05, nfft=2048, rwindow="hanning", phase_corrected=False,
                                   noise="Larch high-R estimate (15–30 Å)", background_refined=False,
                                   r_residual="complex data minus model; residual_mag is its magnitude"),
@@ -510,4 +517,7 @@ def build_artemis_router(store) -> APIRouter:
     from .artemis_persistence import build_persistence_router
 
     router.include_router(build_persistence_router(store))
+    from .artemis_plot import build_plot_router
+
+    router.include_router(build_plot_router(store))
     return router

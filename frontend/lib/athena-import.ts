@@ -1,5 +1,5 @@
 import type { InspectionResponse } from "./contracts"
-import type { AthenaGroup } from "./athena"
+import { energyProcessingSettings, type AthenaGroup } from "./athena"
 
 export interface ImportPreprocessing {
   mark: boolean; standard_id: string | null; copy_parameters: boolean; align: boolean
@@ -21,6 +21,8 @@ export interface ColumnMapping {
   energy_column: string; numerator: string[]; denominator: string | string[]
   mode: "mu" | "transmission" | "fluorescence"
   units: "eV" | "keV"; data_type: "mu" | "xanes" | "norm" | "chi" | "xmudat"
+  is_normalized?: boolean
+  exafs?: boolean | null
   is_reference?: boolean
   reference_numerator: string; reference_denominator: string; sort: boolean
   reference_log?: boolean; reference_same_element?: boolean; individual_channels?: boolean
@@ -41,7 +43,8 @@ export function columnPayload(mapping: ColumnMapping) {
   const denominator = denominatorColumns(mapping)
   const fluorescenceDenominator = mapping.additional_fluorescence && denominatorColumns(mapping.additional_fluorescence)
   const { enabled, ...rebin } = mapping.rebin ?? defaultRebin
-  const payload = { ...mapping, preprocessing: mapping.preprocessing ?? defaultPreprocessing,
+  const { exafs: _exafs, ...input } = mapping
+  const payload = { ...input, ...importExafsSetting(mapping.data_type), preprocessing: mapping.preprocessing ?? defaultPreprocessing,
     ...(mapping.additional_fluorescence ? { additional_fluorescence: { ...mapping.additional_fluorescence,
       denominator: fluorescenceDenominator!.length > 1 ? fluorescenceDenominator : fluorescenceDenominator![0] || null } } : {}),
     ...(mapping.rebin ? { rebin: enabled ? rebin : null } : {}),
@@ -108,11 +111,21 @@ export function rebinProblem(r?: ImportRebinOptions): string | null {
 }
 
 export function changeInputType(mapping: ColumnMapping, data_type: ColumnMapping["data_type"]): ColumnMapping {
-  return { ...mapping, data_type, ...(data_type === "chi" ? { mode: "mu" as const, units: "eV" as const,
+  const { exafs: _exafs, ...input } = mapping
+  return { ...input, data_type, ...importExafsSetting(data_type), is_normalized: data_type === 'norm' || data_type === 'xmudat', ...(data_type === "chi" ? { mode: "mu" as const, units: "eV" as const,
     denominator: "", invert: false, signal_multiplier: 1, reference_numerator: "", reference_denominator: "",
     ...(mapping.additional_fluorescence ? { additional_fluorescence: null } : {}),
     ...(mapping.rebin ? { rebin: { ...mapping.rebin, enabled: false } } : {}),
     ...(mapping.preprocessing ? { preprocessing: { ...mapping.preprocessing, standard_id: null, copy_parameters: false, align: false } } : {}) } : {}) }
+}
+
+function importExafsSetting(data_type: ColumnMapping['data_type']): { exafs?: boolean } {
+  return data_type === 'chi' || data_type === 'xmudat' ? {} : { exafs: data_type !== 'xanes' }
+}
+
+export function changeImportProcessing(mapping: ColumnMapping, options: Partial<ReturnType<typeof energyProcessingSettings>>): ColumnMapping {
+  const { is_normalized, exafs } = { ...energyProcessingSettings(mapping), ...options }
+  return { ...mapping, is_normalized, exafs, data_type: !exafs ? 'xanes' : is_normalized ? 'norm' : 'mu' }
 }
 
 export function setDualMode(mapping: ColumnMapping, inspection: InspectionResponse, enabled: boolean): ColumnMapping {
@@ -143,10 +156,11 @@ export function setDualMode(mapping: ColumnMapping, inspection: InspectionRespon
 
 export function initialColumnMapping(inspection: InspectionResponse, previous: ColumnMapping, remembered = true, resetReference = true): ColumnMapping {
   const cols = inspection.columns, suggested = inspection.athena_suggestion
-  const { additional_fluorescence: _fluorescence, ...singlePrevious } = previous
+  const { additional_fluorescence: _fluorescence, is_normalized: _normalized, exafs: _exafs, ...singlePrevious } = previous
   const mapping: ColumnMapping = suggested ? { ...singlePrevious, ...suggested, denominator: suggested.denominator ?? "", reference_numerator: "",
     reference_denominator: "", invert: false, signal_multiplier: 1, individual_channels: false }
-    : { ...singlePrevious, energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "",
+    : { ...singlePrevious, ...(previous.is_normalized === undefined ? {} : { is_normalized: previous.is_normalized }),
+      energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "",
       numerator: [cols.find(c => c.role_hint === "mu")?.column_id ?? cols[1]?.column_id ?? ""],
       denominator: cols.find(c => c.role_hint === "i0")?.column_id ?? cols[2]?.column_id ?? "",
       reference_numerator: "", reference_denominator: "" }

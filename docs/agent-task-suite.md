@@ -10,9 +10,15 @@ assertion is on the prose the arm returns, and needs a grader, though most of it
 reduces to a number that either matches the project or doesn't.
 
 Every task starts from a fresh project with the bundled copper series loaded, which is
-one command: `example`. The three groups are Cu foil at 10 K, 50 K and 300 K. The
+one command: `example`. The three foil scans are Cu foil at 10 K, 50 K and 300 K. The
 300 K scan differs from the other two in three ways that matter, and the suite leans
 on all of them.
+
+Since 2026-10-01 the example has five groups, not three. Beside the foils it loads a
+Cu₂O reference and an unmarked "Cu foil · shared reference", and all three foils carry a
+`reference_id` that points at that shared reference. The state counts below are for the
+five-group fixture. Runs from before that date used three groups and are not directly
+comparable on turns or tokens.
 
 ## Metrics
 
@@ -38,7 +44,7 @@ The transcript gives four of these six for free, which is what it was built for.
 Read-only. It measures whether the digest and the summary carry enough grounding to
 substitute for looking at a plot, which is open question 2 asked empirically.
 
-**State:** the project is at the version it started at, with three groups and no
+**State:** the project is at the version it started at, with five groups and no
 transcript record whose `ok` is false.
 
 **Answer:** names Cu foil · 300 K, and gives at least two of these three facts with
@@ -55,9 +61,15 @@ The scope document's own example task, cut down. It's the shortest path that tou
 multi-group action, a derived number, and an action whose required option isn't
 guessable from its name.
 
-**State:** four groups; the new one's `derived.parents` in `?view=summary` is exactly
+**State:** six groups; the new one's `derived.parents` in `?view=summary` is exactly
 the three originals; the 50 K and 300 K groups carry a nonzero `energy_shift` and the
 10 K group does not.
+
+The foils are linked to the shared reference, so align refuses them as one family until
+the arm unlinks them with `assign_reference` and `reference_id: null`. That refusal is
+expected, and recovering from it is what the "recovered without help" metric counts.
+After unlinking, the shifts come out as before: −0.018 eV for 50 K and −2.959 eV for
+300 K.
 
 The default merge drops the 300 K scan as too short (see "After the second run" below),
 so passing means the arm noticed and merged again with `exclude_short_data: false`. Do

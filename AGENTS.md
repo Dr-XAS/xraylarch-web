@@ -21,7 +21,7 @@ The API is the whole instrument: `http://127.0.0.1:8006/api/athena`. The fronten
 ## The one rule that will bite you
 
 `GET /api/athena/projects/{id}` returns the project *with every array in it*. For the
-bundled four-group copper example that is 844 KB, about 211,000 tokens. A twenty-group
+bundled five-group copper example that is 957 KB, about 239,000 tokens. A twenty-group
 project approaches a million. It stays the default because the browser needs it.
 
 The writes are no better. `POST .../command` answers with the whole project too, about
@@ -33,17 +33,17 @@ command, and every preview.
 
 | request | example cost | what you get |
 |---|---|---|
-| `?view=summary` | ~600 tokens | every group's identity, state, E0, edge step, range, and what it was derived from |
+| `?view=summary` | ~740 tokens | every group's identity, state, E0, edge step, range, and what it was derived from |
 | `POST .../command?view=summary` | ~1,000 tokens after a merge | the same summary, plus `last_operation` |
 | `POST .../merge/preview?view=summary` | ~900 tokens | the preview with each curve replaced by `<611 numbers, 8786.2 .. 11352.9>` |
-| `?view=parameters` | ~1,720 tokens | each group's recipe, requested against effective |
-| `.../groups/{gid}/digest` | ~700 tokens | one spectrum characterised in numbers |
+| `?view=parameters` | ~2,150 tokens | each group's recipe, requested against effective |
+| `.../groups/{gid}/digest` | ~720 tokens | one spectrum characterised in numbers |
 | `.../transcript` | ~120 tokens each | what has already been tried here, failures included |
-| *(no view)* | ~211,000 tokens | everything, arrays included |
+| *(no view)* | ~239,000 tokens | everything, arrays included |
 
 ## The loop
 
-1. `GET /api/athena/capabilities` — 35 actions, one line each, ~1,710 tokens.
+1. `GET /api/athena/capabilities` — 36 actions, one line each, ~1,650 tokens.
 2. `GET /api/athena/capabilities/{action}` — one action in full: its options with types,
    bounds and defaults, its group selection, its preview endpoint, its traps.
 3. `GET /api/athena/projects/{id}?view=summary` — what is there now, and the `version`.
@@ -141,6 +141,14 @@ its reason, and so does `last_operation.merge.outputs[].excluded` in the command
 `larchctl` prints them as `EXCLUDED`. To keep a short scan, send
 `exclude_short_data: false` or select it first. Truncating the long scans to the same
 energy range is not enough, because it does not equalise their point counts.
+
+**Linked groups move together, so align refuses them.** In the example, the three foil
+scans all carry `reference_id` pointing at "Cu foil · shared reference", which puts them
+in one family. A shift applied to one shifts them all, so align will not move a group
+that shares the standard's reference, and when nothing else is left it refuses the
+command with "The alignment standard and its linked references stay fixed." `larchctl
+summary` shows the link as `ref:<label>`. To align the scans to each other, first send
+`assign_reference` on them with `reference_id: null`.
 
 ## What you cannot get
 
