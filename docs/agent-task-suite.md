@@ -791,3 +791,53 @@ field is left out of `GET /structures/{id}`, because a project saves that reply 
 strict attachment snapshot. `larchctl structures` prints `A` and `MEASURED` columns,
 so the copper series from 293 K to 1343 K no longer looks like eleven copies of one
 structure.
+
+## Eighth run, 2026-10-01
+
+All five tasks on both interfaces, the sixth run's harness, on the code and guide after
+FEFF job reuse and structure conditions. This is the baseline to compare later runs
+with.
+
+| arm | task | result | requests | wire bytes | tool calls | end context | wall | cost |
+|---|---|---|---|---|---|---|---|---|
+| CLI | T1 | pass | 11 | 34,400 | 4 | 37,958 | 35 s | $0.31 |
+| HTTP | T1 | pass | 6 | 16,230 | 3 | 41,785 | 41 s | $0.34 |
+| CLI | T2 | pass, spread 0.44 | 28 | 85,724 | 10 | 42,591 | 64 s | $0.44 |
+| HTTP | T2 | pass, spread 0.44 | 15 | 48,312 | 10 | 49,583 | 84 s | $0.53 |
+| CLI | T3 | pass, kmax 17 | 25 | 67,274 | 5 | 38,187 | 35 s | $0.31 |
+| HTTP | T3 | pass, kmax 17 | 20 | 67,025 | 10 | 49,677 | 61 s | $0.49 |
+| CLI | T4 | pass, ends 10134.3 eV | 12 | 39,599 | 7 | 39,204 | 41 s | $0.35 |
+| HTTP | T4 | pass, ends 10134.32 eV | 14 | 41,742 | 7 | 49,580 | 60 s | $0.48 |
+| CLI | T5 | pass, 2.549 ± 0.01 Å | 48 | 117,321 | 7 | 41,994 | 51 s | $0.38 |
+| HTTP | T5 | pass, 2.549 ± 0.004 Å | 37 | 80,998 | 8 | 53,641 | 74 s | $0.54 |
+
+Every arm passed its state assertions and its answer, no command was rejected, and no
+request drew a 4xx. The ten arms cost $4.17. I found nothing false in any answer.
+
+**The structure conditions were used.** Both T3 arms picked AMCSD 13087, the copper
+entry measured at 293 K, as the bundled structure nearest 10 K; the sixth run's arms
+took 11145, whose conditions are unstated. Both T5 arms fitted from 11145 and from
+13087 and got the same r to 0.0004 Å, which is the evidence that `del_r` absorbs the
+cell difference. That is two FEFF jobs per T5 arm, one per structure, so reuse had
+nothing to save here.
+
+**Both T4 arms aligned before merging**, where in the sixth run only the CLI arm did.
+Each unlinked the 300 K scan, aligned it by −2.959 eV, found its E0 again, merged
+`norm` with `exclude_short_data: false`, and gave the end as 10134.3 eV. The HTTP arm
+put its choice of array in the merge's label, "merge (norm) · Cu foil 10 K + 50 K +
+300 K", through the `label` option. The CLI T4 arm made 12 requests for 40 KB, against
+28 for 85 KB in the sixth run.
+
+**T1 arms now say what to do next without doing it.** Both named the 300 K scan with
+its offsets and its source, saw that the shared reference is the same file, put the
+falling chi(k) amplitude down to Debye–Waller damping, and listed the unlink, align and
+E0 steps for the user to approve. The HTTP arm estimated the extra sigma² behind the
+damping at about 0.006 Å² from the compare ratios alone.
+
+**T2 differed only in finishing.** The HTTP arm found E0 again on both moved scans and
+noticed the 300 K edge step return from 2.717 to 2.729 when it did. The CLI arm left
+E0 pinned and offered to find it again. Both reported the original edge steps, read
+before aligning.
+
+Nothing in this run calls for a change. What remains is the open question of what
+a T3 arm should do unasked: both still fitted a distance, and that is the user's call.
