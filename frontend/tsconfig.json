@@ -45,7 +45,11 @@
     ".next-artemis-check/types/**/*.ts",
     ".next-artemis-check/dev/types/**/*.ts",
     ".next-e2e-mounted/types/**/*.ts",
-    ".next-e2e-mounted/dev/types/**/*.ts"
+    ".next-e2e-mounted/dev/types/**/*.ts",
+    ".next-cif-removal-e2e/types/**/*.ts",
+    ".next-cif-removal-e2e/dev/types/**/*.ts",
+    ".next-cif-removal-e2e-mounted/types/**/*.ts",
+    ".next-cif-removal-e2e-mounted/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
