@@ -39,8 +39,8 @@ and a shared Cu foil reference. Data groups show each sample’s reference as
 an indented link; **Ref** assigns one foil to several selected spectra.
 See [shared reference foils](docs/athena-reference-links.md) for energy-shift
 behavior and demo provenance.
-The local copper loader also attaches the Cuprite CIF and prepares the Cu₂O
-EXAFS model with four FEFF paths; **Open Cu₂O EXAFS** opens the prepared setup.
+The local copper loader also attaches the Cuprite CIF and opens the Cu₂O
+EXAFS model with four FEFF paths, ready to fit.
 The earlier single-spectrum interface is at `/classic`. The
 Dr.XAS-integrated build is mounted at `/advanced-xas/app`; its deployment binds
 both the frontend and backend to loopback and relies on Dr.XAS ingress rather

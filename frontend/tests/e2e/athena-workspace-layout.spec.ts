@@ -102,8 +102,7 @@ test("selects and orders result viewers after loading copper examples", async ({
   await expect(stack.locator('[data-viewer-id="single"]')).toBeVisible()
   await expect(stack.locator('[data-viewer-id="multiple"]')).toBeVisible()
   await expect(stack.locator('[data-viewer-id="fit"]')).toBeVisible()
-  await page.locator(".ath-group-select").filter({ hasText: "Cu₂O · room temperature" }).last().click()
-  await page.getByRole("tab", { name: "EXAFS fitting" }).click()
+  await expect(page.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
   await expect(page.getByRole("region", { name: "Artemis EXAFS fitting setup" })).toContainText("Cu₂O · room temperature")
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
   const feff = page.getByRole("region", { name: "FEFF path viewer" })
@@ -125,6 +124,7 @@ test("keeps current and marked spectra in independent viewer panels", async ({ p
   expect(response.ok()).toBe(true)
   const project = await response.json() as AthenaProject
   const [first, second] = project.groups
+  await page.locator(`[data-group-id="${first.id}"] .ath-group-select`).click()
   const single = page.getByRole("region", { name: "Single spectrum viewer", exact: true })
   const multiple = page.getByRole("region", { name: "Multiple spectra viewer", exact: true })
   const singlePlot = single.getByLabel("E-space spectrum plot", { exact: true })

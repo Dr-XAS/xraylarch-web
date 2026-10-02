@@ -34,18 +34,14 @@ multi-dataset fit.
 In the local workspace, **Load copper examples** loads the three foil spectra
 and the **Cu₂O · room temperature** reference, attaches the Cuprite CIF
 (AMCSD 0015851, 1930), and prepares the reference's EXAFS model with the first
-four precomputed Cu K-edge FEFF paths from Cu site 1. From the Processing tab,
-the first foil stays selected; from EXAFS fitting, the prepared Cu₂O model
-opens directly. Choose **Open Cu₂O EXAFS** below the loader to select the reference
-and open its prepared fitting model. Existing spectra and fitting drafts are
-preserved; Undo removes the added spectra and any newly attached CIF together.
+four precomputed Cu K-edge FEFF paths from Cu site 1. Loading the demo selects
+Cu₂O, opens its EXAFS fitting panel, and displays the matching CIF and FEFF paths
+directly. Existing spectra and fitting drafts are preserved; Undo removes the
+added spectra and any newly attached CIF together.
 Linked Dr.XAS sessions retain their spectra-only example import.
 
-The separate **Cu₂O example** button remains available for another selected
-processed spectrum when its path list is empty. It attaches the same CIF and
-loads the model without changing the experimental spectrum. The paths include
-Cu–O and Cu–Cu scattering. Review the path parameters and fit ranges, then
-choose **Run EXAFS fit**; loading an example never runs a fit automatically.
+The paths include Cu–O and Cu–Cu scattering. Review the path parameters and fit
+ranges, then choose **Run EXAFS fit**; loading an example never runs a fit automatically.
 Fitting drafts automatically save with their spectrum in the local project.
 Wait for **Saved** before reloading; a failed save offers **Retry saving model**.
 

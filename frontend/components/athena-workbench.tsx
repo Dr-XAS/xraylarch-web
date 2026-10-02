@@ -451,27 +451,23 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     project?.groups.some(group => group.id === cupriteExample?.groupId) &&
     project.artemis_structures?.some(item => item.id === cupriteExample?.attachmentId && item.sha256 === cupriteExample.example.cif_sha256)
     ? cupriteExample : undefined
-  function openCupriteExample() {
-    if (!readyCupriteExample || busy || parameterActionBlocked()) return
-    cancelPick()
-    setSearch("")
-    setCollapsedGroupFolders(current => new Set([...current].filter(id =>
-      !project?.group_folders?.find(folder => folder.id === id)?.group_ids.includes(readyCupriteExample.groupId))))
-    setActiveId(readyCupriteExample.groupId)
-    setCifSelection({ projectId: readyCupriteExample.projectId, attachmentId: readyCupriteExample.attachmentId })
-    setAnalysisVisible(false)
-    openFittingFromResults()
-  }
   async function loadCopperExamples() {
     if (parameterActionBlocked()) return
     const previousIds = new Set(projectRef.current?.groups.map(group => group.id) ?? [])
     await task("Loading copper examples", async () => {
       const next = await command("example")
       resetViewerLayout()
-      const setup = parameterTab === "fitting" ? next.last_operation?.artemis_example : undefined
+      const setup = !integrated ? next.last_operation?.artemis_example : undefined
       const fittingGroup = setup && next.groups.find(group => group.id === setup.group_id)
       setActiveId(fittingGroup?.id ?? next.groups.find(group => !previousIds.has(group.id))?.id ?? next.groups.at(-1)?.id ?? "")
-      if (fittingGroup && setup) setCifSelection({ projectId: next.id, attachmentId: setup.attachment_id })
+      if (fittingGroup && setup) {
+        setSearch("")
+        setCollapsedGroupFolders(current => new Set([...current].filter(id =>
+          !next.group_folders?.find(folder => folder.id === id)?.group_ids.includes(fittingGroup.id))))
+        setCifSelection({ projectId: next.id, attachmentId: setup.attachment_id })
+        setAnalysisVisible(false)
+        openFittingFromResults()
+      }
     })
   }
   function resetViewerLayout() {
@@ -2187,7 +2183,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       groups={<aside id="athena-data-groups" className="ath-groups"><div className="ath-panel-heading"><h2><ContextLabel label="current group" open={event => showContext(event, { kind: "group" })}>Data groups <span>{project?.groups.length ?? 0}</span></ContextLabel></h2><button aria-label="Import spectra" disabled={!project || !!busy} onClick={() => setModal("import")}><Plus size={17} /></button></div>
         <div className="ath-sidebar-example"><button disabled={!!busy || parameterUpdatePending || !project || !canCommand("example")} aria-describedby={!integrated ? "ath-copper-example-hint" : undefined} onClick={() => { void loadCopperExamples() }}><Activity size={16} />Load copper examples</button>
           {!integrated && <div className="ath-example-details"><small id="ath-copper-example-hint">{readyCupriteExample ? "Cu₂O EXAFS example added" : "Includes shared foil + Cu₂O EXAFS"}</small>
-            {readyCupriteExample && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={openCupriteExample}>Open Cu₂O EXAFS<ChevronRight size={12} /></button>}
           </div>}
         </div>
         <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>

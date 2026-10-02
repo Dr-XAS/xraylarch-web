@@ -135,7 +135,6 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="ref"] { border-color: hsl
 .ath-app .ath-sidebar-example > button { white-space: normal; text-align: left; justify-content: flex-start; width: 100%; color: var(--ath-primary); border: 1px dashed var(--ath-primary-line); background: var(--ath-surface-muted); font-size: var(--text-body); padding: 11px 8px; }
 .ath-example-details { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 4px; }
 .ath-example-details small { color: var(--ath-muted); font-size: var(--text-caption); }
-.ath-app .ath-example-details button { min-height: 28px; padding: 2px 0; color: var(--ath-primary); background: transparent; border: 0; font-size: var(--text-caption); }
 .ath-sidebar-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 12px 12px; padding-top: 10px; border-top: 1px solid var(--ath-line); }
 .ath-app .ath-sidebar-actions button { font-size: var(--text-body); color: var(--ath-muted); }
 .ath-empty-groups { text-align: center; padding: 40px 21px; color: var(--ath-muted); }

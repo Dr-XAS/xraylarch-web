@@ -8,7 +8,6 @@ test("shows matching shell labels beside every fitting and generated FEFF filena
   await page.setViewportSize({ width: 1500, height: 1000 })
   await page.goto("/")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   const fitting = page.getByRole("region", { name: "Artemis EXAFS fitting setup" })
   const pathCard = (index: number) => fitting.getByRole("textbox", { name: `Path ${index} label`, exact: true }).locator("../..")
   for (const index of [1, 2, 4]) {
