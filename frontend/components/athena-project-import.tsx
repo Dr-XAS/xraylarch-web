@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from "react"
 import { FolderOpen } from "lucide-react"
@@ -195,7 +196,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
     {files.length > 0 && <p className={styles.progress} role="status">{busy || `Reviewing ${files[0].name}`} · {files.length} project file{files.length === 1 ? "" : "s"} remaining</p>}
     {preview && <>
       {preview.file_plugin && <section aria-label="Project file conversion">
-        <h4>{preview.file_plugin.description}</h4><p>{preview.file_plugin.summary}</p>
+        <h4>{preview.file_plugin.description} <SectionHelp label="Reader settings">Groups below use the reader settings from this inspection. Reinspect after changing configuration to recalculate and reset group selection.<br /><br />{preview.file_plugin.summary}</SectionHelp></h4>
         <div className="ath-modal-actions">
           <AthenaDownloadButton className="ath-button" path={`/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=source`}>Download original file</AthenaDownloadButton>
           <AthenaDownloadButton className="ath-button" path={`/projects/${project().id}/preview-project/${preview.upload_id}/file?variant=converted`}>Download converted project</AthenaDownloadButton>
@@ -203,7 +204,6 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
           {preview.file_plugin.configurable && <button disabled={locked} onClick={() => setConfigurationOpen(value => !value)}>{configurationOpen ? 'Hide reader configuration' : 'Configure reader'}</button>}
         </div>
         {configurationOpen && <AthenaPluginConfiguration reader={preview.file_plugin.id} onPendingChange={value => { setConfigurationPending(value); onBusyChange(value ? 'Configuring file reader' : '') }} />}
-        <p className="ath-hint">Groups below use the reader settings from this inspection. Reinspect after changing configuration to recalculate and reset group selection.</p>
       </section>}
       <h3 className={styles.title}>{preview.name || preview.filename}</h3>
       <div className={styles.layout}>
@@ -225,9 +225,8 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
             <label className="ath-field"><span>Starting at group</span><input aria-label="Selection start" type="number" min="1" step="1" value={start} disabled={locked} onChange={event => setStart(event.target.value)} /></label>
             <button disabled={locked} onClick={selectPeriodic}>Select by position</button>
           </div>
-          <label className="ath-field"><span>Matching labels (regular expression)</span><input value={pattern} disabled={locked} onChange={event => setPattern(event.target.value)} placeholder="e.g. foil|standard" /></label>
+          <label className="ath-field"><span>Matching labels (regular expression) <SectionHelp label="Group selection">JavaScript regular expressions. Shift-click a checkbox to select a range.</SectionHelp></span><input value={pattern} disabled={locked} onChange={event => setPattern(event.target.value)} placeholder="e.g. foil|standard" /></label>
           <button disabled={locked} onClick={selectMatching}>Select matching</button>
-          <p className="ath-hint">JavaScript regular expressions. Shift-click a checkbox to select a range.</p>
         </div>
         <div className={styles.details}>
           <h4>Project journal</h4><pre className={styles.journal}>{preview.journal || "No journal entries."}</pre>
@@ -246,7 +245,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
       </div>
       {!!compatibilityNotes.length && <details><summary>{compatibilityNotes.length} compatibility notes · original settings retained</summary>{compatibilityNotes.map((warning, index) => <p className="ath-warning" key={index}>{warning}</p>)}</details>}
       {selectionNote && <p role="status">{selectionNote}</p>}
-      <p className="ath-hint">{!selected.length ? "No groups selected: Import all will import the entire project." : `${selected.length} of ${preview.groups.length} groups selected.`} {all ? "Journal and supported analysis state are included. Compatibility notes identify settings retained only as metadata. Remaining project files will be imported in full." : "A subset imports data and recipes; saved analysis state is not restored. The next project will open for selection."}</p>
+      <p className="ath-hint">{!selected.length ? "No groups selected: Import all will import the entire project." : `${selected.length} of ${preview.groups.length} groups selected.`} <SectionHelp label="Project import scope">{all ? "Journal and supported analysis state are included. Compatibility notes identify settings retained only as metadata. Remaining project files will be imported in full." : "A subset imports data and recipes; saved analysis state is not restored. The next project will open for selection."}</SectionHelp></p>
     </>}
     {error && <div className="ath-error" role="alert">{error}</div>}
     {files.length > 0 && <div className="ath-modal-actions">

@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
@@ -112,20 +113,17 @@ export function AthenaSmoothing({ project, activeId, selectGroup, setBusy, saved
   const traces = result?.traces[space] ?? original
   const names = { window: draft.method === 'three_point' ? 'Repetitions' : 'Kernel size · points', sigma: 'Gaussian σ · samples', sgWindow: 'Savitzky–Golay window · points', order: 'Polynomial order' }
   return <div className={`ath-modal-body ${smoothingStyles.body}`}>
-    <p>Compare the original and filtered data before making a new group. Filters use neighbouring samples; on an irregular energy grid, their energy width varies along the scan. Smoothing can distort peak shapes and affect later analysis.</p>
     <div className={styles.layout}>
       <fieldset className={styles.controls} disabled={disabled}>
-        <label className="ath-field"><span>Source group</span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
-        <label className="ath-field"><span>Algorithm</span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Method }))}>
+        <label className="ath-field"><span>Source group <SectionHelp label="Smoothing source">Frozen source groups can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</SectionHelp></span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
+        <label className="ath-field"><span>Algorithm <SectionHelp label="Smoothing algorithm">{draft.method === 'boxcar' || draft.method === 'gaussian' ? 'Even kernel sizes become the next odd size. Athena trims the filter boundaries; the preview reports how many points remain.' : draft.method === 'savitzky_golay' ? 'Uses Larch’s Savitzky–Golay filter and endpoint padding. Athena’s effective defaults are a 31-sample window and order 9. The preference ranges are window 0–39 and order 9–39; Larch may adjust their relationship.' : 'Repeats Athena’s three-point kernel: half the centre sample plus one quarter of each neighbour. Repetitions share the kernel-size control used by boxcar and Gaussian.'}<br /><br />Compare the original and filtered data before making a new group. Filters use neighbouring samples; on an irregular energy grid, their energy width varies along the scan. Smoothing can distort peak shapes and affect later analysis.</SectionHelp></span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Method }))}>
           <option value="boxcar">Boxcar average</option><option value="gaussian">Gaussian filter</option><option value="savitzky_golay">Savitzky–Golay</option><option value="three_point">Three-point smoothing</option>
         </select></label>
         <div className="ath-fields">{fields.map(field => <label className="ath-field" key={field}><span>{names[field]}</span><input type="number" min={field === 'order' ? 9 : 0} max={field === 'order' || field === 'sgWindow' ? 39 : undefined} step={field === 'sigma' ? 'any' : 1} value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value, ...((field === 'sgWindow' || field === 'order') ? {sgEdited: true} : {}) }))} /></label>)}</div>
-        <p className="ath-hint">{draft.method === 'boxcar' || draft.method === 'gaussian' ? 'Even kernel sizes become the next odd size. Athena trims the filter boundaries; the preview reports how many points remain.' : draft.method === 'savitzky_golay' ? 'Uses Larch’s Savitzky–Golay filter and endpoint padding. Athena’s effective defaults are a 31-sample window and order 9. The preference ranges are window 0–39 and order 9–39; Larch may adjust their relationship.' : 'Repeats Athena’s three-point kernel: half the centre sample plus one quarter of each neighbour. Repetitions share the kernel-size control used by boxcar and Gaussian.'}</p>
         {draft.method === 'savitzky_golay' && <details open={preferencesOpen} onToggle={e => setPreferencesOpen(e.currentTarget.open)}>
           <summary>Session and saved SG preferences</summary>
           <SmoothingDefaults preferences={preferences} disabled={disabled}/>
         </details>}
-        <p className="ath-hint">Frozen source groups can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</p>
         <a href="https://bruceravel.github.io/demeter/documents/Athena/process/smooth.html" target="_blank" rel="noreferrer">Document section: smoothing</a>
       </fieldset>
       <section className={styles.results} aria-label="Smoothing preview results">

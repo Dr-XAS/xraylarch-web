@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
@@ -103,17 +104,15 @@ export function AthenaConvolution({ project, activeId, selectGroup, setBusy, sav
     : space !== 'E' && arrays[xkey]?.length && arrays[ykey]?.length ? [{ role: 'original', label: group!.label, x: arrays[xkey], y: arrays[ykey] }] : []
   const traces = result?.traces[space] ?? original
   return <div className={`ath-modal-body ${convolutionStyles.body}`}>
-    <p>Compare the original with Gaussian or Lorentzian broadening, artificial noise, or both. Zero width leaves the spectrum unbroadened; zero noise adds no randomness. Saving keeps the exact noise realization shown in the preview.</p>
     <div className={styles.layout}>
       <fieldset className={styles.controls} disabled={disabled}>
-        <label className="ath-field"><span>Source group</span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
-        <label className="ath-field"><span>Line shape</span><select value={draft.form} disabled={disabled || chi} onChange={e => setDraft(d => ({...d, form: e.target.value as Options['form']}))}>
+        <label className="ath-field"><span>Source group <SectionHelp label="Convolution and noise">Compare the original with Gaussian or Lorentzian broadening, artificial noise, or both. Zero width leaves the spectrum unbroadened; zero noise adds no randomness. Saving keeps the exact noise realization shown in the preview.</SectionHelp></span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
+        <label className="ath-field"><span>Line shape <SectionHelp label="Noise preview">Plot again to draw a fresh noise realization. Changing E/k/R views keeps the same data. Frozen sources remain available for comparison and copying.<br /><br />{chi ? 'χ(k) accepts noise only; energy broadening is disabled.' : 'Gaussian width is its standard deviation; Lorentzian width is half the full width at half maximum. Noise has a normal distribution scaled by the edge step after broadening.'}</SectionHelp></span><select value={draft.form} disabled={disabled || chi} onChange={e => setDraft(d => ({...d, form: e.target.value as Options['form']}))}>
           <option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option>
         </select></label>
         <label className="ath-field"><span>{draft.form === 'gaussian' ? 'Gaussian σ · eV' : 'Lorentzian HWHM · eV'}</span><input type="number" min={0} max={1000} step="any" disabled={disabled || chi} value={chi ? '0' : draft.width} onChange={e => setDraft(d => ({...d, width: e.target.value}))}/></label>
         <label className="ath-field"><span>{chi ? 'Noise σ · χ(k) units' : 'Noise σ · fraction of edge step'}</span><input type="number" min={0} max={100} step="any" value={draft.noise} onChange={e => setDraft(d => ({...d, noise: e.target.value}))}/></label>
-        <p className="ath-hint">{chi ? 'χ(k) accepts noise only; energy broadening is disabled.' : 'Gaussian width is its standard deviation; Lorentzian width is half the full width at half maximum. Noise has a normal distribution scaled by the edge step after broadening.'}</p>
-        <p className="ath-hint">Plot again to draw a fresh noise realization. Changing E/k/R views keeps the same data. Frozen sources remain available for comparison and copying.</p>
+
         <a href="https://bruceravel.github.io/demeter/documents/Athena/process/conv.html" target="_blank" rel="noreferrer">Document section: convolution and noise</a>
       </fieldset>
       <section className={styles.results} aria-label="Convolution preview results">

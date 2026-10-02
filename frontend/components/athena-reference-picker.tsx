@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useId, useState } from "react"
 import type { AthenaGroup } from "@/lib/athena"
 import styles from "./athena-reference-picker.module.css"
@@ -49,8 +50,7 @@ export function AthenaReferencePicker({ groups, initialSampleIds, busy, error, o
     event.preventDefault()
     if (canApply) onApply(sampleIds, referenceId || null)
   }}>
-    <p className="ath-hint" id={hintId}>Multiple spectra can share one reference foil. Assigning a reference adopts its energy shift; linked data then shift together.</p>
-    <label className="ath-field"><span>Reference foil</span>
+    <label className="ath-field"><span>Reference foil <SectionHelp id={hintId} label="Linked references">Multiple spectra can share one reference foil. Assigning a reference adopts its energy shift; linked data then shift together. Removing a reference keeps each selected spectrum’s current energy shift.</SectionHelp></span>
       <select value={referenceId ?? "__choose__"} disabled={busy} aria-describedby={hintId}
         onChange={event => selectReference(event.target.value)}>
         <option value="__choose__" disabled>Choose a reference</option>
@@ -78,7 +78,6 @@ export function AthenaReferencePicker({ groups, initialSampleIds, busy, error, o
       </div>
     </fieldset>
     {groups.some(group => group.data_type === "chi") && <p className="ath-hint">χ(k) data cannot use an energy reference.</p>}
-    {referenceId === "" && <p className="ath-hint">Removing a reference keeps each selected spectrum’s current energy shift.</p>}
     {error && <div className="ath-error" role="alert">{error}</div>}
     <div className={`ath-modal-actions ${styles.actions}`}>
       <button type="button" onClick={onClose} disabled={busy}>Cancel</button>

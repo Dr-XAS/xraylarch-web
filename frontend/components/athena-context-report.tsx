@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useState } from 'react'
 import { dataTypeLabel, type AthenaGroup, type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
@@ -41,7 +42,7 @@ export function AthenaContextReport({ kind, project, groups }: { kind: ContextRe
       <dt>State</dt><dd>{g.frozen ? 'Frozen' : 'Editable'}{g.marked ? ' · marked' : ''}</dd>
       <dt>Processing</dt><dd>{g.processing_error ?? (g.result ? 'Processed' : 'No result')}</dd>
     </dl>{g.notes && <p>{g.notes}</p>}</article>)}
-    {kind === 'yaml' && <><p>Saved parameters, source metadata, and complete data arrays.</p><pre aria-label="Group YAML">{groupYaml(groups.length === 1 ? groups[0] : groups)}</pre></>}
+    {kind === 'yaml' && <><h3>Group YAML <SectionHelp label="Group YAML contents">Saved parameters, source metadata, and complete data arrays.</SectionHelp></h3><pre aria-label="Group YAML">{groupYaml(groups.length === 1 ? groups[0] : groups)}</pre></>}
     {kind === 'source' && remote && <><h3>{remote.filename}</h3><pre aria-label="Original data file">{remote.text}</pre></>}
     {(kind === 'shifts' || kind === 'steps') && <><table><thead><tr><th>Group</th><th>{kind === 'shifts' ? 'Energy shift (eV)' : 'Edge step'}</th>{kind === 'shifts' && <th>Recorded uncertainty (eV)</th>}</tr></thead><tbody>{groups.map((g, index) => {
       const alignment = g.source.alignment as { energy_shift?: number; shift_stderr?: number } | undefined

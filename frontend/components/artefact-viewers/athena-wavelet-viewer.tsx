@@ -266,6 +266,5 @@ export function WaveletFigure({ data, version = data.version, dataVersion = vers
           </>}
       </div>}
     </div>
-    {!surfaceOnly && <p className={styles.hint}>Drag the k-range handles or dotted lines to update χ(k) and |χ(R)|.</p>}
   </div>
 }

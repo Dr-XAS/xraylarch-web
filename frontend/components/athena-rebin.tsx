@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { rebinUnavailable, type AthenaProject, type RebinPreview } from '@/lib/athena'
@@ -76,11 +77,10 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
   }))) ?? []
   return <div className="ath-modal-body">
     <div className={styles.layout}><fieldset disabled={saving} className={styles.controls}>
-      <label className="ath-field"><span>Rebin source group</span><select value={activeId} onChange={e => selectGroup(e.target.value)}>
+      <label className="ath-field"><span>Rebin source group <SectionHelp label="Rebin source">Uses saved processing parameters. Main-inspector edits process automatically; wait for processing to finish before using this tool. Frozen sources can be used to create new groups.</SectionHelp></span><select value={activeId} onChange={e => selectGroup(e.target.value)}>
         {project.groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
       </select></label>
       <p>Edge energy: {active?.parameters.e0 ?? active?.result?.effective.e0 ?? 'Unavailable'} eV</p>
-      <p className="ath-hint">Uses saved processing parameters. Main-inspector edits process automatically; wait for processing to finish before using this tool. Frozen sources can be used to create new groups.</p>
       <div className="ath-fields">{([
         ['emin', 'Edge region start · eV relative to E₀'], ['emax', 'Edge region end · eV relative to E₀'],
         ['pre', 'Pre-edge grid · eV'], ['xanes', 'XANES grid · eV'], ['exafs', 'EXAFS grid · Å⁻¹'], ['width', 'Smoothing width · points'],
@@ -88,14 +88,13 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
         <input type="number" step={name === 'width' ? 1 : 'any'} value={grid[name]}
           onChange={e => setGrid({ ...grid, [name]: e.target.value === '' ? '' : Number(e.target.value) })} />
       </label>)}</div>
-      <label className="ath-check"><input type="checkbox" checked={previewMarked} onChange={e => setPreviewMarked(e.target.checked)} />Preview marked groups ({marked.length})</label>
+      <label className="ath-check"><input type="checkbox" checked={previewMarked} onChange={e => setPreviewMarked(e.target.checked)} />Preview marked groups ({marked.length}) <SectionHelp label="Rebin batch">New groups follow their sources and start unmarked. χ(k) and already-rebinned groups are skipped in a marked batch. Undo restores the entire batch.</SectionHelp></label>
       <div className={styles.actions}>
         <button disabled={!!problem || !groupIds.length} onClick={() => { setSpace('E'); setRetry(n => n + 1) }}>Plot data and rebinned data</button>
         <button disabled={!!problem || !groupIds.length} onClick={() => { setSpace('k'); setRetry(n => n + 1) }}>Plot data and rebinned data in k</button>
         <button className="ath-primary" disabled={!!problem || !active || !!unavailable} onClick={() => { void make(false) }}>Make rebinned data group</button>
         <button disabled={!!problem || !marked.length} onClick={() => { void make(true) }}>Rebin marked data and make groups</button>
       </div>
-      <p className="ath-hint">New groups follow their sources and start unmarked. χ(k) and already-rebinned groups are skipped in a marked batch. Undo restores the entire batch.</p>
       {defaultsControls}
     </fieldset><section className={styles.preview} aria-label="Rebin preview">
       <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Show original data</label>

@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from 'react'
 import { apiBase, isDifferenceGroup, type AthenaProject } from '@/lib/athena'
@@ -141,18 +142,16 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
   const fitted=fit?.key===key?fit.details:undefined
   return <div className="ath-modal-body"><div className={styles.layout}>
     <fieldset disabled={pending} className={styles.controls}>
-      <label className="ath-field"><span>Conventional calibration standard</span><select value={standard} onChange={e=>setStandard(e.target.value)}><option value="">Manual calibration without a standard</option>{candidates.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select></label>
-      <p className="ath-hint">Choose a conventional scan of the same standard measured with the pixel detector. Saved processing settings are used.</p>
+      <label className="ath-field"><span>Conventional calibration standard <SectionHelp label="Calibration standard">Choose a conventional scan of the same standard measured with the pixel detector. Saved processing settings are used.</SectionHelp></span><select value={standard} onChange={e=>setStandard(e.target.value)}><option value="">Manual calibration without a standard</option>{candidates.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select></label>
       <label className="ath-field"><span>Import pixel standard</span><input type="file" aria-label="Choose pixel standard file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
       {inspection&&<><h3>{inspection.display_name} · {inspection.row_count} pixels</h3>
         <div className={styles.actions} aria-label="Pixel column presets"><button disabled={inspection.columns.length<2} onClick={()=>preset('mu')}>Use μ(pixel) columns</button><button disabled={inspection.columns.length<2} onClick={()=>preset('esrf')}>Use Athena ESRF log columns</button><button disabled={inspection.columns.length<3} onClick={()=>preset('slri')}>Use Athena SLRI I₀/Iₜ columns</button></div>
-        <label className="ath-field"><span>Pixel column</span><select value={columns.pixel_column} onChange={e=>setColumns(c=>({...c,pixel_column:e.target.value}))}>{inspection.columns.map(c=><option key={c.column_id} value={c.column_id}>{c.index+1}. {c.name}</option>)}</select></label>
+        <label className="ath-field"><span>Pixel column <SectionHelp label="Pixel signal columns">Selected columns are summed; no selected column means constant 1. For SLRI I₀/Iₜ select both channels and Natural log. Already-computed μ(pixel) uses one numerator and no denominator or log.</SectionHelp></span><select value={columns.pixel_column} onChange={e=>setColumns(c=>({...c,pixel_column:e.target.value}))}>{inspection.columns.map(c=><option key={c.column_id} value={c.column_id}>{c.index+1}. {c.name}</option>)}</select></label>
         <div className={styles.table}><table><thead><tr><th>Numerator</th><th>Denominator</th><th>Column</th></tr></thead><tbody>{inspection.columns.map(c=><tr key={c.column_id}><td><input type="checkbox" aria-label={`Pixel numerator ${c.name}`} checked={columns.numerator.includes(c.column_id)} onChange={e=>select(c.column_id,'numerator',e.target.checked)} /></td><td><input type="checkbox" aria-label={`Pixel denominator ${c.name}`} checked={columns.denominator.includes(c.column_id)} onChange={e=>select(c.column_id,'denominator',e.target.checked)} /></td><td>{c.index+1}. {c.name}</td></tr>)}</tbody></table></div>
-        <p className="ath-hint">Selected columns are summed; no selected column means constant 1. For SLRI I₀/Iₜ select both channels and Natural log. Already-computed μ(pixel) uses one numerator and no denominator or log.</p>
         {(['logarithm','invert','reverse_signal','sort'] as const).map((field,i)=><label className="ath-check" key={field}><input type="checkbox" checked={columns[field]} onChange={e=>setColumns(c=>({...c,[field]:e.target.checked}))} />{['Natural log of absolute ratio','Invert pixel signal','Reverse signal order (high energy at first pixel)','Sort rows by pixel'][i]}</label>)}
         <details><summary>Pixel normalization for initial guess</summary><div className="ath-fields">{Object.entries(normalization).map(([field,value])=><label className="ath-field" key={field}><span>{({pre1:'Pixel pre-edge start',pre2:'Pixel pre-edge end',norm1:'Pixel post-edge start',norm2:'Pixel post-edge end',nnorm:'Pixel polynomial degree'} as Record<string,string>)[field]}</span><input type="number" value={value} placeholder="Auto" onChange={e=>setNormalization(n=>({...n,[field]:e.target.value}))} /></label>)}</div></details>
       </>}
-      <h3>E = offset + linear × pixel + quadratic × pixel²</h3>
+      <h3>E = offset + linear × pixel + quadratic × pixel² <SectionHelp label="Saving dispersive calibration">Estimate, Reset, Refine and Replot save the plotted calibration for the SLRIBL4 pixel/stripe reader, as in Athena. Live previews while editing do not save it. Make calibrated data group inserts a new μ(E) group after the selected standard; Undo removes the group and keeps the saved calibration.</SectionHelp></h3>
       <div className="ath-fields">
         {coefficientKeys.map(field=><label className="ath-field" key={field}><span>{field[0].toUpperCase()+field.slice(1)} coefficient</span><input type="number" step="any" value={coefficients[field]} onChange={e=>{setCoefficients(c=>({...c,[field]:e.target.value}));setHasCalibration(true)}} /></label>)}
         <label className="ath-field"><span>Derivative smoothing passes</span><input type="number" min={0} max={10} step={1} value={nsmooth} onChange={e=>setNsmooth(e.target.value)} /></label>
@@ -167,7 +166,6 @@ export function AthenaDispersive({project,activeId,onSaved,setBusy}: {
       <div className={styles.actions}><button onClick={()=>{void load()}}>Load saved calibration</button><button disabled={!hasCalibration||!valid||!defaults} onClick={()=>{void save()}}>Save calibration</button></div>
       <label className="ath-field"><span>Import athena.dxas calibration</span><input type="file" disabled={!defaults} aria-label="Import athena.dxas calibration" onChange={e=>{const f=e.target.files?.[0];if(f)void importCalibration(f)}} /></label>
       {defaults?.coefficients&&<a href={`${apiBase}/preferences/dispersive/file`} download>Export saved athena.dxas</a>}
-      <p className="ath-hint">Estimate, Reset, Refine and Replot save the plotted calibration for the SLRIBL4 pixel/stripe reader, as in Athena. Live previews while editing do not save it. Make calibrated data group inserts a new μ(E) group after the selected standard; Undo removes the group and keeps the saved calibration.</p>
     </fieldset>
     <section className={styles.previews}>
       <h3>Selected pixel signal</h3><Figure label="Pixel column preview" traces={pixel?[pixel.pixel]:[]} xlabel="Pixel" ylabel="Selected signal" />

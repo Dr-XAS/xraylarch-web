@@ -27,7 +27,9 @@ it('starts with all scans, shows duplicate scan numbers separately and previews 
   const { onContinue } = setup()
   expect(screen.getByLabelText('Include Scan 1 · entry 1')).toBeChecked()
   expect(screen.getByLabelText('Include Scan 1 · entry 2')).toBeChecked()
-  expect(screen.getByText(/ZapEnergy in keV/)).toBeVisible()
+  expect(screen.getByText(/ZapEnergy in keV/)).not.toBeVisible()
+  fireEvent.mouseEnter(screen.getByRole('button', { name: 'About Scan preview columns' }))
+  expect(screen.getByRole('tooltip')).toHaveTextContent(/ZapEnergy in keV/)
   expect(vi.mocked(AthenaImportPreview).mock.calls.at(-1)?.[0]).toMatchObject({ uploadId: 'u1', version: 7,
     mapping: { energy_column: 'c1', numerator: ['c2'], denominator: 'c3', units: 'keV', mode: 'transmission' } })
   expect(onContinue).not.toHaveBeenCalled()

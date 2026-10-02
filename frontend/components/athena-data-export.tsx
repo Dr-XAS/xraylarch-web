@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi, useAthenaTransport } from '@/lib/athena-context'
@@ -91,10 +92,10 @@ export function AthenaDataExport({ project, groupId, close, onBusyChange }: {
   }
   return <section className={styles.export} aria-label="Data export controls">
     <div className="ath-fields">
-      <label className="ath-field"><span>Export groups</span><select value={scope} disabled={downloading} onChange={e => chooseScope(e.target.value)}>
+      <label className="ath-field"><span>Export groups <SectionHelp label="Export groups"><p>The first marked group supplies the axis for one table. Energy data are linearly interpolated; any extrapolation is listed below. k/R/q grids must match.</p><p>The ZIP contains one column file per marked group, retaining each group’s grid. Duplicate labels receive distinct filenames.</p></SectionHelp></span><select value={scope} disabled={downloading} onChange={e => chooseScope(e.target.value)}>
         <option value="current">Current group</option><option value="marked">Marked groups · one table</option><option value="each">Each marked group · ZIP</option>
       </select></label>
-      <label className="ath-field"><span>Data form</span><select value={form} disabled={downloading} onChange={e => setForm(e.target.value)}>
+      <label className="ath-field"><span>Data form <SectionHelp label="Export contents">Exports use processed parameters and include acquisition metadata, saved XDI comments and processing settings. Main-pane edits process automatically; wait for processing to finish before exporting.</SectionHelp></span><select value={form} disabled={downloading} onChange={e => setForm(e.target.value)}>
         {forms.map(([key, label]) => <option key={key} value={key}>{label}</option>)}
       </select></label>
       {supportsWeight && <label className="ath-field"><span>Output k weight</span><select value={weight} disabled={downloading} onChange={e => setWeight(e.target.value)}>
@@ -102,12 +103,10 @@ export function AthenaDataExport({ project, groupId, close, onBusyChange }: {
       </select></label>}
       {supportsWeight && weight === 'kw' && sharedWeight && <label className="ath-field"><span>Arbitrary output k weight</span><input type="number" min="0" max="4" step="any" value={arbitrary} disabled={downloading} onChange={e => setArbitrary(e.target.value)} /></label>}
     </div>
-    {supportsWeight && weight === 'kw' && <><label className="ath-check"><input type="checkbox" checked={sharedWeight} disabled={downloading} onChange={e => setSharedWeight(e.target.checked)} />Use a shared output weight</label><p className="ath-hint">By default, each group uses its saved arbitrary weight, or its applied FT weight if no separate value was imported.</p></>}
+    {supportsWeight && weight === 'kw' && <><label className="ath-check"><input type="checkbox" checked={sharedWeight} disabled={downloading} onChange={e => setSharedWeight(e.target.checked)} />Use a shared output weight <SectionHelp label="Output weight">By default, each group uses its saved arbitrary weight, or its applied FT weight if no separate value was imported.</SectionHelp></label></>}
     {supportsMultipliers && <label className="ath-check"><input type="checkbox" checked={multipliers} disabled={downloading} onChange={e => setMultipliers(e.target.checked)} />Apply each group's plot multiplier</label>}
     <p>{selected.length} group{selected.length === 1 ? '' : 's'} selected{scope !== 'current' && ' in project list order'}: {selected.map(g => g.label).join(', ') || 'none'}</p>
-    <p className="ath-hint">Exports use processed parameters and include acquisition metadata, saved XDI comments and processing settings. Main-pane edits process automatically; wait for processing to finish before exporting.</p>
-    {scope === 'marked' && <p className="ath-hint">The first marked group supplies the axis. Energy data are linearly interpolated; any extrapolation is listed below. k/R/q grids must match; separate files retain each group's grid.</p>}
-    {scope === 'each' && <p className="ath-hint">The ZIP contains one column file per marked group. Duplicate labels receive distinct filenames.</p>}
+
     {badWeight && <p role="alert">Enter a finite output weight from 0 through 4.</p>}
     {!selected.length && <p role="status">Mark at least one group before exporting.</p>}
     {loading && <p role="status">Preparing output columns…</p>}

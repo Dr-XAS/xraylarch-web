@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
@@ -188,6 +189,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
       onClick={() => setCoordinationPanel(previous => previous === "open" ? "closed" : "open")}>Coordination numbers</button>
     {resetButton}
   </div>
+  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover for atom details. Bonds are inferred from distances. Display settings do not change FEFF parameters. Amber marks the absorber; cyan marks CrystalNN neighbors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
   const content = <>
     {structureControls}
     <div className={styles.canvas}>
@@ -204,7 +206,6 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
         : !ready ? <p className={styles.overlay} role="status">Loading 3D structure…</p> : null}
     </div>
     {geometry.lattice && structure.sites.length > 0 && <>
-      <p className={styles.help}>Drag to rotate · scroll or pinch to zoom · hover for atom details</p>
       <div className={styles.controls}>
         <label>View<select aria-label="CIF view mode" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="cluster">Local cluster</option><option value="cell">Unit cell</option><option value="shell" disabled={!shell}>CrystalNN first shell</option><option value="radial" disabled={!radial}>Radial shells</option></select></label>
         <label>Center site<select aria-label="CIF center site" value={center} onChange={event => { const site = Number(event.target.value); setCenter({ key: centerKey, site }); onSiteChange?.(site) }}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
@@ -218,9 +219,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
             value={cellRepeats[index]} onChange={repeat => setCellRepeats(previous => previous.map((count, i) => i === index ? repeat : count) as CifVector)} />)}</div>
         </div> : undefined}
         showBondsControl={false} atomCount={visibleCount} />
-      <p className={styles.help}>Bonds are inferred from distances. Display settings do not change FEFF parameters.</p>
       <div className={styles.help}><FirstShellSummary state={{ ...shellState, shell }} /></div>
-      {mode === "radial" ? <p className={styles.help}>Amber: absorber. Shell colors and neighbor counts are shown below. Element visibility does not change shell membership.</p> : shell && (highlightShell || mode === "shell") && <p className={styles.help}>Amber: absorber · cyan: CrystalNN neighbors. {mode !== "shell" && "Use CrystalNN first shell view to show all periodic neighbors."}</p>}
       <details className={styles.help} open={mode === "radial" ? true : undefined}><summary>Radial shell ranges & display</summary>
         <RadialShellPanel state={{ ...radialState, data: radial }} selected={visibleShells} onToggle={index => {
           setShellVisibility({ key: radialKey, indices: visibleShells.includes(index) ? visibleShells.filter(value => value !== index) : [...visibleShells, index] })
@@ -234,9 +233,9 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     </div>}
   </>
   return collapsible
-    ? <ViewerPanel title="CIF structure viewer" viewerId="cif" actions={actions} className={styles.docked}>{content}</ViewerPanel>
+    ? <ViewerPanel title="CIF structure viewer" viewerId="cif" help={viewerHelp} actions={actions} className={styles.docked}>{content}</ViewerPanel>
     : <section className={styles.viewer} aria-label="CIF structure viewer">
-      <div className={styles.heading}><h4>CIF structure viewer</h4>{actions}</div>
+      <div className={styles.heading}><h4>CIF structure viewer<SectionHelp label="CIF structure viewer">{viewerHelp}</SectionHelp></h4>{actions}</div>
       {content}
     </section>
 }

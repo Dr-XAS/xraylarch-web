@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { apiBase } from '@/lib/athena'
 import { loadPluginRegistry, savePluginRegistry, importPluginRegistry, type PluginRegistry } from '@/lib/athena-preferences'
@@ -70,8 +71,7 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
     }, 'Plugin setting saved for subsequent file inspections.')
   }
   const unavailable = state ? Object.entries(state.enabled).filter(([id]) => !state.plugins.some(p => p.id === id)) : []
-  return <section aria-label="File-plugin settings" className="ath-plugin-registry">
-    <p>Enable the file formats you use. Switches are saved immediately for future sessions on this local server. Plugins are checked in the order shown.</p>
+  return <section aria-label="File-plugin settings" className="ath-plugin-registry"><h3>File plugins <SectionHelp label="Applying file plugin settings">Settings apply when a file is inspected. After enabling a reader, return to the import panel and retry the selected file.<br /><br />Enable the file formats you use. Switches are saved immediately for future sessions on this local server. Plugins are checked in the order shown.</SectionHelp></h3>
     {pending && <p role="status">Loading or saving plugin settings…</p>}
     {error && <p role="alert" className="ath-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
@@ -103,7 +103,6 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
       <p>These readers are unavailable in this application. Their saved settings are retained when exporting the registry.</p>
       <ul>{unavailable.map(([id, enabled]) => <li key={id}>{id.replace('Demeter::Plugins::', '')} · saved as {enabled ? 'enabled' : 'disabled'}</li>)}</ul>
     </details>}
-    <p className="ath-hint">Settings apply when a file is inspected. After enabling a reader, return to the import panel and retry the selected file.</p>
     <div className="ath-modal-actions">
       <button type="button" disabled={locked} onClick={() => { void perform(() => loadPluginRegistry(), 'Plugin settings reloaded.') }}>Reload plugin settings</button>
       <button type="button" disabled={locked || !state} onClick={() => upload.current?.click()}>Import Athena registry…</button>

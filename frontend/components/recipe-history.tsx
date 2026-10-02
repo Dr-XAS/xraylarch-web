@@ -1,3 +1,4 @@
+import { SectionHelp } from "./section-help"
 import type { BackendClient } from "@/lib/backend-client"
 import type { RevisionSummary } from "@/lib/contracts"
 
@@ -16,10 +17,10 @@ export function RecipeHistory({ workspaceId, revisions, activeRevisionId, client
       <div className="section-heading">
         <div>
           <p className="eyebrow">Provenance</p>
-          <h2 id="history-heading">Recipe history</h2>
+          <h2 id="history-heading">Recipe history<SectionHelp label="Recipe history">Applied revisions are retained here. Restore a revision to create a new revision from those parameters.</SectionHelp></h2>
         </div>
       </div>
-      {applied.length === 0 ? <p className="muted">Applied revisions will be retained here.</p> : (
+      {applied.length === 0 ? <p className="muted">No applied revisions.</p> : (
         <ol className="revision-list">
           {applied.map((revision) => {
             const active = revision.revision_id === activeRevisionId

@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from "react"
 import type { AthenaGroup, AthenaProject } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
@@ -63,7 +64,7 @@ export function AthenaReimportColumns({ project, group, onApplied, onBusyChange,
   }
 
   return <>
-    <p className="ath-hint">Rebuild <strong>{group.label}</strong> from its stored columns and reset its processing settings. The group name, position, and reference links are kept. Undo restores the previous spectrum.</p>
+    <p>Rebuild <strong>{group.label}</strong> · resets processing <SectionHelp label="Rebuild from columns">Rebuild from stored columns and reset processing settings. The group name, position, and reference links are kept. Undo restores the previous spectrum.</SectionHelp></p>
     {error && <p className="ath-error" role="alert">{error}</p>}
     {loading ? <><p role="status">Loading original columns…</p><button type="button" onClick={close}>Cancel</button></>
       : inspection && mapping ? <>

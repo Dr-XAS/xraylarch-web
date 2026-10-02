@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
@@ -122,17 +123,15 @@ export function AthenaAlignment({project,activeId,selectGroup,initialDraft,remem
     {x:row.before.x,y:row.before.y,name:'Before alignment',type:'scatter',mode:'lines',line:{color:'#a5afa9',dash:'dot'}},
     {x:row.after.x,y:row.after.y,name:`Aligned · ${row.after.label}`,type:'scatter',mode:'lines',line:{color:'#bb6542'}}]:[]
   return <div className={`ath-modal-body ${controls.body}`}>
-    <p>Compare the current spectrum with a fixed standard. Alignment changes the energy shift and preserves each group’s E₀.</p>
     <div className={styles.layout}><fieldset className={styles.controls} disabled={disabled}>
       <label className="ath-field"><span>Source group</span><select aria-label="Source group" value={activeId} onChange={e=>selectGroup(e.target.value)}>{project.groups.map(g=><option key={g.id} value={g.id}>{g.label}{g.frozen?' · frozen':''}</option>)}</select></label>
-      <label className="ath-field"><span>Alignment standard</span><select aria-label="Alignment standard" value={draft.standard_id} onChange={e=>{setDraft(d=>({...d,standard_id:e.target.value}));setOperation('inspect');setScope('current')}}><option value="">Choose a standard</option>{project.groups.filter(g=>g.data_type!=='chi'&&g.data_type!=='detector'&&!g.is_difference).map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select></label>
+      <label className="ath-field"><span>Alignment standard <SectionHelp label="Energy alignment">Compare the current spectrum with a fixed standard. Alignment changes the energy shift and preserves each group’s E₀.</SectionHelp></span><select aria-label="Alignment standard" value={draft.standard_id} onChange={e=>{setDraft(d=>({...d,standard_id:e.target.value}));setOperation('inspect');setScope('current')}}><option value="">Choose a standard</option>{project.groups.filter(g=>g.data_type!=='chi'&&g.data_type!=='detector'&&!g.is_difference).map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select></label>
       <label className="ath-field"><span>Plot as</span><select aria-label="Alignment display" value={draft.display} onChange={e=>setDraft(d=>({...d,display:e.target.value as Display}))}><option value="mu">μ(E)</option><option value="norm">Normalized μ(E)</option><option value="derivative">Derivative</option><option value="smoothed">Smoothed derivative</option></select></label>
-      <label className="ath-field"><span>Fit as</span><select aria-label="Alignment fit" value={draft.fit} onChange={e=>setDraft(d=>({...d,fit:e.target.value as AlignmentDraft['fit']}))}><option value="derivative">Derivative</option><option value="smoothed">Smoothed derivative</option></select></label>
+      <label className="ath-field"><span>Fit as <SectionHelp label="Automatic alignment">Automatic alignment fits a shift and derivative scale. The measured signal is never rescaled. Review the preview, then save.</SectionHelp></span><select aria-label="Alignment fit" value={draft.fit} onChange={e=>setDraft(d=>({...d,fit:e.target.value as AlignmentDraft['fit']}))}><option value="derivative">Derivative</option><option value="smoothed">Smoothed derivative</option></select></label>
       <label className="ath-check"><input type="checkbox" checked={draft.use_reference} onChange={e=>setDraft(d=>({...d,use_reference:e.target.checked}))}/>Use linked reference channels</label>
       <label className="ath-field"><span>Total energy shift · eV</span><input aria-label="Total energy shift · eV" type="number" step="any" value={displayedShift} onChange={e=>manual(e.target.value)}/></label>
       <div className={styles.views}>{[-5,-1,-.5,-.1,.1,.5,1,5].map(n=><button key={n} disabled={disabled||displayedShift.trim()===''||!Number.isFinite(Number(displayedShift))} onClick={()=>manual(String(Number((Number(displayedShift)+n).toFixed(10))))}>{n>0?'+':''}{n} eV</button>)}</div>
       <div className={styles.views}><button disabled={disabled||!valid||group?.frozen} onClick={()=>auto(false)}>Auto align</button><button disabled={disabled||!project.groups.some(g=>g.marked)} onClick={()=>auto(true)}>Align marked groups</button></div>
-      <p className="ath-hint">Automatic alignment fits a shift and derivative scale. The measured signal is never rescaled. Review the preview, then save.</p>
       <a href="https://bruceravel.github.io/demeter/documents/Athena/process/align.html" target="_blank" rel="noreferrer">Document section: alignment</a>
     </fieldset><section className={styles.results} aria-label="Alignment preview">
       {current&&current.rows.length>1&&<label className="ath-field"><span>Preview group</span><select aria-label="Alignment preview group" value={row?.group_id} onChange={e=>setSelected(e.target.value)}>{current.rows.map(r=><option key={r.group_id} value={r.group_id}>{r.label} · {r.energy_shift} eV</option>)}</select></label>}

@@ -12,6 +12,7 @@ import { RecipeHistory } from "@/components/recipe-history"
 import { SpectrumTray } from "@/components/spectrum-tray"
 import { UploadInspector } from "@/components/upload-inspector"
 import { ThemeSelector } from "@/components/theme-selector"
+import { SectionHelp } from "./section-help"
 
 const workspaceStorageKey = "xraylarch-web.workspace-id"
 const defaultClient = new BackendClient()
@@ -125,8 +126,7 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
   return (
     <main className="workbench-shell" data-testid="workbench-ready">
       <header className="workbench-header">
-        <div><p className="eyebrow">XAS processing workbench</p><h1>XrayLarch Web</h1></div>
-        <p>Server-authoritative processing · explicit recipe revisions</p>
+        <div><p className="eyebrow">XAS processing workbench</p><h1>XrayLarch Web<SectionHelp label="Classic workspace">Processing runs on the server. Applied recipe revisions stay in the history while you preview changes.</SectionHelp></h1></div>
         <ThemeSelector />
       </header>
       <SpectrumTray inspection={state.inspection} activeRevisionId={state.applied?.id ?? null} status={state.status} />
@@ -138,7 +138,7 @@ export function WorkbenchShell({ client = defaultClient }: { client?: BackendCli
             canPreview={canPreview}
             canApply={canApply}
             isPreviewing={state.status === "previewing"}
-            statusText={state.preview ? "Preview is not yet applied." : "Applied results stay visible while you review changes."}
+            statusText={state.preview ? "Preview not applied" : state.applied ? "Applied results" : "No applied revision"}
             error={state.error}
             onChange={(changes) => dispatch({ type: "draft/updated", changes })}
             onPreview={preview}

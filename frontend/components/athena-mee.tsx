@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
@@ -95,18 +96,16 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
     setDraft(d => ({ ...d, shift: shift.toFixed(3) })); setPicking(false)
   }
   return <div className="ath-modal-body">
-    <p>Model a secondary edge using a shifted, broadened copy of the normalized spectrum or an arctangent. Adjust the model while comparing the original and corrected curves. Parameters are chosen from your data; they are not fitted automatically.</p>
     <div className={styles.layout}>
       <fieldset className={styles.controls} disabled={disabled}>
-        <label className="ath-field"><span>Source group</span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
-        <label className="ath-field"><span>Algorithm</span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Options['method'] }))}><option value="reflection">Reflection</option><option value="arctangent">Arctangent</option></select></label>
+        <label className="ath-field"><span>Source group <SectionHelp label="Corrected group">The corrected group keeps the source recipe and is processed again. Frozen sources can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</SectionHelp></span><select aria-label="Source group" value={activeId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}{g.frozen ? ' · frozen' : ''}</option>)}</select></label>
+        <label className="ath-field"><span>Algorithm <SectionHelp label="Multi-electron excitation model">Model a secondary edge using a shifted, broadened copy of the normalized spectrum or an arctangent. Adjust the model while comparing the original and corrected curves. Parameters are chosen from your data; they are not fitted automatically.</SectionHelp></span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Options['method'] }))}><option value="reflection">Reflection</option><option value="arctangent">Arctangent</option></select></label>
         <div className={styles.pickField}>
           <label className="ath-field"><span>Energy shift (eV)</span><input type="number" step="any" value={draft.shift} onChange={e => setDraft(d => ({ ...d, shift: e.target.value }))} /></label>
           <button type="button" disabled={!pickable} aria-label={picking ? 'Cancel energy-shift pick' : 'Pick energy shift'} title={picking ? 'Cancel energy-shift pick' : 'Pick energy shift from the plot'} aria-pressed={picking} onClick={() => setPicking(v => !v)}>{picking ? 'Cancel pick' : 'Pick'}</button>
         </div>
         <div className="ath-fields">{(['amplitude', 'width'] as const).map((field, i) => <label className="ath-field" key={field}><span>{['Scale by (edge-step fraction)', 'Broadening (eV)'][i]}</span><input type="number" step="any" value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value }))} /></label>)}</div>
-        <p className="ath-hint">Primary E₀: {typeof e0 === 'number' ? `${e0.toFixed(3)} eV` : 'unavailable'}. Pick an E or k point to set the excitation energy above E₀. Broadening uses a Lorentzian HWHM; values below 0.01 eV become 0.01. Negative scale becomes zero.</p>
-        <p className="ath-hint">The corrected group keeps the source recipe and is processed again. Frozen sources can be compared and copied. Main-pane parameter changes process automatically; wait for processing to finish before using this tool.</p>
+        <p className="ath-hint">Primary E₀: {typeof e0 === 'number' ? `${e0.toFixed(3)} eV` : 'unavailable'}. <SectionHelp label="Excitation energy and broadening">Pick an E or k point to set the excitation energy above E₀. Broadening uses a Lorentzian HWHM; values below 0.01 eV become 0.01. Negative scale becomes zero.</SectionHelp></p>
       </fieldset>
       <section className={styles.results} aria-label="MEE preview results">
         <div className={styles.views}>{(['E', 'k', 'R'] as const).map(view => <button key={view} disabled={disabled} aria-pressed={space === view} onClick={() => { setSpace(view); setPicking(false) }}>{view === 'E' ? 'Plot in energy' : `Plot in ${view}`}</button>)}</div>

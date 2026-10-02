@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useState } from "react"
 import { calculateClusterCoordination } from "@/lib/cluster-coordination"
 import type { CifGeometry } from "@/lib/cif-viewer"
@@ -32,18 +33,16 @@ export function ClusterCoordination({ geometry, unavailableReason }: { geometry:
     }}>
       <label>Distance cutoff (Å)<input aria-label="CN distance cutoff" type="number" min="0.001" step="any" required value={bondRange} onChange={event => setBondRange(event.target.value)} /></label>
       <label>Shell tolerance (Å)<input aria-label="CN shell tolerance" type="number" min="0" step="any" required value={tolerance} onChange={event => setTolerance(event.target.value)} /></label>
-      <button type="submit" disabled={!!unavailableReason}>Calculate</button>
+      <button type="submit" disabled={!!unavailableReason}>Calculate</button><SectionHelp label="Cluster coordination calculation">Uses all {geometry.atoms.length} cluster atom{geometry.atoms.length === 1 ? "" : "s"}, including hidden elements. Neighbors outside this finite cluster are excluded.</SectionHelp>
     </form>
-    <p className={styles.help}>Uses all {geometry.atoms.length} cluster atom{geometry.atoms.length === 1 ? "" : "s"}, including hidden elements. Neighbors outside this finite cluster are excluded.</p>
     {unavailableReason ? <p className={styles.warning} role="status">{unavailableReason}</p>
       : !current ? <p className={styles.help} role="status">Cluster or settings changed. Calculate to update coordination numbers.</p>
       : calculation.error ? <p className={styles.warning} role="alert">{calculation.error}</p> : null}
     {result && <>
       <p className={styles.help} role="status">{result.atomCount} atom{result.atomCount === 1 ? "" : "s"} · {shellCount} coordination shell{shellCount === 1 ? "" : "s"} · distances &lt; {result.bondRange} Å</p>
-      <p className={styles.help}>Average CN includes every atom of the first element, including atoms with zero neighbors. Center CN refers to {center ? `${center.element} · site ${center.siteIndex}` : "the selected center"}.</p>
       <div className={styles.tableScroll} tabIndex={0} role="region" aria-label="Coordination results">
         <table>
-          <caption className={styles.caption}>Cluster coordination numbers</caption>
+          <caption className={styles.caption}>Cluster coordination numbers<SectionHelp label="Cluster coordination numbers">Average CN includes every atom of the first element, including atoms with zero neighbors. Center CN refers to {center ? `${center.element} · site ${center.siteIndex}` : "the selected center"}. Each shell groups consecutive distances whose gaps are ≤ {result.tolerance} Å. Distribution counts use the same shell membership.</SectionHelp></caption>
           <thead><tr><th scope="col">Pair</th><th scope="col">Shell</th><th scope="col">Mean R (Å)</th><th scope="col">Average CN</th><th scope="col">Center CN</th><th scope="col">Distribution</th></tr></thead>
           <tbody>{result.pairs.flatMap(pair => pair.shells.length ? pair.shells.map(shell => <tr key={`${pair.centerElement}-${pair.neighborElement}-${shell.index}`}>
             <th scope="row">{pair.centerElement} → {pair.neighborElement}</th>
@@ -57,7 +56,6 @@ export function ClusterCoordination({ geometry, unavailableReason }: { geometry:
           </tr>) : <tr key={`${pair.centerElement}-${pair.neighborElement}`}><th scope="row">{pair.centerElement} → {pair.neighborElement}</th><td colSpan={5}>No neighbors within cutoff (CN 0)</td></tr>)}</tbody>
         </table>
       </div>
-      <p className={styles.help}>Each shell groups consecutive distances whose gaps are ≤ {result.tolerance} Å. Distribution counts use the same shell membership.</p>
     </>}
   </section>
 }

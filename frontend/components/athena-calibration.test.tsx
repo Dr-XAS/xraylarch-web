@@ -64,7 +64,9 @@ it('display smoothing keeps raw values, exposes captured SG settings and remembe
   change('Calibration smoothing','3');await ready();expect(handoff().data).toHaveLength(4)
   expect(handoff().data[0].y).not.toEqual(handoff().data[1].y)
   change('Calibration smoothing method','savitzky_golay');await ready()
-  expect(screen.getByText(/Requested SG window 31, order 9/)).toBeVisible()
+  expect(screen.getByText(/Requested SG window 31, order 9/)).not.toBeVisible()
+  fireEvent.mouseEnter(screen.getByRole('button', {name:'About Calibration smoothing'}))
+  expect(screen.getByRole('tooltip')).toHaveTextContent(/Requested SG window 31, order 9/)
   expect(p.rememberDraft).toHaveBeenLastCalledWith({display:'derivative',smoothing:'3',smoothing_method:'savitzky_golay'})
 })
 

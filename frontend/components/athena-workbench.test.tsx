@@ -758,13 +758,14 @@ describe("AthenaWorkbench branding", () => {
     await openSaved()
 
     expect(screen.getByRole("heading", { level: 1, name: "Larch-Web" })).toBeVisible()
+    fireEvent.focus(screen.getByRole("button", { name: "About Larch-Web" }))
     const xraylarch = screen.getByRole("link", { name: "Xraylarch" })
     const demeter = screen.getByRole("link", { name: "Demeter" })
     expect(xraylarch).toHaveAttribute("href", "https://xraypy.github.io/xraylarch/")
     expect(demeter).toHaveAttribute("href", "https://bruceravel.github.io/demeter/")
     expect(xraylarch).toHaveAttribute("target", "_blank")
     expect(demeter).toHaveAttribute("target", "_blank")
-    expect(xraylarch.closest("p")).toHaveTextContent("powered by Xraylarch, inspired by Demeter, and developed by the Dr. XAS team.")
+    expect(xraylarch.closest('[role="tooltip"]')).toHaveTextContent("powered by Xraylarch, inspired by Demeter, and developed by the Dr. XAS team.")
   })
 
   it("omits the extra workspace copy while keeping the example loader and viewer controls", async () => {
@@ -867,7 +868,8 @@ describe("AthenaWorkbench menu command search", () => {
 
   it("opens from Search menu, focuses search, and shows menu paths for keyword matches", async () => {
     const { dialog, searchbox } = await openMenuSearch()
-    expect(within(dialog).getByText("Type a keyword to find a menu command.")).toBeVisible()
+    expect(searchbox).toHaveAccessibleDescription("Type a keyword to find a menu command.")
+    expect(screen.getByRole("button", { name: "About Menu command search" })).toBeVisible()
 
     fireEvent.change(searchbox, { target: { value: "smooth" } })
 
@@ -1479,7 +1481,7 @@ describe("AthenaWorkbench direct folder interactions", () => {
     })
     fireEvent.click(create)
     expect(await screen.findByRole("group", { name: "New group data group" })).toBeVisible()
-    expect(screen.queryByText("A place for every scan.")).not.toBeInTheDocument()
+    expect(screen.queryByText("No spectra yet.")).not.toBeInTheDocument()
   })
 
   it("creates an empty project folder directly from Group", async () => {
@@ -2295,7 +2297,7 @@ describe("AthenaWorkbench native context actions", () => {
     const empty = projectFixture({ id: 'new-empty-project', name: 'Untitled project', version: 0, groups: [], journal: '' })
     api.mockResolvedValueOnce(empty)
     fireEvent.click(within(groupContext()).getByRole('menuitem', { name: 'Close project' }))
-    await screen.findByText('A place for every scan.')
+    await screen.findByText('No spectra yet.')
     expect(api.mock.calls.slice(-1)).toEqual([['/projects', {}]])
     expect(localStorage.getItem(storageKey)).toBe(empty.id)
     expect(screen.queryByRole('button', { name: /^Foil scan/ })).toBeNull()
@@ -2855,7 +2857,7 @@ describe("AthenaWorkbench import edge policy", () => {
     const inspection = inspectionFixture("chi.dat")
     const { dialog } = await chooseImportFiles([inspection])
     fireEvent.change(within(dialog).getByRole("combobox", { name: "Input format" }), { target: { value: "chi" } })
-    expect(within(dialog).getByRole("region", { name: "Import batch edge policy" })).toHaveTextContent("χ(k) ignores it")
+    expect(within(dialog).getByRole("button", { name: "About Import edge policy" })).toHaveAccessibleDescription(/χ\(k\) ignores it/)
     api.mockResolvedValueOnce(importedProject(project, inspection.display_name))
     submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
@@ -2992,6 +2994,7 @@ describe("AthenaWorkbench E₀ selection", () => {
     if (scope === "all") expect(report).toHaveTextContent("Unused reference: E₀ requires an absorption spectrum")
     expect(plotProps().active?.id).toBe("foil")
     expect(project.groups[2].parameters).toEqual(next.groups[2].parameters)
+    fireEvent.focus(within(dialog).getByRole("button", { name: "About Select E₀" }))
     expect(within(dialog).getByText(/Energy shifts are preserved/)).toBeVisible()
   })
 
@@ -3947,7 +3950,7 @@ describe("AthenaWorkbench batch import", () => {
     } }
     const { dialog } = await chooseImportFiles([inspected])
     const view = within(dialog)
-    expect(view.getByRole('region', { name: 'Remembered import choices' })).toHaveTextContent('previous successful import')
+    expect(view.getByRole('button', { name: 'About Remembered import choices' })).toHaveAccessibleDescription(/previous successful import/)
     expect(view.getByLabelText('Numerator If1')).toBeChecked()
     expect(view.getByLabelText('Denominator It')).toBeChecked()
     fireEvent.click(view.getByText('Rebin quick scans', { exact: true }))
@@ -4941,6 +4944,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
     next.last_operation = { action: "copy_parameters", skipped_group_ids: ["oxide"] }
     api.mockResolvedValueOnce(next)
     fireEvent.click(screen.getByRole("checkbox", { name: /^Apply to marked groups/i }))
+    fireEvent.focus(screen.getByRole("button", { name: "About Automatic processing" }))
     expect(screen.getByText(/Frozen groups are skipped.*Energy shifts are preserved/i)).toBeVisible()
     editNumber(/^Rbkg/, 2.2)
     editNumber(/^Energy shift/, 9)
@@ -5455,6 +5459,7 @@ describe("AthenaWorkbench weighted combinations", () => {
     const dialog = await openTool("Process", /sum marked groups/i)
 
     expect(within(dialog).getByRole("option", { name: "χ(k)" })).toBeDisabled()
+    fireEvent.focus(within(dialog).getByRole("button", { name: "About Signal to combine" }))
     expect(within(dialog).getByText(/χ\(k\) requires processed EXAFS/i)).toBeVisible()
     expect(within(dialog).getByRole("option", { name: "Normalized μ(E)" })).toBeEnabled()
     expect(api).toHaveBeenCalledTimes(1)
@@ -5539,6 +5544,7 @@ describe("AthenaWorkbench reference ties", () => {
     })
     api.mockResolvedValueOnce(tied)
     openGroupMenu()
+    fireEvent.focus(screen.getByRole("button", { name: "About Group references" }))
     expect(screen.getByText(/keeps both shifts linked when either is edited/i)).toBeVisible()
     expect(screen.getByText(/Sample: Oxide standard/)).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: /^Tie marked sample and reference$/i }))

@@ -37,7 +37,9 @@ it('displays native XDI versions, extension families and literal Unicode comment
   fireEvent.click(screen.getByText('View XDI metadata'))
   expect(screen.getByRole('rowheader', { name: 'gse.extra' })).toBeVisible()
   expect(screen.getByText('μ 铜 "quoted" $variable @array')).toBeVisible()
-  expect(screen.getByText(/Restored from the native XDI project object/)).toBeVisible()
+  expect(screen.getByText(/Restored from the native XDI project object/)).not.toBeVisible()
+  fireEvent.mouseEnter(screen.getByRole('button', { name: 'About Acquisition metadata' }))
+  expect(screen.getByRole('tooltip')).toHaveTextContent(/Restored from the native XDI project object/)
   expect(document.querySelector('script')).toBeNull()
 })
 

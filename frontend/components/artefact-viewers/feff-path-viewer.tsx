@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useMemo, useState } from "react"
 import type { ArtemisPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
@@ -33,7 +34,7 @@ function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathS
   return <div className={styles.detail}>
     <div className={styles.pathHeading}>
       <div><h3>{path.filename}</h3>{path.label && path.label !== path.filename && <p>{path.label}</p>}</div>
-      <span className={styles.kind}>{geometry?.classification.label ?? `${path.metadata.nleg} legs`}</span>
+      <span className={styles.kind}>{geometry?.classification.label ?? `${path.metadata.nleg} legs`}{geometry && <SectionHelp label="Scattering type">{geometry.classification.description}</SectionHelp>}</span>
     </div>
     <dl className={styles.facts}>
       <div><dt>Absorber / edge</dt><dd>{path.metadata.absorber} {path.metadata.edge}</dd></div>
@@ -43,8 +44,7 @@ function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathS
     </dl>
     {geometry ? <>
       <div className={styles.scattering}>
-        <p>{geometry.classification.description}</p>
-        <div className={styles.route} aria-label="Scattering sequence">{geometry.visits.map((atom, index) => <span key={index}>
+        <div className={styles.route} aria-label="Scattering sequence"><SectionHelp label="Scattering sequence">When verified, equivalent path atoms and bonds are also opaque. Arrows replace bonds along one representative trajectory per selected FEFF file; overlapping legs stay closely spaced for clarity. Path atoms remain visible outside the display radius.</SectionHelp>{geometry.visits.map((atom, index) => <span key={index}>
           {index > 0 && <span className={styles.routeArrow} aria-hidden="true"> → </span>}
           <span className={atom.atomIndex === 0 ? styles.absorber : undefined}>{siteLabel(atom)}</span>
         </span>)}</div>
@@ -58,15 +58,13 @@ function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathS
           ? <>Leg {leg.index}: {siteLabel(leg.from)} → {siteLabel(leg.to)} · {number(leg.length)} Å{leg.index === geometry.legs.length ? " · return to absorber" : ` · scattering angle β = ${leg.scatteringAngle.toFixed(1)}°${leg.scatteringAngle < 1 ? " (forward)" : leg.scatteringAngle > 179 ? " (backscattering)" : ""}`}</>
           : <>Total travel {number(geometry.totalLength)} Å · {geometry.legs.length} directed legs · returns to absorber A</>}</p>
       </div>
-      <p className={styles.note}>When verified, equivalent path atoms and bonds are also opaque. Arrows replace bonds along one representative trajectory per selected FEFF file; overlapping legs stay closely spaced for clarity. Path atoms remain visible outside the display radius.</p>
       <details className={styles.geometryDetails}>
-        <summary>Coordinates and scattering angles</summary>
+        <summary>Coordinates and scattering angles<SectionHelp label="Coordinates and scattering angles">Coordinates are relative to absorber A. β is the change in travel direction: 0° forward, 180° backscattering. R<sub>eff</sub> is half the total path length, not generally the absorber–neighbor distance for multiple scattering.</SectionHelp></summary>
         <div className={styles.tableScroll}><table>
           <caption>Scattering path geometry · {path.filename}</caption>
           <thead><tr><th scope="col">Visit</th><th scope="col">Atom</th><th scope="col">x (Å)</th><th scope="col">y (Å)</th><th scope="col">z (Å)</th><th scope="col">β (°)</th></tr></thead>
           <tbody>{geometry.visits.map((atom, index) => <tr key={index}><th scope="row">{index === 0 ? "Start" : index === geometry.legs.length ? "Return" : index}</th><td>{siteLabel(atom)}</td><td>{number(atom.x)}</td><td>{number(atom.y)}</td><td>{number(atom.z)}</td><td>{index > 0 && index < geometry.legs.length ? geometry.legs[index - 1].scatteringAngle.toFixed(1) : "—"}</td></tr>)}</tbody>
         </table></div>
-        <p className={styles.note}>Coordinates are relative to absorber A. β is the change in travel direction: 0° forward, 180° backscattering. R<sub>eff</sub> is half the total path length, not generally the absorber–neighbor distance for multiple scattering.</p>
       </details>
     </> : <p className={styles.empty} role="status">{error} The FEFF header metadata is shown above.</p>}
   </div>
@@ -133,7 +131,7 @@ function PathWorkspace({ paths, attachments }: { paths: FeffPathSummary[]; attac
     setStructureChoice("")
   }
   const legend = <div className={styles.pathLegend} role="group" aria-label="FEFF path legend">
-    <span className={styles.legendHint}>Paths · click to show / hide</span>
+    <span className={styles.legendHint}>Paths<SectionHelp label="FEFF path legend">Click a FEFF legend to show or hide its path. You can display several paths together.</SectionHelp></span>
     <div className={styles.legendItems}>{entries.map(({ path, color }) => {
       const duplicate = paths.filter(item => item.filename === path.filename).length > 1
       const label = path.filename.replace(/\.dat$/i, "").toUpperCase()
@@ -155,11 +153,11 @@ function PathWorkspace({ paths, attachments }: { paths: FeffPathSummary[]; attac
         </select>
       </label></div> : undefined} />
     {context.warnings.filter(warning => warning !== focused.error).map(warning => <p className={styles.note} key={warning}>{warning}</p>)}
-    {matchingContext.source && matchingContext.truncated && <p className={styles.note}>Equivalent paths were not expanded: the CIF preview is limited at the path extent. Showing representative paths.</p>}
+    {matchingContext.source && matchingContext.truncated && <p className={styles.note}>Representative paths only<SectionHelp label="Equivalent paths warning">Equivalent paths were not expanded: the CIF preview is limited at the path extent. Showing representative paths.</SectionHelp></p>}
     {scenePaths.map(path => path.equivalents?.warning && <p className={styles.note} key={path.id}>{path.filename}: {path.equivalents.warning}</p>)}
     {scenePaths.map(path => path.equivalenceWarning && <p className={styles.note} key={`${path.id}-source`}>{path.filename}: {path.equivalenceWarning}</p>)}
-    {!context.source && !context.requiresSelection && <p className={styles.note}>Attach a matching project CIF or generate paths from a CIF to show the surrounding local structure. These files contain path atoms only.</p>}
-    {!selected.length ? <p className={styles.note} role="status">Click a FEFF legend to show its path. You can display several paths together.</p> : <>
+    {!context.source && !context.requiresSelection && <p className={styles.note}>Path atoms only<SectionHelp label="Missing local structure">Attach a matching project CIF or generate paths from a CIF to show the surrounding local structure. These files contain path atoms only.</SectionHelp></p>}
+    {!selected.length ? <p className={styles.note} role="status">No paths shown</p> : <>
       {selected.length > 1 && <label className={styles.detailPicker}>Path details <select aria-label="Path details" value={focused.path.id} onChange={event => { setFocusedId(event.target.value); setSelectedLeg(null) }}>
         {selected.map(({ path }) => <option key={path.id} value={path.id}>{path.filename}{paths.filter(item => item.filename === path.filename).length > 1 ? ` · ${path.label}` : ""}</option>)}
       </select><span>{selected.length} paths shown</span></label>}
@@ -175,10 +173,10 @@ export function FeffPathViewer({ paths, groupLabel, onOpenModel, attachments = N
   onOpenModel: () => void
   attachments?: ArtemisStructureAttachment[]
 }) {
-  return <ViewerPanel title="FEFF path viewer" viewerId="feff" className={styles.panel}>
+  return <ViewerPanel title="FEFF path viewer" viewerId="feff" className={styles.panel} help="Add or generate FEFF paths in the EXAFS fitting tab to inspect their geometry here.">
     <div className={styles.content}>
       <div className={styles.heading}><span>Current spectrum <strong>{groupLabel ?? "None selected"}</strong></span><button type="button" onClick={onOpenModel}>{paths.length ? "Edit paths" : "Open EXAFS fitting"}</button></div>
-      {!paths.length ? <p className={styles.empty}>Add or generate FEFF paths in the EXAFS fitting tab to inspect their geometry here.</p>
+      {!paths.length ? <p className={styles.empty}>No FEFF paths</p>
         : <PathWorkspace paths={paths} attachments={attachments} />}
     </div>
   </ViewerPanel>
