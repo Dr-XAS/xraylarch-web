@@ -96,6 +96,8 @@ export interface ArtemisFitResult {
   correlations: { left: string; right: string; value: number }[]
   paths: {
     id: string; label: string; filename: string; metadata: ArtemisPathMetadata
+    values?: { s02: number; e0: number; deltar: number; sigma2: number }
+    sigma2_expression?: string
     /** Optimized path curves on the shared result axes; absent from older results. */
     k?: { chi: number[] }
     r?: { mag: number[]; re: number[]; im: number[] }

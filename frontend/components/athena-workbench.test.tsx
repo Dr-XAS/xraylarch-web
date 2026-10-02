@@ -1070,9 +1070,14 @@ describe("AthenaWorkbench data group reordering", () => {
     expect(screen.queryByText("Moved Foil scan to position 2 of 4.")).not.toBeInTheDocument()
 
     await act(async () => response.resolve(reorderedProject(project, ids)))
-    await waitFor(() => expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled())
+    // The handle is enabled in one commit and focused by an effect after it, so
+    // under CI load the focus has to be waited for, not read once the button
+    // is enabled.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toBeEnabled()
+      expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toHaveFocus()
+    })
     expect(screen.getByText("Moved Foil scan to position 2 of 4.")).toHaveAttribute("aria-live", "polite")
-    expect(screen.getByRole("button", { name: "Reorder Foil scan" })).toHaveFocus()
   })
 
   it("announces a failed reorder without claiming that the spectrum moved", async () => {
