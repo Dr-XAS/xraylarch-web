@@ -72,7 +72,14 @@ beforeEach(() => {
 })
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 async function ready() {
-  await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled()
+    // The button is enabled in one commit and the scene drawn by an effect after
+    // it. Under CI load waitFor could see the first before the second had run,
+    // and the test then counted spheres on an empty scene. render() is the
+    // drawing effect's last call and nothing else makes it.
+    expect(scenes.at(-1)?.render).toHaveBeenCalled()
+  })
   return scenes.at(-1)!
 }
 
