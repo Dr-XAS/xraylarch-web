@@ -179,4 +179,21 @@ assert status == 404, "Second visitor launched a FEFF job on private structure"
 
 status, _, body = request(alice, "/api/backend/health")
 assert status == 200 and json.loads(body)["status"] == "ok"
+
+# A real form submission uses fresh smoke visitors only. Reports stay
+# local; deployments do not configure Slack notification credentials.
+for browser, attached in ((bob, False), (alice, True)):
+    payload = urllib.parse.urlencode({
+        "description": "Deployment smoke check: report isolation and project attachment",
+        "type": "feedback", "user_email": "deployment-test@example.invalid",
+        "project_id": project["id"], "attach_project": "true",
+    }).encode()
+    report_request = urllib.request.Request(base + "/api/backend/api/bug-reports", data=payload,
+        headers={"Content-Type": "application/x-www-form-urlencoded"})
+    with browser.open(report_request, timeout=90) as response:
+        assert response.status == 200 and "no-store" in response.headers.get("Cache-Control", "")
+        report = json.loads(response.read())
+        assert report["status"] == "success" and report["stored_locally"]
+        assert report["project_export_attached"] is attached, "Bug report leaked a foreign project"
+    assert request(browser, "/api/backend/api/bug-reports/" + report["report_id"])[0] == 404
 print("PASS: production page, session cookies, visitor isolation, five spectra/shared foil, agent reads, project/Larix export, Artemis fit/display weight, shell analysis, reversible CIF removal, private FEFF access, health")

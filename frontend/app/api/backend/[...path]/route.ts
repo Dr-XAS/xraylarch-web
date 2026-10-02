@@ -60,7 +60,9 @@ function isProjectPath(path: string[]) {
 async function proxy(request: Request, { params }: { params: Promise<{ path: string[] }> }) {
   const { path: routePath } = await params
   if (!allowedMethods(routePath)?.has(request.method)) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 })
+    return NextResponse.json({ error: "Not found" }, {
+      status: 404, headers: { "cache-control": "private, no-store" },
+    })
   }
 
   const upstreamBase = process.env.BACKEND_URL ?? "http://127.0.0.1:8006"

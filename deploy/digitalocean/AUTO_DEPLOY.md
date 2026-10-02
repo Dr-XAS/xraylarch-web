@@ -50,6 +50,13 @@ The Mac must be awake, logged in, and online to upload a new release. After slee
 
 ## Installation and maintenance
 
+Public bug reports are stored privately in the existing data volume and cannot
+be read through an API. Project attachments resolve only inside the reporting
+visitor's session. Anonymous submissions stop when the report library would
+exceed 500 MiB or leave less than 1 GiB free on its filesystem; a cross-process
+lock serializes capacity checks and writes. Reports and project data are never
+automatically deleted. Slack notification remains off unless separately configured.
+
 The reviewed local controller is installed at `~/Library/Application Support/LarchWebDeploy/`. That directory holds machine-specific configuration, committed source archives, logs, and status; none are committed. Git `post-commit`, `post-merge`, and `post-rewrite` hooks package revisions in the Git client's user context. The background worker reads only the queue and never opens the Desktop repository, avoiding macOS protected-folder access restrictions. Existing unrelated hooks are preserved by refusing to overwrite them. The SSH private key stays at `~/.ssh/id_ed25519_larch_web_do`. The LaunchAgent is `~/Library/LaunchAgents/org.dr-xas.larch-public-deploy.plist`.
 
 The server runner is installed separately at `/opt/xraylarch-autodeploy/remote-release.sh`. These installed control scripts are snapshots, so editing them in the checkout does not execute uncommitted deployment code. Changes to the controller or remote runner require testing and reinstalling the corresponding script. Ordinary application commits need no reinstall.

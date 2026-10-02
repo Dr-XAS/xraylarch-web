@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import shutil
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -67,6 +68,35 @@ _STAGE_PREFIX = ".stage-"
 _MAX_EXTENSION_CHARS = 16
 _SUMMARY_LIMIT = 128
 _PAGE_SUMMARY_LIMIT = 256
+PUBLIC_REPORT_LIBRARY_BYTES = 500 * 1024 * 1024
+PUBLIC_DISK_RESERVE_BYTES = 1024 * 1024 * 1024
+
+
+@contextmanager
+def _public_report_capacity(settings, incoming_bytes: int):
+    """Bound anonymous reports without deleting reports or touching project data."""
+    if not settings.public_mode:
+        yield
+        return
+    import fcntl
+
+    directory = Path(settings.data_root) / "bug_reports"
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with open(directory / ".quota.lock", "a+b") as lock:
+        os.chmod(lock.name, 0o600)
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            used = sum(path.stat().st_size for path in directory.rglob("*")
+                       if path.is_file() and not path.is_symlink())
+            if (used + incoming_bytes > PUBLIC_REPORT_LIBRARY_BYTES
+                    or shutil.disk_usage(directory).free - incoming_bytes < PUBLIC_DISK_RESERVE_BYTES):
+                raise WebInputError(
+                    "bug_report_capacity", "The report library cannot accept more data right now.",
+                    (), "Try without attachments or contact the website operator. Existing reports are retained.",
+                )
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
 
 
 def _invalid(message: str, *fields: str) -> WebInputError:
@@ -454,18 +484,24 @@ def build_bug_report_router(settings, athena_store) -> APIRouter:
                 logger.warning("bug report: project export failed: %s", export_error)
 
         report_id = new_report_id(report_type)
-        payload = store.store(
-            report_id=report_id,
-            report_type=report_type,
-            description=clean_description,
-            user_email=email,
-            screenshots=screenshot_data,
-            attachments=attachment_data,
-            client_metadata=metadata,
-            project_state=state,
-            project_export=export,
-            project_export_error=export_error,
-        )
+        incoming_bytes = (sum(len(item[0]) for item in screenshot_data + attachment_data)
+                          + len(export or b"") + 2 * len(clean_description.encode("utf-8"))
+                          + len(json.dumps(metadata, ensure_ascii=False).encode("utf-8"))
+                          + len(json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8"))
+                          + 64 * 1024)
+        with _public_report_capacity(settings, incoming_bytes):
+            payload = store.store(
+                report_id=report_id,
+                report_type=report_type,
+                description=clean_description,
+                user_email=email,
+                screenshots=screenshot_data,
+                attachments=attachment_data,
+                client_metadata=metadata,
+                project_state=state,
+                project_export=export,
+                project_export_error=export_error,
+            )
         schedule_report_notification(background, payload)
         label = {"bug": "Bug report", "feature_request": "Feature request", "feedback": "Feedback"}[report_type]
         return {

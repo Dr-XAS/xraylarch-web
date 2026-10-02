@@ -10,6 +10,17 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
+  it("does not expose or cache bug report reads", async () => {
+    const fetcher = vi.fn()
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "bug-reports", "private-report"]
+    const response = await GET(new Request(`http://localhost/api/backend/${path.join("/")}`), {
+      params: Promise.resolve({ path }),
+    })
+    expect(response.status).toBe(404)
+    expect(response.headers.get("cache-control")).toBe("private, no-store")
+    expect(fetcher).not.toHaveBeenCalled()
+  })
   it("preserves agent command retry keys without forwarding authorization", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response("{}"))
     vi.stubGlobal("fetch", fetcher)
