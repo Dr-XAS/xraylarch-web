@@ -115,8 +115,12 @@ viridis, plasma, inferno, cividis, and coolwarm gradients, with a **Reverse**
 option. These spectrum settings are independent of the wavelet's magma scale.
 
 The **Results** chooser above the viewers shows Single spectrum, Multiple
-spectra, Wavelet, CIF, FEFF path, and EXAFS fit in that default order when a
-project opens. Each chip can show or hide its viewer; **All viewers** toggles them together. **Process
+spectra, Wavelet, CIF, FEFF path, and EXAFS fit in that default order. Drag a chip's
+handle to reorder both the chips and their viewer panels, or focus the handle and
+use arrow keys (Home/End moves to the first/last position). **Custom order** is
+remembered in this browser across project loads and reloads; **Default order**
+restores the original arrangement. Each chip can show or hide its viewer;
+**All viewers** toggles them together. **Process
 order (this session)** keeps both spectrum viewers first, then places derived
 viewers with recorded events from oldest to newest (saved CIF
 attachment time and the current spectrum's wavelet, FEFF path, or fit activity

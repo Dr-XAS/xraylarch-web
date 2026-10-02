@@ -674,6 +674,46 @@ describe("AthenaWorkbench EXAFS fitting", () => {
 describe("AthenaWorkbench viewer selection", () => {
   const viewerOrder = () => Array.from(document.querySelectorAll<HTMLElement>(".ath-viewer-stack > [data-viewer-id]"), node => node.dataset.viewerId)
 
+  it("saves a manual layout without changing selection, plot settings, or scientific data", async () => {
+    await openSaved()
+    const controls = within(screen.getByRole("group", { name: "Choose viewers" }))
+    fireEvent.click(controls.getByRole("button", { name: "Wavelet plotter" }))
+    fireEvent.click(singleViewer().getByRole("checkbox", { name: "Show legend" }))
+    const initialCalls = api.mock.calls.length
+    const handle = controls.getByRole("button", { name: "Reorder EXAFS fit viewer" })
+    handle.focus()
+    fireEvent.keyDown(handle, { key: "Home" })
+    const expected = ["fit", "single", "multiple", "wavelet", "cif", "feff"]
+    expect(viewerOrder()).toEqual(expected)
+    expect(Array.from(document.querySelectorAll<HTMLElement>("[data-viewer-chip-id]"), chip => chip.dataset.viewerChipId)).toEqual(expected)
+    expect(handle).toHaveFocus()
+    expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("custom")
+    expect(controls.getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "false")
+    expect(document.querySelector('[data-viewer-id="wavelet"]')).toHaveAttribute("hidden")
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(initialCalls)
+    expect(JSON.parse(localStorage.getItem("athena.viewer-order.v1")!)).toEqual({ sort: "custom", order: expected })
+    cleanup()
+    await openSaved(projectFixture({ id: "different-project" }))
+    expect(viewerOrder()).toEqual(expected)
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "default" } })
+    expect(viewerOrder()).toEqual(["single", "multiple", "wavelet", "cif", "feff", "fit"])
+    fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "custom" } })
+    expect(viewerOrder()).toEqual(expected)
+  })
+
+  it("reorders mounted viewers while retaining unavailable viewers in the saved order", async () => {
+    localStorage.setItem("athena.viewer-order.v1", JSON.stringify({ sort: "custom", order: ["fit", "single", "cif", "wavelet", "feff", "multiple"] }))
+    api.mockResolvedValueOnce(projectFixture({ id: "integrated-project" }))
+    render(<AthenaWorkbench session={integrationSession} />)
+    await waitForIntegratedProject()
+    expect(viewerOrder()).toEqual(["single", "wavelet", "multiple"])
+    fireEvent.keyDown(screen.getByRole("button", { name: "Reorder Multiple spectra viewer" }), { key: "Home" })
+    expect(viewerOrder()).toEqual(["multiple", "single", "wavelet"])
+    expect(JSON.parse(localStorage.getItem("athena.viewer-order.v1")!).order).toEqual(["fit", "multiple", "cif", "single", "feff", "wavelet"])
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
   it("shows all six viewers in the requested project order and lets each be hidden independently", async () => {
     await openSaved()
     expect(viewerOrder()).toEqual(["single", "multiple", "wavelet", "cif", "feff", "fit"])
@@ -1020,7 +1060,7 @@ describe("AthenaWorkbench data group reordering", () => {
     const project = await openSaved()
     expect(screen.queryByRole("button", { name: "Move group up" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Move group down" })).not.toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: /^Reorder / })).toHaveLength(project.groups.length)
+    expect(within(screen.getByRole("list")).getAllByRole("button", { name: /^Reorder / })).toHaveLength(project.groups.length)
 
     fireEvent.change(screen.getByRole("textbox", { name: "Search groups" }), { target: { value: "scan" } })
     const rows = screen.getAllByRole("listitem")
@@ -1065,7 +1105,7 @@ describe("AthenaWorkbench data group reordering", () => {
     await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
       version: project.version, action: "reorder", group_ids: [], options: { ids },
     }))
-    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(button => button.hasAttribute("disabled"))).toBe(true)
+    expect(within(screen.getByRole("list")).getAllByRole("button", { name: /^Reorder / }).every(button => button.hasAttribute("disabled"))).toBe(true)
     expect(screen.getByText("Reordering Foil scan.")).toHaveAttribute("aria-live", "polite")
     expect(screen.queryByText("Moved Foil scan to position 2 of 4.")).not.toBeInTheDocument()
 
@@ -1139,12 +1179,12 @@ describe("AthenaWorkbench data group sorting", () => {
 
     expect(sort).toHaveValue("manual")
     expect(listedGroupIds()).toEqual(["b", "a", "c"])
-    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(handle => !handle.hasAttribute("disabled"))).toBe(true)
+    expect(within(screen.getByRole("list")).getAllByRole("button", { name: /^Reorder / }).every(handle => !handle.hasAttribute("disabled"))).toBe(true)
 
     fireEvent.change(sort, { target: { value: "added" } })
 
     expect(listedGroupIds()).toEqual(["a", "b", "c"])
-    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(handle => handle.hasAttribute("disabled"))).toBe(true)
+    expect(within(screen.getByRole("list")).getAllByRole("button", { name: /^Reorder / }).every(handle => handle.hasAttribute("disabled"))).toBe(true)
     expect(localStorage.getItem("athena.group-sort.v1")).toBe("added")
     expect(api).toHaveBeenCalledTimes(1)
   })
@@ -1165,7 +1205,7 @@ describe("AthenaWorkbench data group sorting", () => {
 
     expect(listedGroupIds()).toEqual(["alpha", "beta", "scan-2", "scan-10"])
     expect(screen.getByText("Sorted view")).toHaveAttribute("title", "Switch to Manual order to reorder spectra")
-    expect(screen.getAllByRole("button", { name: /^Reorder / }).every(handle => handle.hasAttribute("disabled"))).toBe(true)
+    expect(within(screen.getByRole("list")).getAllByRole("button", { name: /^Reorder / }).every(handle => handle.hasAttribute("disabled"))).toBe(true)
     expect(screen.getByRole("button", { name: "Reorder scan 10" })).toHaveAttribute("title", "Switch to Manual order to reorder spectra")
     expect(screen.getByRole("checkbox", { name: "Mark alpha" })).toBeChecked()
     expect(plotProps().active?.id).toBe("scan-10")
