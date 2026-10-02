@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { useAthenaApi } from '@/lib/athena-context'
 import styles from './athena-beamline-metadata.module.css'
@@ -22,7 +23,7 @@ export function AthenaBeamlineMetadata({ value }: { value: unknown }) {
   const location = [attributes.facility?.name, attributes.beamline?.name].filter(Boolean).join(' · ')
   const xdi = value.reader === 'XDI'
   return <section aria-label={xdi ? 'XDI metadata' : 'Beamline metadata'} className={styles.metadata}>
-    <strong>{location || value.reader} · acquisition metadata</strong>
+    <strong>{location || value.reader} · acquisition metadata <SectionHelp label="Acquisition metadata">{value.input_basis === 'native project' ? 'Restored from the native XDI project object.' : `Recognized from the ${value.input_basis === 'converted' ? 'converted' : 'original'} file header.`} These acquisition fields are kept with the source data.{record(value.mono_inference) && typeof value.mono_inference.description === 'string' && <p>{value.mono_inference.description}</p>}</SectionHelp></strong>
     {xdi && typeof value.xdi_version === 'string' && <p>XDI {value.xdi_version}{typeof value.extra_version === 'string' && value.extra_version ? ` · ${value.extra_version}` : ''}</p>}
     {attributes.scan?.start_time && <p>Acquired: {attributes.scan.start_time}</p>}
     {value.warnings.map((warning, i) => <p key={i} className="ath-warning">{warning}</p>)}
@@ -32,8 +33,6 @@ export function AthenaBeamlineMetadata({ value }: { value: unknown }) {
           <tr key={`${family}.${tag}`}><th scope="row">{family}.{tag}</th><td>{text}</td></tr>))}
       </tbody></table>
       {value.comments.length > 0 && <><h4>Acquisition comments</h4>{value.comments.map((comment, i) => <p key={i}>{comment}</p>)}</>}
-      {record(value.mono_inference) && typeof value.mono_inference.description === 'string' && <p className="ath-hint">{value.mono_inference.description}</p>}
-      <p className="ath-hint">{value.input_basis === 'native project' ? 'Restored from the native XDI project object.' : `Recognized from the ${value.input_basis === 'converted' ? 'converted' : 'original'} file header.`} These acquisition fields are kept with the source data.</p>
       {typeof value.source_sha256 === 'string' && <p className={styles.digest}>Source SHA-256: {value.source_sha256}</p>}
       </div>
     </details>
@@ -73,13 +72,11 @@ export function AthenaBeamlinePreferences({ close }: { close: () => void }) {
     return () => { generation.current++; running.current = false; abort.abort() }
   }, [])
   return <section aria-label="Beamline identification settings">
-    <p>Identify BL8, MRCAT MX, X11A EDC and XDAC headers and keep their beamline, detector and acquisition information with imported groups.</p>
-    <p className="ath-hint">Enabled by default, as in Athena. Saved changes apply when inspecting a file again; existing groups keep their metadata.</p>
     {pending && <p role="status">Loading or saving settings…</p>}
     {error && <p role="alert" className="ath-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <label className="ath-check"><input type="checkbox" disabled={pending || !saved} checked={enabled}
-      onChange={e => { setEnabled(e.target.checked); setNotice('') }} />Identify beamline metadata on import</label>
+      onChange={e => { setEnabled(e.target.checked); setNotice('') }} />Identify beamline metadata on import <SectionHelp label="Applying beamline settings">Enabled by default, as in Athena. Saved changes apply when inspecting a file again; existing groups keep their metadata.<br /><br />Identify BL8, MRCAT MX, X11A EDC and XDAC headers and keep their beamline, detector and acquisition information with imported groups.</SectionHelp></label>
     <div className="ath-modal-actions">
       <button type="button" disabled={pending} onClick={() => { void perform(() => athenaApi('/preferences/beamline'), 'Settings reloaded.') }}>Reload settings</button>
       <button type="button" disabled={pending || !saved} onClick={() => { if (saved) void perform(async () => {

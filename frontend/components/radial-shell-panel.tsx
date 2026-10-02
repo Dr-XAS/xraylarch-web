@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useState } from "react"
 import { shellRange } from "@/lib/radial-shells"
 import type { RadialShellState } from "@/lib/use-radial-shells"
@@ -14,7 +15,7 @@ export function RadialShellPanel({ state, selected, onToggle, disabled = false }
   const [error, setError] = useState("")
   useEffect(() => { setRadius(String(state.settings.radius)); setTolerance(String(state.settings.tolerance)); setError("") }, [state.settings, state.contextKey])
   return <section className={styles.panel} aria-label="Radial shells">
-    <strong>Radial shells{state.data ? ` · ${state.data.absorber} site ${state.data.site_index}` : ""}</strong>
+    <strong>Radial shells{state.data ? ` · ${state.data.absorber} site ${state.data.site_index}` : ""}<SectionHelp label="Radial shells">Distances are measured from the selected absorber in the periodic CIF. Shell width limits the distance spread within a group. These are structural ranges, not phase-shifted Fourier-transform fit bounds. Pair groups preserve symmetry around this absorber. A FEFF path may represent several pair groups; its degeneracy is kept unchanged.</SectionHelp></strong>
     <div className={styles.controls}>
       <label>Search radius (Å)<input type="number" aria-label="Shell search radius" min={0.5} max={12} step={0.5} value={radius} disabled={disabled} onChange={event => setRadius(event.target.value)} /></label>
       <label>Shell width (Å)<input type="number" aria-label="Shell distance tolerance" min={0.001} max={0.5} step={0.01} value={tolerance} disabled={disabled} onChange={event => setTolerance(event.target.value)} /></label>
@@ -41,9 +42,7 @@ export function RadialShellPanel({ state, selected, onToggle, disabled = false }
           </tr>)}</tbody>
         </table>
       </div>
-      {state.data.warnings.map(warning => <p key={warning}>{warning}</p>)}
+      {state.data.warnings.map(warning => <p key={warning} role="status">{warning.startsWith("The outer shell is close to the search cutoff") ? <>Outer shell may be incomplete<SectionHelp label="Outer shell warning">{warning}</SectionHelp></> : warning}</p>)}
     </>}
-    <p>Distances are measured from the selected absorber in the periodic CIF. Shell width limits the distance spread within a group. These are structural ranges, not phase-shifted Fourier-transform fit bounds.</p>
-    <p>Pair groups preserve symmetry around this absorber. A FEFF path may represent several pair groups; its degeneracy is kept unchanged.</p>
   </section>
 }

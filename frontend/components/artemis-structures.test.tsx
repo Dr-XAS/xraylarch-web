@@ -290,6 +290,8 @@ describe("ArtemisStructures", () => {
     await click("Attach to project")
     expect(screen.getByRole("alert")).toHaveTextContent("Project changed")
     expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
+    expect(screen.getByText(/Copper structure/)).not.toBeVisible()
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "About CIF citation" }))
     expect(screen.getByText(/Copper structure/)).toBeVisible()
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
     await click("Attach to project")

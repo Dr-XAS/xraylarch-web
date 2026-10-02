@@ -23,6 +23,7 @@ import { ArtemisStructures } from "./artemis-structures"
 import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-viewer-icons"
 import { FitRangeIcon } from "./athena-parameter-icons"
 import { ParameterSectionHeading } from "./parameter-section-heading"
+import { SectionHelp } from "./section-help"
 import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
 
@@ -137,12 +138,12 @@ function importRequest(text: string): ArtemisFitRequest {
 }
 
 /** Native disclosures keep form and CIF-dialog state mounted while folded. */
-function FittingSection({ title, icon, summary, disabled, children }: {
-  title: string; icon: LucideIcon; summary?: string; disabled?: boolean; children: ReactNode
+function FittingSection({ title, icon, summary, help, disabled, children }: {
+  title: string; icon: LucideIcon; summary?: string; help?: ReactNode; disabled?: boolean; children: ReactNode
 }) {
   const [open, setOpen] = useState(true)
   return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <ParameterSectionHeading icon={icon} detail={summary}>{title}</ParameterSectionHeading>
+    <ParameterSectionHeading icon={icon} detail={summary}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}</ParameterSectionHeading>
     <fieldset className={styles.sectionBody} aria-label={`${title} controls`} disabled={disabled}>{children}</fieldset>
   </details>
 }
@@ -494,7 +495,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const disabled = !!busy || pending
   const freeCount = draft.parameters.filter(parameter => parameter.kind === "guess").length
   return <section className={styles.editor} aria-label="Artemis EXAFS fitting setup">
-    <header className={styles.intro}><h3><FitCurvesIcon size={20} aria-hidden="true" />EXAFS fitting</h3><p>Artemis-style path models · Larch fitting core</p></header>
+    <header className={styles.intro}><h3><FitCurvesIcon size={20} aria-hidden="true" />EXAFS fitting</h3></header>
     <div className={styles.actions}>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
@@ -509,13 +510,13 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <p className={styles.help} aria-live="polite">{actions.status === "saving" ? "Saving model…" : actions.status === "pending" ? "Model changes waiting to save…" : "Model could not be saved."}</p>
       {actions.status === "failed" && <><p className={styles.error} role="alert">{actions.error}</p><button type="button" disabled={disabled} onClick={() => void actions.retry().catch(() => {})}>Retry saving model</button></>}
     </div>}
-    {!!persisted?.history.length && <FittingSection title="Saved fit history" icon={History} summary={`${persisted.history.length}/10`} disabled={disabled}>
+    {!!persisted?.history.length && <FittingSection title="Saved fit history" icon={History} summary={`${persisted.history.length}/10`} disabled={disabled}
+      help="Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.">
         <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
           {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
         </select></label>
         <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
           <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
-        <p className={styles.help}>Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.</p>
     </FittingSection>}
     <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
@@ -529,14 +530,15 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         return null
       }} />
     </FittingSection>
-    <FittingSection title="FEFF paths" icon={FeffScatteringIcon} summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}>
+    <FittingSection title="FEFF paths" icon={FeffScatteringIcon} summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}
+      help={<><p>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
+        {radialContext && <p>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>}</>}>
       {radialContext ? <>
         <RadialShellPanel state={radialState} disabled={disabled} />
-        <p className={styles.help}>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>
-      </> : <p className={styles.help}>Open an attached CIF and choose its absorber site to see shell ranges and group path candidates.</p>}
+      </> : null}
       {shellSelection && <div className={styles.help}>
-        <p>CrystalNN · {shellSelection.structure.mineral || shellSelection.structure.formula} · {shellSelection.shell.absorber} site {shellSelection.shell.site_index} · CN {shellSelection.shell.coordination_number}. {shellPathIds.length} first-shell path candidate{shellPathIds.length === 1 ? "" : "s"}.</p>
-        <p>Candidates match the selected shell by element and atomic position. Confirm that the paths use this CIF and absorber site.</p>
+        <p>CrystalNN · CN {shellSelection.shell.coordination_number} · {shellPathIds.length} first-shell candidate{shellPathIds.length === 1 ? "" : "s"}
+          <SectionHelp label="First-shell path candidates">{shellSelection.structure.mineral || shellSelection.structure.formula} · {shellSelection.shell.absorber} site {shellSelection.shell.site_index}. Candidates match the selected shell by element and atomic position. Confirm that the paths use this CIF and absorber site.</SectionHelp></p>
         <button type="button" disabled={!shellPathIds.length || disabled} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: shellPathIds.includes(path.id) })) }))}>Use only first-shell candidates</button>
       </div>}
       <div className={styles.toolbar}>
@@ -586,13 +588,12 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         </div>
         </div>
       </div>}} />
-      {draft.paths.length > 0 && <p className={styles.help}>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>}
     </FittingSection>
 
-    <FittingSection title="Parameters" icon={SlidersHorizontal} summary={`${freeCount} free`} disabled={disabled}>
-      <div className={styles.toolbar}><button type="button" className={styles.syncButton} disabled={!draft.paths.some(path => path.enabled)} onClick={syncParameters}><RefreshCw size={13} />Sync parameters</button></div>
-      <p className={styles.help}>Sync adds missing parameters and removes those unused by included paths, including Def dependencies. Existing values and constraints are kept.</p>
-      <p className={styles.help}>Guess refines a value, Set fixes it, Def evaluates an expression.</p>
+    <FittingSection title="Parameters" icon={SlidersHorizontal} summary={`${freeCount} free`} disabled={disabled}
+      help="Guess refines a value, Set fixes it, Def evaluates an expression.">
+      <div className={styles.toolbar}><button type="button" className={styles.syncButton} disabled={!draft.paths.some(path => path.enabled)} onClick={syncParameters}><RefreshCw size={13} />Sync parameters</button>
+        <SectionHelp label="Sync parameters">Sync adds missing parameters and removes those unused by included paths, including Def dependencies. Existing values and constraints are kept.</SectionHelp></div>
       {draft.parameters.map((parameter, i) => <div key={parameter.id} className={styles.parameter}>
         <div className={styles.parameterHeader}>
           <input aria-label={`Parameter ${i + 1} name`} value={parameter.name} maxLength={32} placeholder="Parameter name" onChange={event => editParameter(parameter.id, "name", event.target.value)} spellCheck={false} />
@@ -608,7 +609,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <button type="button" disabled={draft.parameters.length >= 32} onClick={() => edit(previous => ({ ...previous, parameters: [...previous.parameters, parameterDraft({ name: `param${previous.parameters.length + 1}`, kind: "guess", value: 0, expression: "", min: null, max: null })] }))}><Plus size={13} />Add parameter</button>
     </FittingSection>
 
-    <FittingSection title="Fit range & transform" icon={FitRangeIcon} summary={draft.transform.fitspace === "r" ? "R space" : "k space"} disabled={disabled}>
+    <FittingSection title="Fit range & transform" icon={FitRangeIcon} summary={draft.transform.fitspace === "r" ? "R space" : "k space"} disabled={disabled}
+      help={<>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</>}>
       <div className={styles.choice} role="group" aria-label="Fit space">{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
       <div className={styles.grid}>
         {([
@@ -617,7 +619,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         <label>k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
       </div>
       <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
-      <p className={styles.help}>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</p>
     </FittingSection>
   </section>
 }

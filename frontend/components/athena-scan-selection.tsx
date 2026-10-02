@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useState } from 'react'
 import type { InspectionResponse, ScanInspectionResponse } from '@/lib/contracts'
 import { columnExpression, initialColumnMapping, type ColumnMapping } from '@/lib/athena-import'
@@ -19,8 +20,8 @@ export function AthenaScanSelection({ collection, projectId, version, busy, onCo
   const shown = collection.scans.find(scan => scan.upload_id === active)
   const mapping = shown ? initialColumnMapping(shown, emptyMapping, false) : emptyMapping
   return <section aria-label="Scan selection">
-    <h3>Scans in {collection.display_name}</h3>
-    <p>{collection.scans.length} scans · {collection.file_plugin.total_points} points. Choose the scans to import, then review their detector columns.</p>
+    <h3>Scans in {collection.display_name} <SectionHelp label="Import scans">Choose the scans to import, then review their detector columns. Scans are imported in file order.</SectionHelp></h3>
+    <p>{collection.scans.length} scans · {collection.file_plugin.total_points} points.</p>
     <div className={styles.layout}>
       <div className={styles.controls}>
         <fieldset disabled={busy} style={{ border: 0, padding: 0, minWidth: 0 }}>
@@ -41,18 +42,17 @@ export function AthenaScanSelection({ collection, projectId, version, busy, onCo
               </li>
             })}
           </ul>
-          <p>{selected.length} scans selected. They will be imported in file order.</p>
+          <p>{selected.length} scans selected.</p>
           <div className="ath-modal-actions"><button type="button" onClick={onCancel}>Choose another file</button>
             <button type="button" className="ath-primary" disabled={!selected.length} onClick={() => onContinue(collection.scans.filter(scan => selected.includes(scan.upload_id)))}>Review selected scans</button></div>
         </fieldset>
-        {!!collection.file_plugin.skipped_scans.length && <details><summary>Scans not available for import</summary>
+        {!!collection.file_plugin.skipped_scans.length && <details><summary>Scans not available for import <SectionHelp label="Unavailable scans">These entries remain in the original file.</SectionHelp></summary>
           <ul>{collection.file_plugin.skipped_scans.map(scan => <li key={scan.ordinal}>Scan {scan.number}: {scan.command}. {scan.reason}</li>)}</ul>
-          <p className="ath-hint">These entries remain in the original file.</p></details>}
+          </details>}
       </div>
       <div className={styles.preview}>
-        {shown && <><p className="ath-hint">{shown.file_plugin?.summary}</p><p className="ath-formula">{columnExpression(mapping, shown.columns)}</p>
+        {shown && <><p className="ath-formula">{columnExpression(mapping, shown.columns)} <SectionHelp label="Scan preview columns">This preview uses the reader’s suggested columns. You can change them in the next step.{shown.file_plugin?.summary && <p>{shown.file_plugin.summary}</p>}</SectionHelp></p>
           <AthenaImportPreview key={shown.upload_id} projectId={projectId} version={version} uploadId={shown.upload_id} mapping={mapping} disabled={busy} />
-          <p className="ath-hint">This preview uses the reader’s suggested columns. You can change them in the next step.</p>
           <AthenaDownloadButton path={`/projects/${projectId}/uploads/${shown.upload_id}/file`}>Download original SPEC file</AthenaDownloadButton></>}
       </div>
     </div>

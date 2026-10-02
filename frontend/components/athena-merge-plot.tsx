@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { hasSavedMerge, savedMergeSpace, type AthenaProject } from '@/lib/athena'
@@ -45,17 +46,16 @@ export function AthenaMergePlot({project,groupId,selectGroup,close}:{project:Ath
   },[key,valid,retry])
   const r=current?.result
   return <div className={`ath-modal-body ${styles.body}`}>
-    <p className={styles.intro}>Inspect the standard deviation stored with a merged spectrum. Display choices leave the saved spectrum, processing parameters and scatter unchanged.</p>
     <fieldset className={styles.controls} aria-label="Saved merge settings">
       <label className="ath-field"><span>Merged spectrum</span><select aria-label="Saved merged spectrum" value={groupId} onChange={e=>{setFlatten(null);setWeight('');selectGroup(e.target.value)}}>{merged.map(g=><option key={g.id} value={g.id}>{g.label}</option>)}</select></label>
-      <label className="ath-field"><span>Spread display</span><select aria-label="Saved merge display" value={view} onChange={e=>setView(e.target.value as Options['view'])}><option value="stddev">Merge ± standard deviation</option><option value="variance">Merge + scaled standard deviation</option></select></label>
+      <label className="ath-field"><span>Spread display <SectionHelp label="Saved merge spread">Inspect the standard deviation stored with a merged spectrum. Display choices leave the saved spectrum, processing parameters and scatter unchanged.</SectionHelp></span><select aria-label="Saved merge display" value={view} onChange={e=>setView(e.target.value as Options['view'])}><option value="stddev">Merge ± standard deviation</option><option value="variance">Merge + scaled standard deviation</option></select></label>
       {mergeSpace==='norm'&&<label className="ath-check"><input type="checkbox" checked={flatten??group?.parameters.flatten??true} onChange={e=>setFlatten(e.target.checked)}/>Flatten normalized merge</label>}
       {mergeSpace==='mu'&&view==='variance'&&<label className="ath-field"><span>Energy display</span><select aria-label="Saved merge energy display" value={energyDisplay} onChange={e=>setEnergyDisplay(e.target.value as Options['energy_display'])}><option value="mu">μ(E) · raw</option><option value="norm">μ(E) · normalized</option><option value="flat">μ(E) · flattened</option></select></label>}
       {group?.data_type==='chi'&&<label className="ath-field"><span>Plot k weight</span><input aria-label="Saved merge k weight" type="number" min="0" max="4" step="any" placeholder={`Group: ${group.parameters.kweight}`} value={weight} onChange={e=>setWeight(e.target.value)}/></label>}
       <button disabled={!valid||loading} onClick={()=>{setData(null);setError('');setRetry(v=>v+1)}}>Replot saved merge</button>
     </fieldset>
     <div className={styles.summary}>
-      <p className="ath-hint">Group plot scale: {group?.multiplier} · offset: {group?.offset}. Edit these in Group information.</p>
+      <p className="ath-hint">Group plot scale: {group?.multiplier} · offset: {group?.offset}. <SectionHelp label="Group plot scale">Edit the multiplier and offset in Group information.</SectionHelp></p>
       <p role="status">{r?`${r.points} saved points · project revision ${current.version}.`:!valid?'Choose a merged spectrum and a finite k weight from zero to four.':loading?'Loading the saved merge…':'Waiting for the saved merge.'}</p>
     </div>
     <section className={styles.results} aria-label="Saved merge spread">

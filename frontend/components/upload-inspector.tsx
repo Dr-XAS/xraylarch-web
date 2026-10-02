@@ -1,6 +1,7 @@
 "use client"
 
 import { useId, useState } from "react"
+import { SectionHelp } from "./section-help"
 
 import type { InspectionResponse } from "@/lib/contracts"
 
@@ -46,7 +47,7 @@ export function UploadInspector({ inspection, disabled, onUpload, onConfirmMappi
       <div className="section-heading">
         <div>
           <p className="eyebrow">Import</p>
-          <h2 id="import-heading">Spectrum source</h2>
+          <h2 id="import-heading">Spectrum source<SectionHelp label="Spectrum source" id={uploadHelpId}>Any file type is accepted. Text, CSV, and XDI data can be inspected; the original file remains unchanged.</SectionHelp></h2>
         </div>
       </div>
       <label className="file-label" htmlFor="spectrum-upload">Upload spectrum</label>
@@ -57,12 +58,11 @@ export function UploadInspector({ inspection, disabled, onUpload, onConfirmMappi
         disabled={disabled || busy}
         onChange={(event) => void upload(event.currentTarget.files?.[0])}
       />
-      <p className="field-help" id={uploadHelpId}>Any file type is accepted. Text, CSV, and XDI data can be inspected; the original file remains unchanged.</p>
+
 
       {inspection && (
         <div className="mapping-panel" data-testid="column-mapping" aria-live="polite">
-          <h3>Confirm source columns</h3>
-          <p className="field-help">Select both roles explicitly. Suggestions below are not applied automatically.</p>
+          <h3>Confirm source columns<SectionHelp label="Source column mapping">Select both roles explicitly. Suggestions below are not applied automatically.</SectionHelp></h3>
           {inspection.issues.map((issue) => <p className="warning" key={issue.code}>{issue.message}</p>)}
           <div className="column-list" aria-label="Available numeric columns">
             {numericColumns.map((column) => (

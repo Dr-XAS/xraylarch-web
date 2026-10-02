@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import type { GLViewer, Label, Vector2 } from "3dmol"
 import { createCifRenderer } from "@/lib/cif-renderer"
@@ -235,7 +236,7 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
 
   return <section className={structureStyles.viewer} aria-label="FEFF local structure">
     <div className={structureStyles.heading}>
-      <h4>Local structure</h4>
+      <h4>Local structure<SectionHelp label="FEFF local structure">Drag to rotate; scroll or pinch to zoom; hover for atom details. Bonds are inferred from distances. Colored arrows show the scattering sequence.</SectionHelp></h4>
       <button type="button" disabled={!ready || !!error || !atoms.length} onClick={() => { viewer.current?.zoomTo(); viewer.current?.render() }}>Reset view</button>
     </div>
     {structureControls}
@@ -250,13 +251,12 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
         : !atoms.length ? <p className={structureStyles.overlay}>Select a path to view its scattering trajectory.</p> : null}
       {legend}
     </div>
-    <p className={structureStyles.help}>Drag to rotate · scroll or pinch to zoom · hover for atom details</p>
     <LocalStructureControls radius={radius} min={1} max={maxRadius} onRadiusChange={onRadiusChange ?? (() => {})}
       radiusAriaLabel="FEFF display radius" radiusDisabled={!contextLabel || !showContext}
       bonds={bonds} onBondsChange={setBonds} showBondsControl={false} atomCount={atoms.length}>
+      {contextLabel && <span>{contextLabel}</span>}
       <label><input type="checkbox" checked={labels} onChange={event => setLabels(event.target.checked)} />Labels</label>
       {contextLabel && <label><input type="checkbox" checked={showContext} onChange={event => setShowContext(event.target.checked)} />Local structure</label>}
     </LocalStructureControls>
-    <p className={structureStyles.help}>{contextLabel ? `${contextLabel}. ` : ""}Bonds are inferred from distances. Colored arrows show the scattering sequence.</p>
   </section>
 }

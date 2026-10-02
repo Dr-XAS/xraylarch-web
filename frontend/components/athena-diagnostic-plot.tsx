@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
@@ -85,9 +86,8 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, reason, retry])
   return <div className={`ath-modal-body ${styles.body}`}>
-    <p className={styles.intro}>Compare energy, EXAFS and Fourier-filtered spectra using the saved processing parameters. Display choices leave your project unchanged.</p>
     <fieldset className={styles.controls}>
-      <label className="ath-field"><span>Diagnostic plot</span><select aria-label="Diagnostic plot" value={view} onChange={e => setView(e.target.value as Options['view'])}>
+      <label className="ath-field"><span>Diagnostic plot <SectionHelp label="Diagnostic plot">Compare energy, EXAFS and Fourier-filtered spectra using the saved processing parameters. Display choices leave your project unchanged.</SectionHelp></span><select aria-label="Diagnostic plot" value={view} onChange={e => setView(e.target.value as Options['view'])}>
         <option value="quad">Quad · current group</option><option value="biquad">Bi-Quad · two marked groups</option><option value="kq">k / q · current group</option>
       </select></label>
       {view !== 'biquad' && <label className="ath-field"><span>Current spectrum</span><select aria-label="Diagnostic spectrum" value={groupId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label>}

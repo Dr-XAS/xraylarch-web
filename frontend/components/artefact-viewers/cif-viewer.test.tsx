@@ -74,6 +74,8 @@ describe("CifViewer", () => {
     const table = screen.getByRole("table", { name: "Cluster coordination numbers" })
     const row = within(table).getByRole("row", { name: /Cu → O/ })
     expect(within(row).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["1", "2.000", "1.000", "1", "ViewCN 1: 1 atom"])
+    expect(screen.getByText("Uses all 2 cluster atoms, including hidden elements. Neighbors outside this finite cluster are excluded.")).not.toBeVisible()
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "About Cluster coordination calculation" }))
     expect(screen.getByText("Uses all 2 cluster atoms, including hidden elements. Neighbors outside this finite cluster are excluded.")).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Show O atoms" }))
     fireEvent.click(screen.getByRole("checkbox", { name: "Bonds" }))
@@ -135,6 +137,7 @@ describe("CifViewer", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "CIF center site" }), { target: { value: "7" } })
     expectStale()
     calculate()
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "About Cluster coordination numbers" }))
     expect(screen.getByText(/Center CN refers to O · site 7/)).toBeVisible()
     fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "1" } })
     expectStale()
@@ -171,7 +174,7 @@ describe("CifViewer", () => {
   it("preserves the display radius and renderer when the docked viewer is collapsed", async () => {
     render(<CifViewer structure={structure()} collapsible structureControls={<p>Saved crystal structure</p>} />)
     await ready()
-    expect(screen.getAllByText("CIF structure viewer")).toHaveLength(1)
+    expect(screen.getByRole("button", { name: "Collapse CIF structure viewer" })).toBeVisible()
     expect(screen.getByText("Saved crystal structure")).toBeVisible()
     fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "5" } })
 

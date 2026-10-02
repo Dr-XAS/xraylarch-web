@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi, useAthenaTransport } from '@/lib/athena-context'
@@ -73,7 +74,7 @@ export function AthenaParameterReport({ project, initialScope, close, onBusyChan
   const columns = report?.columns.filter(c => c.index === 0 || section === 'all' || c.section === section) ?? []
   return <section className={styles.export} aria-label="Parameter report controls">
     <div className="ath-fields">
-      <label className="ath-field"><span>Report groups</span><select value={scope} disabled={downloading} onChange={e => setScope(e.target.value as Scope)}>
+      <label className="ath-field"><span>Report groups <SectionHelp label="Parameter report">The XLS report contains all 28 parameter columns. Processed values take precedence over saved settings. Main-pane edits process automatically; wait for processing to finish before exporting. Unused or unavailable settings are identified in the report notes.</SectionHelp></span><select value={scope} disabled={downloading} onChange={e => setScope(e.target.value as Scope)}>
         <option value="all">All groups</option><option value="marked">Marked groups</option>
       </select></label>
       <label className="ath-field"><span>Preview section</span><select value={section} onChange={e => setSection(e.target.value)}>
@@ -82,7 +83,6 @@ export function AthenaParameterReport({ project, initialScope, close, onBusyChan
       </select></label>
     </div>
     <p>{selected.length} groups in project list order. Frozen groups are included.</p>
-    <p className="ath-hint">The XLS report contains all 28 parameter columns. Processed values take precedence over saved settings. Main-pane edits process automatically; wait for processing to finish before exporting. Unused or unavailable settings are identified in the report notes.</p>
     {!selected.length && <p role="status">Mark at least one group or choose All groups.</p>}
     {loading && <p role="status">Preparing parameter report…</p>}
     {error && <p className="ath-error" role="alert">{error}</p>}

@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { type AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
@@ -89,7 +90,7 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
   }
   function status(title: string, rows: Presence[]) {
     const count = rows.filter(r => r.present).length
-    return <details className={styles.presence}><summary>{title}: {count} of {rows.length} present</summary>
+    return <details className={styles.presence}><summary>{title}: {count} of {rows.length} present <SectionHelp label="Metadata presence checks">Presence checks show which fields are available. Validate their values separately.</SectionHelp></summary>
       <ul>{rows.map(r => <li key={r.field}>{r.field}: <strong>{r.present ? 'present' : 'missing'}</strong></li>)}</ul>
     </details>
   }
@@ -104,17 +105,13 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
     {notice && <p role="status">{notice}</p>}
     {saved && <>
       <p>Current group <strong>{saved.label}</strong></p>
-      <p>XDI {saved.xdi_version}{saved.extra_version && ` · ${saved.extra_version}`}</p>
+      <p>XDI {saved.xdi_version}{saved.extra_version && ` · ${saved.extra_version}`} <SectionHelp label="Metadata identity">Element fields follow the current absorber selection. The original acquisition header remains in Source metadata.</SectionHelp></p>
       {saved.history && <section className={styles.history} aria-label="Acquisition and processing history">
-        <h3>Acquisition and processing history</h3>
+        <h3>Acquisition and processing history <SectionHelp label="Processing history">Scan.process is retained as recorded text. Saved processing parameters are included in column-file exports.{saved.history.inherited && <p>Acquisition fields and comments are inherited from the source scan. Column metadata describes the acquisition; exported column files describe their actual output columns.</p>}</SectionHelp></h3>
         <dl><dt>Scan start</dt><dd>{saved.history.start_time ?? 'Not recorded'}</dd><dt>Scan end</dt><dd>{saved.history.end_time ?? 'Not recorded'}</dd></dl>
         <p className={styles.process}>{saved.history.process || 'No processing history recorded in Scan.process.'}</p>
-        {saved.history.inherited && <p className="ath-hint">Acquisition fields and comments are inherited from the source scan. Column metadata describes the acquisition; exported column files describe their actual output columns.</p>}
-        <p className="ath-hint">Scan.process is retained as recorded text. Saved processing parameters are included in column-file exports.</p>
       </section>}
       {status('Required metadata', saved.required)}{status('Recommended metadata', saved.recommended)}
-      <p className="ath-hint">Presence checks show which fields are available. Validate their values separately.</p>
-      <p className="ath-hint">Element fields follow the current absorber selection. The original acquisition header remains in Source metadata.</p>
       <div className={styles.actions}>
         <button type="button" onClick={() => setExpanded(saved.families.map(f => f.name))}>Expand all families</button>
         <button type="button" onClick={() => setExpanded([])}>Collapse all families</button>
@@ -144,17 +141,15 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
         {report.results.some(r => !r.valid) && <ul>{report.results.filter(r => !r.valid).map(r =>
           <li key={`${r.family}.${r.tag}`}><strong>{r.family}.{r.tag}</strong>: {r.message}</li>)}</ul>}
       </section>}
-      <label className="ath-field"><span>XDI comments</span><textarea aria-label="XDI comments" rows={7} maxLength={50000} value={comments} disabled={pending}
+      <label className="ath-field"><span>XDI comments <SectionHelp label="XDI comments">These comments are saved with XDI metadata and Athena projects. Group notes are edited in Group information.</SectionHelp></span><textarea aria-label="XDI comments" rows={7} maxLength={50000} value={comments} disabled={pending}
         onChange={e => { setComments(e.target.value); setNotice('') }} /></label>
-      <p className="ath-hint">These comments are saved with XDI metadata and Athena projects. Group notes are edited in Group information.</p>
       {comments !== saved.comments && <p role="status">Unsaved XDI comments</p>}
     </>}
     <div className={styles.actions}>
-      <button type="button" disabled={pending} onClick={() => { void reload() }}>Reload saved metadata</button>
+      <button type="button" disabled={pending} onClick={() => { void reload() }}>Reload saved metadata</button> <SectionHelp label="Reload metadata">Reload replaces unsaved comments with the saved version.</SectionHelp>
       <button type="button" disabled={pending || !saved || comments === saved.comments} onClick={() => { void save() }}>Save comments</button>
       <button type="button" disabled={pending} onClick={close}>Close metadata</button>
     </div>
-    <p className="ath-hint">Reload replaces unsaved comments with the saved version.</p>
     {context && !pending && <AthenaContextMenu key={`${context.family}.${context.tag}`} label={`${context.family}.${context.tag} actions`}
       anchor={context.anchor} returnFocus={context.returnFocus} onClose={() => setContext(null)} items={[
         { id: 'validate', label: `Validate ${context.family}.${context.tag}`, onSelect: () => { void validate(context.family, context.tag) } },

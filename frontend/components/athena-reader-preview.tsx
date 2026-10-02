@@ -1,10 +1,10 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useState } from 'react'
 import type { InspectionResponse } from '@/lib/contracts'
 import styles from './athena-column-selection.module.css'
-
 
 export function AthenaReaderPreview({ value, required, reviewed, onReviewed, disabled }: {
   value: NonNullable<InspectionResponse['reader_preview']>; required: boolean; reviewed: boolean
@@ -13,10 +13,10 @@ export function AthenaReaderPreview({ value, required, reviewed, onReviewed, dis
   const [open, setOpen] = useState(required), [ready, setReady] = useState(false)
   const [error, setError] = useState('')
   return <section className={styles.previewPanel} aria-label="I0 correction review">
-    <div className={styles.previewTools}><strong>I0 argon correction</strong>
+    <div className={styles.previewTools}><strong>I0 argon correction <SectionHelp label="I0 argon correction">The shaded regions select the pre-edge and post-edge fits. I0 is corrected only above the argon edge. Column selection below uses the converted detector table; choose column 6 as a reference without a logarithm to compare the uncorrected absorption.</SectionHelp></strong>
       <button type="button" disabled={required && !reviewed} onClick={() => setOpen(v => !v)}>{open ? 'Hide I0 correction' : 'Show I0 correction'}</button>
     </div>
-    <p className="ath-hint">Step {value.step_size.toPrecision(6)} at {value.edge_energy.toFixed(3)} eV. The shaded regions select the pre-edge and post-edge fits. I0 is corrected only above the argon edge.</p>
+    <p className="ath-hint">Step {value.step_size.toPrecision(6)} at {value.edge_energy.toFixed(3)} eV.</p>
     {open && <div className={styles.plot} aria-label="I0 correction plot"><Plot
       data={value.traces.map((trace, index) => ({ x: trace.x.slice(), y: trace.y.slice(), name: trace.label, type: 'scatter', mode: 'lines',
         line: { color: ['#b96342', '#7470b0', '#467cac', '#16736b'][index], width: 1.8,
@@ -33,7 +33,7 @@ export function AthenaReaderPreview({ value, required, reviewed, onReviewed, dis
       onInitialized={() => setReady(true)} onError={() => { setReady(false); onReviewed(false); setError('Could not display the I0 correction. Reinspect the file to retry.') }}
       style={{ width: '100%', height: '100%' }} useResizeHandler /></div>}
     {error && <p role="alert" className="ath-error">{error}</p>}
-    {open && <p className="ath-hint">{value.points.toLocaleString()} source points. Column selection below uses the converted detector table; choose column 6 as a reference without a logarithm to compare the uncorrected absorption.</p>}
+    {open && <p className="ath-hint">{value.points.toLocaleString()} source points.</p>}
     {required && <label className="ath-check"><input type="checkbox" disabled={disabled || !ready} checked={reviewed}
       onChange={e => { onReviewed(e.target.checked); setOpen(!e.target.checked) }} />I reviewed the I0 correction for this file</label>}
   </section>

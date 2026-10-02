@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { applyPluginConfiguration, loadPluginConfiguration, type PluginConfiguration } from '@/lib/athena-preferences'
 
@@ -77,15 +78,14 @@ export function AthenaPluginConfiguration({ reader, onPendingChange }: {
       : 'Applied for this server session. Inspect the file again to use these values.')
   }
   return <section aria-label={`${reader} configuration`} className="ath-plugin-configuration">
-    <h4>{reader} configuration</h4>
-    <p className="ath-hint">Apply affects subsequent file inspections in this server session. Apply and Save also saves all currently applied reader settings for future starts.</p>
+    <h4>{reader} configuration <SectionHelp label="Reader configuration">Apply affects subsequent file inspections in this server session. Apply and Save also saves all currently applied reader settings for future starts.</SectionHelp></h4>
     {state?.unsaved && <p role="status">Current values include changes that have not been saved for the next start.</p>}
     {pending && <p role="status">Loading or applying configuration…</p>}
     {error && <p role="alert" className="ath-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <fieldset disabled={pending || !state} style={{ border: 0, padding: 0, margin: 0 }}>
       <div className="ath-fields">{state?.fields.map(field => <div key={field.name}>
-        <label className={field.type === 'boolean' ? 'ath-check' : 'ath-field'}><span>{field.title}</span>{field.type === 'boolean'
+        <label className={field.type === 'boolean' ? 'ath-check' : 'ath-field'}><span>{field.title}{field.description && <SectionHelp label={field.title}>{field.description}</SectionHelp>}</span>{field.type === 'boolean'
           ? <input type="checkbox" checked={draft[field.name] === 'true'} onChange={e => { setDraft(v => ({ ...v, [field.name]: String(e.target.checked) })); setNotice('') }} />
           : field.enum
           ? <select value={draft[field.name] ?? ''} onChange={e => { setDraft(v => ({ ...v, [field.name]: e.target.value })); setNotice('') }}>{field.enum.map(v => <option key={v}>{v}</option>)}</select>
@@ -93,7 +93,6 @@ export function AthenaPluginConfiguration({ reader, onPendingChange }: {
               step={field.type === 'integer' ? 1 : 'any'} maxLength={field.maxLength} value={draft[field.name] ?? ''}
               onChange={e => { setDraft(v => ({ ...v, [field.name]: e.target.value })); setNotice('') }} />}</label>
         <p className="ath-hint">Current: {String(state.values[field.name])} · Saved: {String(state.saved[field.name])} · Default: {String(state.defaults[field.name])}</p>
-        {field.description && <p className="ath-hint">{field.description}</p>}
       </div>)}</div>
       {problem && <p role="alert" className="ath-error">{problem}</p>}
       <div className="ath-modal-actions">

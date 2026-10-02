@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useId, useRef, useState } from "react"
 import { Search, Trash2, X } from "lucide-react"
 import { CifViewer } from "./artefact-viewers/cif-viewer"
@@ -406,17 +407,16 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     {error && !open && <p className={styles.error} role="alert">{error}</p>}
     {notice && !open && <p className={styles.status} role="status">{notice}</p>}
     <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
-      <header className={styles.dialogHeader}><div><h3 id={titleId}>Crystal structures & FEFF paths</h3><p>Attach a CIF to your project, then choose an absorber site to calculate paths.</p></div><button type="button" aria-label="Close CIF search" disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
+      <header className={styles.dialogHeader}><div><h3 id={titleId}>Crystal structures & FEFF paths<SectionHelp label="Crystal structures and FEFF paths">Attach a CIF to your project, then choose an absorber site to calculate paths. Closing this window keeps your search and calculation progress.</SectionHelp></h3></div><button type="button" aria-label="Close CIF search" disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
       {(structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
         {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Generate FEFF paths"}</button>}
         {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>}
       </div>}
       <div className={styles.content}>
       <div className={styles.searchColumn}>
-      <p className={styles.help}>Search the local AMCSD database snapshot.</p>
       {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
       <div className={styles.searchFields}>
-        <label>Mineral, formula, or AMCSD ID<input aria-label="AMCSD search query" value={query} placeholder="e.g. copper or 13088" disabled={controlsDisabled}
+        <label><span>Mineral, formula, or AMCSD ID<SectionHelp label="AMCSD search">Search the local AMCSD database snapshot.</SectionHelp></span><input aria-label="AMCSD search query" value={query} placeholder="e.g. copper or 13088" disabled={controlsDisabled}
           onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
         <label>Contains element<input aria-label="AMCSD element filter" value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
       </div>
@@ -434,12 +434,10 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       {!structure && busy !== "structure" && <p className={styles.placeholder}>Select a search result or open a CIF already attached to this project.</p>}
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
       {structure && <div className={styles.structure}>
-        <h4>{structure.mineral} <span>{amcsdLabel(structure.id)}</span></h4>
+        <h4>{structure.mineral}{structure.title && <SectionHelp label="CIF citation">{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</SectionHelp>} <span>{amcsdLabel(structure.id)}</span></h4>
         {open && attachmentId && <div ref={viewerAnchor}><CifViewer key={attachmentId} structure={structure} selectedSite={site ? Number(site) : undefined} analysis={shellState} radialAnalysis={radialState} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
-        {structure.title && <p className={styles.citation}>{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</p>}
-        <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button></div>
-        {attachmentId && <p className={styles.help}>This saved CIF belongs to the current project. FEFF uses the attached snapshot.</p>}
+        <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button><SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>
         <details className={styles.textDetails}><summary>View CIF</summary><pre>{structure.cif}</pre></details>
         {structure.warnings.map((warning, i) => <p className={styles.warning} key={i}>{warning}</p>)}
         {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : <>
@@ -447,7 +445,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
             <label>Absorber<select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { invalidateJob(); setAbsorber(event.target.value); setSite("") }}>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
             <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => { invalidateJob(); setEdge(event.target.value as ArtemisFeffRequest["edge"]) }}>{["K", "L1", "L2", "L3"].map(item => <option key={item}>{item}</option>)}</select></label>
           </div>
-          <fieldset className={styles.sites} disabled={controlsDisabled}><legend>Inequivalent absorber site</legend>
+          <fieldset className={styles.sites} disabled={controlsDisabled}><legend>Inequivalent absorber site<SectionHelp label="Inequivalent absorber site">Choose one absorber site explicitly. Site populations are not averaged automatically.</SectionHelp></legend>
             {sites.map(item => <label key={item.index}><input type="radio" name={`feff-site-${contextKey}`} checked={site === String(item.index)} onChange={() => chooseSite(item.index)} aria-label={`Absorber site ${item.index}`} /><span><strong>{item.species} · site {item.index} · Wyckoff {item.wyckoff}</strong><small>({numberText(item.x)}, {numberText(item.y)}, {numberText(item.z)}) · multiplicity {item.multiplicity} · occupancy {numberText(item.occupancy)}</small></span></label>)}
             {!sites.length && <p className={styles.help}>No supported sites for this absorber.</p>}
           </fieldset>
@@ -455,12 +453,10 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
           {site && <details><summary>FEFF shell distance ranges · {absorber} site {site}</summary><RadialShellPanel state={radialState} disabled={controlsDisabled} /></details>}
           <div className={styles.grid}>
             <label>Cluster radius (Å)<input aria-label="FEFF cluster radius" inputMode="decimal" value={clusterRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setClusterRadius(event.target.value) }} /></label>
-            <label>Max path R (Å)<input aria-label="FEFF maximum path radius" inputMode="decimal" value={pathRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setPathRadius(event.target.value) }} /></label>
+            <label><span>Max path R (Å)<SectionHelp label="Maximum path R">Max path R is the effective half-path length.</SectionHelp></span><input aria-label="FEFF maximum path radius" inputMode="decimal" value={pathRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setPathRadius(event.target.value) }} /></label>
             <label>Maximum legs<select aria-label="FEFF maximum legs" value={maxLegs} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxLegs(event.target.value) }}>{[2, 3, 4].map(item => <option key={item}>{item}</option>)}</select></label>
             <label>Maximum paths<input aria-label="FEFF maximum paths" inputMode="numeric" value={maxPaths} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxPaths(event.target.value) }} /></label>
           </div>
-          <p className={styles.help}>Choose one absorber site explicitly. Max path R is the effective half-path length; site populations are not averaged automatically.</p>
-          {!attachmentId && <p className={styles.help}>Attach this CIF to the project before generating FEFF paths.</p>}
         </>}
       </div>}
       {job && <div className={styles.job}>
@@ -469,13 +465,12 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
         {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`amcsd-${job.provenance.structure.id}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
-          <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"} available{job.truncated ? ` of ${job.total_paths}; increase Maximum paths to include more` : ""}. Select the paths to add; this model has {availableSlots} open slot{availableSlots === 1 ? "" : "s"}.</p>
+          <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"}{job.truncated ? ` of ${job.total_paths}` : ""} · {availableSlots} open slot{availableSlots === 1 ? "" : "s"}<SectionHelp label="Generated FEFF paths">Select the paths to add. {job.truncated && "Increase Maximum paths to include more. "}Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</SectionHelp></p>
           <button type="button" disabled={controlsDisabled || !shellPaths.some(id => !addedIds.includes(id))} onClick={() => {
             const eligible = shellPaths.filter(id => !addedIds.includes(id))
             if (eligible.length > availableSlots) { setError(`The first shell needs ${eligible.length} path slots; only ${availableSlots} are available.`); return }
             setSelected(eligible); setError("")
           }}>Select first-shell paths</button>
-          <p className={styles.help}>Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</p>
           <RadialPathGroups paths={job.paths} structure={structure} analysis={jobRadial} selectedIds={selected} blockedIds={addedIds} disabled={controlsDisabled}
             onSelection={(ids, include) => {
               const next = include ? [...new Set([...selected, ...ids])] : selected.filter(id => !ids.includes(id))
@@ -501,7 +496,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
       {notice && <p className={styles.status} role="status">{notice}</p>}
       </div>
       </div>
-      <footer className={styles.dialogFooter}><span>{removingId ? "Removing the CIF from your project…" : attachPending ? "Saving the CIF to your project…" : "Closing this window keeps your search and calculation progress."}</span><button type="button" disabled={mutationPending} onClick={closeDialog}>Close</button></footer>
+      <footer className={styles.dialogFooter}><span>{removingId ? "Removing the CIF from your project…" : attachPending ? "Saving the CIF to your project…" : ""}</span><button type="button" disabled={mutationPending} onClick={closeDialog}>Close</button></footer>
     </dialog>
   </section>
 }

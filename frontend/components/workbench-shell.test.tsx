@@ -250,7 +250,7 @@ describe("WorkbenchShell", () => {
 
     await clickReadyPreview()
     await waitFor(() => expect(client.preview).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText(/rbkg/i), { target: { value: "1.5" } })
+    fireEvent.change(screen.getByRole("spinbutton", { name: /^rbkg/i }), { target: { value: "1.5" } })
     await act(async () => {
       resolvePreview?.(result)
       await pendingPreview

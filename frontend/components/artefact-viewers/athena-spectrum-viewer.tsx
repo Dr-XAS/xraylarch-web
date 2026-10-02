@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useState, type ReactNode } from "react"
 import { Download } from "lucide-react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
@@ -89,7 +90,7 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
           <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
           <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>
         </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}
-        {space === "E" && plotScope === "current" && plotEnergyMode !== "mu" && <p className="ath-plot-overlay-hint">For pre-/post-edge lines, choose μ(E) · raw.</p>}
+        {space === "E" && plotScope === "current" && plotEnergyMode !== "mu" && <SectionHelp label="Pre-edge and post-edge lines">For pre-/post-edge lines, choose μ(E) · raw.</SectionHelp>}
         <AthenaColorLegend storageKey={viewer === "single" ? "athena.plot-colors.single" : "athena.plot-colors"} value={plotColors} onChange={setPlotColors} disabled={showingAnalysis} />
         </div>
         {pickPrompt}

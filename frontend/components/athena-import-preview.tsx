@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useState } from "react"
 import { useAthenaApi } from "@/lib/athena-context"
@@ -43,13 +44,12 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
   const hasReference = !!(mapping.reference_numerator || mapping.reference_denominator)
   const plottedReference = traces.some(t => t.role === "reference")
   return <section className={styles.previewPanel} aria-label="Column selection preview">
-    <div className={styles.previewTools}><strong>Preview selected columns</strong>
+    <div className={styles.previewTools}><strong>Preview selected columns <SectionHelp label="Selected columns preview">The selected detector signals before normalization or background removal.</SectionHelp></strong>
       <label className="ath-check"><input type="checkbox" checked={paused} onChange={e => { setPaused(e.target.checked); setManualKey("") }} />Pause plotting</label>
       <button type="button" disabled={disabled || !!problem} onClick={() => { setManualKey(key); setRetry(n => n + 1); setState(null) }}>Replot</button>
       {hasReference && <label className="ath-check"><input type="checkbox" checked={showReference} onChange={e => setShowReference(e.target.checked)} />Plot reference</label>}
       {mapping.rebin?.enabled && <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Plot original data</label>}
     </div>
-    <p className="ath-hint">The selected detector signals before normalization or background removal.</p>
     {paused && <p role="status">Plotting paused{value && !isCurrent ? " — the displayed curve uses the previous column selection." : "."} Replot updates once.</p>}
     <div className={styles.plot} aria-label="Imported signal preview plot" aria-busy={!paused && !isCurrent && !problem}>
       {value ? <Plot data={traces.map((trace, index) => ({ x: trace.x.slice(), y: trace.y.slice(), name: trace.label,

@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from 'react'
 import { loadRebinDefaults, saveRebinDefaults } from '@/lib/athena-preferences'
 import { defaultRebin, rebinProblem, type ImportRebinOptions } from '@/lib/athena-import'
@@ -84,8 +85,7 @@ export function RebinDefaultsControls({ state, disabled = false }: {
   state: ReturnType<typeof useRebinDefaults>; disabled?: boolean
 }) {
   return <section aria-label="Rebin grid defaults">
-    <p className="ath-hint">Import and processing share this grid. Save defaults to keep it for future sessions on this local server. Grid E₀ and the import checkbox are separate.</p>
-    <div className="ath-modal-actions">
+    <div className="ath-modal-actions"> <SectionHelp label="Rebin grid defaults">Import and processing share this grid. Save defaults to keep it for future sessions on this local server. Grid E₀ and the import checkbox are separate.</SectionHelp>
       <button type="button" disabled={disabled || state.pending || !state.ready || !!state.problem} onClick={() => { void state.save() }}>Save grid as defaults</button>
       <button type="button" disabled={disabled || state.pending} onClick={state.load}>Load saved grid</button>
       <button type="button" disabled={disabled || state.pending} onClick={state.reset}>Use Athena default grid</button>

@@ -104,7 +104,7 @@ describe("FeffPathViewer", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "Path details" }), { target: { value: "cu2" } })
     expect(panel).toHaveTextContent("Double scattering · triangle")
     expect(panel).toHaveTextContent("Excluded from fit")
-    fireEvent.click(screen.getByText("Coordinates and scattering angles"))
+    fireEvent.click(screen.getByText("Coordinates and scattering angles", { selector: "summary" }))
     expect(within(panel).getByRole("table")).toHaveTextContent("Return")
     fireEvent.click(screen.getByRole("button", { name: "Edit paths" }))
     expect(openModel).toHaveBeenCalledOnce()
@@ -142,6 +142,9 @@ describe("FeffPathViewer", () => {
     mismatched.metadata.viewerCluster!.atoms[1].x = 10
     rerender(<FeffPathViewer paths={[mismatched]} onOpenModel={vi.fn()} />)
     expect(screen.queryByRole("checkbox", { name: "Local structure" })).not.toBeInTheDocument()
+    expect(screen.getByText("Path atoms only")).toBeVisible()
+    expect(screen.getByText(/These files contain path atoms only/)).not.toBeVisible()
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "About Missing local structure" }))
     expect(screen.getByText(/These files contain path atoms only/)).toBeVisible()
   })
 
@@ -249,7 +252,7 @@ describe("FeffPathViewer", () => {
     await ready()
     expect(screen.getByRole("button", { name: "Show feff0001.dat" })).toHaveAttribute("aria-pressed", "true")
     rerender(<FeffPathViewer paths={[]} onOpenModel={vi.fn()} />)
-    expect(screen.getByRole("region", { name: "FEFF path viewer" })).toHaveTextContent("Add or generate FEFF paths")
+    expect(screen.getByRole("region", { name: "FEFF path viewer" })).toHaveTextContent("No FEFF paths")
     expect(screen.queryByRole("img")).not.toBeInTheDocument()
   })
 
@@ -272,6 +275,8 @@ describe("FeffPathViewer", () => {
     expect(scene.addArrow).not.toHaveBeenCalled()
     expect(scene.addSphere).toHaveBeenCalledTimes(3)
     expect(scene.addSphere.mock.calls.every(([sphere]) => Math.abs(sphere.opacity ** 2 - 0.3) < 1e-8)).toBe(true)
+    expect(screen.getByText("No paths shown")).toBeVisible()
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "About FEFF path legend" }))
     expect(screen.getByText(/Click a FEFF legend/)).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Show feff0001.dat" }))
     expect(scene.addArrow).toHaveBeenCalledTimes(2)

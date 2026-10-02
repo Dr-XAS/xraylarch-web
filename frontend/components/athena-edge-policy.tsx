@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useRef, useState } from "react"
 import type { EdgePolicy } from "@/lib/athena"
 import { useEdgeCatalog } from "./athena-edge-catalog"
@@ -64,16 +65,13 @@ export function EdgePolicyDialog({ policy, apply, close }: {
     close()
   }
   return <dialog ref={dialog} className="ath-modal" aria-label="Enforce element and edge" onCancel={event => { event.preventDefault(); dismiss() }}>
-    <header><h2>Enforce element and edge</h2><button type="button" aria-label="Close dialog" onClick={dismiss}>×</button></header>
+    <header><h2>Enforce element and edge <SectionHelp label="Import policy lifetime">Applies to new batches in this browser tab. Existing groups and restored projects are unchanged. It is separate from project saves and Undo, and survives refresh in this tab.<br /><br />Choose the absorber, edge, and edge-step fraction for subsequent raw-file imports, including reference channels. χ(k) imports ignore this policy.</SectionHelp></h2><button type="button" aria-label="Close dialog" onClick={dismiss}>×</button></header>
     <form className="ath-modal-body" noValidate onSubmit={event => { event.preventDefault(); submit() }}>
-      <p>Choose the absorber, edge, and edge-step fraction for subsequent raw-file imports, including reference channels. χ(k) imports ignore this policy.</p>
-      <p className="ath-hint">Applies to new batches in this browser tab. Existing groups and restored projects are unchanged. It is separate from project saves and Undo, and survives refresh in this tab.</p>
-      <label className="ath-field"><span>Element symbol</span><input value={element} maxLength={2} placeholder="Cu" onChange={event => changeElement(event.target.value)} /></label>
+
+      <label className="ath-field"><span>Element symbol <SectionHelp label="Element lookup">Look up the element, then choose an edge from its table. Editing the symbol discards any pending lookup.</SectionHelp></span><input value={element} maxLength={2} placeholder="Cu" onChange={event => changeElement(event.target.value)} /></label>
       <button type="button" disabled={loading || !element.trim()} onClick={() => { void lookup() }}>{loading ? "Looking up edges…" : "Look up edges"}</button>
-      <p className="ath-hint">Look up the element, then choose an edge from its table. Editing the symbol discards any pending lookup.</p>
       <div className="ath-fields"><label className="ath-field"><span>Enforced edge</span><select aria-label="Enforced edge" value={edge} disabled={loading || !catalog} onChange={event => changeEdge(event.target.value)}><option value="">Choose an edge</option>{catalog?.edges.map(item => <option key={item.edge} value={item.edge}>{item.edge} · {item.energy} eV</option>)}</select></label>
-        <label className="ath-field"><span>Edge-step fraction</span><input type="number" step="any" min="0" max="1" value={fraction} disabled={loading} onChange={event => { setFraction(event.target.value); setError("") }} /></label></div>
-      <p className="ath-hint">Use 0 &lt; fraction ≤ 1; 0.5 is half the edge step, and 1 is the full step.</p>
+        <label className="ath-field"><span>Edge-step fraction <SectionHelp label="Edge-step fraction">Use 0 &lt; fraction ≤ 1; 0.5 is half the edge step, and 1 is the full step.</SectionHelp></span><input type="number" step="any" min="0" max="1" value={fraction} disabled={loading} onChange={event => { setFraction(event.target.value); setError("") }} /></label></div>
       {error && <div className="ath-error" role="alert">{error}</div>}
       <div className="ath-modal-actions"><button type="button" disabled={loading} onClick={dismiss}>Cancel</button><button className="ath-primary" disabled={loading || !catalog || !edge} type="submit">Apply enforcement</button></div>
     </form>

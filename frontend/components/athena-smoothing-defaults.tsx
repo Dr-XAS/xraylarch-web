@@ -1,5 +1,6 @@
 'use client'
 
+import { SectionHelp } from "./section-help"
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { applySmoothingPreferences, loadSmoothingPreferences, type SGPreferences, type SGValues } from '@/lib/athena-smoothing-preferences'
 
@@ -72,10 +73,9 @@ export function useSmoothingPreferences(draft: {window: string; order: string}, 
 
 export function SmoothingDefaults({preferences: p, disabled}: {preferences: ReturnType<typeof useSmoothingPreferences>; disabled: boolean}) {
   return <section aria-label="Savitzky–Golay preferences">
-    <p className="ath-hint">Apply uses this window and order for this server session. Apply and Save also keeps them after the server restarts. Existing spectra keep their accepted settings.</p>
     {p.state && <p className="ath-hint">Current: {p.state.values.window} / {p.state.values.order} · Saved: {p.state.saved.window} / {p.state.saved.order} · Default: {p.state.defaults.window} / {p.state.defaults.order} (window / order).</p>}
     {p.state?.unsaved && <p role="status">Session preferences have not been saved for the next start.</p>}
-    <div className="ath-modal-actions">
+    <div className="ath-modal-actions"> <SectionHelp label="Smoothing preferences">Apply uses this window and order for this server session. Apply and Save also keeps them after the server restarts. Existing spectra keep their accepted settings.</SectionHelp>
       <button disabled={disabled || p.pending || !p.state || !p.valid} onClick={() => { void p.apply(false) }}>Apply</button>
       <button disabled={disabled || p.pending || !p.state || !p.valid} onClick={() => { void p.apply(true) }}>Apply and Save</button>
       <button disabled={disabled || p.pending || !p.state} onClick={() => p.use('values')}>Use current values</button>

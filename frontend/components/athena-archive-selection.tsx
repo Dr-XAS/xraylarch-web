@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
 import { useState } from 'react'
 import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-archive-selection.module.css'
@@ -16,9 +17,8 @@ export function AthenaArchiveSelection({ archive, projectId, busy, onContinue, o
 }) {
   const [selected, setSelected] = useState(() => archive.members.map(member => member.index))
   return <section className={styles.archive} aria-label="ZIP file selection">
-    <h3>Files in {archive.display_name}</h3>
-    <p>{archive.members.length} files · {archive.file_plugin.expanded_bytes.toLocaleString()} bytes expanded.
-      Choose data files, then choose shared import parameters or review each file separately. Athena projects open with a group selection.</p>
+    <h3>Files in {archive.display_name} <SectionHelp label="Import archive files">Choose data files, then choose shared import parameters or review each file separately. Athena projects open with a group selection. Files are reviewed in archive order.</SectionHelp></h3>
+    <p>{archive.members.length} files · {archive.file_plugin.expanded_bytes.toLocaleString()} bytes expanded.</p>
     <fieldset disabled={busy}>
       <div className="ath-modal-actions">
         <button type="button" onClick={() => setSelected(archive.members.map(m => m.index))}>Select all files</button>
@@ -31,7 +31,7 @@ export function AthenaArchiveSelection({ archive, projectId, busy, onContinue, o
           <span>{member.name}<small>Entry {member.index + 1} · {member.bytes.toLocaleString()} bytes</small></span></label>
         <AthenaDownloadButton path={`/projects/${projectId}/archives/${archive.upload_id}/members/${member.index}`}>Download {member.name}</AthenaDownloadButton>
       </li>)}</ul>
-      <p>{selected.length} files selected. Files are reviewed in archive order.</p>
+      <p>{selected.length} files selected.</p>
       <div className="ath-modal-actions">
         <button type="button" onClick={onCancel}>Choose another file</button>
         <button type="button" className="ath-primary" disabled={!selected.length} onClick={() => onContinue(archive.members.filter(m => selected.includes(m.index)))}>Review selected files</button>
