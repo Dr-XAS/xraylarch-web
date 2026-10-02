@@ -46,8 +46,15 @@ for (const mobile of [false, true]) {
     const errors: string[] = []
     page.on("pageerror", error => errors.push(error.message))
     await page.goto("/")
-    const loaded = await command(page, "example", () =>
+    const initial = await command(page, "example", () =>
       page.getByRole("button", { name: "Load copper examples", exact: true }).click())
+    await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
+    await expect.poll(async () => (await currentProject(page, initial.id)).groups
+      .find(group => group.label === "Cu₂O · room temperature")?.artemis?.model.paths.length).toBe(4)
+    await expect(page.locator(".ath-autosaved")).toHaveText("Saved locally")
+    // Opening the demo persists its model; retain that acknowledged revision
+    // for the later folder command and read-only navigation comparisons.
+    const loaded = await currentProject(page, initial.id)
     expect(loaded.groups).toHaveLength(5)
     const samples = loaded.groups.filter(group => group.reference_id)
     expect(samples.length).toBeGreaterThanOrEqual(2)
@@ -63,10 +70,16 @@ for (const mobile of [false, true]) {
     await expect(row(page, reference)).toHaveCount(1)
     const groups = page.locator("#athena-data-groups")
     if (mobile) {
-      const listBounds = (await groups.locator(".ath-group-list").boundingBox())!
-      const linkBounds = (await referenceLink(page, samples[0], reference).boundingBox())!
-      expect(linkBounds.y).toBeGreaterThanOrEqual(listBounds.y)
-      expect(linkBounds.y + linkBounds.height).toBeLessThanOrEqual(listBounds.y + listBounds.height + 1)
+      // The one-click demo scrolls smoothly to EXAFS setup on mobile. Return
+      // immediately to the tree before measuring its link containment.
+      await groups.evaluate(element => element.scrollIntoView({ behavior: "instant", block: "start" }))
+      const bounds = await referenceLink(page, samples[0], reference).evaluate(element => {
+        const list = element.closest(".ath-group-list")!.getBoundingClientRect()
+        const link = element.getBoundingClientRect()
+        return { listTop: list.top, listBottom: list.bottom, linkTop: link.top, linkBottom: link.bottom }
+      })
+      expect(bounds.linkTop).toBeGreaterThanOrEqual(bounds.listTop)
+      expect(bounds.linkBottom).toBeLessThanOrEqual(bounds.listBottom + 1)
     }
     const bounds = (await groups.boundingBox())!
     await page.screenshot({ path: info.outputPath("shared-reference-tree.png"), animations: "disabled",
@@ -89,6 +102,7 @@ for (const mobile of [false, true]) {
     await expect(row(page, reference)).toHaveClass(/\bselected\b/)
     await expect(row(page, reference)).toBeVisible()
     await expect(page.getByRole("textbox", { name: "Search groups", exact: true })).toHaveValue("")
+    await page.getByRole("tab", { name: "Processing", exact: true }).click()
     await expect(page.locator(".ath-param-current strong")).toContainText(reference.label)
     const plot = page.getByRole("region", { name: "Single spectrum viewer", exact: true })
       .getByLabel("E-space spectrum plot", { exact: true })

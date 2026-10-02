@@ -1238,7 +1238,7 @@ describe("AthenaWorkbench data group sorting", () => {
 })
 
 describe("AthenaWorkbench data group folders", () => {
-  it("keeps the example loader at the top and activates the first newly loaded spectrum by identity", async () => {
+  it("keeps the example loader at the top and opens the prepared Cu₂O demo in one step", async () => {
     const project = await openSaved()
     fireEvent.click(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" }))
     fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "process" } })
@@ -1251,26 +1251,26 @@ describe("AthenaWorkbench data group folders", () => {
 
     const loaded = copperExampleProject(project)
     api.mockResolvedValueOnce(loaded)
+    const requestCount = api.mock.calls.length
     fireEvent.click(button)
 
     await waitFor(() => expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
       version: project.version, action: "example", group_ids: [], options: {},
     }))
-    await waitFor(() => expect(plotProps().active?.id).toBe("example-10k"))
+    await waitFor(() => expect(plotProps().active?.id).toBe("example-cu2o"))
     expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("default")
     expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("button", { name: "Collapse Temperature series group" })).toBeVisible()
     expect(screen.getByRole("button", { name: "Collapse reference group" })).toBeVisible()
     expect(screen.getByText("Cu₂O EXAFS example added")).toBeVisible()
     expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0]).toMatchObject({
-      group: { id: "example-10k" },
+      group: { id: "example-cu2o" },
       exampleSetup: { projectId: project.id, groupId: "example-cu2o", attachmentId: "example-cuprite-cif", example: loaded.last_operation!.artemis_example!.example },
     })
-    const requestCount = api.mock.calls.length
-    fireEvent.click(screen.getByRole("button", { name: "Open Cu₂O EXAFS" }))
+    expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument()
     expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
-    expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].group?.id).toBe("example-cu2o")
-    expect(api).toHaveBeenCalledTimes(requestCount)
+    expect(screen.getByRole("combobox", { name: "Viewed CIF structure" })).toHaveValue("example-cuprite-cif")
+    expect(api).toHaveBeenCalledTimes(requestCount + 1)
   })
 
   it("opens the new Cu₂O spectrum and matching CIF when examples are loaded from EXAFS fitting", async () => {
@@ -1299,21 +1299,21 @@ describe("AthenaWorkbench data group folders", () => {
     })
   })
 
-  it("hides the Cu₂O shortcut after undo removes its group and restores it on redo", async () => {
+  it("clears the Cu₂O setup after undo removes its group and restores it on redo", async () => {
     const project = await openSaved()
     const loaded = copperExampleProject(project)
     api.mockResolvedValueOnce(loaded)
     fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
-    await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })
+    await screen.findByText("Cu₂O EXAFS example added")
 
     api.mockResolvedValueOnce({ ...project, version: loaded.version + 1, redo: ["Copper examples"], last_operation: { action: "undo", skipped_group_ids: [] } })
     fireEvent.click(screen.getByRole("button", { name: "Undo" }))
-    await waitFor(() => expect(screen.queryByRole("button", { name: "Open Cu₂O EXAFS" })).not.toBeInTheDocument())
+    await waitFor(() => expect(screen.queryByText("Cu₂O EXAFS example added")).not.toBeInTheDocument())
     expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup).toBeUndefined()
 
     api.mockResolvedValueOnce({ ...loaded, version: loaded.version + 2, last_operation: { action: "redo", skipped_group_ids: [] } })
     fireEvent.click(screen.getByRole("button", { name: "Redo" }))
-    expect(await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })).toBeVisible()
+    expect(await screen.findByText("Cu₂O EXAFS example added")).toBeVisible()
     expect(vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)?.[0].exampleSetup?.groupId).toBe("example-cu2o")
   })
 
@@ -1321,7 +1321,7 @@ describe("AthenaWorkbench data group folders", () => {
     const project = await openSaved()
     api.mockResolvedValueOnce(copperExampleProject(project))
     fireEvent.click(screen.getByRole("button", { name: "Load copper examples" }))
-    await screen.findByRole("button", { name: "Open Cu₂O EXAFS" })
+    await screen.findByText("Cu₂O EXAFS example added")
     const other = projectFixture({ id: "other-project", name: "Other project", groups: [group("example-cu2o", "Unrelated Cu₂O")] })
     api.mockResolvedValueOnce([{ id: other.id, name: other.name, updated: other.updated, count: other.groups.length }]).mockResolvedValueOnce(other)
     fireEvent.click(screen.getByRole("button", { name: "Open project" }))

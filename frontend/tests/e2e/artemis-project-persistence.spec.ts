@@ -20,7 +20,6 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   const examples = page.waitForResponse(response => response.url().endsWith("/command") && response.request().postDataJSON().action === "example")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   const initial = await (await examples).json() as AthenaProject
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
   await page.getByLabel("Parameter 1 value", { exact: true }).fill("0.85")
   await page.getByLabel("Path 1 label", { exact: true }).fill("Cu–O saved model")
@@ -132,7 +131,6 @@ test("unfinished model edits autosave across spectrum and tab switches", async (
   const examples = page.waitForResponse(response => response.url().endsWith("/command") && response.request().postDataJSON().action === "example")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   const project = await (await examples).json() as AthenaProject
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   await expect(page.getByLabel("Parameter 1 value", { exact: true })).toBeVisible()
   const saving = page.waitForResponse(response => response.url().endsWith("/model") && response.request().postDataJSON().model.parameters[0].value === "-")
   await page.getByLabel("Parameter 1 value", { exact: true }).fill("-")

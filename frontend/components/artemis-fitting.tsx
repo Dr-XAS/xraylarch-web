@@ -5,7 +5,7 @@ import { History, Plus, RefreshCw, SlidersHorizontal, Trash2, Upload, type Lucid
 import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
 import {
-  artemisApi, validArtemisResult, validCupriteExample, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult,
+  artemisApi, validArtemisResult, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult,
   type ArtemisInspectedPath, type ArtemisParameter, type ArtemisPath, type ArtemisTransform,
   artemisModelKey, type ArtemisModelDraft as Draft, type ArtemisParameterDraft as ParameterDraft, type ArtemisTransformDraft as TransformDraft,
 } from "@/lib/artemis"
@@ -269,7 +269,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const archive = persisted?.history.find(item => item.id === selectedFitId) ?? persisted?.history.at(-1)
   const modelDirty = artemisModelKey(draft) !== artemisModelKey(persisted?.model ?? base.current) || (!persisted && draft.paths.length > 0)
   const [result, setResult] = useState<SavedDraft["result"]>(initial?.result ?? null)
-  const [busy, setBusy] = useState<"fit" | "upload" | "example" | "save" | "remove" | null>(null)
+  const [busy, setBusy] = useState<"fit" | "upload" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
@@ -402,44 +402,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     } catch (error) { if (!abort.signal.aborted) setError(errorText(error)) }
     finally { if (!abort.signal.aborted) setBusy(null) }
   }
-  async function loadExample() {
-    if (!projectId || version === undefined || !group || !onProjectChange || draft.paths.length) return
-    const abort = begin("example")
-    let requestContext = context
-    let mutation: ModelMutation | undefined
-    try {
-      const example = await artemisApi<ArtemisExample>("/examples/cuprite", undefined, abort.signal)
-      if (abort.signal.aborted || contextRef.current !== requestContext) return
-      if (!validCupriteExample(example)) {
-        throw new Error("The Cu₂O example does not contain the expected Cuprite structure and four FEFF paths.")
-      }
-      // The attach operation can commit even if the selected spectrum changes.
-      // Always receive its response so the workbench learns the new project version.
-      mutation = await prepareMutation()
-      if (!alive.current || abort.signal.aborted) return
-      const mutationVersion = mutation.version
-      requestContext = contextRef.current
-      const updated = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(projectId)}/structures`,
-        { version: mutationVersion, amcsd_id: example.amcsd_id })
-      if (updated.id !== projectId || updated.version < mutationVersion) {
-        throw new Error("The saved CIF response does not match this project. Reload the project and try again.")
-      }
-      const applyToGroup = !abort.signal.aborted && contextRef.current === requestContext
-      const attachment = updated.artemis_structures?.find(item => item.amcsd_id === example.amcsd_id)
-      if (!attachment || attachment.sha256 !== example.cif_sha256) {
-        onProjectChange(updated)
-        if (!applyToGroup) return
-        throw new Error("The attached CIF does not match the Cu₂O FEFF calculation. Reload the project and try again.")
-      }
-      if (applyToGroup) {
-        setDraft(previous => exampleDraft(example, previous.revision + 1))
-        setNotice(example.description)
-      }
-      onProjectChange(updated)
-      if (applyToGroup) onViewStructure?.(attachment.id)
-    } catch (error) { if (!abort.signal.aborted) setError(errorText(error)) }
-    finally { mutation?.finish(); if (!abort.signal.aborted) setBusy(null) }
-  }
   function saveModel() {
     try {
       const request = requestFromDraft(draft, version ?? 0)
@@ -536,7 +498,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
     </div>
     {notice && <p className={styles.message} role="status">{notice}</p>}
-    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : busy === "example" ? "Loading Cu₂O CIF and FEFF paths…" : "Saving project…"}</p>}
+    {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : "Saving project…"}</p>}
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
@@ -577,11 +539,9 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       </div>}
       <div className={styles.toolbar}>
         <button type="button" onClick={() => inputRef.current?.click()}><Upload size={13} />Add feff*.dat</button>
-        <button type="button" onClick={loadExample} disabled={draft.paths.length > 0 || !projectId || version === undefined || !group || !onProjectChange} title={draft.paths.length ? "Remove existing paths to load the Cu₂O example." : "Attach Cuprite AMCSD 0015851 and load four precomputed Cu K-edge FEFF paths."}>Cu₂O example</button>
         <input ref={inputRef} className={styles.fileInput} type="file" multiple accept=".dat" aria-label="Upload FEFF path files"
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
       </div>
-      {draft.paths.length === 0 && <p className={styles.help}>Add calculated FEFF scattering paths, or load the Cuprite CIF and its first four precomputed paths with the Cu₂O example.</p>}
       <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
         onSelection={(ids, include) => edit(previous => ({ ...previous, paths: previous.paths.map(path => ids.includes(path.id) ? { ...path, enabled: include } : path) }))}
         onUseOnly={ids => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: ids.includes(path.id) })) }))}

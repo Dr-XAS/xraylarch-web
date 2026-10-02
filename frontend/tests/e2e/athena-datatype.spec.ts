@@ -37,6 +37,8 @@ test('real copper processing settings: four combinations, frozen recipes, scopes
   await page.goto('/')
   const initial = await command(page, 'example', () => page.getByRole('button', { name: 'Load copper examples', exact: true }).click())
   const [, second, third, reference] = initial.groups
+  await page.locator('.ath-group-select').filter({ hasText: 'Cu foil · 10 K' }).click()
+  await page.getByRole('tab', { name: 'Processing', exact: true }).click()
   // Main-pane edits process on blur. Preserve this saved recipe, not the original example defaults.
   const processed = await command(page, 'parameters', async () => {
     const rbkg = page.getByRole('spinbutton', { name: /^Rbkg/ })
@@ -59,7 +61,9 @@ test('real copper processing settings: four combinations, frozen recipes, scopes
   expect(saved.groups[0].is_normalized).toBe(true)
   expect(saved.groups[0].result?.arrays.chi.length).toBeGreaterThan(0)
   expectRetainedInput(saved.groups[0], first)
-  expect(saved.groups.slice(1)).toEqual(initial.groups.slice(1))
+  // Processing flushes the opened demo's model autosave before applying Rbkg.
+  // Subsequent data-type changes must leave every other saved group intact.
+  expect(saved.groups.slice(1)).toEqual(processed.groups.slice(1))
   await panel.getByRole('button', { name: 'Close', exact: true }).click()
   await expect(page.getByRole('spinbutton', { name: /^Rbkg/ })).toHaveValue('1.9')
   await expect.poll(() => energyCurve(page)).toEqual({ x: saved.groups[0].result?.arrays.energy, y: first.mu })
@@ -119,6 +123,8 @@ test('normalized input with EXAFS disabled survives downloaded .prj and reopened
   test.setTimeout(90000)
   await page.goto('/')
   await command(page, 'example', () => page.getByRole('button', { name: 'Load copper examples', exact: true }).click())
+  await page.locator('.ath-group-select').filter({ hasText: 'Cu foil · 10 K' }).click()
+  await page.getByRole('tab', { name: 'Processing', exact: true }).click()
   const panel = await openSettings(page)
   await panel.getByRole('checkbox', { name: 'Input already normalized', exact: true }).check()
   await panel.getByRole('checkbox', { name: 'Enable EXAFS processing', exact: true }).uncheck()

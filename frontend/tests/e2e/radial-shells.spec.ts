@@ -19,7 +19,6 @@ test("radial shells share ranges across CIF, FEFF groups and the EXAFS model", a
   await page.setViewportSize({ width: 1600, height: 1100 })
   await page.goto("/")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   const viewer = page.getByRole("region", { name: "CIF structure viewer", exact: true })
   await expect(viewer.getByRole("option", { name: "Radial shells", exact: true })).toBeEnabled()
   await viewer.getByRole("combobox", { name: "CIF view mode" }).selectOption("radial")

@@ -146,7 +146,6 @@ test("EXAFS fit k-weight retransforms data, model and paths without changing the
   const weight = viewer.getByRole("combobox", { name: "EXAFS fit k-weight", exact: true })
   await expect(weight).toHaveCount(0)
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
   const fittedResponse = page.waitForResponse(response => response.url().endsWith("/fit-saved"))
   await page.getByRole("button", { name: "Run EXAFS fit", exact: true }).click()

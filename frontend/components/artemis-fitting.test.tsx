@@ -65,6 +65,9 @@ function exampleSetup(): ArtemisExampleSetup {
     example: { ...model, parameters: model.parameters.map(parameter => parameter.name === "amp" ? { ...parameter, value: 0.82 } : parameter),
       transform: { ...model.transform, kmin: 2, kmax: 10, rmin: 1.2, rmax: 3.4 } } }
 }
+function preparedExample(): ArtemisExampleSetup {
+  return { projectId: "p", groupId: "copper", attachmentId: cupriteAttachment.id, example: example() }
+}
 function fitResult(overrides: Partial<ArtemisFitResult> = {}): ArtemisFitResult {
   return { project_id: "p", group_id: "copper", group_label: "copper foil", version: 4, success: true, message: "Fit succeeded.", report: "[[Fit Statistics]]\nR-factor = 0.003", warnings: [],
     statistics: { n_varys: 4, n_independent: 12.5, n_data: 40, nfev: 25, chi_square: 50, reduced_chi_square: 5.8, r_factor: 0.003, aic: 20, bic: 25, errorbars: true },
@@ -110,10 +113,6 @@ function savedFit(body: unknown, result = fitResult()) {
 }
 function submittedModel() { return (api.mock.calls.at(-1)![1] as { model: ArtemisModelDraft }).model }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
-async function loadExample() {
-  fireEvent.click(screen.getByRole("button", { name: "Cu₂O example" }))
-  await screen.findByLabelText("Path 4 S₀²")
-}
 async function runFit() {
   fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
   await screen.findByText("Fit completed. Results are in the plot panel.")
@@ -122,8 +121,6 @@ async function runFit() {
 beforeEach(() => {
   api.mockReset(); vi.mocked(athenaApi).mockReset(); plot.mockClear(); localStorage.clear()
   api.mockImplementation(async (url, body) => {
-    if (url === "/examples/cuprite") return example()
-    if (url === "/projects/p/structures") return attachedProject()
     if (url === "/paths/inspect") { const input = body as { filename: string; content: string }; return path(input.filename, input.content) }
     if (url.endsWith("/fit-saved")) return savedFit(body)
     if (url.endsWith("/model")) {
@@ -196,39 +193,34 @@ describe("ArtemisFittingPanel", () => {
   it("requires a processed spectrum and explicit fit action", async () => {
     const view = render(<ArtemisFittingPanel />)
     expect(screen.getByRole("status")).toHaveTextContent("Select a spectrum")
+    expect(screen.queryByRole("button", { name: "Cu₂O example" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Sync parameters" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeDisabled()
-    view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={{ ...group(), result: null }} onProjectChange={acceptProject} />)
+    view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={{ ...group(), result: null }} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
     expect(screen.getByRole("status")).toHaveTextContent("requires processed χ(k)")
     view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
     expect(api).not.toHaveBeenCalled()
-    await loadExample()
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.9" } })
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).not.toHaveBeenCalled()
     expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeEnabled()
   })
 
-  it("loads the Cuprite CIF and four FEFF paths in one click, then fits at the updated project revision", async () => {
+  it("opens four prepared Cuprite paths without an extra example action, then fits at the current project revision", async () => {
     const onProjectChange = vi.fn()
     const onViewStructure = vi.fn()
     const onPathsChange = vi.fn()
-    api.mockImplementation(async (url, body) => {
-      if (url === "/examples/cuprite") return example()
-      if (url === "/projects/p/structures") return attachedProject(5)
-      return savedFit(body, fitResult({ version: 5 }))
-    })
+    api.mockImplementation(async (_url, body) => savedFit(body, fitResult({ version: 5 })))
     function Harness() {
-      const [project, setProject] = useState(attachedProject())
-      return <ArtemisFittingPanel projectId="p" version={project.version} group={project.groups[0]}
+      const [project, setProject] = useState(attachedProject(5))
+      return <ArtemisFittingPanel projectId="p" version={project.version} group={project.groups[0]} exampleSetup={preparedExample()}
         onProjectChange={project => { onProjectChange(project); setProject(project) }}
         onViewStructure={onViewStructure} onPathsChange={onPathsChange} />
     }
     render(<Harness />)
-    expect(screen.queryByRole("button", { name: "Cu first-shell example" })).not.toBeInTheDocument()
-    await loadExample()
-    expect(api).toHaveBeenNthCalledWith(1, "/examples/cuprite", undefined, expect.any(AbortSignal))
-    expect(api).toHaveBeenNthCalledWith(2, "/projects/p/structures", { version: 4, amcsd_id: 15851 })
-    expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(attachedProject(5))
-    expect(onViewStructure).toHaveBeenCalledExactlyOnceWith("cuprite-cif")
+    expect(screen.queryByRole("button", { name: "Cu₂O example" })).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+    expect(onProjectChange).not.toHaveBeenCalled()
+    expect(onViewStructure).not.toHaveBeenCalled()
     expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
     for (const [index, source] of example().paths.entries()) {
       expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).toBeVisible()
@@ -237,54 +229,10 @@ describe("ArtemisFittingPanel", () => {
     expect(onPathsChange.mock.calls.at(-1)?.[0]).toHaveLength(4)
     await runFit()
     const submitted = submittedModel()
-    expect(api.mock.calls.at(-1)?.[1]).toMatchObject({ version: 5 })
+    expect(api).toHaveBeenCalledOnce()
+    expect(api.mock.calls[0][0]).toBe("/projects/p/groups/copper/fit-saved")
+    expect(api.mock.calls[0][1]).toMatchObject({ version: 5 })
     expect(submitted.paths.map(item => [item.filename, item.content])).toEqual(example().paths.map(item => [item.filename, item.content]))
-  })
-
-  it("keeps the fitting draft empty when attaching the Cuprite CIF fails", async () => {
-    const onProjectChange = vi.fn()
-    const onViewStructure = vi.fn()
-    api.mockImplementation(async url => {
-      if (url === "/examples/cuprite") return example()
-      if (url === "/projects/p/structures") throw new Error("Project changed. Refresh and retry.")
-      return fitResult()
-    })
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()}
-      onProjectChange={onProjectChange} onViewStructure={onViewStructure} />)
-    fireEvent.click(screen.getByRole("button", { name: "Cu₂O example" }))
-    expect(await screen.findByRole("alert")).toHaveTextContent("Project changed")
-    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "Retry fit" })).toBeDisabled()
-    expect(onProjectChange).not.toHaveBeenCalled()
-    expect(onViewStructure).not.toHaveBeenCalled()
-  })
-
-  it("reconciles a late Cuprite attachment after switching spectra without loading paths into either draft", async () => {
-    const onProjectChange = vi.fn()
-    const onViewStructure = vi.fn()
-    const late = deferred<AthenaProject>()
-    api.mockImplementation(async url => {
-      if (url === "/examples/cuprite") return example()
-      if (url === "/projects/p/structures") return late.promise
-      return fitResult()
-    })
-    function Harness({ groupId }: { groupId: string }) {
-      const [version, setVersion] = useState(4)
-      return <ArtemisFittingPanel projectId="p" version={version} group={group(groupId)}
-        onProjectChange={project => { onProjectChange(project); setVersion(project.version) }} onViewStructure={onViewStructure} />
-    }
-    const view = render(<Harness groupId="copper" />)
-    fireEvent.click(screen.getByRole("button", { name: "Cu₂O example" }))
-    await waitFor(() => expect(api.mock.calls.some(([url]) => url === "/projects/p/structures")).toBe(true))
-    const signal = api.mock.calls.find(([url]) => url === "/projects/p/structures")?.[2]
-    expect(signal).toBeUndefined()
-    view.rerender(<Harness groupId="iron" />)
-    await act(async () => { late.resolve(attachedProject(5)) })
-    expect(onProjectChange).toHaveBeenCalledExactlyOnceWith(attachedProject(5))
-    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
-    view.rerender(<Harness groupId="copper" />)
-    expect(screen.queryByLabelText("Path 1 S₀²")).not.toBeInTheDocument()
-    expect(onViewStructure).not.toHaveBeenCalled()
   })
 
   it("reads selected FEFF file contents, retains degeneracy, and saves complete FEFF metadata, expressions and objective weights", async () => {
@@ -309,8 +257,7 @@ describe("ArtemisFittingPanel", () => {
   })
 
   it("saves Set and Def draft text with editable bounds", async () => {
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
     fireEvent.change(screen.getByLabelText("Parameter 2 kind"), { target: { value: "set" } })
     fireEvent.change(screen.getByLabelText("Parameter 2 value"), { target: { value: "3.5" } })
     fireEvent.change(screen.getByLabelText("Parameter 3 kind"), { target: { value: "def" } })
@@ -322,9 +269,7 @@ describe("ArtemisFittingPanel", () => {
   })
 
   it("syncs one path's renamed parameters while preserving the other paths' shared settings", async () => {
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
-    expect(screen.getByRole("button", { name: "Sync parameters" })).toBeDisabled()
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
     for (const weight of [0, 1, 2, 3]) expect(screen.getByRole("checkbox", { name: `Fit k-weight ${weight}` })).toBeChecked()
     fireEvent.change(screen.getByLabelText("Parameter 1 kind"), { target: { value: "set" } })
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.85" } })
@@ -341,7 +286,7 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("Parameter 1 kind")).toHaveValue("set")
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.85")
     expect(screen.getByLabelText("Parameter 2 minimum")).toHaveValue("-10")
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).not.toHaveBeenCalled()
     await runFit()
     const request = submittedModel()
     expect(request.parameters.map(parameter => parameter.name)).toEqual(["amp", "del_e0", "del_r", "sig2", "del_r1", "sig2_1"])
@@ -355,8 +300,7 @@ describe("ArtemisFittingPanel", () => {
   })
 
   it("keeps the entire draft when a path expression is incomplete and allows retrying sync", async () => {
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
     fireEvent.change(screen.getByLabelText("Path 1 ΔR (Å)"), { target: { value: "new_r +" } })
     fireEvent.click(screen.getByRole("button", { name: "Sync parameters" }))
     expect(screen.getByRole("alert")).toHaveTextContent("Cannot sync expression")
@@ -369,23 +313,21 @@ describe("ArtemisFittingPanel", () => {
   })
 
   it("keeps incomplete numeric drafts and explains invalid ranges before a request", async () => {
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "" } })
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
     expect(screen.getByRole("alert")).toHaveTextContent("amp value must be a finite number")
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("")
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).not.toHaveBeenCalled()
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "1" } })
     fireEvent.change(screen.getByLabelText("k min (Å⁻¹)"), { target: { value: "14" } })
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
     expect(screen.getByRole("alert")).toHaveTextContent("k range")
-    expect(api).toHaveBeenCalledTimes(2)
+    expect(api).not.toHaveBeenCalled()
   })
 
   it("retains editable model after backend failure and retries without re-upload", async () => {
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} />)
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
     api.mockRejectedValueOnce(new Error("Unknown symbol bad_sigma in path sigma2."))
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
     await screen.findByRole("alert")
@@ -393,13 +335,12 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("Path 1 σ² (Å²)")).toHaveValue("sig2")
     fireEvent.click(screen.getByRole("button", { name: "Retry fit" }))
     await screen.findByText("Fit completed. Results are in the plot panel.")
-    expect(api.mock.calls[3][1]).toEqual(api.mock.calls[2][1])
+    expect(api.mock.calls[1][1]).toEqual(api.mock.calls[0][1])
   })
 
   it("preserves separate drafts and completed results while switching spectra; editing invalidates the result", async () => {
     const onFitResult = vi.fn()
-    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
-    await loadExample()
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
     fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.85" } })
     await runFit()
     view.rerender(<ArtemisFittingPanel projectId="p" version={4} group={group("iron")} onFitResult={onFitResult} onProjectChange={acceptProject} />)
@@ -410,13 +351,12 @@ describe("ArtemisFittingPanel", () => {
     expect(onFitResult.mock.calls.at(-1)?.[0]).toMatchObject({ group_id: "copper", version: 4 })
     fireEvent.change(screen.getByLabelText("Path 1 ΔR (Å)"), { target: { value: "del_r + 0.001" } })
     expect(onFitResult.mock.calls.at(-1)?.[0]).toBeNull()
-    expect(api).toHaveBeenCalledTimes(3)
+    expect(api).toHaveBeenCalledOnce()
   })
 
   it.each(["version", "group", "pending"] as const)("ignores a late fit response when %s changes", async change => {
     const onFitResult = vi.fn()
-    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
-    await loadExample()
+    const view = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
     const response = deferred<ReturnType<typeof savedFit>>()
     api.mockReturnValueOnce(response.promise)
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
@@ -431,8 +371,7 @@ describe("ArtemisFittingPanel", () => {
 
   it("rejects mismatched and invalid curves instead of forwarding a fit result", async () => {
     const onFitResult = vi.fn()
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onFitResult={onFitResult} onProjectChange={acceptProject} />)
     api.mockImplementationOnce(async (_url, body) => savedFit(body, fitResult({ version: 3 })))
     fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
     await screen.findByRole("alert")
@@ -467,8 +406,7 @@ describe("ArtemisFittingPanel", () => {
     let blob: Blob | undefined
     vi.stubGlobal("URL", class extends URL { static createObjectURL(value: Blob) { blob = value; return "blob:test" } static revokeObjectURL() {} })
     vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {})
-    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} onProjectChange={acceptProject} onActionsChange={value => { actions = value }} />)
-    await loadExample()
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} onActionsChange={value => { actions = value }} />)
     await runFit()
     act(() => actions!.exportModel())
     const saved = await new Promise<string>(resolve => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.readAsText(blob!) })

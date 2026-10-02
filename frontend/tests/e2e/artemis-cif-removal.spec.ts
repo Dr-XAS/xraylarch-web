@@ -20,7 +20,6 @@ test("visible CIF removal persists without changing FEFF paths and can be undone
   const exampleResponse = page.waitForResponse(response => response.url().endsWith("/command") && response.request().postDataJSON().action === "example")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   const initial = await (await exampleResponse).json() as AthenaProject
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
 
   // Save explicitly when using the manual model editor; autosave also supports this flow.
@@ -117,7 +116,6 @@ test("CIF removal waits for an in-flight model save and uses its committed revis
   const exampleResponse = page.waitForResponse(response => response.url().endsWith("/command") && response.request().postDataJSON().action === "example")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   const initial = await (await exampleResponse).json() as AthenaProject
-  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
   const savedProject = async () => await (await page.request.get(`/api/backend/api/athena/projects/${initial.id}`)).json() as AthenaProject
   await expect.poll(async () => cuprite(await savedProject()).artemis?.model.paths.length).toBe(4)
