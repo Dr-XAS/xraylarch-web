@@ -537,8 +537,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     <p className={styles.spectrum}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></p>
     {reason && <p className={styles.message} role="status">{reason}</p>}
     <input className={styles.fileInput} ref={modelInputRef} type="file" accept=".json,application/json" aria-label="Import Artemis model JSON" onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void loadModel(file) }} />
-    {onProjectChange && <div className={styles.toolbar}>
-      <p className={styles.help} aria-live="polite">{actions.status === "saving" ? "Saving model…" : actions.status === "pending" ? "Model changes waiting to save…" : actions.status === "failed" ? "Model could not be saved." : "Model saved automatically in this project."} Fits run only when requested.</p>
+    {onProjectChange && actions.status !== "saved" && <div className={styles.toolbar}>
+      <p className={styles.help} aria-live="polite">{actions.status === "saving" ? "Saving model…" : actions.status === "pending" ? "Model changes waiting to save…" : "Model could not be saved."}</p>
       {actions.status === "failed" && <><p className={styles.error} role="alert">{actions.error}</p><button type="button" disabled={disabled} onClick={() => void actions.retry().catch(() => {})}>Retry saving model</button></>}
     </div>}
     {!!persisted?.history.length && <FittingSection title="Saved fit history" summary={`${persisted.history.length}/10`} disabled={disabled}>
