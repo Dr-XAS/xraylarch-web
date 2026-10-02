@@ -27,6 +27,14 @@ def _domain_status(error: WebInputError) -> int:
         return 409
     if error.code == "artemis_example_unavailable":
         return 503
+    if error.code in ("materials_project_not_configured", "materials_project_auth"):
+        return 503
+    if error.code == "materials_project_rate_limit":
+        return 429
+    if error.code == "materials_project_not_found":
+        return 404
+    if error.code == "materials_project_unavailable":
+        return 502
     if error.code in _NOT_FOUND_CODES:
         return 404
     return 400

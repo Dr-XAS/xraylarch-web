@@ -16,7 +16,7 @@ import type { AthenaProject, EdgePair } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import {
-  downloadArtemisText, sameFeffRequest, type ArtemisFeffJob, type ArtemisFeffRequest, type ArtemisGeneratedPath,
+  downloadArtemisText, sameFeffRequest, sameStructure, structureLabel, type ArtemisFeffJob, type ArtemisFeffRequest, type ArtemisGeneratedPath,
   type ArtemisStructure, type ArtemisStructureSearchResult, type ArtemisStructureAttachment, type ArtemisProjectStructures,
 } from "@/lib/artemis-structures"
 import styles from "./artemis-structures.module.css"
@@ -38,7 +38,6 @@ interface Props {
 }
 const errorText = (error: unknown) => error instanceof Error ? error.message : "The structure request failed. Please try again."
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
-const amcsdLabel = (id: number) => `AMCSD ${String(id).padStart(7, "0")}`
 
 const feffEdges = ["K", "L1", "L2", "L3"] as const
 
@@ -54,6 +53,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
   const [listError, setListError] = useState("")
   const [listLoading, setListLoading] = useState(false)
   const [query, setQuery] = useState("")
+  const [provider, setProvider] = useState<"amcsd" | "materials_project">("amcsd")
   const [element, setElement] = useState("")
   const [search, setSearch] = useState<ArtemisStructureSearchResult | null>(null)
   const [structure, setStructure] = useState<ArtemisStructure | null>(null)
@@ -235,6 +235,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     setAttachmentId(null)
     setSearch(null)
     const params = new URLSearchParams({ q: query.trim(), limit: "25" })
+    if (provider !== "amcsd") params.set("provider", provider)
     if (element.trim()) params.set("element", element.trim())
     try {
       const response = await artemisApi<ArtemisStructureSearchResult>(`/structures?${params}`, undefined, abort.signal)
@@ -243,9 +244,9 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     } catch (error) { if (!abort.signal.aborted && sequence.current === request && context.current === requestContext) setError(errorText(error)) }
     finally { if (!abort.signal.aborted && sequence.current === request && context.current === requestContext) setBusy(null) }
   }
-  async function selectStructure(id: number) {
+  async function selectStructure(id: number | string) {
     if (controlsDisabled) return
-    const attached = attachments.find(item => item.amcsd_id === id)
+    const attached = attachments.find(item => sameStructure(item.structure, { ...item.structure, id, provider }))
     if (attached) { openAttachment(attached); return }
     lookupAbort.current?.abort()
     invalidateJob()
@@ -259,9 +260,9 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     setAbsorber("")
     setSite("")
     try {
-      const response = await artemisApi<ArtemisStructure>(`/structures/${id}`, undefined, abort.signal)
+      const response = await artemisApi<ArtemisStructure>(`/structures/${encodeURIComponent(id)}${provider === "materials_project" ? "?provider=materials_project" : ""}`, undefined, abort.signal)
       if (abort.signal.aborted || sequence.current !== request || context.current !== requestContext) return
-      if (response.id !== id) throw new Error("The returned CIF does not match the selected AMCSD record. Select the structure again.")
+      if (response.id !== id || (response.provider ?? "amcsd") !== provider) throw new Error("The returned CIF does not match the selected record. Select the structure again.")
       setStructure(response)
       // Even a single element can have several inequivalent sites; the site stays an explicit choice.
       setAbsorber(response.elements[0] ?? "")
@@ -272,7 +273,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     if (!structure || !projectId || version === undefined || controlsDisabled || !projectCallback.current) return
     const requestContext = contextKey
     const requestProject = projectId
-    const selectedId = structure.id
+    const selectedStructure = structure
     const receiveProject = projectCallback.current
     let mutation: { version: number; finish: () => void } | undefined
     const abort = new AbortController()
@@ -285,8 +286,9 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       mutation = prepareMutation ? await prepareMutation() : { version, finish: () => {} }
       if (abort.signal.aborted || context.current !== requestContext || currentProject.current !== requestProject) return
       // Receive committed project revisions even if the spectrum changes during the request.
-      const response = await artemisApi<AthenaProject & { artemis_structures?: ArtemisStructureAttachment[] }>(`/projects/${encodeURIComponent(projectId)}/structures`, { version: mutation.version, amcsd_id: selectedId })
-      const attached = response.artemis_structures?.find(item => item.amcsd_id === selectedId)
+      const identity = selectedStructure.provider === "materials_project" ? { provider: "materials_project", material_id: selectedStructure.id } : { amcsd_id: selectedStructure.id }
+      const response = await artemisApi<AthenaProject & { artemis_structures?: ArtemisStructureAttachment[] }>(`/projects/${encodeURIComponent(projectId)}/structures`, { version: mutation.version, ...identity })
+      const attached = response.artemis_structures?.find(item => sameStructure(item.structure, selectedStructure))
       if (response.id !== requestProject || response.version < mutation.version || !attached) throw new Error("The saved CIF response does not match this project. Refresh the attachment list before retrying.")
       if (abort.signal.aborted || context.current !== requestContext || currentProject.current !== requestProject) { receiveProject(response); return }
       setAttachments(response.artemis_structures ?? [])
@@ -387,7 +389,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     if (selected.length > availableSlots) { setError(`This model has room for ${availableSlots} more path${availableSlots === 1 ? "" : "s"}. Select fewer paths or remove existing ones.`); return }
     const viewerCluster = parseFeffCluster(job.provenance?.feff_input)
     const paths = job.paths.filter(path => selected.includes(path.id) && !addedIds.includes(path.id)).map(path => {
-      const suffix = ` · ${amcsdLabel(job.provenance.structure.id)} · ${job.request.absorber} site ${job.request.site_index} · ${path.filename}`
+      const suffix = ` · ${structureLabel(job.provenance.structure)} · ${job.request.absorber} site ${job.request.site_index} · ${path.filename}`
       const mineral = job.provenance.structure.mineral || job.provenance.structure.formula || "Structure"
       return { filename: path.filename, content: path.content, metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata, label: mineral.slice(0, Math.max(0, 120 - suffix.length)) + suffix }
     })
@@ -415,7 +417,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     <button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={openDialog}><Search size={14} />Search / attach CIF</button>
     {listLoading && !attachments.length && <p className={styles.help}>Loading attached CIFs…</p>}
     {!projectId ? <p className={styles.help}>Select a project to attach crystal structures.</p> : !listLoading && !attachments.length && <p className={styles.help}>No CIF structures attached to this project.</p>}
-    {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}><span className={styles.attachmentInfo}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{amcsdLabel(item.amcsd_id)}</small></span><div className={styles.attachedActions}><button type="button" disabled={controlsDisabled} onClick={() => openAttachment(item)} aria-label={`Open attached ${item.structure.mineral || item.structure.formula} CIF`}>Open</button>{removeButton(item)}</div></li>)}</ul>}
+    {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}><span className={styles.attachmentInfo}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{structureLabel(item.structure)}</small></span><div className={styles.attachedActions}><button type="button" disabled={controlsDisabled} onClick={() => openAttachment(item)} aria-label={`Open attached ${item.structure.mineral || item.structure.formula} CIF`}>Open</button>{removeButton(item)}</div></li>)}</ul>}
     {listError && !open && <p className={styles.error}>{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
     {error && !open && <p className={styles.error} role="alert">{error}</p>}
     {notice && !open && <p className={styles.status} role="status">{notice}</p>}
@@ -428,26 +430,30 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       <div className={styles.content}>
       <div className={styles.searchColumn}>
       {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
+      <label className={styles.provider}>Source<select aria-label="Structure source" value={provider} disabled={controlsDisabled} onChange={event => {
+        clearSelectedAttachment(); setBusy(null); setSearch(null); setProvider(event.target.value as typeof provider)
+      }}><option value="amcsd">AMCSD</option><option value="materials_project">Materials Project</option></select></label>
       <div className={styles.searchFields}>
-        <label><span>Mineral, formula, or AMCSD ID<SectionHelp label="AMCSD search">Search the local AMCSD database snapshot.</SectionHelp></span><input aria-label="AMCSD search query" value={query} placeholder="e.g. copper or 13088" disabled={controlsDisabled}
+        <label><span>{provider === "materials_project" ? "Formula, chemical system, or MP ID" : "Mineral, formula, or AMCSD ID"}<SectionHelp label="Structure search">{provider === "materials_project" ? "Search Materials Project: Cu2O for a formula, Cu-O for that chemical system, or mp-30 for a material. The element filter includes compounds containing that element." : "Search the local AMCSD database snapshot."}</SectionHelp></span><input aria-label={provider === "materials_project" ? "Materials Project search query" : "AMCSD search query"} value={query} placeholder={provider === "materials_project" ? "e.g. Cu2O, Cu-O, mp-30" : "e.g. copper or 13088"} disabled={controlsDisabled}
           onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
-        <label>Contains element<input aria-label="AMCSD element filter" value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
+        <label>Contains element<input aria-label={provider === "materials_project" ? "Materials Project element filter" : "AMCSD element filter"} value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
       </div>
-      <button type="button" disabled={controlsDisabled || busy === "search" || (!query.trim() && !element.trim())} onClick={findStructures}><Search size={13} />{busy === "search" ? "Searching…" : "Search AMCSD"}</button>
+      <button type="button" disabled={controlsDisabled || busy === "search" || (!query.trim() && !element.trim())} onClick={findStructures}><Search size={13} />{busy === "search" ? "Searching…" : provider === "materials_project" ? "Search Materials Project" : "Search AMCSD"}</button>
       {search && <div className={styles.searchResults}>
-        <p className={styles.help}>{search.results.length ? `${search.results.length} result${search.results.length === 1 ? "" : "s"}${search.limited ? " · refine the search for more" : ""}` : "No matching structures. Try another mineral, formula, element, or AMCSD ID."}</p>
-        {search.results.map(item => <button type="button" key={item.id} disabled={controlsDisabled} className={styles.result} aria-pressed={structure?.id === item.id} onClick={() => selectStructure(item.id)}>
-          <strong>{item.mineral || item.formula}</strong><span>{item.formula} · {item.space_group}</span><small>{amcsdLabel(item.id)}{item.year ? ` · ${item.year}` : ""}</small>
+        <p className={styles.help}>{search.results.length ? `${search.results.length} result${search.results.length === 1 ? "" : "s"}${search.limited ? " · refine the search for more" : ""}` : "No matching structures. Try another formula, element, or source ID."}</p>
+        {search.results.map(item => <button type="button" key={item.id} disabled={controlsDisabled} className={styles.result} aria-pressed={!!structure && sameStructure(structure, item)} onClick={() => selectStructure(item.id)}>
+          <strong>{item.mineral || item.formula}</strong><span>{item.formula} · {item.space_group}</span><small>{structureLabel(item)}{item.provider === "materials_project" ? " · DFT-relaxed" : item.year ? ` · ${item.year}` : ""}</small>
         </button>)}
         {search.source && <p className={styles.source}>{search.source}</p>}
       </div>}
-      {attachments.length > 0 && <div className={styles.savedStructures}><h4>Attached to this project</h4>{attachments.map(item => <div key={item.id} className={styles.savedStructureRow}><button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${item.structure.mineral || item.structure.formula} CIF`}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{amcsdLabel(item.amcsd_id)} · Saved CIF</small></button>{removeButton(item)}</div>)}</div>}
+      {attachments.length > 0 && <div className={styles.savedStructures}><h4>Attached to this project</h4>{attachments.map(item => <div key={item.id} className={styles.savedStructureRow}><button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${item.structure.mineral || item.structure.formula} CIF`}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{structureLabel(item.structure)} · Saved CIF</small></button>{removeButton(item)}</div>)}</div>}
       </div>
       <div className={styles.detailColumn}>
       {!structure && busy !== "structure" && <p className={styles.placeholder}>Select a search result or open a CIF already attached to this project.</p>}
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
       {structure && <div className={styles.structure}>
-        <h4>{structure.mineral}{structure.title && <SectionHelp label="CIF citation">{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</SectionHelp>} <span>{amcsdLabel(structure.id)}</span></h4>
+        <h4>{structure.mineral}{structure.title && <SectionHelp label="CIF citation">{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</SectionHelp>} <span>{structureLabel(structure)}</span></h4>
+        {structure.provider === "materials_project" && <p className={styles.help}>DFT-relaxed structure · <a href={`https://materialsproject.org/materials/${encodeURIComponent(structure.id)}`} target="_blank" rel="noreferrer">View on Materials Project</a><br />Database version: {structure.provenance?.database_version ?? "unavailable"}. Saved CIFs retain the retrieved geometry.</p>}
         {open && attachmentId && <div ref={viewerAnchor}><CifViewer key={attachmentId} structure={structure} selectedSite={site ? Number(site) : undefined} analysis={shellState} radialAnalysis={radialState} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
         <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button><SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>
@@ -475,7 +481,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       {job && <div className={styles.job}>
         <p className={styles.status} role={job.status === "failed" ? "alert" : "status"}><strong>{job.status === "complete" ? "FEFF calculation complete" : job.status === "failed" ? "FEFF calculation failed" : job.stage || "Calculating FEFF"}</strong><span>{job.message}</span>{job.status === "running" && <small>{Math.round(job.elapsed_seconds)} s elapsed</small>}</p>
         {job.warnings.map((warning, i) => <p key={i} className={styles.warning}>{warning}</p>)}
-        {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`amcsd-${job.provenance.structure.id}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
+        {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`${job.provenance.structure.provider === "materials_project" ? "" : "amcsd-"}${job.provenance.structure.id}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
           <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"}{job.truncated ? ` of ${job.total_paths}` : ""} · {availableSlots} open slot{availableSlots === 1 ? "" : "s"}<SectionHelp label="Generated FEFF paths">Select the paths to add. {job.truncated && "Increase Maximum paths to include more. "}Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</SectionHelp></p>

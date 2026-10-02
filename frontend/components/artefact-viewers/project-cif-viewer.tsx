@@ -1,7 +1,7 @@
 "use client"
 
 import { useMemo } from "react"
-import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
+import { structureLabel, type ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { CifViewer } from "./cif-viewer"
 import { ViewerPanel } from "./viewer-panel"
 
@@ -24,7 +24,7 @@ export function ProjectCifViewer({ attachments = [], selectedId, selectedSite, o
       <label className="ath-cif-selection">Project CIF
         <select aria-label="Viewed CIF structure" value={selected.id} onChange={event => onSelect(event.target.value)}>
           {attachments.map(attachment => <option key={attachment.id} value={attachment.id}>
-            {attachment.structure.mineral || attachment.structure.formula} · AMCSD {String(attachment.amcsd_id).padStart(7, "0")}
+            {attachment.structure.mineral || attachment.structure.formula} · {structureLabel(attachment.structure)}
           </option>)}
         </select>
       </label>

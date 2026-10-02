@@ -2,7 +2,7 @@
 
 Artemis Web adds an **EXAFS fitting** tab to the middle parameter panel of the
 Athena workspace. It fits the current spectrum using imported FEFF scattering
-paths or paths calculated from an AMCSD structure, with the repository's Larch
+paths or paths calculated from an AMCSD or Materials Project structure, with the repository's Larch
 core. It is an initial web
 workflow, not a claim of full desktop Artemis compatibility.
 
@@ -16,7 +16,7 @@ and [GDS reference](https://bruceravel.github.io/demeter/documents/Artemis/gds.h
 1. Select the spectrum to analyze and complete its Athena background subtraction.
    Fitting requires the current processed `k` and `chi` arrays.
 2. Open **EXAFS fitting** in the middle panel and import one or more
-   `feffNNNN.dat` scattering-path files, or find an AMCSD structure and calculate
+   `feffNNNN.dat` scattering-path files, or find a crystal structure and calculate
    its FEFF paths as described below.
 3. Inspect each path's absorber/edge, nominal half-path length `Reff`, degeneracy,
    and number of legs. Include the paths appropriate for the selected fit range.
@@ -76,7 +76,7 @@ than one k-weight, plots use the first listed weight, consistent with Larch's
 saved fit outputs. Results obtained before path arrays were added need a new fit
 before **Show paths** is available.
 
-## AMCSD structures and FEFF calculations
+## Crystal structures and FEFF calculations
 
 The structure workflow uses the local AMCSD database packaged with Larixite.
 This is a curated snapshot rather than a live search of the full online AMCSD:
@@ -97,6 +97,34 @@ the current project. The fitting panel lists attached structures; opening one
 reuses the saved snapshot without repeating the database search. The search,
 structure inspection, and FEFF controls stay inside the popup, which can be
 closed and reopened without discarding its calculation state.
+
+Select **Source → Materials Project** to search the live Materials Project
+database. Use a formula such as `Cu2O`, an exact chemical system such as `Cu-O`,
+or an MP identifier such as `mp-30`. The **Contains element** filter finds
+compounds containing that element; a formula query of `Cu` finds elemental
+copper. Mineral-name searches remain available under AMCSD. Both older numeric
+and newer letter-based MP IDs are supported.
+
+The backend reads `MP_API_KEY` from its environment. Configure it as a server
+secret before starting/restarting the backend; never use a `NEXT_PUBLIC_`
+variable or place it in a project export. Missing or rejected keys, rate limits,
+and connection failures produce an actionable message in the popup. The backend
+uses the official REST summary endpoint through the existing `httpx` dependency,
+requests compact result metadata, and fetches the selected structure on demand.
+Requests have timeouts and response-size limits; successful responses are cached
+in memory for ten minutes, with at most 128 cache entries. No bulk download runs.
+
+Materials Project structures are labeled **DFT-relaxed**. Their calculated cell
+and coordinates are retained during CIF conversion; experimental temperature
+and pressure are not inferred. The saved attachment includes the material ID,
+source URL, exact CIF and SHA-256, retrieval timestamp, database version (or null
+when unavailable), and the structure calculation's task ID when returned.
+AMCSD and MP attachments can coexist, round-trip through JSON/PRJ, and generate
+FEFF from the saved snapshot without network access or an API key. Existing AMCSD
+project records keep their original shape.
+
+References: [MP API](https://docs.materialsproject.org/downloading-data/using-the-api),
+[calculated structures](https://docs.materialsproject.org/methodology/materials-methodology/calculation-details).
 
 In the **CIF structure viewer**, **Local cluster** uses a display radius in Å
 around the chosen center site. Switching **View** to **Unit cell** replaces the
@@ -193,7 +221,7 @@ CIF is a version-checked project edit and can be undone or redone.
 FEFF generation from an attachment uses its saved CIF snapshot. **Download
 feff.inp** remains available for calculation-input review. Model JSON saves the
 added FEFF path files and their labels,
-which identify the mineral, AMCSD ID, and selected absorber site. It does not
+which identify the mineral/formula, source ID, and selected absorber site. It does not
 archive the complete FEFF calculation directory. Job outputs are temporary,
 retained for up to 24 hours and subject to bounded storage; save useful files
 before leaving the workflow.
@@ -479,10 +507,10 @@ Structure search and calculation use:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/artemis/structures?q=...&element=...&limit=...` | Search the local AMCSD snapshot; `element` is one optional symbol and `limit` is 1–50. |
-| `GET /api/artemis/structures/{id}` | Retrieve CIF text, citation, lattice parameters, native site indices, and supported/unsupported status. |
+| `GET /api/artemis/structures?q=...&element=...&limit=...` | Search AMCSD by default; add `provider=materials_project` for MP. `element` is one optional symbol and `limit` is 1–50. |
+| `GET /api/artemis/structures/{id}` | Retrieve CIF text, citation, lattice parameters, native site indices, and supported/unsupported status. MP IDs require `provider=materials_project`. |
 | `GET /api/artemis/projects/{id}/structures` | List the current project's saved CIF snapshots and project version. |
-| `POST /api/artemis/projects/{id}/structures` | Attach an AMCSD CIF using `{version, amcsd_id}`; return the updated project. |
+| `POST /api/artemis/projects/{id}/structures` | Attach using `{version, amcsd_id}` or `{version, provider: "materials_project", material_id}`; return the updated project. |
 | `POST /api/artemis/feff/jobs` | Start an isolated FEFF8L job; returns HTTP 202 and its job ID. |
 | `GET /api/artemis/feff/jobs/{id}` | Poll `running`, `complete`, or `failed` status, log, input provenance, and generated paths. |
 

@@ -159,15 +159,15 @@ def capabilities() -> dict:
 
     return {
         "workflow": [
-            "GET /api/artemis/structures?q=copper&element=Cu: find an AMCSD id; "
-            "GET /api/artemis/structures/{amcsd_id} lists its sites, each with an index from 1",
-            "POST /api/artemis/feff/jobs?view=summary with feff_job below: 202 and a job "
-            "id, or 200 and a complete job marked reused if one already ran that request",
-            "GET /api/artemis/feff/jobs/{job_id}?view=summary until status is 'complete' "
-            "(about a second for one shell)",
+            "GET /api/artemis/structures?q=copper&element=Cu; GET /api/artemis/structures/{id} "
+            "for sites (indices from 1). For DFT-relaxed MP structures, add provider=materials_project "
+            "and use q=Cu2O. Attach with POST /api/artemis/projects/{id}/structures "
+            "{version,provider:'materials_project',material_id}; use project_id,attachment_id,version for FEFF.",
+            "POST /api/artemis/feff/jobs?view=summary with feff_job: 202 running; "
+            "200 complete with reused=true for an identical finished request",
+            "GET /api/artemis/feff/jobs/{job_id}?view=summary until status='complete'",
             "POST /api/artemis/projects/{id}/groups/{gid}/fit?view=summary with fit "
-            "below, each path named as path_from_feff_job; the reply's paths[].r is the "
-            "fitted distance",
+            "and path_from_feff_job paths; paths[].r is the fitted distance",
         ],
         "fit": {
             "post": "/api/artemis/projects/{id}/groups/{gid}/fit?view=summary",
@@ -221,13 +221,10 @@ def capabilities() -> dict:
                 "a site of the absorber element.",
                 "path_radius may not exceed cluster_radius. 3 A keeps the first shell of most "
                 "metals and oxides.",
-                "The full status reply carries the CIF and the FEFF log as well as the paths, "
-                "about 20 KB on every poll. Poll with ?view=summary, which lists each path's "
-                "scatterers, degeneracy and reff without its file, and name the paths in the "
-                "fit rather than reading the files at all.",
-                "A request identical to one whose job completed in the last 23 hours runs no "
-                "FEFF: the reply is that job, status 200, marked reused. Rerunning a fit with "
-                "other ranges therefore costs no FEFF calculation.",
+                "Poll with ?view=summary for scatterers, degeneracy and reff; full replies include "
+                "CIF, logs and path files. Fits can reference paths by job and path ID.",
+                "Identical requests reuse completed jobs for 23 hours (200, reused=true). "
+                "Changing fit ranges does not require another FEFF calculation.",
             ],
         },
         "fit_reply": NOTE,
