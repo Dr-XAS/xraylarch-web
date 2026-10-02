@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest"
 
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
-import { useState } from "react"
+import { useState, type ReactNode } from "react"
 import { athenaApi, type AthenaGroup, type AthenaProject, type Parameters } from "@/lib/athena"
 import { artemisApi, type ArtemisModelDraft, type ArtemisExample, type ArtemisExampleSetup, type ArtemisFitRequest, type ArtemisFitResult, type ArtemisInspectedPath } from "@/lib/artemis"
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
@@ -15,7 +15,7 @@ type PlotProps = { data: { x: number[]; y: number[]; name: string; visible?: boo
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="fit-plot" />))
 vi.mock("next/dynamic", () => ({ default: () => plot }))
 // Structure persistence and its modal lifecycle are covered in artemis-structures.test.tsx.
-vi.mock("./artemis-structures", () => ({ ArtemisStructures: () => <div data-testid="structures-launcher" /> }))
+vi.mock("./artemis-structures", () => ({ ArtemisStructures: ({ children }: { children?: (sections: { structures: ReactNode; feff: ReactNode }) => ReactNode }) => children?.({ structures: <div data-testid="structures-launcher" />, feff: <div data-testid="feff-launcher" /> }) ?? <div data-testid="structures-launcher" /> }))
 vi.mock("@/lib/artemis", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/artemis")>(), artemisApi: vi.fn() }))
 vi.mock("@/lib/athena", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/athena")>(), athenaApi: vi.fn() }))
 const api = vi.mocked(artemisApi)

@@ -530,7 +530,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
           <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
     </FittingSection>}
-    <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} spectrumEdge={group ? currentEdgeIdentity(group) : null} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
@@ -540,11 +539,13 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         edit(previous => ({ ...previous, paths: [...previous.paths, ...paths.map(path => ({ ...pathDraft(path), label: path.label }))],
           parameters: [...previous.parameters, ...missing.map(parameterDraft)] }))
         return null
-      }} />
-    </FittingSection>
+      }}>
+    {({ structures, feff }) => <>
+    <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">{structures}</FittingSection>
     <FittingSection title="FEFF paths" icon={FeffScatteringIcon} summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}
       help={<><p>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
         {radialContext && <p>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>}</>}>
+      {feff}
       {radialContext ? <>
         <RadialShellPanel state={radialState} disabled={disabled} />
       </> : null}
@@ -602,6 +603,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         </div>
       </div>}} />
     </FittingSection>
+    </>}
+    </ArtemisStructures>
 
     <FittingSection title="Parameters" icon={SlidersHorizontal} summary={`${freeCount} free`} disabled={disabled}
       help="Guess refines a value, Set fixes it, Def evaluates an expression.">

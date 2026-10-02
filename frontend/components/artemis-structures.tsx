@@ -1,12 +1,11 @@
 "use client"
 
 import { SectionHelp } from "./section-help"
-import { useEffect, useId, useRef, useState } from "react"
+import { useEffect, useId, useRef, useState, type ReactNode } from "react"
 import { Search, Trash2, X } from "lucide-react"
 import { CifViewer } from "./artefact-viewers/cif-viewer"
 import { useFirstShell } from "@/lib/use-first-shell"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
-import { FirstShellSummary } from "./first-shell-summary"
 import { useRadialShells } from "@/lib/use-radial-shells"
 import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
 import { RadialShellPanel } from "./radial-shell-panel"
@@ -22,6 +21,7 @@ import {
 import styles from "./artemis-structures.module.css"
 
 interface Props {
+  children?: (sections: { structures: ReactNode; feff: ReactNode }) => ReactNode
   contextKey: string
   spectrumEdge?: EdgePair | null
   projectId?: string
@@ -38,11 +38,17 @@ interface Props {
 }
 const errorText = (error: unknown) => error instanceof Error ? error.message : "The structure request failed. Please try again."
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
-
 const feffEdges = ["K", "L1", "L2", "L3"] as const
+function spectrumDefaults(structure: ArtemisStructure, spectrumEdge?: EdgePair | null) {
+  if (!spectrumEdge) return { absorber: structure.elements[0] ?? "", site: "" }
+  const sites = structure.sites.filter(item => item.element === spectrumEdge.element)
+  const absorber = structure.elements.includes(spectrumEdge.element) && sites.length ? spectrumEdge.element : ""
+  return { absorber, site: absorber && sites.length === 1 ? String(sites[0].index) : "" }
+}
 
-export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version, onProjectChange, prepareMutation, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
+export function ArtemisStructures({ children, contextKey, spectrumEdge, projectId, version, onProjectChange, prepareMutation, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
+  const [dialogMode, setDialogMode] = useState<"structure" | "feff">("structure")
   const dialog = useRef<HTMLDialogElement>(null)
   const viewerAnchor = useRef<HTMLDivElement>(null)
   const opener = useRef<HTMLElement | null>(null)
@@ -59,6 +65,9 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
   const [structure, setStructure] = useState<ArtemisStructure | null>(null)
   const [absorber, setAbsorber] = useState("")
   const [site, setSite] = useState("")
+  const manualAbsorber = useRef(false)
+  const spectrumIdentity = useRef(spectrumEdge)
+  spectrumIdentity.current = spectrumEdge
   const shellState = useFirstShell(structure, site ? Number(site) : undefined)
   const radialState = useRadialShells(structure, site ? Number(site) : undefined)
   const radialCallback = useRef(onRadialContextChange)
@@ -72,7 +81,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     shellCallback.current?.(structure && attachmentId && shellState.shell ? { structure, attachmentId, shell: shellState.shell } : null)
   }, [structure, attachmentId, shellState.shell])
   const [edgeChoice, setEdgeChoice] = useState<{ contextKey: string; projectId?: string; absorber: string; edge: ArtemisFeffRequest["edge"] } | null>(null)
-  const defaultEdge = spectrumEdge?.element === absorber ? feffEdges.find(item => item === spectrumEdge.edge) ?? "K" : "K"
+  const defaultEdge = spectrumEdge && (!absorber || spectrumEdge.element === absorber) ? feffEdges.find(item => item === spectrumEdge.edge) ?? "" : "K"
   // An explicit choice belongs to this spectrum and absorbing element. Otherwise use its recorded edge.
   const edge = edgeChoice?.contextKey === contextKey && edgeChoice.projectId === projectId && edgeChoice.absorber === absorber ? edgeChoice.edge : defaultEdge
   const previousEdge = useRef(edge)
@@ -113,7 +122,8 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     setSelected(previous => { const remaining = previous.filter(id => !included.has(id)); return remaining.length === previous.length ? previous : remaining })
   }, [existingPaths, job])
 
-  function openDialog() {
+  function openDialog(mode: "structure" | "feff" = "structure") {
+    setDialogMode(mode)
     if (!open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
     setOpen(true)
     setListRevision(previous => previous + 1)
@@ -159,20 +169,28 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     return () => abort.abort()
   }, [projectId, version, listRevision])
 
-  function openAttachment(attachment: ArtemisStructureAttachment) {
+  function openAttachment(attachment: ArtemisStructureAttachment, mode: "structure" | "feff" = "structure") {
     if (mutationPending) return
+    const defaults = spectrumDefaults(attachment.structure, spectrumEdge)
     if (attachmentId !== attachment.id) {
+      manualAbsorber.current = false
       lookupAbort.current?.abort()
       sequence.current += 1
       invalidateJob()
       setStructure(attachment.structure)
       setAttachmentId(attachment.id)
-      setAbsorber(attachment.structure.elements[0] ?? "")
-      setSite("")
+      setAbsorber(defaults.absorber)
+      setSite(defaults.site)
       setBusy(null)
     }
-    viewCallback.current?.(attachment.id, attachmentId === attachment.id && site ? Number(site) : undefined)
-    openDialog()
+    const selectedSite = attachmentId === attachment.id ? site : defaults.site
+    viewCallback.current?.(attachment.id, selectedSite ? Number(selectedSite) : undefined)
+    openDialog(mode)
+  }
+
+  function openFeffDialog() {
+    if (!attachmentId && attachments.length === 1) openAttachment(attachments[0], "feff")
+    else openDialog("feff")
   }
 
   function invalidateJob() {
@@ -190,7 +208,18 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     previousEdge.current = edge
     invalidateJob()
   }, [edge])
+  useEffect(() => {
+    if (!structure || manualAbsorber.current) return
+    const defaults = spectrumDefaults(structure, spectrumEdge)
+    if (absorber === defaults.absorber && site === defaults.site) return
+    invalidateJob()
+    setAbsorber(defaults.absorber)
+    setSite(defaults.site)
+    if (attachmentId) viewCallback.current?.(attachmentId, defaults.site ? Number(defaults.site) : undefined)
+    // Follow late spectrum identity updates until the user makes an explicit choice.
+  }, [structure, spectrumEdge?.element])
   function clearSelectedAttachment() {
+    manualAbsorber.current = false
     lookupAbort.current?.abort()
     sequence.current += 1
     invalidateJob()
@@ -200,6 +229,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     setSite("")
   }
   useEffect(() => {
+    manualAbsorber.current = false
     sequence.current += 1
     generation.current += 1
     lookupAbort.current?.abort()
@@ -248,6 +278,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
     if (controlsDisabled) return
     const attached = attachments.find(item => sameStructure(item.structure, { ...item.structure, id, provider }))
     if (attached) { openAttachment(attached); return }
+    manualAbsorber.current = false
     lookupAbort.current?.abort()
     invalidateJob()
     const abort = new AbortController()
@@ -264,8 +295,9 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       if (abort.signal.aborted || sequence.current !== request || context.current !== requestContext) return
       if (response.id !== id || (response.provider ?? "amcsd") !== provider) throw new Error("The returned CIF does not match the selected record. Select the structure again.")
       setStructure(response)
-      // Even a single element can have several inequivalent sites; the site stays an explicit choice.
-      setAbsorber(response.elements[0] ?? "")
+      const defaults = spectrumDefaults(response, spectrumIdentity.current)
+      setAbsorber(defaults.absorber)
+      setSite(defaults.site)
     } catch (error) { if (!abort.signal.aborted && sequence.current === request && context.current === requestContext) setError(errorText(error)) }
     finally { if (!abort.signal.aborted && sequence.current === request && context.current === requestContext) setBusy(null) }
   }
@@ -296,7 +328,8 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       setAttachmentId(attached.id)
       setNotice(`${attached.structure.mineral || attached.structure.formula} CIF attached to the current project.`)
       receiveProject(response)
-      viewCallback.current?.(attached.id, site && attached.structure.sites.some(item => item.index === Number(site)) ? Number(site) : undefined)
+      const selectedSite = manualAbsorber.current ? site : spectrumDefaults(attached.structure, spectrumIdentity.current).site
+      viewCallback.current?.(attached.id, selectedSite && attached.structure.sites.some(item => item.index === Number(selectedSite)) ? Number(selectedSite) : undefined)
       setListRevision(previous => previous + 1)
     } catch (error) { if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setError(errorText(error)) }
     finally { mutation?.finish(); if (!abort.signal.aborted && context.current === requestContext && currentProject.current === requestProject) setBusy(null) }
@@ -338,7 +371,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       onClick={() => void removeAttachment(attachment)}><Trash2 size={14} aria-hidden="true" />{removingId === attachment.id ? "Removing CIF…" : "Remove CIF"}</button>
   }
   async function generate() {
-    if (!structure || !structure.supported || controlsDisabled || site === "" || !absorber || !attachmentId || !projectId || version === undefined) return
+    if (!structure || !structure.supported || controlsDisabled || site === "" || !absorber || !edge || !attachmentId || !projectId || version === undefined) return
     const request: ArtemisFeffRequest = {
       project_id: projectId, attachment_id: attachmentId, version, absorber, edge, site_index: Number(site), cluster_radius: Number(clusterRadius),
       path_radius: Number(pathRadius), max_legs: Number(maxLegs), max_paths: Number(maxPaths),
@@ -407,28 +440,38 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
   const jobRadial = job?.status === "complete" && radialState.data && job.provenance.cif === radialState.data.cif && job.request.site_index === radialState.data.site_index && job.request.absorber === radialState.data.absorber ? radialState.data : null
   function chooseSite(index: number) {
     if (controlsDisabled) return
+    manualAbsorber.current = true
     invalidateJob()
     setAbsorber(structure!.sites.find(item => item.index === index)!.element)
     setSite(String(index))
     if (attachmentId) viewCallback.current?.(attachmentId, index)
   }
   const working = busy === "job" || job?.status === "running"
-  return <section className={styles.panel} aria-label="Project CIF structures">
-    <button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={openDialog}><Search size={14} />Search / attach CIF</button>
+  const structures = <section className={styles.panel} aria-label="Project CIF structures">
+    <button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>
     {listLoading && !attachments.length && <p className={styles.help}>Loading attached CIFs…</p>}
     {!projectId ? <p className={styles.help}>Select a project to attach crystal structures.</p> : !listLoading && !attachments.length && <p className={styles.help}>No CIF structures attached to this project.</p>}
     {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}><span className={styles.attachmentInfo}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{structureLabel(item.structure)}</small></span><div className={styles.attachedActions}><button type="button" disabled={controlsDisabled} onClick={() => openAttachment(item)} aria-label={`Open attached ${item.structure.mineral || item.structure.formula} CIF`}>Open</button>{removeButton(item)}</div></li>)}</ul>}
     {listError && !open && <p className={styles.error}>{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
-    {error && !open && <p className={styles.error} role="alert">{error}</p>}
-    {notice && !open && <p className={styles.status} role="status">{notice}</p>}
-    <dialog ref={dialog} className={styles.dialog} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
-      <header className={styles.dialogHeader}><div><h3 id={titleId}>Crystal structures & FEFF paths<SectionHelp label="Crystal structures and FEFF paths">Attach a CIF to your project, then choose an absorber site to calculate paths. Closing this window keeps your search and calculation progress.</SectionHelp></h3></div><button type="button" aria-label="Close CIF search" disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
-      {(structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
-        {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Generate FEFF paths"}</button>}
+    {error && !open && dialogMode === "structure" && <p className={styles.error} role="alert">{error}</p>}
+    {notice && !open && dialogMode === "structure" && <p className={styles.status} role="status">{notice}</p>}
+  </section>
+  const feff = <div className={styles.feffLauncher}>
+    <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Generate FEFF paths</button>
+    {!listLoading && !attachments.length && <p className={styles.help}>Attach a CIF in Crystal structures to calculate paths.</p>}
+    {error && !open && dialogMode === "feff" && <p className={styles.error} role="alert">{error}</p>}
+    {notice && !open && dialogMode === "feff" && <p className={styles.status} role="status">{notice}</p>}
+  </div>
+  return <>
+    {children ? children({ structures, feff }) : <>{structures}{feff}</>}
+    <dialog ref={dialog} className={`${styles.panel} ${styles.dialog}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
+      <header className={styles.dialogHeader}><div><h3 id={titleId}>{dialogMode === "feff" ? "FEFF paths" : "Crystal structures"}<SectionHelp label={dialogMode === "feff" ? "FEFF path generation" : "Crystal structures"}>{dialogMode === "feff" ? "Choose an attached CIF and absorber site, calculate paths, then add selected paths to the model. Closing this window keeps your calculation progress." : "Search and attach CIF structures to your project. Generate scattering paths from the FEFF paths section."}</SectionHelp></h3></div><button type="button" aria-label={dialogMode === "feff" ? "Close FEFF paths" : "Close CIF search"} disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
+      {dialogMode === "feff" && attachmentId && (structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
+        {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || !edge || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Run FEFF calculation"}</button>}
         {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>}
       </div>}
-      <div className={styles.content}>
-      <div className={styles.searchColumn}>
+      <div className={`${styles.content} ${dialogMode === "feff" ? styles.feffContent : ""}`}>
+      {dialogMode === "structure" && <div className={styles.searchColumn}>
       {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
       <label className={styles.provider}>Source<select aria-label="Structure source" value={provider} disabled={controlsDisabled} onChange={event => {
         clearSelectedAttachment(); setBusy(null); setSearch(null); setProvider(event.target.value as typeof provider)
@@ -447,28 +490,37 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
         {search.source && <p className={styles.source}>{search.source}</p>}
       </div>}
       {attachments.length > 0 && <div className={styles.savedStructures}><h4>Attached to this project</h4>{attachments.map(item => <div key={item.id} className={styles.savedStructureRow}><button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${item.structure.mineral || item.structure.formula} CIF`}><strong>{item.structure.mineral || item.structure.formula}</strong><small>{structureLabel(item.structure)} · Saved CIF</small></button>{removeButton(item)}</div>)}</div>}
-      </div>
+      </div>}
       <div className={styles.detailColumn}>
-      {!structure && busy !== "structure" && <p className={styles.placeholder}>Select a search result or open a CIF already attached to this project.</p>}
+      {dialogMode === "feff" && <>
+        <label className={styles.provider}>Crystal structure<select aria-label="FEFF crystal structure" value={attachmentId ?? ""} disabled={controlsDisabled || listLoading} onChange={event => {
+          const attachment = attachments.find(item => item.id === event.target.value)
+          if (attachment) openAttachment(attachment, "feff")
+        }}><option value="" disabled>Choose an attached CIF</option>{attachments.map(item => <option key={item.id} value={item.id}>{item.structure.mineral || item.structure.formula} · {structureLabel(item.structure)}</option>)}</select></label>
+        {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
+        {!attachmentId && <p className={styles.placeholder}>{attachments.length ? "Choose an attached CIF to configure the FEFF calculation." : "Attach a CIF in Crystal structures, then return here to calculate paths."}</p>}
+      </>}
+      {dialogMode === "structure" && !structure && busy !== "structure" && <p className={styles.placeholder}>Select a search result or open a CIF already attached to this project.</p>}
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
-      {structure && <div className={styles.structure}>
+      {structure && (dialogMode === "structure" || attachmentId) && <div className={styles.structure}>
         <h4>{structure.mineral}{structure.title && <SectionHelp label="CIF citation">{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</SectionHelp>} <span>{structureLabel(structure)}</span></h4>
         {structure.provider === "materials_project" && <p className={styles.help}>DFT-relaxed structure · <a href={`https://materialsproject.org/materials/${encodeURIComponent(structure.id)}`} target="_blank" rel="noreferrer">View on Materials Project</a><br />Database version: {structure.provenance?.database_version ?? "unavailable"}. Saved CIFs retain the retrieved geometry.</p>}
         {open && attachmentId && <div ref={viewerAnchor}><CifViewer key={attachmentId} structure={structure} selectedSite={site ? Number(site) : undefined} analysis={shellState} radialAnalysis={radialState} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
-        <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button><SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>
+        {dialogMode === "structure" && <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={attachStructure}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button><SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>}
         <details className={styles.textDetails}><summary>View CIF</summary><pre>{structure.cif}</pre></details>
         {structure.warnings.map((warning, i) => <p className={styles.warning} key={i}>{warning}</p>)}
-        {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : <>
+        {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : dialogMode === "feff" && <>
           <div className={styles.grid}>
-            <label>Absorber<select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { invalidateJob(); setAbsorber(event.target.value); setSite("") }}>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
-            <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label>Absorber<select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { manualAbsorber.current = true; invalidateJob(); setAbsorber(event.target.value); setSite("") }}><option value="" disabled>Choose absorber</option>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}><option value="" disabled>Choose edge</option>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
           </div>
-          <fieldset className={styles.sites} disabled={controlsDisabled}><legend>Inequivalent absorber site<SectionHelp label="Inequivalent absorber site">Choose one absorber site explicitly. Site populations are not averaged automatically.</SectionHelp></legend>
+          {!absorber && spectrumEdge && <p className={styles.warning}>The spectrum absorber {spectrumEdge.element} has no supported site in this CIF. Choose a matching structure or select an absorber manually.</p>}
+          {!edge && spectrumEdge && <p className={styles.warning}>The spectrum edge {spectrumEdge.edge} is not supported here. Choose K, L1, L2, or L3 explicitly.</p>}
+          <fieldset className={styles.sites} disabled={controlsDisabled}><legend>Inequivalent absorber site<SectionHelp label="Inequivalent absorber site">A unique site matching the spectrum is selected automatically. When several sites match, choose one explicitly. Site populations are not averaged automatically.</SectionHelp></legend>
             {sites.map(item => <label key={item.index}><input type="radio" name={`feff-site-${contextKey}`} checked={site === String(item.index)} onChange={() => chooseSite(item.index)} aria-label={`Absorber site ${item.index}`} /><span><strong>{item.species} · site {item.index} · Wyckoff {item.wyckoff}</strong><small>({numberText(item.x)}, {numberText(item.y)}, {numberText(item.z)}) · multiplicity {item.multiplicity} · occupancy {numberText(item.occupancy)}</small></span></label>)}
             {!sites.length && <p className={styles.help}>No supported sites for this absorber.</p>}
           </fieldset>
-          {!attachmentId && <FirstShellSummary state={shellState} />}
           {site && <details><summary>FEFF shell distance ranges · {absorber} site {site}</summary><RadialShellPanel state={radialState} disabled={controlsDisabled} /></details>}
           <div className={styles.grid}>
             <label>Cluster radius (Å)<input aria-label="FEFF cluster radius" inputMode="decimal" value={clusterRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setClusterRadius(event.target.value) }} /></label>
@@ -478,7 +530,7 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
           </div>
         </>}
       </div>}
-      {job && <div className={styles.job}>
+      {dialogMode === "feff" && job && <div className={styles.job}>
         <p className={styles.status} role={job.status === "failed" ? "alert" : "status"}><strong>{job.status === "complete" ? "FEFF calculation complete" : job.status === "failed" ? "FEFF calculation failed" : job.stage || "Calculating FEFF"}</strong><span>{job.message}</span>{job.status === "running" && <small>{Math.round(job.elapsed_seconds)} s elapsed</small>}</p>
         {job.warnings.map((warning, i) => <p key={i} className={styles.warning}>{warning}</p>)}
         {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`${job.provenance.structure.provider === "materials_project" ? "" : "amcsd-"}${job.provenance.structure.id}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
@@ -517,5 +569,5 @@ export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version
       </div>
       <footer className={styles.dialogFooter}><span>{removingId ? "Removing the CIF from your project…" : attachPending ? "Saving the CIF to your project…" : ""}</span><button type="button" disabled={mutationPending} onClick={closeDialog}>Close</button></footer>
     </dialog>
-  </section>
+  </>
 }

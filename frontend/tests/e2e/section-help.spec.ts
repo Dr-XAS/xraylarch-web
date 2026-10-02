@@ -48,9 +48,9 @@ test("section descriptions stay compact and help works across panels, modal dial
   await page.keyboard.press("Escape")
   await fitting.screenshot({ path: info.outputPath("compact-fitting-desktop.png") })
 
-  await fitting.getByRole("button", { name: "Open attached Cuprite CIF", exact: true }).click()
-  const dialog = page.getByRole("dialog", { name: "Crystal structures & FEFF paths" })
-  const dialogHelp = dialog.getByRole("button", { name: "About Crystal structures and FEFF paths", exact: true })
+  await fitting.getByRole("button", { name: "Generate FEFF paths", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "FEFF paths" })
+  const dialogHelp = dialog.getByRole("button", { name: "About FEFF path generation", exact: true })
   await dialogHelp.hover()
   await expectTooltipInViewport(dialog.getByRole("tooltip"))
   expect(await dialog.getByRole("tooltip").evaluate(element => {
@@ -60,7 +60,7 @@ test("section descriptions stay compact and help works across panels, modal dial
   await page.keyboard.press("Escape")
   await expect(dialog).toBeVisible()
   await dialog.getByRole("radio", { name: "Absorber site 1", exact: true }).click()
-  await dialog.getByRole("button", { name: "Close CIF search", exact: true }).click()
+  await dialog.getByRole("button", { name: "Close FEFF paths", exact: true }).click()
   const radial = fitting.getByRole("region", { name: "Radial shells", exact: true })
   await expect(radial).toBeVisible()
   await expect(page.getByText(/Distances are measured from the selected absorber/).first()).toBeHidden()

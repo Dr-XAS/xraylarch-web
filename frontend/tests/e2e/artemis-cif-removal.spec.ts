@@ -88,7 +88,7 @@ test("visible CIF removal persists without changing FEFF paths and can be undone
   await structures.screenshot({ path: info.outputPath("cif-remove-mobile.png") })
 
   await structures.getByRole("button", { name: "Search / attach CIF", exact: true }).click()
-  const dialog = page.getByRole("dialog", { name: "Crystal structures & FEFF paths", exact: true })
+  const dialog = page.getByRole("dialog", { name: "Crystal structures", exact: true })
   const modalRemove = dialog.getByRole("button", { name: removeName, exact: true })
   await expect(modalRemove).toBeVisible()
   await expect(modalRemove).toHaveText("Remove CIF")
