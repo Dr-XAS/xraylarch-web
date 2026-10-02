@@ -21,7 +21,7 @@ import type { Space } from "./artefact-viewers/athena-plot"
 import { AthenaSpectrumViewer } from "./artefact-viewers/athena-spectrum-viewer"
 import { spectrumTraceCoordinates } from "./artefact-viewers/athena-plot-range"
 import { ResizableAthenaWorkspace } from "./athena-workspace"
-import { viewerIcons } from "./athena-viewer-icons"
+import { AthenaViewerChooser } from "./athena-viewer-chooser"
 import { NormalizationIcon, BackgroundRemovalIcon, ForwardTransformIcon, BackwardTransformIcon, TransformGridIcon } from "./athena-parameter-icons"
 import { ParameterSectionHeading } from "./parameter-section-heading"
 import { AthenaWavelet } from "./artefact-viewers/athena-wavelet"
@@ -32,7 +32,7 @@ import { validCupriteExample, type ArtemisExampleSetup } from "@/lib/artemis"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import { ProjectCifViewer } from "./artefact-viewers/project-cif-viewer"
 import { FeffPathViewer, type FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
-import { orderViewers, viewerIds, viewerLabels, type ViewerId, type ViewerSort } from "@/lib/athena-viewer-order"
+import { moveViewer, orderViewers, readViewerOrderPreference, writeViewerOrderPreference, viewerIds, type ViewerId, type ViewerSort } from "@/lib/athena-viewer-order"
 import { useAthenaPlotWeight } from "./artefact-viewers/athena-plot-weight"
 import { savedKWeight } from "./artefact-viewers/viewer-kweight-control"
 import { useSpectrumViewerState } from "./artefact-viewers/athena-spectrum-viewer-state"
@@ -401,6 +401,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [cifSelection, setCifSelection] = useState<{ projectId?: string; attachmentId: string; siteIndex?: number } | null>(null)
   const [shownViewers, setShownViewers] = useState<Set<ViewerId>>(() => new Set(viewerIds))
   const [viewerSort, setViewerSort] = useState<ViewerSort>("default")
+  const [customViewerOrder, setCustomViewerOrder] = useState<ViewerId[]>(() => [...viewerIds])
+  const viewerPreference = useRef<ReturnType<typeof readViewerOrderPreference> | null>(null)
   const [viewerActivity, setViewerActivity] = useState<Record<string, Partial<Record<ViewerId, number>>>>({})
   const viewerClock = useRef(0)
   const firstViewerEvents = useRef(new Set<string>())
@@ -482,7 +484,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }
   function resetViewerLayout() {
     setShownViewers(new Set(viewerIds))
-    setViewerSort("default")
+    viewerPreference.current ??= readViewerOrderPreference()
+    setViewerSort(viewerPreference.current.sort)
+    setCustomViewerOrder(viewerPreference.current.order)
     setViewerActivity({})
     firstViewerEvents.current.clear()
   }
@@ -490,7 +494,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
     return () => window.cancelAnimationFrame(frame)
-  }, [shownViewers, viewerSort])
+  }, [shownViewers, viewerSort, customViewerOrder])
   function recordViewerActivity(id: ViewerId, projectId: string, groupId: string, firstOnly = false) {
     const key = JSON.stringify([projectId, groupId])
     const eventKey = `${key}:${id}`
@@ -530,7 +534,23 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const latestCifTime = cifAttachedTimes.length ? Math.max(...cifAttachedTimes) : undefined
   const activityKey = JSON.stringify([project?.id, active?.id])
   const viewerTimes = { ...viewerActivity[activityKey], ...(latestCifTime === undefined ? {} : { cif: latestCifTime }) }
-  const orderedViewerIds = orderViewers(availableViewers, viewerSort, viewerTimes)
+  const orderedViewerIds = orderViewers(availableViewers, viewerSort, viewerTimes, customViewerOrder)
+  function changeViewerSort(sort: ViewerSort) {
+    setViewerSort(sort)
+    viewerPreference.current = { sort: sort === "custom" ? "custom" : "default", order: customViewerOrder }
+    writeViewerOrderPreference(sort, customViewerOrder)
+  }
+  function moveResultViewer(source: ViewerId, target: ViewerId) {
+    const visibleOrder = moveViewer(orderedViewerIds, source, target)
+    // Keep unavailable viewers in their saved slots when editing the mounted view.
+    let index = 0
+    const order = orderViewers(viewerIds, viewerSort, viewerTimes, customViewerOrder)
+      .map(id => availableViewers.includes(id) ? visibleOrder[index++] : id)
+    setCustomViewerOrder(order)
+    setViewerSort("custom")
+    viewerPreference.current = { sort: "custom", order }
+    writeViewerOrderPreference("custom", order)
+  }
   const currentFeffPaths = feffPathState && feffPathState.projectId === project?.id && feffPathState.groupId === active?.id ? feffPathState.paths : []
   const marked = useMemo(() => project?.groups.filter(g => g.marked) ?? [], [project?.groups])
   const linkedReferenceIds = useMemo(() => new Set(project?.groups.map(group => group.reference_id).filter((id): id is string => !!id) ?? []), [project?.groups])
@@ -2207,17 +2227,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         <section className="ath-viewer-picker" aria-label="Results viewers">
           <div className="ath-viewer-picker-heading"><h3>Results</h3><div className="ath-viewer-tools">
             {active && <button className="ath-subtle" disabled={!canOpen("metadata")} onClick={() => openTool("metadata")} aria-label="Edit group information"><Settings2 size={16} /></button>}
-          </div><label>Order <SectionHelp label="Viewer order">Single and multiple spectra stay first; saved CIF attachment and this spectrum’s recorded wavelet, path-list, and fit events follow oldest first. Missing events keep default order.</SectionHelp><select aria-label="Sort viewers" value={viewerSort} onChange={event => setViewerSort(event.target.value as ViewerSort)}><option value="default">Default order</option><option value="process">Process order (this session)</option></select></label></div>
-          <div className="ath-viewer-chips" role="group" aria-label="Choose viewers">
-            <button type="button" className="ath-viewer-chip ath-viewer-all" aria-pressed={availableViewers.every(id => shownViewers.has(id))} onClick={() => setShownViewers(previous => availableViewers.every(id => previous.has(id)) ? new Set() : new Set(availableViewers))}>All viewers</button>
-            {availableViewers.map(id => {
-              const Icon = viewerIcons[id]
-              return <button type="button" key={id} className="ath-viewer-chip" data-viewer-theme={id} aria-pressed={shownViewers.has(id)} onClick={() => setShownViewers(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })}>
-                <span className="ath-viewer-chip-icon" aria-hidden="true"><Icon size={20} strokeWidth={2} /></span>
-                {viewerLabels[id]}
-              </button>
-            })}
-          </div>
+          </div><label>Order <SectionHelp label="Viewer order">Drag the viewer handles to save a custom order in this browser. Default order restores the original arrangement. Process order: Single and multiple spectra stay first; saved CIF attachment and this spectrum’s recorded wavelet, path-list, and fit events follow oldest first. Missing events keep default order.</SectionHelp><select aria-label="Sort viewers" value={viewerSort} onChange={event => changeViewerSort(event.target.value as ViewerSort)}><option value="default">Default order</option><option value="custom">Custom order</option><option value="process">Process order (this session)</option></select></label></div>
+          <AthenaViewerChooser order={orderedViewerIds} shown={shownViewers}
+            onToggleAll={() => setShownViewers(previous => availableViewers.every(id => previous.has(id)) ? new Set() : new Set(availableViewers))}
+            onToggle={id => setShownViewers(previous => { const next = new Set(previous); if (next.has(id)) next.delete(id); else next.add(id); return next })}
+            onMove={moveResultViewer} />
 
         </section>
         {!availableViewers.some(id => shownViewers.has(id)) && <p className="ath-viewer-empty" role="status">No viewers selected. Choose one above to show its results.</p>}
