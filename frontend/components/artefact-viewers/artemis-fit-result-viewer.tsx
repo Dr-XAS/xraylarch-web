@@ -3,13 +3,13 @@
 import { useEffect, useState } from "react"
 import type { AthenaGroup } from "@/lib/athena"
 import type { ArtemisFitResult } from "@/lib/artemis"
-import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { ThemedPlot as Plot } from "../themed-plot"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
 import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls, ViewerToggle } from "./viewer-display-controls"
 import { ViewerKWeightControl } from "./viewer-kweight-control"
 import { useArtemisPlotWeight } from "./artemis-plot-weight"
+import { ArtemisFitReport } from "./artemis-fit-report"
 import styles from "../artemis-fitting.module.css"
 
 export function ArtemisFitResultViewer({ result, group, projectId, version, pending = false }: {
@@ -105,20 +105,6 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       {visible && !weightedPlot.loading && !weightedPlot.error && <p className={styles.plotNote}>{space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {plottedWeight}; fit weights {visible.transform.kweight.join(", ")}.</p>}
       {weightedPlot.warnings.length > 0 && <ul className={styles.warnings}>{weightedPlot.warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
     </ResizablePlotCard>
-    {visible && <div className={styles.results}>
-      {!visible.success && <p className={styles.error} role="alert">Fit did not converge: {visible.message}</p>}
-      {visible.warnings.length > 0 && <ul className={styles.warnings}>{visible.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>}
-      <dl className={styles.statistics}>
-        {([
-          ["R factor", visible.statistics.r_factor], ["Reduced χ²", visible.statistics.reduced_chi_square], ["χ²", visible.statistics.chi_square],
-          ["Independent points", visible.statistics.n_independent], ["Free parameters", visible.statistics.n_varys], ["Fit evaluations", visible.statistics.nfev],
-        ] as const).map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{format(value)}</dd></div>)}
-      </dl>
-      <div className={styles.tableScroll}><table><caption>Fitted parameters</caption><thead><tr><th>Name</th><th>Kind</th><th>Value</th><th>Uncertainty</th><th>Expression</th></tr></thead><tbody>{visible.parameters.map(parameter => <tr key={parameter.name}><th scope="row">{parameter.name}</th><td>{parameter.kind}</td><td>{format(parameter.value, 7)}</td><td>{format(parameter.stderr, 3)}</td><td>{parameter.expression || "—"}</td></tr>)}</tbody></table></div>
-      {!visible.statistics.errorbars && <p className={styles.help}>Parameter uncertainties could not be estimated for this fit.</p>}
-      {visible.correlations.length > 0 && <details><summary>Parameter correlations ({visible.correlations.length})</summary><div className={styles.tableScroll}><table><thead><tr><th>Parameter pair</th><th>Correlation</th></tr></thead><tbody>{visible.correlations.map(pair => <tr key={`${pair.left}:${pair.right}`}><td>{pair.left} / {pair.right}</td><td>{format(pair.value, 4)}</td></tr>)}</tbody></table></div></details>}
-      <details><summary>Larch fit report</summary><pre className={styles.report}>{visible.report}</pre></details>
-      <div className={styles.toolbar}>{visible.request && <button type="button" onClick={() => download("artemis-fit.json", exportBundle(visible.request!, visible, { project_id: visible.project_id, group_id: visible.group_id, group_label: visible.group_label }))}>Download fit + model JSON</button>}<button type="button" onClick={() => download("artemis-fit-report.txt", visible.report, "text/plain")}>Download report</button></div>
-    </div>}
+    {visible && <ArtemisFitReport result={visible} />}
   </ViewerPanel>
 }
