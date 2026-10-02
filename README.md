@@ -32,6 +32,11 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 ## Athena Web branch
 
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
+**Save project** defaults to the complete web project (`.json`), with a file-name
+confirmation before download. Native Athena (`.prj`) exports remain in **File**.
+Enable **Show instruction** at the top right to display inline information icons;
+they are hidden by default.
+
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
 examples: three temperature-series foils, a room-temperature Cu₂O reference,

@@ -16,6 +16,13 @@ test("project saves confirm the filename and cancel without exporting", async ({
   })
   page.on("download", download => downloads.push(download.suggestedFilename()))
   await page.goto("/")
+  const instructions = page.getByRole("checkbox", { name: "Show instruction" })
+  await expect(instructions).not.toBeChecked()
+  await expect(page.getByRole("button", { name: "About Larch-Web" })).toHaveCount(0)
+  await instructions.check()
+  await expect(page.getByRole("button", { name: "About Larch-Web" })).toBeVisible()
+  await instructions.uncheck()
+  await expect(page.getByRole("button", { name: "About Larch-Web" })).toHaveCount(0)
   await page.getByRole("button", { name: "Import data", exact: true }).click()
   await page.getByLabel("Choose data files", { exact: true }).setInputFiles(fixture)
   const importing = page.waitForResponse(response => response.url().endsWith("/import"))
@@ -25,7 +32,7 @@ test("project saves confirm the filename and cancel without exporting", async ({
   const filename = dialog.getByRole("textbox", { name: "File name", exact: true })
 
   await page.getByRole("button", { name: "Save project", exact: true }).click()
-  await expect(filename).toHaveValue(`${imported.name}.prj`)
+  await expect(filename).toHaveValue(`${imported.name}.json`)
   await dialog.screenshot({ path: "/tmp/xraylarch-project-save-desktop.png" })
   await page.setViewportSize({ width: 390, height: 844 })
   await expect(dialog).toBeVisible()
@@ -52,12 +59,12 @@ test("project saves confirm the filename and cancel without exporting", async ({
   expect(downloads).toEqual([])
 
   await page.getByRole("button", { name: "Save project", exact: true }).click()
-  await expect(filename).toHaveValue(`${imported.name}.prj`)
-  const nativeDownloading = page.waitForEvent("download")
-  await confirmProjectSave(page, "copper beamtime.prj")
-  const nativeDownload = await nativeDownloading
-  expect(nativeDownload.suggestedFilename()).toBe("copper beamtime.prj")
-  await nativeDownload.saveAs(info.outputPath("copper beamtime.prj"))
+  await expect(filename).toHaveValue(`${imported.name}.json`)
+  const completeDownloading = page.waitForEvent("download")
+  await confirmProjectSave(page, "copper beamtime.json")
+  const completeDownload = await completeDownloading
+  expect(completeDownload.suggestedFilename()).toBe("copper beamtime.json")
+  await completeDownload.saveAs(info.outputPath("copper beamtime.json"))
 
   await page.getByRole("button", { name: "File", exact: true }).click()
   await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click()
@@ -87,6 +94,6 @@ test("project saves confirm the filename and cancel without exporting", async ({
   await confirmProjectSave(page)
   expect((await markedDownloading).suggestedFilename()).toBe(`${imported.name}-marked.prj`)
   expect(exports.map(url => new URL(url).search)).toEqual([
-    "?format=prj", "?format=json", "?format=prj&marked_only=true",
+    "?format=json", "?format=json", "?format=prj&marked_only=true",
   ])
 })

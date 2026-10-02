@@ -109,7 +109,7 @@ test('BL8Ar fits, per-file review, live Ge13 and reference columns, batch import
   await dialog.getByRole('button', { name: 'Import spectrum', exact: true }).click()
   const second = await again; expect(second.ok()).toBe(true)
   const finished = await second.json(); expect(finished.groups).toHaveLength(4)
-  const saving = page.waitForEvent('download'); await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
+  const saving = page.waitForEvent('download'); await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const prj = info.outputPath('bl8ar.prj'); await (await saving).saveAs(prj)
   const restored = await restore(page, prj)
   expect(restored.groups).toHaveLength(8)

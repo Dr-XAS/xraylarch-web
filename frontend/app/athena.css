@@ -347,3 +347,5 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-cif-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 6px 12px; font-size: var(--text-label); color: var(--ath-muted); border-bottom: 1px solid var(--ath-line); }
 .ath-cif-selection select { flex: 1; min-width: 0; max-width: 100%; }
 .ath-cif-empty { margin: 0; padding: 18px; font-size: var(--text-body); line-height: var(--leading-body); color: var(--ath-muted); }
+
+.ath-instruction-toggle { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; font-size: var(--text-caption); cursor: pointer; }

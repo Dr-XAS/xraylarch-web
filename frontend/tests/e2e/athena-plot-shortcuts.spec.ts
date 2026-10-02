@@ -135,7 +135,7 @@ for (const mobile of [false, true]) test((mobile ? 'mobile' : 'desktop') + ' ori
   expect(await (await page.request.get('/api/backend/api/athena/projects/' + project.id)).json()).toEqual(project)
 
   const downloading = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
+  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath('shortcuts.prj'); await (await downloading).saveAs(path)
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await page.getByLabel('Open project file', { exact: true }).setInputFiles(path)

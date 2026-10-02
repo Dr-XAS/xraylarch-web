@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, expect, it, vi } from "vitest"
-import { SectionHelp } from "./section-help"
+import { InstructionVisibility, SectionHelp } from "./section-help"
 
 afterEach(() => { cleanup(); vi.useRealTimers() })
 
@@ -77,4 +77,16 @@ it("lets keyboard users enter and leave source links in help", () => {
   fireEvent.keyDown(document.activeElement!, { key: "Escape" })
   expect(trigger).toHaveFocus()
   expect(screen.queryByRole("tooltip")).toBeNull()
+})
+
+it("hides instruction icons and closes open tooltips when instructions are switched off", () => {
+  const content = <SectionHelp label="Normalization">Normalize the spectrum.</SectionHelp>
+  const { rerender } = render(<InstructionVisibility value={false}>{content}</InstructionVisibility>)
+  expect(screen.queryByRole("button", { name: "About Normalization" })).not.toBeInTheDocument()
+  rerender(<InstructionVisibility value={true}>{content}</InstructionVisibility>)
+  fireEvent.focus(screen.getByRole("button", { name: "About Normalization" }))
+  expect(screen.getByRole("tooltip")).toBeVisible()
+  rerender(<InstructionVisibility value={false}>{content}</InstructionVisibility>)
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+  expect(screen.queryByRole("button", { name: "About Normalization" })).not.toBeInTheDocument()
 })

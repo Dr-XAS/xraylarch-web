@@ -131,7 +131,7 @@ test('normalized input with EXAFS disabled survives downloaded .prj and reopened
   const saved = await command(page, 'change_datatype', () => panel.getByRole('button', { name: 'Apply settings', exact: true }).click())
   await panel.getByRole('button', { name: 'Close', exact: true }).click()
   const download = page.waitForEvent('download')
-  await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
+  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath('normalized-xanes.prj'); await (await download).saveAs(path)
   await page.getByRole('navigation', { name: 'Main menu' }).getByRole('button', { name: 'File', exact: true }).click()
   await page.getByRole('button', { name: 'New project', exact: true }).click()

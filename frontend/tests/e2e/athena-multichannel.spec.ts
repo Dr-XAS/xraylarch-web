@@ -132,7 +132,7 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
       }
     }
     const downloading = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
+    await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
     const prj = info.outputPath('multichannel.prj'); await (await downloading).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)

@@ -89,7 +89,7 @@ for (const name of ['feff-copper-xmu.dat', 'feff-nio-xmu.dat']) {
       }
     }
     const download = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Save project', exact: true }).click(); await confirmProjectSave(page)
+    await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
     const saved = info.outputPath('feff-roundtrip.prj'); await (await download).saveAs(saved)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(saved)
