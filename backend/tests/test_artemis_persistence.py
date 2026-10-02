@@ -70,6 +70,30 @@ def test_unfinished_model_survives_new_store_and_undo_redo(workspace, model):
         assert ("artemis" in saved["groups"][0]) is expected
 
 
+@pytest.mark.parametrize("action", ["fit", "fit-saved"])
+def test_edge_mismatch_is_rejected_without_saving(workspace, model, action, monkeypatch):
+    from xraylarch_web import artemis
+
+    store, client, project, group_id = workspace
+    group = store.group(project, group_id)
+    group["source"]["edge_identity"] = dict(element="W", edge="L3", origin="selected")
+    store.storage.write_json(project["id"], "project.json", project)
+    before = store.load(project["id"])
+    value = draft(model)
+    # Saved metadata must never override the absorber/edge in the FEFF file.
+    value["paths"][0]["metadata"].update(absorber="W", edge="L3")
+    body = ({"model": value} if action == "fit-saved" else model) | {"version": project["version"]}
+
+    def optimizer_must_not_run(*args, **kwargs):
+        pytest.fail("Mismatched FEFF file reached optimizer through HTTP")
+
+    monkeypatch.setattr(artemis, "feffit", optimizer_must_not_run)
+    response = client.post(f"/api/artemis/projects/{project['id']}/groups/{group_id}/{action}", json=body)
+    assert response.status_code == 400, response.text
+    assert "calculated for Cu K, but the selected spectrum is W L3" in response.text
+    assert store.load(project["id"]) == before
+
+
 def test_fit_saves_complete_immutable_history_and_scientific_fingerprint(workspace, model):
     store, client, project, group_id = workspace
     first = post(client, project, group_id, "fit-saved", model=draft(model))

@@ -204,6 +204,40 @@ def test_invalid_models_do_not_reach_optimizer(model, spectrum, change, monkeypa
         fit_group(spectrum, FitRequest(**model))
 
 
+@pytest.mark.parametrize("element,edge", [("Cu", "L3"), ("W", "K"), ("W", "L3")])
+@pytest.mark.parametrize("location", ["source", "effective"])
+def test_feff_edge_or_absorber_mismatch_is_rejected_before_fit(model, spectrum, monkeypatch, element, edge, location):
+    identity = dict(element=element, edge=edge)
+    if location == "source":
+        spectrum["source"]["edge_identity"] = identity
+    else:
+        spectrum["result"]["effective"].update(identity)
+    before = copy.deepcopy(spectrum)
+
+    def optimizer_must_not_run(*args, **kwargs):
+        pytest.fail("A FEFF path for a different element/edge reached the optimizer")
+
+    monkeypatch.setattr(artemis, "feffit", optimizer_must_not_run)
+    with pytest.raises(WebInputError, match=f"calculated for Cu K, but the selected spectrum is {element} {edge}"):
+        fit_group(spectrum, FitRequest(**model))
+    assert spectrum == before
+
+
+def test_explicit_spectrum_identity_takes_precedence_over_old_processed_metadata(model, spectrum):
+    spectrum["source"]["edge_identity"] = dict(element="Cu", edge="K", origin="selected")
+    spectrum["result"]["effective"].update(element="W", edge="L3")
+    result = fit_group(spectrum, FitRequest(**model))
+    assert result["success"]
+    assert result["statistics"]["r_factor"] < 0.0001
+
+
+def test_unknown_chi_edge_does_not_guess_from_e0(model, spectrum):
+    spectrum["result"]["effective"]["e0"] = 10202.984
+    result = fit_group(spectrum, FitRequest(**model))
+    assert result["success"]
+    assert result["statistics"]["r_factor"] < 0.0001
+
+
 @pytest.mark.parametrize("change", ["empty", "nonfinite", "mismatch", "nonmonotonic", "kmax", "kmin", "zero", "error", "xanes"])
 def test_unusable_data_and_extrapolated_fit_ranges_are_rejected(model, spectrum, change):
     arrays = spectrum["result"]["arrays"]

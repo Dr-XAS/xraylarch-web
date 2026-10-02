@@ -22,6 +22,7 @@ import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
 import { FeffPathShellLabel } from "./feff-path-shell-label"
 import { ArtemisStructures } from "./artemis-structures"
+import { currentEdgeIdentity } from "./athena-edge-identity"
 import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-viewer-icons"
 import { FitRangeIcon } from "./athena-parameter-icons"
 import { ParameterSectionHeading } from "./parameter-section-heading"
@@ -530,7 +531,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
     </FittingSection>}
     <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">
-    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
+    <ArtemisStructures contextKey={`${projectId}:${group?.id}`} spectrumEdge={group ? currentEdgeIdentity(group) : null} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={paths => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
         if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
