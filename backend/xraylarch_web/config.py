@@ -10,6 +10,8 @@ _DEFAULT_MAX_POINTS = 250_000
 # Multi-element detector scans can carry more than 64 source channels.
 DEFAULT_MAX_COLUMNS = 256
 _DEFAULT_MAX_NFFT = 262_144
+# A bug report may carry a project export plus screenshots and attachments.
+_DEFAULT_BUG_REPORT_MAX_BYTES = 100_000_000
 _DEFAULT_DRAFT_TTL_SECONDS = 7 * 24 * 60 * 60
 _MAX_DRAFT_TTL_SECONDS = 7 * 24 * 60 * 60
 _DEFAULT_INTEGRATION_MAX_PROJECTS = 20
@@ -34,6 +36,7 @@ class Settings:
     max_points: int = _DEFAULT_MAX_POINTS
     max_columns: int = DEFAULT_MAX_COLUMNS
     max_nfft: int = _DEFAULT_MAX_NFFT
+    bug_report_max_bytes: int = _DEFAULT_BUG_REPORT_MAX_BYTES
     integration_api_enabled: bool = False
     browser_consume_enabled: bool = False
     import_enabled: bool = False
@@ -71,6 +74,7 @@ class Settings:
             ("XRAYLARCH_MAX_POINTS", self.max_points),
             ("XRAYLARCH_MAX_COLUMNS", self.max_columns),
             ("XRAYLARCH_MAX_NFFT", self.max_nfft),
+            ("XRAYLARCH_BUG_REPORT_MAX_BYTES", self.bug_report_max_bytes),
             ("XRAYLARCH_DRAFT_TTL_SECONDS", self.draft_ttl_seconds),
             ("XRAYLARCH_INTEGRATION_MAX_PROJECTS", self.integration_max_projects),
             ("XRAYLARCH_INTEGRATION_MAX_FILES", self.integration_max_files),
@@ -160,6 +164,9 @@ class Settings:
                 "XRAYLARCH_MAX_COLUMNS", DEFAULT_MAX_COLUMNS
             ),
             max_nfft=integer_setting("XRAYLARCH_MAX_NFFT", _DEFAULT_MAX_NFFT),
+            bug_report_max_bytes=integer_setting(
+                "XRAYLARCH_BUG_REPORT_MAX_BYTES", _DEFAULT_BUG_REPORT_MAX_BYTES
+            ),
             integration_api_enabled=boolean_setting(
                 "XRAYLARCH_INTEGRATION_API_ENABLED"
             ),

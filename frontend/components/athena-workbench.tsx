@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
-import { Activity, ArrowUpDown, BookOpen, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, Link2, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
+import { Activity, ArrowUpDown, BookOpen, Bug, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, Link2, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
 import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -70,6 +70,8 @@ import { AthenaMerge, type MergeDraft } from './athena-merge'
 import { AthenaRebin } from './athena-rebin'
 import { AthenaDispersive } from './athena-dispersive'
 import { RebinDefaultsControls, useRebinDefaults } from './athena-rebin-defaults'
+import { ReportBugDialog } from './report-bug-dialog'
+import type { ReportProjectState } from '@/lib/bug-report'
 import "@/app/athena-controls.css"
 import "@/app/athena-context-controls.css"
 
@@ -350,6 +352,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [error, setError] = useState("")
   const [message, setMessage] = useState("Ready to begin")
   const [modal, setModal] = useState<ModalName>(null)
+  const [reportOpen, setReportOpen] = useState(false)
   const [reportScope, setReportScope] = useState<'all' | 'marked'>('all')
   const [menu, setMenu] = useState("")
   const [helpQuery, setHelpQuery] = useState("")
@@ -1064,6 +1067,20 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   function closePluginRegistry() {
     if (!registryPending) { setError(""); setModal(registryReturn.current) }
   }
+  function reportProjectState(): ReportProjectState {
+    return {
+      schema_version: 1,
+      mode: session.mode,
+      project: project ? {
+        id: project.id, name: project.name, version: project.version,
+        groups: project.groups.map(g => ({ id: g.id, label: g.label, data_type: g.data_type, marked: g.marked, frozen: g.frozen, reference_id: g.reference_id, processing_error: g.processing_error, derived: isDifferenceGroup(g) || hasSavedMerge(g) })),
+      } : null,
+      active_group_id: active?.id ?? null,
+      modal: modal ?? null,
+      busy, message, error,
+    }
+  }
+
   function openTool(name: ModalName) {
     if (!canOpen(name) || (name !== "learn" && parameterActionBlocked())) return
     cancelPick()
@@ -2063,6 +2080,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     ...analysisMenu.map(tool => ({ id: `analysis-${tool}`, menu: "Analysis" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: !active || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
 
     { id: "help-learn", menu: "Help", label: "Learn Athena", keywords: "documentation guide tutorial", disabled: false, icon: <BookOpen size={15} />, action: () => openTool("learn") },
+    { id: "help-report", menu: "Help", label: "Report a bug or feedback…", keywords: "bug feedback feature request problem issue", disabled: false, icon: <Bug size={15} />, action: () => { setMenu(""); setReportOpen(true) } },
   ]
   const visibleMenuCommands = menuCommands.filter(command => command.visible !== false)
   const helpTerms = normalizeMenuQuery(helpQuery).split(" ").filter(Boolean)
@@ -2262,7 +2280,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         <details><ParameterSectionHeading icon={TransformGridIcon}>Transform grid</ParameterSectionHeading><div className="ath-fields">{field("nfft", "FFT points")}{field("kstep", "k step", "Å⁻¹")}</div></details></fieldset>
       </fieldset><div className="ath-apply"><label className="ath-check"><input type="checkbox" aria-label={`Apply to marked groups (${marked.length})`} aria-describedby="ath-auto-apply-hint" checked={applyMarked} disabled={!!busy || parameterUpdateRunning || !can("parameters")} onChange={e => changeApplyMarked(e.target.checked)} />Apply to marked groups ({marked.length})<SectionHelp label="Automatic processing" id="ath-auto-apply-hint">{applyMarked ? "Changes automatically copy to the marked groups when you finish editing; the current group changes only if it is marked. Frozen groups are skipped and energy shifts are preserved." : "Changes apply automatically to the current group when you finish editing."}</SectionHelp></label>{dirty && activeAutoApplyPlan?.status === "failed" && <button className="ath-primary" disabled={!!busy || active.frozen} onClick={() => retryParameterChanges(activeAutoApplyPlan)}>Retry processing</button>}{active.processing_error && <button className="ath-primary" disabled={!!busy || active.frozen || !!activeAutoApplyPlan} onClick={() => { void reprocessActive() }}>{busy === "Reprocessing spectrum" ? "Reprocessing…" : "Reprocess spectrum"}</button>}{active.processing_error && active.frozen && <p className="ath-hint">Unfreeze this group to reprocess it.</p>}<button disabled={!!busy || parameterUpdatePending || (!can("copy_parameters") && !can("reset_parameters"))} className="ath-reset" onClick={openParameterControls}>Copy / reset parameters…</button>{dirty && <button disabled={!!busy} className="ath-reset" onClick={() => discardParameterChanges(active.id)}>Discard parameter changes</button>}</div></>}</>} fitting={integrated ? null : <ArtemisFittingPanel exampleSetup={readyCupriteExample} projectId={project?.id} version={project?.version} group={active} groups={project?.groups} onActionsChange={setArtemisActions} pending={!!busy || !!dirty || parameterUpdatePending} onFitResult={receiveFitResult} onDirtyChange={(groupId, dirty) => { const key = `${project?.id}:${groupId}`; setArtemisDirty(previous => !!previous[key] === dirty ? previous : { ...previous, [key]: dirty }) }} onPathsChange={receiveFeffPaths} onProjectChange={acceptArtemisProject} onViewStructure={(attachmentId, siteIndex) => setCifSelection({ projectId: project?.id, attachmentId, siteIndex })} />} /></aside>}
     />
-    <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version} · ` : ""}Powered by Larch</span></footer>
+    <footer className="ath-status" role="status"><span><i className={error ? "error" : ""} />{busy || message}</span><span>{project ? `${project.groups.length} groups · revision ${project.version} · ` : ""}Powered by Larch<button type="button" className="ath-report-link" onClick={() => setReportOpen(true)}><Bug size={12} />Report bug</button></span></footer>
+    {reportOpen && <ReportBugDialog projectId={project?.id ?? null} projectState={reportProjectState()} onClose={() => setReportOpen(false)} onSubmitted={text => { setError(""); setMessage(text) }} />}
 
     {modal === "save_project" && projectSaveDraft && <Modal title="Save project" close={closeProjectSave}><form className="ath-modal-body" onSubmit={event => { event.preventDefault(); void confirmProjectSave() }}>
       <p className="ath-hint">{projectSaveDraft.format === "json" ? "Complete web project (.json)" : projectSaveDraft.markedOnly ? "Marked spectra · Athena project (.prj)" : "Athena project (.prj)"}</p>

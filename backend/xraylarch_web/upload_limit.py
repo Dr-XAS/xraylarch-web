@@ -27,15 +27,22 @@ class UploadBodyLimitMiddleware:
     and boundaries without reducing the configured file-byte limit.
     """
 
-    def __init__(self, app: ASGIApp, *, max_body_bytes: int) -> None:
+    def __init__(
+        self, app: ASGIApp, *, max_body_bytes: int, bug_report_max_bytes: int | None = None
+    ) -> None:
         self.app = app
         self.max_body_bytes = max_body_bytes
+        self.bug_report_max_bytes = (
+            max_body_bytes if bug_report_max_bytes is None else bug_report_max_bytes
+        )
 
     @staticmethod
     def _is_capped_upload(scope: Scope) -> bool:
         if scope["method"] != "POST":
             return False
         parts = scope["path"].split("/")[1:]
+        if parts == ["api", "bug-reports"]:
+            return True
         if len(parts) == 5 and parts[:2] == ["api", "workspaces"]:
             return parts[3:] == ["uploads", "inspect"]
         if len(parts) == 5 and parts[:3] == ["api", "athena", "projects"]:
@@ -50,7 +57,9 @@ class UploadBodyLimitMiddleware:
     def _body_limit(self, scope: Scope) -> int:
         parts = scope["path"].split("/")[1:]
         file_limit = self.max_body_bytes
-        if parts == ["api", "athena", "preferences", "plugins", "import"]:
+        if parts == ["api", "bug-reports"]:
+            file_limit = self.bug_report_max_bytes
+        elif parts == ["api", "athena", "preferences", "plugins", "import"]:
             # This route reads at most MAX_REGISTRY_BYTES in athena.py.
             from .athena_plugin_registry import MAX_REGISTRY_BYTES
 

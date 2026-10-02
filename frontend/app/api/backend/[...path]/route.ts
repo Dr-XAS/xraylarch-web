@@ -38,6 +38,7 @@ function allowedMethods(path: string[]): ReadonlySet<string> | null {
   const joined = path.join("/")
   if (joined === "health") return new Set(["GET"])
   if (joined === "api/integration/v2/browser/consume") return new Set(["POST"])
+  if (joined === "api/bug-reports") return new Set(["POST"])
   const artemisMethods = artemisRoutes.filter(([, pattern]) => pattern.test(joined)).map(([method]) => method)
   if (artemisMethods.length) return new Set(artemisMethods)
   const workspaceRoutes: readonly [string, RegExp][] = [

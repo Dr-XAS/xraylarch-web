@@ -245,6 +245,22 @@ S0², E0 and R-factor with the spread of r per key. A distance usually moves mor
 del_e0 is held either side of its best value than when the k range changes, because of
 the del_e0/del_r correlation. That spread, not the stderr, says how far to trust it.
 
+## Bug reports
+
+`POST /api/bug-reports` (multipart) files a report to the local bug library at
+`XRAYLARCH_DATA_ROOT/bug_reports/<report_id>/`. Fields: `description` (required,
+≤64 KiB), `type` (`bug` | `feature_request` | `feedback`), `user_email`
+(required), optional `project_id` plus `attach_project=true` to have the backend
+write the project's `example` export beside the report, optional JSON strings
+`project_state` and `client_metadata`, and file lists `screenshots` (≤5, 5 MiB
+each) and `attachments` (≤10, 25 MiB each). Invalid input answers 400 with error
+code `bug_report_invalid` and the offending field names; the whole body is capped
+by `XRAYLARCH_BUG_REPORT_MAX_BYTES` (default 100 MB). The answer is
+`{"status": "success", "report_id": ..., "project_export_attached": bool}`.
+Reports are never read back through the API; look at `report.json` on disk.
+Slack notification is off unless `XRAYLARCH_SLACK_BOT_TOKEN` and
+`XRAYLARCH_BUGREPORT_SLACK_CHANNEL` are both set.
+
 ## What you cannot get
 
 No arrays, from any view above. `GET .../groups/{gid}/export?space=E|k|R|q` returns a
