@@ -159,7 +159,9 @@ def test_align_refuses_a_group_in_the_standard_s_family(client, example):
         "options": {"method": "demeter-larch", "operation": "auto",
                     "standard_id": scans["Cu foil · 10 K"]}})
     assert response.status_code == 400
-    assert "linked references stay fixed" in response.json()["error"]["message"]
+    message = response.json()["error"]["message"]
+    assert "linked references stay fixed" in message
+    assert "assign_reference and reference_id null" in message, "the refusal names the way out"
 
     note = client.get("/api/athena/capabilities/align").json()["note"]
     assert "assign_reference" in note
@@ -231,8 +233,8 @@ def test_the_truncate_note_says_which_modes_are_its_own(client, example):
     assert result["snapped"] in result["selected_energy"]
     assert result["snapped"] not in result["energy"]
     assert result["energy"][-1] < result["snapped"]
-    for phrase in ("side='before' keeps it", "side='after' drops it",
-                   "last kept energy"):
+    for phrase in ("side='before' keeps that point", "side='after' drops it",
+                   "last kept energy", "both ends inclusive", "default when mode is omitted"):
         assert phrase in note
 
     kept = client.post(f"/api/athena/projects/{project}/point-edit/preview", json={
@@ -240,9 +242,71 @@ def test_the_truncate_note_says_which_modes_are_its_own(client, example):
     assert kept.status_code == 200, kept.text
     assert kept.json()["results"][0]["output_points"] < 612
 
+    # Both ends inclusive: a bound on a measured point keeps that point.
+    on_point = result["selected_energy"][0]
+    inclusive = client.post(f"/api/athena/projects/{project}/point-edit/preview", json={
+        **body, "options": {"xmax": on_point}}).json()["results"][0]
+    assert inclusive["energy"][-1] == on_point
+
+    beyond = client.post(f"/api/athena/projects/{project}/point-edit/preview", json={
+        **body, "options": {"xmax": 1e6}})
+    assert beyond.status_code == 400, "a bound outside the data is refused, as the note says"
+
 
 def test_the_deglitch_note_says_what_each_of_its_modes_takes(client):
     note = client.get("/api/athena/capabilities/deglitch").json()["note"]
     for mode in ("'point'", "'points'", "'indices'", "'range'", "'margins'", "'inspect'"):
         assert mode in note
     assert "truncate" in note, "say where the other two modes went"
+
+
+def test_an_align_command_takes_the_body_its_preview_took(client, example):
+    """method has a default on the model, and the preview applies it.
+
+    The command used to send a body without method down an older path that
+    reads reference_id, so the same body previewed and then failed with
+    "Selected group no longer exists", which names nothing the caller sent.
+    """
+    example = unlinked(client, example)
+    scans = foils(example)
+    body = {"version": example["version"], "action": "align",
+            "group_ids": [scans["Cu foil · 50 K"], scans["Cu foil · 300 K"]],
+            "options": {"operation": "auto", "standard_id": scans["Cu foil · 10 K"]}}
+    preview = client.post(f"/api/athena/projects/{example['id']}/alignment/preview",
+                          json=body, params={"view": "summary"})
+    assert preview.status_code == 200, preview.text
+    saved = client.post(f"/api/athena/projects/{example['id']}/command",
+                        json=body, params={"view": "summary"})
+    assert saved.status_code == 200, saved.text
+    shifts = {g["label"]: g["energy_shift"] for g in saved.json()["groups"]}
+    assert shifts["Cu foil · 300 K"] == pytest.approx(-2.959, abs=0.01)
+
+
+def test_the_catalog_says_when_a_default_is_not_applied(client):
+    method = client.get("/api/athena/capabilities/merge").json()["options"]["method"]
+    assert "plain average" in method and "preview refuses" in method
+
+
+def test_every_read_the_index_names_is_a_route(client):
+    routes = {route.path for route in client.app.routes}
+    for path in index()["reads"]:
+        template = path.split("?")[0].replace("{id}", "{ident}").replace("{gid}", "{group_id}")
+        assert template in routes, path
+
+
+def test_the_align_options_say_what_the_validator_cannot(client, example):
+    """A blind arm read "default 'inspect'" and sent it to /command, which refuses it;
+    another could not tell whether the standard belonged in group_ids."""
+    options = client.get("/api/athena/capabilities/align").json()["options"]
+    assert "/command refuses it" in options["operation"]
+    assert "comes to the same thing" in options["standard_id"]
+
+    example = unlinked(client, example)
+    scans = foils(example)
+    response = client.post(f"/api/athena/projects/{example['id']}/command", params={"view": "summary"}, json={
+        "version": example["version"], "action": "align", "group_ids": list(scans.values()),
+        "options": {"operation": "auto", "standard_id": scans["Cu foil · 10 K"]}})
+    assert response.status_code == 200, response.text
+    operation = response.json()["last_operation"]
+    assert operation["skipped_group_ids"] == [scans["Cu foil · 10 K"]]
+    assert len(operation["alignment"]["changes"]) == 2

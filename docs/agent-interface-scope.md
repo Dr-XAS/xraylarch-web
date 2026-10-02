@@ -308,16 +308,23 @@ codebase argue in the same words.
 Without this part, the work above is a nice API and proves nothing.
 
 - **A task suite.** Tasks phrased the way a user would phrase them, each with a
-  machine-checkable assertion on the final project state. Drafted, and run once against
-  the app-driving arm by hand: see `agent-task-suite.md`. Four tasks, all four passing,
-  and five interface defects found that no amount of further design would have surfaced.
+  machine-checkable assertion on the final project state: see `agent-task-suite.md`.
+  Five tasks. The first run was by hand; the third and fourth ran eight blind subagent
+  arms each, one CLI-only and one HTTP-only per task, and every run found interface
+  defects that no amount of further design would have surfaced.
 - **Two adapters** over one suite: native-tools Dr.XAS, app-driving Dr.XAS.
 - **Metrics**: task success, tokens in and out, turns, wall clock, invalid commands
-  issued, errors recovered from without help, and a numerical equivalence check on the
-  final arrays.
+  issued, errors recovered from without help, and a numerical equivalence check with a
+  tolerance per quantity, since the two arms run different Larch revisions (question 3).
+
+The app-driving half of the harness exists: `backend/xraylarch_web/agent_suite.py`
+sets a fresh example project up behind a metering proxy, runs each task's state
+assertions with `report`, and totals requests and wire bytes up to the moment `finish`
+stamps. The native-tools adapter, and with it the comparison, does not exist yet.
 
 Fixtures are already here. `examples/xafsdata` holds the Cu foil series, and the
-`example` command action builds a three-group benchmark project in a single call.
+`example` command action builds the five-group benchmark project in a single call: the
+three foils, a Cu₂O reference, and the foils' shared reference.
 
 ## Sequencing
 
@@ -347,11 +354,10 @@ idempotency keys.
 
 **Phase 2 is partly complete.** The transcript, idempotency keys and the stale-revision
 recovery hint are built, with 14 tests in `test_agent_transcript.py`, three more in
-`test_larchctl.py`, and one more proxy-allowlist test. Two Phase 2 items are left, and
-both are waiting on an open question rather than on effort: `render` on whether the
-experimental arm is a vision model (question 2), and the capability token on whether
-the arm reaches this backend over loopback or across the public ingress (question 1),
-which decides whether the token has to survive a proxy hop. Replay is deferred for the
+`test_larchctl.py`, and one more proxy-allowlist test. Two Phase 2 items are left.
+`render` is waiting on whether the experimental arm is a vision model (question 2).
+The capability token was waiting on question 1, which is now answered: loopback, so the
+token need not survive a proxy hop. Replay is deferred for the
 reason given under Layer 3.
 
 Two existing tests changed shape, both deliberately. `test_agent_actions` reads the
@@ -366,18 +372,31 @@ the catalog generates itself, build the six-tool MCP server, build the eval harn
 
 ## Open questions
 
-1. Does the app-driving Dr.XAS arm reach this backend over loopback in one deployment,
-   or across the public ingress? It changes the auth design and whether the capability
-   token needs to survive a proxy hop.
+1. ~~Does the app-driving Dr.XAS arm reach this backend over loopback in one deployment,
+   or across the public ingress?~~ **Loopback**, decided 2026-10-01. The Dr.XAS backend
+   already reaches this one through `XrayLarchTransport` at its `internal_url`, which
+   its settings validate as loopback (`backend/xraylarch_settings.py`, `allow_non_loopback`
+   off by default), and the deploy refuses a host where 8006 is bound anywhere else. The
+   arm runs in that backend and calls `/api/athena` and `/api/artemis` over the same
+   path. The capability token therefore never crosses the ingress and can follow the
+   v2 seam's HMAC design. The browser's ingress route stays as it is and is not the
+   arm's door.
 2. Is the experimental arm a vision model? If not, `render` drops down the list and the
    digest has to carry the whole grounding burden alone. Partly answered by the first
    task-suite run, and in a direction that sidesteps the question: T3 needed to know
    where chi(k) stops being signal, the digest's single range-averaged `epsilon_k`
    cannot say, and a k-binned signal-to-noise row would answer it in about forty tokens
    for an arm with no vision at all. Add that before deciding anything about images.
-3. Does the native arm compute on this same Larch backend, or does Dr.XAS have its own
-   numerics? If they differ numerically, scientific equivalence stops being a clean
-   pass/fail and the metric needs a tolerance.
+3. ~~Does the native arm compute on this same Larch backend?~~ **No**, checked
+   2026-10-01. Dr.XAS's native tools call `larch.xafs` in-process, pinned to upstream
+   xraylarch `c21c0a59b` (2025.2.2-26, August 2025). This backend runs its own fork of
+   Larch at 2026.3.1 and later, and `larch/` has changed in 97 files between the two,
+   feffit included. Dr.XAS's align is its own numpy/scipy code, not Larch's. So
+   scientific equivalence is scored with a tolerance per quantity, as the task suite's
+   answer assertions already are (an edge-step spread within 0.005, a distance between
+   2.52 and 2.58 Å), never by matching arrays. Each run records both Larch revisions,
+   and an alignment shift is compared to within 0.1 eV. A difference beyond tolerance
+   is a finding about the numerics, not a failure of either arm.
 4. ~~How much of the surface does the experiment actually need?~~ Moot for Phase 1. The
    worry was that describing forty actions would be too much work to do before knowing
    which ones matter; deriving the option tables from the validators made describing all

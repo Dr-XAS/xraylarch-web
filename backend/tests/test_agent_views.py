@@ -221,3 +221,73 @@ def test_an_oversized_operation_detail_is_described_not_sent(client, example):
     assert operation["action"] == "example"
     marker = operation["artemis_example"]
     assert marker.startswith("<") and "KB omitted" in marker and "group_id" in marker
+
+
+def test_the_summary_names_the_file_each_group_came_from(client, example):
+    """Two groups from one file are one measurement, which no number can say."""
+    groups = {group["label"]: group for group in view(client, example, "summary")["groups"]}
+    assert groups["Cu foil · 300 K"]["file"] == groups["Cu foil · shared reference"]["file"]
+    assert groups["Cu foil · 10 K"]["file"] != groups["Cu foil · 300 K"]["file"]
+
+
+def test_a_merge_that_kept_everything_says_so(client, example):
+    scans = [labelled(example, f"Cu foil · {t}") for t in ("10 K", "50 K", "300 K")]
+    reply = command(client, example, "merge", scans, view="summary",
+                    method="demeter-larch", exclude_short_data=False).json()
+    merged = reply["groups"][-1]
+    assert merged["derived"]["parents"] == scans
+    assert merged["derived"]["excluded"] == [], "empty, not absent: absent reads as unchecked"
+
+
+def test_a_merge_says_what_it_averaged(client, example):
+    """Both read "merge"; one has an edge step near 1 and the other the members' average."""
+    scans = [labelled(example, f"Cu foil · {t}") for t in ("10 K", "50 K")]
+    reply = command(client, example, "merge", scans, view="summary",
+                    method="demeter-larch", array="norm").json()
+    merged = next(group for group in reply["groups"] if group["derived"])
+    assert merged["derived"]["array"] == "norm"
+
+
+def test_a_parameters_reply_reports_what_larch_used(client, example):
+    """Requested beside effective, so the caller needs no second read to check."""
+    cold = labelled(example, "Cu foil · 10 K")
+    reply = command(client, example, "parameters", [cold], view="summary", kmax=18, e0=None).json()
+    [applied] = reply["last_operation"]["applied"]
+    assert applied["id"] == cold and applied["processing_error"] is None
+    assert applied["values"]["kmax"] == {"requested": 18, "effective": 18.0}
+    # null hands the value back to Larch, and only the effective side says what it chose.
+    assert applied["values"]["e0"]["requested"] is None
+    assert 8970 < applied["values"]["e0"]["effective"] < 9000
+    assert set(applied["values"]) == {"kmax", "e0"}
+
+
+def test_a_full_parameters_reply_is_left_as_the_browser_has_it(client, example):
+    cold = labelled(example, "Cu foil · 10 K")
+    reply = command(client, example, "parameters", [cold], kmax=18).json()
+    assert "applied" not in reply and "applied" not in (reply.get("last_operation") or {})
+
+
+def test_a_merge_preview_without_method_refuses_rather_than_previewing_something_else(client, example):
+    """Without method the command takes a plain average; the preview cannot show it.
+
+    It used to preview the weighted merge instead, which drops the 300 K scan, so
+    a caller who previewed and then sent the same body got a different merge.
+    """
+    scans = [labelled(example, f"Cu foil · {t}") for t in ("10 K", "50 K", "300 K")]
+    response = client.post(f"/api/athena/projects/{example['id']}/merge/preview", json={
+        "version": example["version"], "action": "merge", "group_ids": scans, "options": {}})
+    assert response.status_code == 400
+    assert "method='demeter-larch'" in response.json()["error"]["message"]
+
+
+def test_the_summary_lists_groups_that_hold_the_same_measurement(client, example):
+    summary = view(client, example, "summary")
+    assert summary["same_data"] == [["Cu foil · 300 K", "Cu foil · shared reference"]]
+
+
+def test_an_elided_curve_keeps_its_extremes_and_an_axis_keeps_only_its_ends():
+    from xraylarch_web.agent_views import describe_numbers
+
+    assert describe_numbers(list(range(10))) == "<10 numbers, 0 .. 9>"
+    peaked = [0.01, 0.02, 0.4, 1.3, 0.6, 0.1, 0.05, 0.02, 0.01]
+    assert describe_numbers(peaked) == "<9 numbers, 0.01 .. 0.01, min 0.01, max 1.3>"

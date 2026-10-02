@@ -43,7 +43,7 @@ from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
 from .athena_export import DataExport
 from .athena_context import ContextReport, ContextPlot
-from .agent_views import preview_view, project_view
+from .agent_views import applied_parameters, preview_view, project_view
 from .agent_transcript import Transcript, entry, preview_entry, replay_entry, replayed
 from .errors import WebInputError
 from .parsing import parse_upload
@@ -2337,6 +2337,12 @@ class AthenaStore:
             options=choice.model_dump(exclude_none=True),requested_options=request.options,outputs=rows,notes=notes)
 
     def preview_merge(self, ident, request: Command):
+        # Without method, /command takes the older plain average, which this
+        # preview cannot show. Previewing the weighted merge instead would
+        # report exclusions the command then never makes.
+        if 'method' not in request.options:
+            fail("Send method='demeter-larch' to preview a merge. Without method, "
+                 "/command takes a plain average over the array option, which has no preview.")
         project=self.load(ident);self.check(project,request.version)
         _,preview=self._merge_results(project,request)
         self.check(self.load(ident),request.version)
@@ -2411,7 +2417,9 @@ class AthenaStore:
             family = self.reference_family(project, ident)
             members = {g['id'] for g in family}
             reason = None
-            if members & fixed: reason = 'The alignment standard and its linked references stay fixed.'
+            if members & fixed: reason = ('The alignment standard and its linked references stay fixed. '
+                                          'Groups that share a reference move together, so to align them to each '
+                                          'other, unlink them first with assign_reference and reference_id null.')
             elif members & handled: reason = 'This linked reference family is already included.'
             elif choice.operation != 'inspect' and (any(g['frozen'] for g in family) or self._frozen_background_dependents(project, members)):
                 reason = 'Unfreeze the group, its linked references and background dependents before alignment.'
@@ -3233,7 +3241,10 @@ class AthenaStore:
                     p['groups'] = calibrated['groups']
                     operation_details = {'calibration': {key: preview[key] for key in
                         ('group_id', 'options', 'energy_shift', 'shift_delta', 'actual_reference', 'changes', 'processing_errors')}}
-                elif action == 'align' and 'method' in options:
+                # The older path needs reference_id. Without it, a body the preview
+                # accepted would fail here as a missing group, so it goes to the
+                # same model the preview validated.
+                elif action == 'align' and ('method' in options or 'reference_id' not in options):
                     aligned, preview = self._alignment_results(p, request)
                     if preview['options']['operation'] == 'inspect': fail('Preview an automatic or manual alignment before saving.')
                     p['groups'] = aligned['groups']
@@ -4618,8 +4629,16 @@ def build_athena_router(
         # had, response_mode included. Any other view is a projection taken
         # after the save, so it changes what is sent and never what is stored.
         def respond(saved):
-            return (_command_response(saved, request) if view == "full"
-                    else project_view(saved, view))
+            if view == "full":
+                return _command_response(saved, request)
+            projected = project_view(saved, view)
+            if request.action == "parameters" and request.options:
+                # Under last_operation, beside the rest of what this command did:
+                # that is where a caller checking its write looks first.
+                projected["last_operation"] = {**(projected.get("last_operation") or {}),
+                                               "applied": applied_parameters(
+                                                   saved, request.group_ids, sorted(request.options))}
+            return projected
         project = store.load(ident)
         if project.get("integration") is not True:
             return respond(guarded(lambda: store.command(
@@ -4709,6 +4728,27 @@ def build_athena_router(
                     **group_digest(store.group(project, group_id))}
         return guarded(report)
 
+    @router.get('/projects/{ident}/compare')
+    def compare_groups(ident: str, groups: str = Query(min_length=1, max_length=2000)):
+        """The groups after the first, each measured against the first.
+
+        `groups` is comma-separated ids. Like the transcript, this route is
+        absent from route_operations, so an integration project 404s here.
+        """
+        from .agent_compare import compare
+
+        def report():
+            project = store.load(ident)
+            ids = [part.strip() for part in groups.split(',') if part.strip()]
+            if len(ids) < 2 or len(set(ids)) != len(ids):
+                fail('Name at least two distinct group ids, comma-separated; the first is the reference.')
+            prefs = store.smoothing_preferences.read()['values']
+            return {"project_id": ident, "version": project["version"],
+                    **compare([store.group(project, gid) for gid in ids],
+                              {"sg_window": prefs["window"], "sg_order": prefs["order"]},
+                              project["groups"])}
+        return guarded(report)
+
     @router.get('/projects/{ident}/groups/{group_id}/xdi')
     def xdi_metadata(ident: str, group_id: str):
         return guarded(lambda: store.xdi_metadata(ident, group_id))
@@ -4753,7 +4793,24 @@ def build_athena_router(
 
     @router.post('/projects/{ident}/merge/preview')
     def preview_merge(ident: str,request: Command, view: PreviewView = "full"):
-        return previewed(ident, request, lambda: store.preview_merge(ident, request), view)
+        def call():
+            result = store.preview_merge(ident, request)
+            if view == "summary":
+                # Measured before the curves are elided, since it is measured on them.
+                from .agent_compare import merge_agreement
+                for output in result.get("outputs") or ():
+                    if agreement := merge_agreement(output.get("result") or {}):
+                        output["agreement"] = agreement
+                    # Forty-odd starting values, nearly all defaults, were the
+                    # longest block left in a summary preview; a blind arm had
+                    # to filter them out to find the agreement beneath.
+                    if isinstance(parameters := output.get("parameters"), dict):
+                        output["parameters"] = {
+                            "e0": parameters.get("e0"),
+                            "omitted": "the rest of the new group's starting recipe; "
+                                       "?view=parameters shows it once merged"}
+            return result
+        return previewed(ident, request, call, view)
 
     @router.post('/projects/{ident}/groups/{group_id}/merge/plot')
     def plot_saved_merge(ident: str, group_id: str, request: dict):

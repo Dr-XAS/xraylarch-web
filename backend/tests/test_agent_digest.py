@@ -166,3 +166,11 @@ def test_a_group_with_no_transform_says_so_rather_than_guessing(example):
 
     group = dict(example["groups"][0])
     assert "unavailable" in _signal_to_noise(group, {})
+
+
+def test_the_digest_carries_the_citation_and_explains_larchs_kmax(client, example):
+    cold = next(g for g in example["groups"] if g["label"] == "Cu foil · 10 K")
+    report = digest(client, example, cold["id"])
+    assert "NSLS" in report["citation"]
+    assert "pessimistic" in report["noise"]["note"]
+    assert "not ratios across groups" in report["signal_to_noise"]["note"]
