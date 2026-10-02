@@ -85,7 +85,7 @@ the trimmed 2021-05-16 release. The application does not implicitly download or
 replace this database. A missing entry in this snapshot does not establish that
 the structure is absent from AMCSD.
 
-Open the **Search / attach CIF** popup from the fitting panel. Search by mineral, formula, or AMCSD ID,
+Open **Search / attach CIF** from **Crystal structures** in the fitting panel. Search by mineral, formula, or AMCSD ID,
 optionally adding a **Contains element** filter. Text searches use literal
 substrings of mineral names, formulas, and publication titles; a numeric query
 selects an AMCSD ID. Results are limited to 25 in the UI; refine the query when
@@ -94,9 +94,12 @@ structure appropriate for the sample. Different entries for one mineral may
 represent different temperatures, pressures, compositions, or refinements.
 Choose **Attach to project** to save the full CIF and its AMCSD provenance in
 the current project. The fitting panel lists attached structures; opening one
-reuses the saved snapshot without repeating the database search. The search,
-structure inspection, and FEFF controls stay inside the popup, which can be
-closed and reopened without discarding its calculation state.
+reuses the saved snapshot without repeating the database search. Close the
+structure popup, then choose **Generate FEFF paths** in the **FEFF paths** section.
+In that dialog, choose an attached CIF and an absorber site, adjust the FEFF
+settings, and select **Run FEFF calculation**. Review the generated paths and
+choose **Add selected paths** to include them in the model. Both dialogs can be
+closed and reopened while retaining the selected structure and calculation state.
 
 Select **Source → Materials Project** to search the live Materials Project
 database. Use a formula such as `Cu2O`, an exact chemical system such as `Cu-O`,
@@ -162,8 +165,14 @@ The viewer exposes finite clusters with gap-based shells; `neighbor`'s periodic
 boundary modes and explicit shell-edge settings are not exposed here.
 The calculation does not modify the saved CIF or FEFF parameters.
 
-Select the absorber, absorption edge, and crystallographic absorber site before
-generating FEFF input. Sites are the symmetry-distinct choices returned by
+FEFF defaults to the current spectrum's absorbing element and absorption edge.
+When that element has exactly one supported inequivalent site in the CIF, that
+site is selected automatically; when several sites match, select one explicitly.
+Manual choices are retained while reopening the dialogs for the same spectrum
+and structure. A missing element or unsupported edge is left unselected with a
+message, rather than substituted with another element or edge. If the spectrum
+has no edge identity, select its absorber and site manually before generating
+FEFF input. Sites are the symmetry-distinct choices returned by
 Larixite; their native indices are one-based across all unique sites in the
 structure. A site index is not an element-specific row number.
 One calculation uses one selected absorber site. Inequivalent absorber sites
@@ -197,7 +206,7 @@ Neighboring hydrogen atoms are omitted from FEFF clusters by the converter's cur
 default. This matters for hydroxides and hydrated structures; review the
 generated atom list.
 
-Choose **Generate FEFF paths** to start a background calculation with progress
+Choose **Run FEFF calculation** in the FEFF paths dialog to start a background calculation with progress
 and log output. Each job has a 180-second limit, and up to two calculations can
 run concurrently. A successful calculation provides generated paths for
 selection; **Add selected paths** appends those paths to the current model and
@@ -664,8 +673,8 @@ or unavailable WebGL is reported; header values remain accessible.
 ### CrystalNN first coordination shell
 
 The CIF viewer automatically analyzes its center site with pymatgen CrystalNN.
-In **EXAFS fitting → Open attached CIF**, choosing an inequivalent absorber site
-also analyzes that site for FEFF path selection. Results show predicted CN,
+In **EXAFS fitting → FEFF paths → Generate FEFF paths**, the selected absorber
+site is also analyzed for FEFF path selection. Results show predicted CN,
 neighbor elements, distance ranges, alternative coordination weights, and any
 radius/oxidation-state warnings. The shell is the most probable bonded-neighbor
 set; it is not a fitted CN or an R-space Fourier-transform window.
@@ -733,8 +742,9 @@ distance across all elements; they can change when the width changes. CrystalNN
 continues to describe bonded coordination and does not determine radial shell
 numbers. Structures with unresolved disorder/partial occupancy remain unsupported.
 
-In **EXAFS fitting**, open an attached CIF and explicitly choose its absorber site
-to display the shell ranges. Generated FEFF and existing model paths are grouped
+In **EXAFS fitting → FEFF paths → Generate FEFF paths**, choose an attached CIF.
+The spectrum's unique matching absorber site is selected automatically; select a
+site explicitly when several match. The selected site determines the shell ranges. Generated FEFF and existing model paths are grouped
 by matching single-scattering geometry to these periodic neighbors. Group buttons
 select/include/exclude paths together; **Use only shell N candidates** explicitly
 excludes other model paths. Generated selection unions groups, skips paths already

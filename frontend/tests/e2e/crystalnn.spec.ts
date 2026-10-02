@@ -21,8 +21,8 @@ test("CrystalNN shell, FEFF candidates, and periodic viewer use the selected abs
   })).toEqual(["#06b6d4", "#06b6d4", "#f59e0b"])
   await viewer.screenshot({ path: info.outputPath("crystalnn-cuprite-first-shell.png") })
 
-  await page.getByRole("button", { name: "Open attached Cuprite CIF", exact: true }).click()
-  const dialog = page.getByRole("dialog", { name: "Crystal structures & FEFF paths" })
+  await page.getByRole("button", { name: "Generate FEFF paths", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "FEFF paths" })
   await dialog.getByRole("radio", { name: "Absorber site 1", exact: true }).click()
   await expect(dialog.getByText("CrystalNN first shell · CN 2", { exact: true })).toBeVisible()
   // Display-only site changes must not change FEFF site or discard work.
@@ -32,7 +32,7 @@ test("CrystalNN shell, FEFF candidates, and periodic viewer use the selected abs
   await dialog.getByRole("textbox", { name: "FEFF cluster radius" }).fill("3")
   await dialog.getByRole("textbox", { name: "FEFF maximum path radius" }).fill("2")
   await dialog.getByRole("combobox", { name: "FEFF maximum legs" }).selectOption("2")
-  await dialog.getByRole("button", { name: "Generate FEFF paths", exact: true }).click()
+  await dialog.getByRole("button", { name: "Run FEFF calculation", exact: true }).click()
   await expect(dialog.getByText("FEFF calculation complete", { exact: true })).toBeVisible({ timeout: 90_000 })
   await expect(dialog.getByText(/feff0001.dat · First shell/)).toBeVisible()
   await dialog.getByRole("button", { name: "Select first-shell paths", exact: true }).click()
