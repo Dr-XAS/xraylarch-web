@@ -438,6 +438,8 @@ def _number(value, *, nullable=False):
 
 
 def fit_group(group: dict, request: FitRequest) -> dict:
+    from .athena import _source_edge_identity
+
     active = [path for path in request.paths if path.enabled]
     if not active:
         _fail("Enable at least one FEFF path.", "paths")
@@ -451,6 +453,10 @@ def fit_group(group: dict, request: FitRequest) -> dict:
     if request.transform.kmin - request.transform.dk / 2 < measured_k[0] or request.transform.kmax + request.transform.dk / 2 > measured_k[-1]:
         notices.append("The Fourier window taper extends beyond the measured k range; reduce the taper or narrow the fitting interval.")
     effective = (group.get("result") or {}).get("effective") or {}
+    # Use the spectrum's recorded identity, with the processed identity as a
+    # fallback for older projects. Do not guess an edge for chi-only inputs.
+    identity = (_source_edge_identity(group.get("source") or {})
+                or _source_edge_identity({"edge_identity": effective}))
     rbkg = effective.get("rbkg")
     if rbkg is not None and request.transform.rmin < rbkg:
         notices.append(f"Rmin ({request.transform.rmin:g} Å) is below the background cutoff Rbkg ({rbkg:g} Å); this fit does not refine the background.")
@@ -459,6 +465,15 @@ def fit_group(group: dict, request: FitRequest) -> dict:
         paths, path_records = [], []
         for index, definition in enumerate(active):
             path, metadata = _read_path(definition, Path(directory), index)
+            path_identity = _source_edge_identity({"edge_identity": {
+                "element": metadata["absorber"], "edge": metadata["edge"],
+            }})
+            if identity and path_identity and identity != path_identity:
+                _fail(f"{definition.filename}: this FEFF path was calculated for "
+                      f"{path_identity['element']} {path_identity['edge']}, but the selected spectrum is "
+                      f"{identity['element']} {identity['edge']}. Regenerate the FEFF paths for "
+                      f"{identity['element']} {identity['edge']}, or correct the spectrum's element/edge "
+                      "assignment if it is wrong.", "paths")
             if request.transform.kmax > metadata["kmax"] or request.transform.kmin < metadata["kmin"]:
                 _fail(f"{definition.filename}: the fit range must be within the FEFF calculation's {metadata['kmin']:g}–{metadata['kmax']:g} Å⁻¹ range.", "kmax")
             initial_path = {field: _evaluate(trees[definition.id][field], initial_values | {key: metadata[key] for key in _PATH_NAMES}, f"{definition.label or definition.id}.{field}", path=path)

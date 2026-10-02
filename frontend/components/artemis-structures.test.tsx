@@ -29,6 +29,10 @@ function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure 
     ], ...overrides }
 }
 function attachment(): ArtemisStructureAttachment { return { id: "cif1", amcsd_id: 13088, attached_at: "2026-09-16T00:00:00Z", sha256: "abc", structure: structure() } }
+function tungstenAttachment(): ArtemisStructureAttachment {
+  return { ...attachment(), structure: structure({ mineral: "Tungsten oxide", formula: "W O3", elements: ["O", "W"],
+    sites: structure().sites.map(site => ({ ...site, element: site.index === 3 ? "W" : "O", species: site.index === 3 ? "W" : "O" })) }) }
+}
 function project(): AthenaProject { return { id: "p", name: "Copper", version: savedVersion, groups: [], journal: "", updated: "now", undo: [], redo: [], history: [], artemis_structures: savedAttachments } }
 function job(status: ArtemisFeffJob["status"] = "complete", overrides: Partial<ArtemisFeffJob> = {}): ArtemisFeffJob {
   return { id: "job123", status, stage: "paths", message: status === "complete" ? "Generated 2 paths." : "Running FEFF8L.", elapsed_seconds: 4.4, log: "FEFF log", request,
@@ -86,6 +90,77 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe("ArtemisStructures", () => {
+  it("uses the spectrum's L3 edge for a matching W absorber in the actual FEFF request", async () => {
+    savedAttachments = [tungstenAttachment()]
+    render(<Harness contextKey="p:w" spectrumEdge={{ element: "W", edge: "L3" }} availableSlots={24} onAddPaths={addPathsMock()} />)
+    await click("Search / attach CIF")
+    await click("Use attached Tungsten oxide CIF")
+    expect(screen.getByLabelText("FEFF absorber")).toHaveValue("O")
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("K")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("L3")
+    await generate()
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ absorber: "W", edge: "L3", site_index: 3 }), expect.any(AbortSignal))
+  })
+
+  it("preserves a chosen edge for its absorber across reopening and spectrum metadata updates", async () => {
+    savedAttachments = [tungstenAttachment()]
+    const props = { contextKey: "p:w", spectrumEdge: { element: "W", edge: "L3" }, availableSlots: 24, onAddPaths: addPathsMock() }
+    const view = render(<Harness {...props} />)
+    await click("Search / attach CIF")
+    await click("Use attached Tungsten oxide CIF")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    fireEvent.change(screen.getByLabelText("FEFF absorption edge"), { target: { value: "L1" } })
+    await click("Close")
+    view.rerender(<Harness {...props} spectrumEdge={{ element: "W", edge: "L2" }} />)
+    await click("Search / attach CIF")
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("L1")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "O" } })
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("K")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("L1")
+    await generate()
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ absorber: "W", edge: "L1" }), expect.any(AbortSignal))
+  })
+
+  it("resets edge overrides when switching spectra and does not carry an L edge into unknown data", async () => {
+    savedAttachments = [tungstenAttachment()]
+    const props = { contextKey: "p:w", spectrumEdge: { element: "W", edge: "L3" }, availableSlots: 24, onAddPaths: addPathsMock() }
+    const view = render(<Harness {...props} />)
+    await click("Search / attach CIF")
+    await click("Use attached Tungsten oxide CIF")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    fireEvent.change(screen.getByLabelText("FEFF absorption edge"), { target: { value: "L1" } })
+    view.rerender(<Harness {...props} contextKey="p:w2" spectrumEdge={{ element: "W", edge: "L2" }} />)
+    await click("Search / attach CIF")
+    await click("Use attached Tungsten oxide CIF")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("L2")
+    view.rerender(<Harness {...props} contextKey="p:unknown" spectrumEdge={null} />)
+    await click("Search / attach CIF")
+    await click("Use attached Tungsten oxide CIF")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("K")
+  })
+
+  it("invalidates an in-flight calculation when the default spectrum edge changes", async () => {
+    savedAttachments = [tungstenAttachment()]
+    const props = { contextKey: "p:w", spectrumEdge: { element: "W", edge: "L3" }, availableSlots: 24, onAddPaths: addPathsMock() }
+    const view = render(<Harness {...props} />)
+    await click("Search / attach CIF")
+    await click("Use attached Tungsten oxide CIF")
+    fireEvent.change(screen.getByLabelText("FEFF absorber"), { target: { value: "W" } })
+    const late = deferred<ArtemisFeffJob>()
+    api.mockReturnValueOnce(late.promise)
+    await generate()
+    const signal = api.mock.calls.at(-1)?.[2]
+    view.rerender(<Harness {...props} spectrumEdge={{ element: "W", edge: "L2" }} />)
+    expect(screen.getByLabelText("FEFF absorption edge")).toHaveValue("L2")
+    expect(signal?.aborted).toBe(true)
+    await act(async () => { late.resolve(job("complete", { request: { ...request, absorber: "W", edge: "L3" } })) })
+    expect(screen.queryByText("FEFF calculation complete")).not.toBeInTheDocument()
+  })
+
   it("shows explicit removal beside Open and removes only that CIF without changing fit paths", async () => {
     const other = { ...attachment(), id: "cif2", amcsd_id: 9994, structure: structure({ id: 9994, mineral: "Cuprite" }) }
     savedAttachments = [attachment(), other]

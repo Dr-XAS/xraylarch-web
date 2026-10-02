@@ -12,7 +12,7 @@ import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells
 import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
 import { FeffPathShellLabel } from "./feff-path-shell-label"
-import type { AthenaProject } from "@/lib/athena"
+import type { AthenaProject, EdgePair } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import {
@@ -23,6 +23,7 @@ import styles from "./artemis-structures.module.css"
 
 interface Props {
   contextKey: string
+  spectrumEdge?: EdgePair | null
   projectId?: string
   version?: number
   onProjectChange?: (project: AthenaProject) => void
@@ -39,7 +40,9 @@ const errorText = (error: unknown) => error instanceof Error ? error.message : "
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
 const amcsdLabel = (id: number) => `AMCSD ${String(id).padStart(7, "0")}`
 
-export function ArtemisStructures({ contextKey, projectId, version, onProjectChange, prepareMutation, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
+const feffEdges = ["K", "L1", "L2", "L3"] as const
+
+export function ArtemisStructures({ contextKey, spectrumEdge, projectId, version, onProjectChange, prepareMutation, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
   const dialog = useRef<HTMLDialogElement>(null)
   const viewerAnchor = useRef<HTMLDivElement>(null)
@@ -68,7 +71,11 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
   useEffect(() => {
     shellCallback.current?.(structure && attachmentId && shellState.shell ? { structure, attachmentId, shell: shellState.shell } : null)
   }, [structure, attachmentId, shellState.shell])
-  const [edge, setEdge] = useState<ArtemisFeffRequest["edge"]>("K")
+  const [edgeChoice, setEdgeChoice] = useState<{ contextKey: string; projectId?: string; absorber: string; edge: ArtemisFeffRequest["edge"] } | null>(null)
+  const defaultEdge = spectrumEdge?.element === absorber ? feffEdges.find(item => item === spectrumEdge.edge) ?? "K" : "K"
+  // An explicit choice belongs to this spectrum and absorbing element. Otherwise use its recorded edge.
+  const edge = edgeChoice?.contextKey === contextKey && edgeChoice.projectId === projectId && edgeChoice.absorber === absorber ? edgeChoice.edge : defaultEdge
+  const previousEdge = useRef(edge)
   const [clusterRadius, setClusterRadius] = useState("5")
   const [pathRadius, setPathRadius] = useState("4")
   const [maxLegs, setMaxLegs] = useState("4")
@@ -178,6 +185,11 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     setNotice("")
     setBusy(previous => previous === "job" ? null : previous)
   }
+  useEffect(() => {
+    if (previousEdge.current === edge) return
+    previousEdge.current = edge
+    invalidateJob()
+  }, [edge])
   function clearSelectedAttachment() {
     lookupAbort.current?.abort()
     sequence.current += 1
@@ -200,6 +212,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
     setSelected([])
     setAdded([])
     setAbsorber("")
+    setEdgeChoice(null)
     setSite("")
     setAttachmentId(null)
     setBusy(null)
@@ -443,7 +456,7 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
         {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : <>
           <div className={styles.grid}>
             <label>Absorber<select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { invalidateJob(); setAbsorber(event.target.value); setSite("") }}>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
-            <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => { invalidateJob(); setEdge(event.target.value as ArtemisFeffRequest["edge"]) }}>{["K", "L1", "L2", "L3"].map(item => <option key={item}>{item}</option>)}</select></label>
+            <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
           </div>
           <fieldset className={styles.sites} disabled={controlsDisabled}><legend>Inequivalent absorber site<SectionHelp label="Inequivalent absorber site">Choose one absorber site explicitly. Site populations are not averaged automatically.</SectionHelp></legend>
             {sites.map(item => <label key={item.index}><input type="radio" name={`feff-site-${contextKey}`} checked={site === String(item.index)} onChange={() => chooseSite(item.index)} aria-label={`Absorber site ${item.index}`} /><span><strong>{item.species} · site {item.index} · Wyckoff {item.wyckoff}</strong><small>({numberText(item.x)}, {numberText(item.y)}, {numberText(item.z)}) · multiplicity {item.multiplicity} · occupancy {numberText(item.occupancy)}</small></span></label>)}
