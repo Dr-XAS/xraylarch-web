@@ -750,7 +750,7 @@ describe("project-owned Artemis models", () => {
     view.unmount()
     render(<ArtemisFittingPanel projectId="p" version={saved.version} group={saved.groups[0]} onProjectChange={acceptProject} />)
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
-    expect(screen.getByText(/Model saved automatically in this project/)).toBeVisible()
+    expect(screen.queryByText(/Model saved automatically in this project/)).not.toBeInTheDocument()
   })
 
   it("follows external saves and Undo for clean cached groups, while preserving dirty drafts", () => {
@@ -804,7 +804,7 @@ describe("project-owned Artemis models", () => {
     await screen.findByText(/This project changed elsewhere/)
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
     fireEvent.click(screen.getByRole("button", { name: "Retry saving model" }))
-    await screen.findByText(/Model saved automatically in this project/)
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry saving model" })).not.toBeInTheDocument())
     expect(api.mock.calls[1][1]).toMatchObject({ version: 6 })
     expect((api.mock.calls[1][1] as { model: ArtemisModelDraft }).model.parameters[0].value).toBe("-")
   })
