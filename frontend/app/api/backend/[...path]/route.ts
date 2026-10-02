@@ -24,6 +24,7 @@ function allowedMethods(path: string[]): ReadonlySet<string> | null {
   const joined = path.join("/")
   if (joined === "health") return new Set(["GET"])
   if (joined === "api/integration/v2/browser/consume") return new Set(["POST"])
+  if (joined === "api/bug-reports") return new Set(["POST"])
   // Artemis (added on master in 99f05038f) has no method-aware route table yet, and
   // master gates it by prefix alone. Keep exactly that rather than guess its routes and
   // break the fitting workflow; narrowing it is a follow-up, not part of this merge.

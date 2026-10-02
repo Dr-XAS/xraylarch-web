@@ -66,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.add_middleware(
         UploadBodyLimitMiddleware,
         max_body_bytes=active_settings.max_upload_bytes,
+        bug_report_max_bytes=active_settings.bug_report_max_bytes,
     )
 
     @app.exception_handler(WebInputError)
@@ -138,6 +139,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from .artemis import build_artemis_router
 
     app.include_router(build_artemis_router(athena_store))
+    from .bug_reports import build_bug_report_router
+
+    app.include_router(build_bug_report_router(active_settings, athena_store))
     return app
 
 

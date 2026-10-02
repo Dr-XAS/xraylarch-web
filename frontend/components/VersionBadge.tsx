@@ -121,6 +121,8 @@ export function VersionBadge() {
         className="portable-version-badge"
         title={tooltip}
         data-build-sha={BUILD.fullSha || undefined}
+        data-build-date={BUILD.date || undefined}
+        data-build-count={BUILD.count || undefined}
       >
         {BUILD.label}
       </div>
