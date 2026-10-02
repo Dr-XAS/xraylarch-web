@@ -21,6 +21,7 @@ const athenaRoutes: readonly [string, RegExp][] = [
 const artemisRoutes: readonly [string, RegExp][] = [
   ["POST", /^api\/artemis\/paths\/inspect$/],
   ["GET", /^api\/artemis\/examples\/cuprite$/],
+  ["GET", /^api\/artemis\/capabilities$/],
   ["GET", /^api\/artemis\/structures(?:\/[^/]+)?$/],
   ["POST", /^api\/artemis\/structures\/(?:first-shell|radial-shells)$/],
   ["POST", /^api\/artemis\/feff\/jobs$/],

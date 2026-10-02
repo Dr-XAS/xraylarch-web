@@ -598,14 +598,14 @@ class FeffJobs:
                 slot.close()
 
 
-def build_structures_router(store, jobs=None):
-    router = APIRouter(tags=["Artemis structures"])
+def make_feff_jobs(store):
+    """Share jobs between fitting and generation within the visitor's namespace."""
     from .sessions import RequestScopedStore
 
     if isinstance(store, RequestScopedStore):
         # Capture the concrete session store before FEFF starts its own thread.
         # Job files remain private while the two-job cap is global to the app.
-        jobs = RequestScopedStore(
+        return RequestScopedStore(
             store.base_settings,
             lambda scoped: FeffJobs(
                 scoped.data_root,
@@ -613,8 +613,12 @@ def build_structures_router(store, jobs=None):
                 slot_root=store.base_settings.data_root / ".feff-slots",
             ),
         )
-    else:
-        jobs = FeffJobs(store.settings.data_root, store=store)
+    return FeffJobs(store.settings.data_root, store=store)
+
+
+def build_structures_router(store, jobs=None):
+    router = APIRouter(tags=["Artemis structures"])
+    jobs = jobs if jobs is not None else make_feff_jobs(store)
 
     @router.post("/structures/first-shell")
     def coordination(request: FirstShellRequest):

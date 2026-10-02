@@ -26,6 +26,7 @@ services:
       XRAYLARCH_MAX_POINTS: ${XRAYLARCH_MAX_POINTS:-250000}
       XRAYLARCH_MAX_COLUMNS: ${XRAYLARCH_MAX_COLUMNS:-256}
       XRAYLARCH_MAX_NFFT: ${XRAYLARCH_MAX_NFFT:-262144}
+      MP_API_KEY: ${MP_API_KEY:-}
     volumes:
       - app_data:/data
     expose:

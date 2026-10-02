@@ -83,12 +83,15 @@ assert [group["label"] for group in project["groups"]] == [
 assert all(group["reference_id"] == project["groups"][4]["id"] for group in project["groups"][:3])
 assert [folder["name"] for folder in project["group_folders"]] == ["Temperature series", "reference"]
 assert all(group["result"] for group in project["groups"]), "Example processing missing results"
-for suffix in ("?view=summary", "?view=parameters", "/transcript", f"/groups/{project['groups'][0]['id']}/digest"):
+compare_ids = ",".join(group["id"] for group in project["groups"][:2])
+for suffix in ("?view=summary", "?view=parameters", "/transcript", f"/compare?groups={compare_ids}", f"/groups/{project['groups'][0]['id']}/digest"):
     assert request(bob, api + "/" + project["id"] + suffix)[0] == 404, "Foreign agent read allowed"
     assert request(alice, api + "/" + project["id"] + suffix)[0] == 200, "Owner agent read failed"
 status, headers, body = request(alice, api + "/" + project["id"] + "/export?format=prj")
 assert status == 200 and body and headers.get("Content-Disposition"), "Project export failed"
 artemis = "/api/backend/api/artemis"
+status, _, body = request(alice, artemis + "/capabilities")
+assert status == 200 and json.loads(body), "Artemis capabilities unavailable"
 status, _, body = request(alice, artemis + "/examples/cuprite")
 assert status == 200, f"Missing Artemis Cuprite example: HTTP {status}: {body[:200]!r}"
 example = json.loads(body)
@@ -108,6 +111,10 @@ status, _, body = request(alice, fit_path, fit_request)
 assert status == 200, f"Artemis fit: HTTP {status}: {body[:200]!r}"
 fit = json.loads(body)
 assert fit["success"] and fit["metadata"]["engine"] == "larch.feffit", "Artemis fit failed"
+status, _, body = request(alice, fit_path + "?view=summary", fit_request)
+assert status == 200, "Agent fit summary unavailable"
+summary_fit = json.loads(body)
+assert summary_fit["success"] and "k" not in summary_fit and "concerns" in summary_fit, "Invalid agent fit summary"
 group_path = fit_path.rsplit("/", 1)[0]
 model = {
     "revision": 0,

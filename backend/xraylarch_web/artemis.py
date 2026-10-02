@@ -593,9 +593,9 @@ def build_artemis_router(store) -> APIRouter:
     def example():
         return cuprite_example()
 
-    from .artemis_structures import FeffJobs
+    from .artemis_structures import make_feff_jobs
 
-    jobs = FeffJobs(store.settings.data_root, store=store)
+    jobs = make_feff_jobs(store)
 
     @router.post("/projects/{ident}/groups/{group_id}/fit")
     def fit(ident: str, group_id: str, request: FitRouteRequest,

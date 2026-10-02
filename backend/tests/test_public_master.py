@@ -185,6 +185,34 @@ def test_feff_background_uses_concrete_owner_store_and_status_is_private(
         assert bob.get(f"{JOB_PATH}/{ident}").status_code == 400
 
 
+def test_fitting_job_references_resolve_only_in_the_owning_visitor(tmp_path, mock_feff, monkeypatch):
+    release, _ = mock_feff
+    seen = []
+
+    def fitted(group, request):
+        seen.append(request.paths[0].content)
+        return {"success": True}
+
+    monkeypatch.setattr(artemis, "fit_group", fitted)
+    with browser(app(tmp_path)) as alice, browser(app(tmp_path)) as bob:
+        project = attached_project(alice)
+        job = alice.post(JOB_PATH, json=job_request(project)).json()
+        release.set()
+        result = completed(alice, job["id"])
+        for client in (alice, bob):
+            own = client.post("/api/athena/projects").json()
+            own = client.post(f"/api/athena/projects/{own['id']}/command", json={
+                "version": own["version"], "action": "example", "group_ids": [], "options": {},
+            }).json()
+            response = client.post(
+                f"/api/artemis/projects/{own['id']}/groups/{own['groups'][0]['id']}/fit",
+                json={"version": own["version"], "parameters": [{"name": "amp", "value": 1}],
+                      "paths": [{"id": "path-1", "feff_job": job["id"], "feff_path": result["paths"][0]["id"]}]},
+            )
+            assert response.status_code == (200 if client is alice else 400), response.text
+        assert len(seen) == 1 and "feff" in seen[0].lower()
+
+
 def test_feff_two_job_limit_is_global_across_visitors_and_releases(
     tmp_path, mock_feff
 ):

@@ -59,6 +59,7 @@ describe("backend proxy", () => {
   it.each([
     ["POST", ["api", "artemis", "paths", "inspect"]],
     ["GET", ["api", "artemis", "examples", "cuprite"]],
+    ["GET", ["api", "artemis", "capabilities"]],
     ["GET", ["api", "artemis", "structures"]],
     ["GET", ["api", "artemis", "structures", "13088"]],
     ["POST", ["api", "artemis", "structures", "first-shell"]],
