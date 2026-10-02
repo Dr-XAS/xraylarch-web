@@ -110,6 +110,7 @@ def fit_summary(result: dict) -> dict:
             "reff": metadata.get("reff"),
             "r": round(metadata["reff"] + values["deltar"], 4) if "deltar" in values else None,
             **{key: values[key] for key in ("s02", "sigma2", "e0", "deltar") if key in values},
+            **({"sigma2_expression": record["sigma2_expression"]} if "sigma2_expression" in record else {}),
         })
     return _round({
         **{key: result[key] for key in ("project_id", "version", "group_id", "group_label",
@@ -179,6 +180,17 @@ def capabilities() -> dict:
             "path": _model_options("artemis:FitPath"),
             "path_from_feff_job": _model_options("artemis:FeffJobPath"),
             "transform": _model_options("artemis:FitTransform"),
+            "disorder": {
+                "units": "sigma2 in Å²; T and theta in K",
+                "expressions": ["sig2", "0.003", "sigma2_eins(T, theta_e)",
+                                "sigma2_debye(T, theta_d)",
+                                "sig2_static + sigma2_eins(T, theta_e)",
+                                "sig2_static + sigma2_debye(T, theta_d)"],
+                "aliases": {"eins": "sigma2_eins", "debye": "sigma2_debye"},
+                "scope": "sigma2 fields only, not global Defs; uses each current FEFF path's masses and geometry.",
+                "constraints": "T >= 0, theta > 0. Fix measured T. At one T constrain static disorder or theta. Shared names couple paths.",
+                "engine": "Larch Einstein / Python FEFF6 correlated Debye",
+            },
             "notes": [
                 "Each path's s02, e0, deltar and sigma2 are expressions, and default to the "
                 "parameter names amp, del_e0, del_r and sig2. Define those four as guesses and "

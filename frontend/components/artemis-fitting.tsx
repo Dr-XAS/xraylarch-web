@@ -11,6 +11,8 @@ import {
 } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
+import { planDisorderInsertion, type DisorderOptions } from "@/lib/artemis-disorder"
+import { ArtemisDisorderControl } from "./artemis-disorder"
 import { ArtemisModelAutosave, type ArtemisSaveStatus } from "@/lib/artemis-model-autosave"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
@@ -352,6 +354,15 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   function editPath(id: string, field: keyof ArtemisPath, value: string | boolean) {
     edit(previous => ({ ...previous, paths: previous.paths.map(path => path.id === id ? { ...path, [field]: value } : path) }))
   }
+  function insertDisorder(pathId: string, options: DisorderOptions) {
+    try {
+      const insertion = planDisorderInsertion(draft, pathId, options)
+      const removed = new Set(insertion.removed)
+      edit(previous => ({ ...previous, paths: insertion.paths,
+        parameters: [...previous.parameters.filter(parameter => !removed.has(parameter.name.trim())), ...insertion.added.map(parameterDraft)] }))
+      setNotice(`σ² model inserted: ${insertion.expression}. Review its parameters before fitting.`)
+    } catch (error) { setError(errorText(error)) }
+  }
   function syncParameters() {
     try {
       const { added, removed } = planArtemisParameterSync(draft.parameters, draft.paths)
@@ -586,6 +597,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
             ["sigma2", "σ² (Å²)", "Mean-square relative displacement."],
           ] as const).map(([field, label, title]) => <label key={field} title={title}>{label}<input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
         </div>
+        <ArtemisDisorderControl index={i + 1} enabled={path.enabled} onPreview={options => planDisorderInsertion(draft, path.id, options)} onApply={options => insertDisorder(path.id, options)} />
         </div>
       </div>}} />
     </FittingSection>
