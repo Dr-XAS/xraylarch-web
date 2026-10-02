@@ -107,6 +107,29 @@ def test_public_mode_rejects_integration_even_with_valid_credentials(tmp_path):
         )
 
 
+def test_new_agent_reads_and_larix_export_remain_visitor_private(tmp_path):
+    with browser(app(tmp_path)) as alice, browser(app(tmp_path)) as bob:
+        project = attached_project(alice)
+        base = f"/api/athena/projects/{project['id']}"
+        for endpoint in (
+            f"{base}?view=summary",
+            f"{base}?view=parameters",
+            f"{base}/transcript",
+            f"{base}/groups/foil/digest",
+            f"/api/artemis/projects/{project['id']}/groups/foil/export?format=larix",
+        ):
+            response = bob.get(endpoint)
+            assert response.status_code == 404, response.text
+        summary = alice.get(f"{base}?view=summary")
+        assert summary.status_code == 200, summary.text
+        transcript = alice.get(f"{base}/transcript")
+        assert transcript.status_code == 200, transcript.text
+        assert bob.post(
+            f"/api/artemis/projects/{project['id']}/structures/foreign-cif/remove",
+            json={"version": project["version"]},
+        ).status_code == 404
+
+
 def test_artemis_foreign_attachments_fit_and_attached_feff_are_denied(tmp_path):
     with browser(app(tmp_path)) as alice, browser(app(tmp_path)) as bob:
         project = attached_project(alice)

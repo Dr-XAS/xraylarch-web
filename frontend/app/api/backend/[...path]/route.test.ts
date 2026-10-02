@@ -10,6 +10,17 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
+  it("preserves agent command retry keys without forwarding authorization", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("{}"))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "athena", "projects", "cu", "command"]
+    await POST(new Request(`http://localhost/api/backend/${path.join("/")}`, {
+      method: "POST", body: "{}",
+      headers: { "idempotency-key": "retry-1", authorization: "Bearer private" },
+    }), { params: Promise.resolve({ path }) })
+    expect(fetcher.mock.calls[0][1].headers.get("idempotency-key")).toBe("retry-1")
+    expect(fetcher.mock.calls[0][1].headers.has("authorization")).toBe(false)
+  })
   it.each([['GET', 'columns'], ['POST', 'reimport']])('forwards %s group %s with project authorization and preserves the response', async (method, action) => {
     const fetcher = vi.fn().mockResolvedValue(new Response('{"version":8}', { headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetcher)
@@ -56,6 +67,9 @@ describe("backend proxy", () => {
     ["GET", ["api", "artemis", "feff", "jobs", "0123456789abcdef0123456789abcdef"]],
     ["GET", ["api", "artemis", "projects", "project-cu", "structures"]],
     ["POST", ["api", "artemis", "projects", "project-cu", "structures"]],
+    ["POST", ["api", "artemis", "projects", "project-cu", "structures", "cif-1", "remove"]],
+    ["GET", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "export"]],
+    ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "plot-transform"]],
     ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "fit"]],
     ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "model"]],
     ["POST", ["api", "artemis", "projects", "project-cu", "groups", "group-cu", "fit-saved"]],

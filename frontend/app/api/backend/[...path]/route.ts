@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { copySessionCookies, sessionRequestHeaders } from "@/lib/session-headers"
 
-const ordinaryHeaders = ["content-type", "accept", "content-length"] as const
+const ordinaryHeaders = ["content-type", "accept", "content-length", "idempotency-key"] as const
 const responseHeaders = ["content-type", "content-length", "content-disposition", "x-athena-project-version", "x-artemis-export-warnings"] as const
 
 const athenaRoutes: readonly [string, RegExp][] = [
@@ -25,7 +25,9 @@ const artemisRoutes: readonly [string, RegExp][] = [
   ["GET", /^api\/artemis\/feff\/jobs\/[^/]+$/],
   ["GET", /^api\/artemis\/projects\/[^/]+\/structures$/],
   ["POST", /^api\/artemis\/projects\/[^/]+\/structures$/],
-  ["POST", /^api\/artemis\/projects\/[^/]+\/groups\/[^/]+\/(?:fit|model|fit-saved|remove-fit)$/],
+  ["POST", /^api\/artemis\/projects\/[^/]+\/structures\/[^/]+\/remove$/],
+  ["GET", /^api\/artemis\/projects\/[^/]+\/groups\/[^/]+\/export$/],
+  ["POST", /^api\/artemis\/projects\/[^/]+\/groups\/[^/]+\/(?:fit|model|fit-saved|remove-fit|plot-transform)$/],
 ]
 
 function allowedMethods(path: string[]): ReadonlySet<string> | null {

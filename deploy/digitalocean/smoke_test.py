@@ -75,12 +75,17 @@ status, _, body = request(alice, api + "/" + project["id"] + "/command", {
 })
 assert status == 200, f"Example computation: HTTP {status}: {body[:200]!r}"
 project = json.loads(body)
-assert len(project["groups"]) == 4
+assert len(project["groups"]) == 5
 assert [group["label"] for group in project["groups"]] == [
     "Cu foil · 10 K", "Cu foil · 50 K", "Cu foil · 300 K", "Cu₂O · room temperature",
+    "Cu foil · shared reference",
 ]
+assert all(group["reference_id"] == project["groups"][4]["id"] for group in project["groups"][:3])
 assert [folder["name"] for folder in project["group_folders"]] == ["Temperature series", "reference"]
 assert all(group["result"] for group in project["groups"]), "Example processing missing results"
+for suffix in ("?view=summary", "?view=parameters", "/transcript", f"/groups/{project['groups'][0]['id']}/digest"):
+    assert request(bob, api + "/" + project["id"] + suffix)[0] == 404, "Foreign agent read allowed"
+    assert request(alice, api + "/" + project["id"] + suffix)[0] == 200, "Owner agent read failed"
 status, headers, body = request(alice, api + "/" + project["id"] + "/export?format=prj")
 assert status == 200 and body and headers.get("Content-Disposition"), "Project export failed"
 artemis = "/api/backend/api/artemis"
@@ -103,6 +108,29 @@ status, _, body = request(alice, fit_path, fit_request)
 assert status == 200, f"Artemis fit: HTTP {status}: {body[:200]!r}"
 fit = json.loads(body)
 assert fit["success"] and fit["metadata"]["engine"] == "larch.feffit", "Artemis fit failed"
+group_path = fit_path.rsplit("/", 1)[0]
+model = {
+    "revision": 0,
+    "parameters": [{"id": f"parameter-{i}", **parameter,
+                    "value": str(parameter["value"]),
+                    "min": "" if parameter.get("min") is None else str(parameter["min"]),
+                    "max": "" if parameter.get("max") is None else str(parameter["max"])}
+                   for i, parameter in enumerate(example["parameters"])],
+    "paths": [{**path, "metadata": source["metadata"]}
+              for path, source in zip(fit_request["paths"], example["paths"])],
+    "transform": {key: str(value) if key in ("kmin", "kmax", "dk", "rmin", "rmax", "dr") else value
+                  for key, value in example["transform"].items()},
+}
+status, _, body = request(alice, group_path + "/model", {"version": project["version"], "model": model})
+assert status == 200, "Model save failed"
+project = json.loads(body)
+status, _, body = request(alice, group_path + "/plot-transform", {
+    "version": project["version"], "result": fit, "kweight": 3,
+})
+assert status == 200 and json.loads(body)["kweight"] == 3, "Fit display transform failed"
+assert request(bob, group_path + "/export?format=larix")[0] == 404, "Foreign Larix export allowed"
+status, headers, body = request(alice, group_path + "/export?format=larix")
+assert status == 200 and body[:2] == b"\x1f\x8b" and headers.get("Content-Disposition"), "Larix export failed"
 status, _, body = request(alice, artemis + "/structures?q=13088&limit=1")
 assert status == 200 and json.loads(body)["count"] == 1, "AMCSD lookup failed"
 status, _, body = request(alice, artemis + "/structures/13088")
@@ -123,6 +151,19 @@ assert status == 404, "Second visitor attached a private structure"
 status, _, body = request(alice, attachments_path, {"version": project["version"], "amcsd_id": 13088})
 assert status == 200, f"Structure attachment: HTTP {status}: {body[:200]!r}"
 project = json.loads(body)
+remove_path = attachments_path + "/" + project["artemis_structures"][-1]["id"] + "/remove"
+assert request(bob, remove_path, {"version": project["version"]})[0] == 404, "Foreign CIF removal allowed"
+status, _, body = request(alice, remove_path, {"version": project["version"]})
+assert status == 200, "CIF removal failed"
+removed = json.loads(body)
+assert len(removed["artemis_structures"]) == len(project["artemis_structures"]) - 1
+status, _, body = request(alice, api + "/" + project["id"] + "/command", {
+    "version": removed["version"], "action": "undo", "group_ids": [], "options": {},
+})
+assert status == 200, "CIF removal undo failed"
+restored = json.loads(body)
+assert restored["artemis_structures"] == project["artemis_structures"], "Undo did not restore CIF"
+project = restored
 status, _, _ = request(bob, artemis + "/feff/jobs", {
     "project_id": project["id"], "attachment_id": project["artemis_structures"][0]["id"],
     "version": project["version"], "absorber": "Cu", "site_index": structure["sites"][0]["index"],
@@ -131,4 +172,4 @@ assert status == 404, "Second visitor launched a FEFF job on private structure"
 
 status, _, body = request(alice, "/api/backend/health")
 assert status == 200 and json.loads(body)["status"] == "ok"
-print("PASS: production page, session cookies, independent visitors, access isolation, four example spectra, project export, Artemis fit, CrystalNN first shell, radial shells, AMCSD structure/attachment, private FEFF access, health")
+print("PASS: production page, session cookies, visitor isolation, five spectra/shared foil, agent reads, project/Larix export, Artemis fit/display weight, shell analysis, reversible CIF removal, private FEFF access, health")
