@@ -30,6 +30,7 @@
 .fileInput { display: none; }
 .path { margin-top: 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 5px; padding: 8px; }
 .pathHeader { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
+.pathIdentity { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 8px; min-width: 0; }
 .check { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .check span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .editor input[type=checkbox] { accent-color: var(--ath-primary, #268553); margin: 0; width: 13px; height: 13px; flex-shrink: 0; }

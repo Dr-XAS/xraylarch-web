@@ -1,4 +1,4 @@
 .group { min-width: 0; margin: 10px 0; border-top: 1px solid var(--ath-line); padding-top: 8px; }
 .header { display: flex; flex-wrap: wrap; gap: 6px 8px; align-items: center; margin-bottom: 8px; font-size: var(--text-caption); color: var(--ath-muted); }
 .header strong { color: var(--ath-ink); flex: 1 1 180px; }
-.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.header strong > span { margin-right: 5px; }

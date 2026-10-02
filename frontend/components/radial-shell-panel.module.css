@@ -12,4 +12,4 @@
 .scroll label { display: inline-flex; gap: 4px; align-items: center; white-space: nowrap; }
 .scroll summary { cursor: pointer; }
 .scroll input { width: auto; margin: 0; }
-.swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
+.scroll th > span { margin-right: 5px; }

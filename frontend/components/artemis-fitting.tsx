@@ -18,11 +18,12 @@ import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells
 import { useRadialShells } from "@/lib/use-radial-shells"
 import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
+import { FeffPathShellLabel } from "./feff-path-shell-label"
 import { ArtemisStructures } from "./artemis-structures"
-import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-viewer-icons"
 import { FitRangeIcon } from "./athena-parameter-icons"
 import { ParameterSectionHeading } from "./parameter-section-heading"
+import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
@@ -584,17 +585,20 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
         onSelection={(ids, include) => edit(previous => ({ ...previous, paths: previous.paths.map(path => ids.includes(path.id) ? { ...path, enabled: include } : path) }))}
         onUseOnly={ids => edit(previous => ({ ...previous, paths: previous.paths.map(path => ({ ...path, enabled: ids.includes(path.id) })) }))}
-        renderPath={path => {
+        renderPath={(path, shell) => {
           const i = draft.paths.findIndex(item => item.id === path.id)
           const member = radialContext && radialState.data ? radialPathNeighbor(path.metadata, radialContext.structure, radialState.data) : undefined
           return <div className={styles.path}>
         <div className={styles.pathHeader}>
-          <label className={styles.check}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /><span>{path.filename}</span></label>
+          <div className={styles.pathIdentity}>
+            <label className={styles.check}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /><span>{path.filename}</span></label>
+            <FeffPathShellLabel shell={shell} nleg={path.metadata.nleg} hasContext={!!radialContext} hasAnalysis={!!radialState.data} loading={radialState.loading} error={radialState.error} />
+          </div>
           <button type="button" aria-label={`Remove path ${i + 1}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
         <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
         {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
-        {member && <p className={styles.metadata}>Radial shell {member.shell_index} · {member.element} pair {member.group_id}</p>}
+        {member && <p className={styles.metadata}>{member.element} pair {member.group_id}</p>}
         <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
