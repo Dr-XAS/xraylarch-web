@@ -3,7 +3,8 @@
 .actions { position: sticky; top: 0; z-index: 1; margin: 0 -12px 12px; padding: 8px 12px; background: var(--ath-surface, #fff); border-bottom: 1px solid var(--ath-line, #dce5dc); box-shadow: 0 6px 12px hsl(150 10% 25% / .035); }
 .actions .help { margin-bottom: 0; }
 .actions .error { margin-top: 0; max-height: 96px; overflow-y: auto; }
-.editor h3 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: var(--text-section); font-weight: 600; line-height: var(--leading-heading); }
+.editor h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-section); font-weight: 500; line-height: var(--leading-heading); }
+.intro h3 svg { flex: 0 0 20px; }
 .intro { padding: 0 0 8px; }
 .intro p, .help { margin: 7px 0; color: var(--ath-muted, #647669); font-size: var(--text-caption); line-height: var(--leading-body); }
 .spectrum { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; margin: 0 0 12px; background: var(--ath-canvas, #f5f8f5); border-radius: 5px; overflow-wrap: anywhere; }

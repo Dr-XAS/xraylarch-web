@@ -1,6 +1,8 @@
 "use client"
 
 import { useId, useRef, type ReactNode } from "react"
+import { SlidersHorizontal } from "lucide-react"
+import { FitCurvesIcon } from "./athena-viewer-icons"
 
 export type ParameterTab = "processing" | "fitting"
 
@@ -29,7 +31,8 @@ export function AthenaParameterTabs({ tab, select, processing, fitting }: {
           select(tabs[next])
           buttons.current[next]?.focus()
         }}>
-        {value === "processing" ? "Processing" : "EXAFS fitting"}
+        {value === "processing" ? <SlidersHorizontal size={20} aria-hidden="true" /> : <FitCurvesIcon size={20} aria-hidden="true" />}
+        <span>{value === "processing" ? "Processing" : "EXAFS fitting"}</span>
       </button>)}
     </div>
     {tabs.map(value => <div key={value} className="ath-parameter-tab-panel"
