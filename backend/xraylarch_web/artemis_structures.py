@@ -301,7 +301,9 @@ def _prepare_input(request: FeffJobRequest, details: dict):
             _fail("The selected radius includes more than 400 atoms. Reduce the cluster radius.", "cluster_radius")
         text = cif2feffinp(details["cif"], request.absorber, edge=request.edge,
                           absorber_site=request.site_index, cluster_size=request.cluster_radius,
-                          version8=True, with_h=False, rng_seed=0, extra_titles=[f"AMCSD structure {details['id']}"])
+                          version8=True, with_h=False, rng_seed=0,
+                          extra_titles=[f"Materials Project {details['id']} (DFT-relaxed)" if details.get("provider") == "materials_project"
+                                        else f"AMCSD structure {details['id']}"])
     text = re.sub(r"(?m)^RPATH\s+.*$", f"RPATH     {request.path_radius:.3f}", text)
     text = re.sub(r"(?m)^NLEG\s+.*$", f"NLEG      {request.max_legs}", text)
     return text
@@ -624,12 +626,20 @@ def build_structures_router(store, jobs=None):
 
     @router.get("/structures")
     def search(q: str = Query(default="", max_length=120), element: str = Query(default="", max_length=2),
-               limit: int = Query(default=25, ge=1, le=50)):
+               limit: int = Query(default=25, ge=1, le=50), provider: Literal["amcsd", "materials_project"] = "amcsd"):
+        if provider == "materials_project":
+            from .materials_project import search_structures as mp_search
+            return mp_search(q, element, limit)
         return search_structures(q, element, limit)
 
     @router.get("/structures/{ident}")
-    def details(ident: int):
-        return structure_details(ident)
+    def details(ident: str, provider: Literal["amcsd", "materials_project"] = "amcsd"):
+        if provider == "materials_project":
+            from .materials_project import structure_details as mp_details
+            return mp_details(ident)
+        if not re.fullmatch(r"[0-9]{1,8}", ident):
+            _fail("Use a valid numeric AMCSD structure identifier.")
+        return structure_details(int(ident))
 
     @router.post("/feff/jobs", status_code=202)
     def start(request: FeffJobRequest, response: Response,

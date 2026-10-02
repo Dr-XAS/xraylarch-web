@@ -31,6 +31,15 @@ const iron = attachment("iron-cif", 100, "Iron")
 afterEach(cleanup)
 
 describe("ProjectCifViewer", () => {
+  it("labels a restored Materials Project CIF with its source ID", () => {
+    const mp: ArtemisStructureAttachment = { id: "mp-cif", provider: "materials_project", material_id: "mp-aaaaaaft",
+      attached_at: copper.attached_at, sha256: "mp-snapshot", structure: { ...copper.structure, id: "mp-aaaaaaft", provider: "materials_project" } }
+    render(<ProjectCifViewer attachments={[copper, mp]} selectedId={mp.id} onSelect={vi.fn()} />)
+    expect(screen.getByRole("option", { name: "Copper · Materials Project mp-aaaaaaft" })).toBeInTheDocument()
+    expect(screen.getByRole("combobox", { name: "Viewed CIF structure" })).toHaveValue(mp.id)
+    expect(screen.getByRole("img", { name: "Crystal structure of Copper" })).toHaveAttribute("data-cif", mp.structure.cif)
+  })
+
   it("shows the selected project snapshot and reports a different attachment selection", () => {
     const onSelect = vi.fn()
     const view = render(<ProjectCifViewer attachments={[copper, iron]} selectedId={iron.id} onSelect={onSelect} />)

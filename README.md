@@ -76,8 +76,9 @@ It also records measured-spectrum regressions for fnorm, background standards,
 and already-normalized inputs.
 
 The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
-middle parameter panel. Search the bundled AMCSD crystal-structure database in
-a popup, attach the selected CIF directly to the project, select an absorber
+middle parameter panel. Search the bundled AMCSD database or Materials Project
+in the CIF popup (MP requires `MP_API_KEY` in the backend environment), attach
+the selected CIF directly to the project, select an absorber
 site, and calculate FEFF8L scattering paths using
 Larch/Larixite. Review the generated paths and add the selected ones to the
 model, or import existing FEFF path files. Define Guess/Set/Def parameters

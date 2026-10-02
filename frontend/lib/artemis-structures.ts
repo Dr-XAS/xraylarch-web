@@ -1,7 +1,10 @@
 import type { ArtemisInspectedPath } from "./artemis"
 
 export interface ArtemisStructureSummary {
-  id: number
+  id: number | string
+  provider?: "amcsd" | "materials_project"
+  source?: string
+  provenance?: { database_version: string | null; retrieved_at: string; task_id: string | null; structure_type: "dft_relaxed" }
   mineral: string
   formula: string
   space_group: string
@@ -41,7 +44,9 @@ export interface ArtemisFeffRequest {
 }
 export interface ArtemisStructureAttachment {
   id: string
-  amcsd_id: number
+  provider?: "amcsd" | "materials_project"
+  amcsd_id?: number
+  material_id?: string
   attached_at: string
   sha256: string
   structure: ArtemisStructure
@@ -66,6 +71,14 @@ export interface ArtemisFeffJob {
   warnings: string[]
 }
 export interface ArtemisGeneratedPath extends ArtemisInspectedPath { label: string }
+
+export function structureLabel(structure: ArtemisStructureSummary) {
+  return structure.provider === "materials_project" ? `Materials Project ${structure.id}` : `AMCSD ${String(structure.id).padStart(7, "0")}`
+}
+
+export function sameStructure(left: ArtemisStructureSummary, right: ArtemisStructureSummary) {
+  return (left.provider ?? "amcsd") === (right.provider ?? "amcsd") && left.id === right.id
+}
 
 export function sameFeffRequest(left: ArtemisFeffRequest, right: ArtemisFeffRequest) {
   return Object.keys(right).every(key => left?.[key as keyof ArtemisFeffRequest] === right[key as keyof ArtemisFeffRequest])

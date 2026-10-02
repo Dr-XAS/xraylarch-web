@@ -90,6 +90,59 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe("ArtemisStructures", () => {
+  it("searches, attaches and generates paths with Materials Project identity", async () => {
+    const mp = structure({ id: "mp-aaaaaaft", provider: "materials_project", mineral: "Cu", formula: "Cu",
+      provenance: { database_version: "2026.04.13", retrieved_at: "2026-10-02T00:00:00Z", task_id: "task-Cu", structure_type: "dft_relaxed" } })
+    const mpAttachment: ArtemisStructureAttachment = { id: "mp-cif", provider: "materials_project", material_id: String(mp.id), attached_at: "2026-10-02T00:00:00Z", sha256: "mp-hash", structure: mp }
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "Cu", source: "Materials Project", results: [mp], count: 1, limited: false }
+      if (url.startsWith("/structures/mp-")) return mp
+      if (url === "/projects/p/structures" && body) { savedAttachments = [mpAttachment]; savedVersion = 2; return project() }
+      if (url === "/feff/jobs") return job("complete", { request: body as ArtemisFeffRequest, provenance: { ...job().provenance, structure: mp, cif: mp.cif } })
+      return fallback(url, body, signal)
+    })
+    const { onAddPaths } = setup()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "materials_project" } })
+    fireEvent.change(screen.getByLabelText("Materials Project search query"), { target: { value: "Cu" } })
+    await click("Search Materials Project")
+    expect(api).toHaveBeenCalledWith("/structures?q=Cu&limit=25&provider=materials_project", undefined, expect.any(AbortSignal))
+    await click(/Cu.*Materials Project mp-aaaaaaft/)
+    expect(screen.getByText(/Database version: 2026.04.13/)).toBeInTheDocument()
+    await click("Attach to project")
+    expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, provider: "materials_project", material_id: "mp-aaaaaaft" })
+    await generate()
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "mp-cif", version: 2 }), expect.any(AbortSignal))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    await click(/Add selected paths/)
+    expect(onAddPaths.mock.calls[0][0][0].label).toContain("Materials Project mp-aaaaaaft")
+    expect(screen.queryByText(/AMCSD undefined/)).not.toBeInTheDocument()
+  })
+
+  it("discards a pending search when the structure source changes", async () => {
+    setup()
+    const late = deferred<unknown>()
+    api.mockReturnValueOnce(late.promise)
+    fireEvent.change(screen.getByLabelText("AMCSD search query"), { target: { value: "copper" } })
+    await click("Search AMCSD")
+    const signal = api.mock.calls.at(-1)?.[2]
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "materials_project" } })
+    expect(signal?.aborted).toBe(true)
+    await act(async () => { late.resolve({ query: "copper", source: "AMCSD", results: [structure()], count: 1, limited: false }) })
+    expect(screen.queryByRole("button", { name: /Copper.*AMCSD/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Search Materials Project" })).toBeEnabled()
+  })
+
+  it("shows actionable Materials Project connection errors", async () => {
+    setup()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "materials_project" } })
+    fireEvent.change(screen.getByLabelText("Materials Project search query"), { target: { value: "Cu2O" } })
+    api.mockRejectedValueOnce(new Error("Materials Project search needs an API key. Set MP_API_KEY in the backend environment."))
+    await click("Search Materials Project")
+    expect(screen.getByRole("alert")).toHaveTextContent("MP_API_KEY")
+    expect(screen.getByRole("button", { name: "Search Materials Project" })).toBeEnabled()
+  })
+
   it("uses the spectrum's L3 edge for a matching W absorber in the actual FEFF request", async () => {
     savedAttachments = [tungstenAttachment()]
     render(<Harness contextKey="p:w" spectrumEdge={{ element: "W", edge: "L3" }} availableSlots={24} onAddPaths={addPathsMock()} />)

@@ -22,7 +22,8 @@ function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure 
   }
 }
 const attachment = (value = structure(), id = "cif-1"): ArtemisStructureAttachment => ({
-  id, amcsd_id: value.id, attached_at: "2026-09-23", sha256: id, structure: value,
+  id, ...(typeof value.id === "number" ? { amcsd_id: value.id } : { provider: "materials_project" as const, material_id: value.id }),
+  attached_at: "2026-09-23", sha256: id, structure: value,
 })
 
 describe("FEFF structure context", () => {

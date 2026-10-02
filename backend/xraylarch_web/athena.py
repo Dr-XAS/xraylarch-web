@@ -2981,7 +2981,7 @@ class AthenaStore:
                     p["artemis_structures"] = merge_attachments(
                         p.get("artemis_structures", []), [attachment])
                     attachment = next(record for record in p["artemis_structures"]
-                                      if record["amcsd_id"] == artemis_example["amcsd_id"])
+                                      if record.get("amcsd_id") == artemis_example["amcsd_id"])
                 foil_ids = []
                 for filename, label in (("cu_10k.xmu", "Cu foil · 10 K"), ("cu_50k.xmu", "Cu foil · 50 K"), ("cu_rt01.xmu", "Cu foil · 300 K")):
                     path = Path(__file__).resolve().parents[2] / "examples" / "xafsdata" / filename
