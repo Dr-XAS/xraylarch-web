@@ -798,6 +798,7 @@ describe("AthenaWorkbench branding", () => {
     await openSaved()
 
     expect(screen.getByRole("heading", { level: 1, name: "Larch-Web" })).toBeVisible()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     fireEvent.focus(screen.getByRole("button", { name: "About Larch-Web" }))
     const xraylarch = screen.getByRole("link", { name: "Xraylarch" })
     const demeter = screen.getByRole("link", { name: "Demeter" })
@@ -909,6 +910,7 @@ describe("AthenaWorkbench menu command search", () => {
   it("opens from Search menu, focuses search, and shows menu paths for keyword matches", async () => {
     const { dialog, searchbox } = await openMenuSearch()
     expect(searchbox).toHaveAccessibleDescription("Type a keyword to find a menu command.")
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     expect(screen.getByRole("button", { name: "About Menu command search" })).toBeVisible()
 
     fireEvent.change(searchbox, { target: { value: "smooth" } })
@@ -2902,6 +2904,7 @@ describe("AthenaWorkbench import edge policy", () => {
     const inspection = inspectionFixture("chi.dat")
     const { dialog } = await chooseImportFiles([inspection])
     fireEvent.change(within(dialog).getByRole("combobox", { name: "Input format" }), { target: { value: "chi" } })
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     expect(within(dialog).getByRole("button", { name: "About Import edge policy" })).toHaveAccessibleDescription(/χ\(k\) ignores it/)
     api.mockResolvedValueOnce(importedProject(project, inspection.display_name))
     submitImport(dialog)
@@ -3039,6 +3042,7 @@ describe("AthenaWorkbench E₀ selection", () => {
     if (scope === "all") expect(report).toHaveTextContent("Unused reference: E₀ requires an absorption spectrum")
     expect(plotProps().active?.id).toBe("foil")
     expect(project.groups[2].parameters).toEqual(next.groups[2].parameters)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     fireEvent.focus(within(dialog).getByRole("button", { name: "About Select E₀" }))
     expect(within(dialog).getByText(/Energy shifts are preserved/)).toBeVisible()
   })
@@ -3995,6 +3999,7 @@ describe("AthenaWorkbench batch import", () => {
     } }
     const { dialog } = await chooseImportFiles([inspected])
     const view = within(dialog)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     expect(view.getByRole('button', { name: 'About Remembered import choices' })).toHaveAccessibleDescription(/previous successful import/)
     expect(view.getByLabelText('Numerator If1')).toBeChecked()
     expect(view.getByLabelText('Denominator It')).toBeChecked()
@@ -4989,6 +4994,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
     next.last_operation = { action: "copy_parameters", skipped_group_ids: ["oxide"] }
     api.mockResolvedValueOnce(next)
     fireEvent.click(screen.getByRole("checkbox", { name: /^Apply to marked groups/i }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     fireEvent.focus(screen.getByRole("button", { name: "About Automatic processing" }))
     expect(screen.getByText(/Frozen groups are skipped.*Energy shifts are preserved/i)).toBeVisible()
     editNumber(/^Rbkg/, 2.2)
@@ -5504,6 +5510,7 @@ describe("AthenaWorkbench weighted combinations", () => {
     const dialog = await openTool("Process", /sum marked groups/i)
 
     expect(within(dialog).getByRole("option", { name: "χ(k)" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     fireEvent.focus(within(dialog).getByRole("button", { name: "About Signal to combine" }))
     expect(within(dialog).getByText(/χ\(k\) requires processed EXAFS/i)).toBeVisible()
     expect(within(dialog).getByRole("option", { name: "Normalized μ(E)" })).toBeEnabled()
@@ -5589,6 +5596,7 @@ describe("AthenaWorkbench reference ties", () => {
     })
     api.mockResolvedValueOnce(tied)
     openGroupMenu()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
     fireEvent.focus(screen.getByRole("button", { name: "About Group references" }))
     expect(screen.getByText(/keeps both shifts linked when either is edited/i)).toBeVisible()
     expect(screen.getByText(/Sample: Oxide standard/)).toBeVisible()
@@ -6421,7 +6429,7 @@ describe("Project save confirmation", () => {
     try {
       fireEvent.click(screen.getByRole("button", { name: "Save project" }))
       const dialog = screen.getByRole("dialog", { name: "Save project" })
-      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue("Copper study.prj")
+      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue("Copper study.json")
       fireEvent.change(within(dialog).getByRole("textbox", { name: "File name" }), { target: { value: "My export" } })
       fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
       expect(screen.queryByRole("dialog", { name: "Save project" })).not.toBeInTheDocument()
@@ -6470,7 +6478,7 @@ describe("EXAFS model File menu", () => {
       if (label !== "Save project") fireEvent.click(screen.getByRole("button", { name: "File" }))
       fireEvent.click(screen.getByRole("button", { name: label }))
       const dialog = screen.getByRole("dialog", { name: "Save project" })
-      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue(`Copper study${label.includes("marked") ? "-marked" : ""}.${label.includes("web") ? "json" : "prj"}`)
+      expect(within(dialog).getByRole("textbox", { name: "File name" })).toHaveValue(`Copper study${label.includes("marked") ? "-marked" : ""}.${label === "Save project" || label.includes("web") ? "json" : "prj"}`)
       expect(actions.flush).not.toHaveBeenCalled()
       expect(fetcher).not.toHaveBeenCalled()
       fireEvent.click(within(dialog).getByRole("button", { name: /^Save$/ }))
@@ -6481,7 +6489,7 @@ describe("EXAFS model File menu", () => {
       expect(actions.flush).toHaveBeenCalledOnce()
       await act(async () => complete())
       await waitFor(() => expect(fetcher).toHaveBeenCalledOnce())
-      expect(String(fetcher.mock.calls[0][0])).toContain("/export?format=")
+      expect(String(fetcher.mock.calls[0][0])).toContain(`/export?format=${label === "Save project" || label.includes("web") ? "json" : "prj"}`)
     } finally { fetcher.mockRestore() }
   })
 
@@ -6526,5 +6534,20 @@ describe("EXAFS model File menu", () => {
     fireEvent.click(screen.getByRole("button", { name: "Import model JSON…" }))
     expect(actions.importModel).toHaveBeenCalledOnce()
     expect(screen.getByRole("tab", { name: "EXAFS fitting" })).toHaveAttribute("aria-selected", "true")
+  })
+})
+
+describe("Instruction visibility", () => {
+  it("starts hidden and toggles instruction icons without changing project data", async () => {
+    await openSaved()
+    const toggle = screen.getByRole("checkbox", { name: "Show instruction" })
+    expect(toggle).not.toBeChecked()
+    expect(screen.queryByRole("button", { name: "About Larch-Web" })).not.toBeInTheDocument()
+    const callsBefore = api.mock.calls.length
+    fireEvent.click(toggle)
+    expect(screen.getByRole("button", { name: "About Larch-Web" })).toBeVisible()
+    fireEvent.click(toggle)
+    expect(screen.queryByRole("button", { name: "About Larch-Web" })).not.toBeInTheDocument()
+    expect(api.mock.calls.length).toBe(callsBefore)
   })
 })

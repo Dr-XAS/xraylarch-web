@@ -1,12 +1,21 @@
 "use client"
 
 import { Info } from "lucide-react"
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react"
 import { createPortal } from "react-dom"
 import styles from "./section-help.module.css"
 
+export const InstructionVisibility = createContext(true)
+
+type SectionHelpProps = { label: string; children: ReactNode; id?: string }
+
+export function SectionHelp(props: SectionHelpProps) {
+  const visible = useContext(InstructionVisibility)
+  return visible ? <VisibleSectionHelp {...props} /> : props.id ? <span id={props.id} hidden>{props.children}</span> : null
+}
+
 /** Inline help that stays readable outside scrolling panels and inside modal dialogs. */
-export function SectionHelp({ label, children, id }: { label: string; children: ReactNode; id?: string }) {
+function VisibleSectionHelp({ label, children, id }: SectionHelpProps) {
   const generatedId = useId()
   const descriptionId = id ?? generatedId
   const trigger = useRef<HTMLSpanElement>(null)
