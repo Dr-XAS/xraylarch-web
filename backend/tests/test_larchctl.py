@@ -45,7 +45,8 @@ def test_a_whole_session_runs_from_the_command_line(run, project):
 
     summary = run("--project", project, "summary")
     assert "Copper" in summary
-    assert summary.count("Cu foil") == 7, "three temperatures, their reference, three links to it"
+    table = summary.split("\nsame data:")[0]
+    assert table.count("Cu foil") == 7, "three temperatures, their reference, three links to it"
     assert "Cu₂O" in summary
     assert "5 groups · 5 processed · 0 failed" in summary
     assert summary.count("ref:Cu foil · shared") == 3
@@ -70,15 +71,27 @@ def test_a_group_is_named_by_label_and_ambiguity_is_refused(run, project):
     assert "Cu foil" in missing, "say what is there, not only what is not"
 
 
+def test_a_whole_label_wins_over_the_labels_that_contain_it(run, project):
+    run("--project", project, "do", "example")
+    run("--project", project, "do", "metadata", "Cu₂O", "-o", "label=Cu foil · 300 K, refit")
+
+    digest = run("--project", project, "digest", "Cu foil · 300 K")
+    assert digest.startswith("Cu foil · 300 K  ("), "the scan, not the group named after it"
+    # So does a whole part of one, between the "·"s: the run-5 merge was named
+    # "... of 10 K, 50 K, 300 K", and "300 K" stopped finding the scan.
+    assert run("--project", project, "digest", "300 K").startswith("Cu foil · 300 K  (")
+    assert "matches several groups" in run("--project", project, "digest", "Cu foil", expect=1)
+
+
 def test_a_preview_reports_its_shape_instead_of_its_curves(run, project):
     """The whole point of this layer is not to paste arrays into a context."""
     run("--project", project, "do", "example")
     output = run("--project", project, "do", "merge", "10 K", "50 K",
                  "-o", "method=demeter-larch", "--preview")
 
-    assert len(output) < 10_000, "a preview must not cost what the arrays cost"
-    assert "numbers," in output, "the elision has to be visible"
-    assert not [path for path, length in numeric_runs(json.loads(output)) if length > 8]
+    assert len(output) < 3_000, "a preview must not cost what the arrays cost"
+    assert "Cu foil · 10 K  612" in output and "RMS/RANGE" in output
+    assert "Nothing was saved" in output
 
     # The project must be untouched: preview means preview.
     assert "5 groups" in run("--project", project, "summary")
@@ -249,6 +262,7 @@ def test_the_digest_says_where_chi_stops_being_signal(run, project):
     assert "chi/noise by k:" in digest
     assert "3-5:" in digest and "23-25:" in digest
     assert "a window near 1 is noise" in digest
+    assert "from cu_10k.xmu: XrayLarch example data" in digest, "where the scan came from"
 
 
 def test_export_writes_a_file_rather_than_a_context_window(run, project, tmp_path):
@@ -317,6 +331,17 @@ def test_a_command_does_not_fetch_the_project_it_is_about_to_discard(run, projec
     assert sum(wire) < 20_000, wire
 
 
+def test_a_merge_preview_says_which_member_does_not_belong(run, project):
+    """The 300 K scan is unaligned and from another beamline; the band a plot shows says so."""
+    run("--project", project, "do", "example")
+    out = run("--project", project, "do", "merge", "10 K", "50 K", "300 K", "-o", "method=demeter-larch",
+              "-o", "exclude_short_data=false", "-o", "array=norm", "--preview")
+    rms = {line.split("  ")[0]: float(line.split()[-1]) for line in out.splitlines()
+           if line.startswith("Cu foil")}
+    assert rms["Cu foil · 300 K"] > 1.5 * max(rms["Cu foil · 10 K"], rms["Cu foil · 50 K"])
+    assert "scatter/range median" in out
+
+
 def test_a_merge_names_what_it_left_out(run, project):
     run("--project", project, "do", "example")
     result = run("--project", project, "do", "merge", "10 K", "50 K", "300 K",
@@ -325,4 +350,57 @@ def test_a_merge_names_what_it_left_out(run, project):
     assert "EXCLUDED Cu foil · 300 K: More than 10 points shorter" in result
 
     summary = run("--project", project, "summary")
-    assert "merge of 2,1 EXCLUDED" in summary
+    assert "merge of 2 (mu),1 EXCLUDED" in summary
+
+
+def test_an_option_naming_a_group_takes_a_label(run, project):
+    """Positional groups took labels and standard_id did not, so the same label
+    worked in one place and came back as "no longer exists" in the other."""
+    run("--project", project, "do", "example")
+    run("--project", project, "do", "assign_reference", "10 K", "50 K", "300 K",
+        "-o", "reference_id=null")
+    out = run("--project", project, "do", "align", "300 K", "-o", "standard_id=10 K",
+              "-o", "operation=auto")
+    assert "version" in out
+    row = [line for line in run("--project", project, "summary").splitlines() if "300 K" in line][0]
+    assert "-2.9" in row
+
+
+def test_a_parameters_command_prints_what_larch_used(run, project):
+    run("--project", project, "do", "example")
+    out = run("--project", project, "do", "parameters", "10 K", "-o", "kmax=18", "-o", "e0=null")
+    line = [line for line in out.splitlines() if "10 K" in line][0]
+    assert "kmax 18.000->18.000" in line
+    assert "e0 auto->89" in line, "null is Larch's choice, and the effective side names it"
+
+
+def test_compare_takes_labels_and_prints_a_table(run, project):
+    run("--project", project, "do", "example")
+    out = run("--project", project, "compare", "10 K", "50 K", "300 K", "shared reference", "cu2o")
+    assert out.startswith("against Cu foil · 10 K")
+    warm = next(line for line in out.splitlines() if line.startswith("Cu foil · 300 K"))
+    assert "-2.959" in warm and "Cu foil · shared reference" in warm
+    assert "chi amplitude Cu foil · 300 K" in out
+    assert "Cu₂O · room temperature" in out, "a typed 2 finds the label's subscript"
+
+
+def test_the_summary_says_when_two_groups_are_one_measurement(run, project):
+    run("--project", project, "do", "example")
+    out = run("--project", project, "summary")
+    assert "same data: Cu foil · 300 K = Cu foil · shared reference  (cu_rt01.xmu)" in out
+
+
+def test_a_command_says_what_it_changed_on_the_groups_it_kept(run, project):
+    """`do align` used to print "version 3 -> 4" and nothing else; the shift took another read."""
+    run("--project", project, "do", "example")
+    out = run("--project", project, "do", "assign_reference", "10 K", "50 K", "Cu foil · 300 K",
+              "-o", "reference_id=null")
+    assert "~ Cu foil · 50 K  reference_id Cu foil · shared reference->none" in out
+    preview = run("--project", project, "do", "align", "50 K", "Cu foil · 300 K",
+                  "-o", "operation=auto", "-o", "standard_id=10 K", "--preview")
+    assert "Cu foil · 300 K  -2.959" in preview and "Nothing was saved" in preview
+    assert len(preview) < 1500
+    out = run("--project", project, "do", "align", "50 K", "Cu foil · 300 K",
+              "-o", "operation=auto", "-o", "standard_id=10 K")
+    assert "~ Cu foil · 300 K  energy_shift 0.000->-2.959  edge_step 2.729->2.717" in out
+    assert "~ Cu foil · 50 K  energy_shift 0.000->-0.018\n" in out, "a fifth-figure move is not news"

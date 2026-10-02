@@ -256,3 +256,102 @@ def test_http_search_details_validation_and_missing_database(tmp_path, monkeypat
         monkeypatch.setattr(structures, "_DATABASE", tmp_path / "missing.db")
         response = client.get("/api/artemis/structures", params=dict(q="copper"))
         assert response.status_code == 400 and "database is unavailable" in response.json()["error"]["message"]
+
+
+def _finished_job(jobs, ident, created=None, status="complete", **changes):
+    """A job directory as a completed run leaves it, without running FEFF."""
+    directory = jobs.root / ident
+    directory.mkdir(mode=0o700)
+    record = dict(id=ident, status=status, stage=status, message="Generated 1 FEFF paths.",
+                  created=created or time.time(), elapsed_seconds=1.0,
+                  request=request().model_dump() | changes, log="", provenance={}, paths=[],
+                  total_paths=1, truncated=False, warnings=[])
+    (directory / "status.json").write_text(json.dumps(record))
+    (directory / "paths.json").write_text(json.dumps([{"id": "feff0001", "filename": "feff0001.dat"}]))
+    return directory
+
+
+def _never_runs(monkeypatch):
+    def failed(*args): raise RuntimeError("FEFF ran")
+    monkeypatch.setattr(structures, "_prepare_input", failed)
+
+
+def _settled(jobs, job):
+    for _ in range(100):
+        if job["status"] != "running":
+            return job
+        time.sleep(0.01)
+        job = jobs.get(job["id"])
+    return job
+
+
+def test_an_identical_request_gets_the_finished_job_back(tmp_path, monkeypatch):
+    _never_runs(monkeypatch)
+    jobs = FeffJobs(tmp_path)
+    _finished_job(jobs, "a" * 32, created=time.time() - 60)
+    _finished_job(jobs, "b" * 32)
+    job = jobs.start(request())
+    assert job["id"] == "b" * 32 and job["status"] == "complete" and job["reused"]
+    assert job["paths"][0]["id"] == "feff0001"
+    assert len(list(jobs.root.glob("*/status.json"))) == 2
+
+
+@pytest.mark.parametrize("kept", [
+    dict(status="failed"), dict(created=time.time() - 23.5 * 3600), dict(path_radius=2.5)])
+def test_a_job_that_did_not_run_this_request_is_not_reused(tmp_path, monkeypatch, kept):
+    _never_runs(monkeypatch)
+    jobs = FeffJobs(tmp_path)
+    _finished_job(jobs, "a" * 32, **kept)
+    job = _settled(jobs, jobs.start(request()))
+    assert job["id"] != "a" * 32 and "reused" not in job
+    assert "FEFF ran" in job["message"]
+
+
+def test_a_reused_job_answers_200_and_says_so_in_its_summary(tmp_path, monkeypatch):
+    _never_runs(monkeypatch)
+    with TestClient(create_app(Settings(data_root=tmp_path))) as client:
+        _finished_job(FeffJobs(tmp_path), "c" * 32)
+        response = client.post("/api/artemis/feff/jobs", json=request().model_dump())
+        assert response.status_code == 200 and response.json()["reused"]
+        assert response.json()["paths"][0]["id"] == "feff0001"
+        summary = client.post("/api/artemis/feff/jobs", params={"view": "summary"}, json=request().model_dump())
+        assert summary.status_code == 200 and summary.json()["reused"] and "provenance" not in summary.json()
+        assert summary.json()["paths"][0]["id"] == "feff0001"
+        polled = client.get(f"/api/artemis/feff/jobs/{'c' * 32}", params={"view": "summary"}).json()
+        assert polled["status"] == "complete" and "reused" not in polled
+
+
+@pytest.mark.parametrize("title, temperature, pressure", [
+    ("Sample: at T = 577 K", 577.0, None),
+    ("Sample: at T = 18 C", 291.15, None),
+    ("T = 25 deg C", 298.15, None),
+    ("Note: P = 5.2 GPa", None, 5.2),
+    ("P = 15 kbar", None, 1.5),
+    ("Note: gamma iron, Sample M1, P = 22 GPa, T = 1400 K", 1400.0, 22.0),
+    ("Sample: preparation T = 900 C", None, None),
+    ("Note: at room T after heating to T = 900 K", None, None),
+    ("compounds TPnCh (T = Ni, Pd; Pn = P, As, Sb)", None, None),
+    ("Sample: T = 10 K\nNote: T = 300 K", None, None),
+    ("Second edition. Interscience Publishers", None, None),
+])
+def test_a_title_says_where_its_structure_was_measured(title, temperature, pressure):
+    measured = structures._measured_at(title)
+    assert measured["temperature_k"] == temperature and measured["pressure_gpa"] == pressure
+
+
+def test_two_temperatures_give_neither_but_keep_the_words():
+    assert structures._measured_at("Sample: T = 10 K\nNote: T = 300 K")["stated"] == "Sample: T = 10 K; Note: T = 300 K"
+
+
+def test_search_results_carry_the_cell_and_conditions():
+    rows = {row["id"]: row for row in search_structures("copper", element="Cu")["results"]}
+    assert rows[13088]["cell"]["a"] == 3.63 and rows[13088]["measured_at"]["temperature_k"] == 577
+    assert rows[11145]["measured_at"] == dict(temperature_k=None, pressure_gpa=None, stated=None)
+    assert "measured_at" not in structure_details(13088), "a project saves this reply as a strict snapshot"
+
+
+def test_every_bundled_cell_reads_as_numbers():
+    with structures._connection() as connection:
+        rows = connection.execute(structures._SELECT).fetchall()
+    cells = [structures._summary(row)["cell"] for row in rows]
+    assert len(cells) > 9000 and all(isinstance(value, float) for cell in cells for value in cell.values())

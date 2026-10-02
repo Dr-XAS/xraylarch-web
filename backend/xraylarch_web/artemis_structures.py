@@ -25,7 +25,7 @@ else:
 
 import larixite
 import psutil
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from larixite.amcsd import AMCSD
 from larixite.cif_cluster import CIF_Cluster, cif2feffinp
 from larch.xafs.feffrunner import find_exe
@@ -46,8 +46,11 @@ _MODULES = ("rdinp", "pot", "xsph", "pathfinder", "genfmt", "ff2x")
 _TIMEOUT = 180
 _MAX_DISK_BYTES = 80_000_000
 _JOB_ID = re.compile(r"^[0-9a-f]{32}$")
+# A finished job is handed back for an identical request until this age, which
+# leaves it an hour of its 24 for the fit that names its paths.
+_REUSE_SECONDS = 23 * 3600
 _SELECT = """SELECT c.id, m.name AS mineral, c.formula, s.hm_notation AS space_group,
- p.year, p.journalname AS journal, c.pub_title AS title,
+ c.a, c.b, c.c, c.alpha, c.beta, c.gamma, p.year, p.journalname AS journal, c.pub_title AS title,
  (SELECT group_concat(a.name, ', ') FROM authors a JOIN publication_authors pa
   ON pa.author_id=a.id WHERE pa.publication_id=p.id) AS authors
  FROM cif c JOIN minerals m ON m.id=c.mineral_id
@@ -82,8 +85,56 @@ def _element(value):
     return value
 
 
+# AMCSD has no column for the conditions a structure was measured at. Its
+# titles carry them in free text instead, as "Sample: at T = 577 K" or "Note:
+# P = 5.2 GPa", in about one entry in five.
+_CONDITION = re.compile(r"\b([TP])\s*=\s*(-?\d+(?:\.\d+)?)\s*(K|GPa|MPa|kPa|kbar|bar|atm|(?:deg\.?\s*|°\s*)?C)\b")
+_HISTORY = re.compile(r"prepar|synthes|anneal|quench|heating to|heated to|grown", re.I)
+_GPA = {"GPa": 1.0, "MPa": 1e-3, "kPa": 1e-6, "kbar": 0.1, "bar": 1e-4, "atm": 1.01325e-4}
+
+
+def _measured_at(title: str) -> dict:
+    """The temperature and pressure an entry's title states, in K and GPa.
+
+    A value read from sample history ("synthesized at", "after heating to") is
+    not where the structure was measured, so it is skipped. A title that states
+    two different values gives neither, and `stated` keeps its words.
+    """
+    temperatures, pressures, stated = set(), set(), []
+    for line in (title or "").splitlines():
+        found = False
+        for match in _CONDITION.finditer(line):
+            if _HISTORY.search(line[:match.start()]):
+                continue
+            kind, value, unit = match.group(1), float(match.group(2)), match.group(3)
+            if kind == "T" and unit == "K":
+                temperatures.add(round(value, 2))
+            elif kind == "T" and unit.endswith("C"):
+                temperatures.add(round(value + 273.15, 2))
+            elif kind == "P" and unit in _GPA:
+                pressures.add(round(value * _GPA[unit], 6))
+            else:
+                continue
+            found = True
+        if found:
+            stated.append(line.strip())
+    return dict(temperature_k=temperatures.pop() if len(temperatures) == 1 else None,
+                pressure_gpa=pressures.pop() if len(pressures) == 1 else None,
+                stated="; ".join(stated) or None)
+
+
+def _cell_value(text):
+    """A cell length or angle as AMCSD stores it, as text, in a few entries with
+    a decimal comma or a stray trailing one."""
+    try:
+        return float(str(text).strip().rstrip(",").replace(",", "."))
+    except (TypeError, ValueError):
+        return None
+
+
 def _summary(row):
     result = dict(row)
+    result["cell"] = {key: _cell_value(result.pop(key)) for key in ("a", "b", "c", "alpha", "beta", "gamma")}
     if result["mineral"] in (None, "", "<missing>"):
         result["mineral"] = result["formula"] or "Unnamed structure"
     for key in ("formula", "space_group", "authors", "journal", "title"):
@@ -119,7 +170,10 @@ def search_structures(query: str = "", element: str = "", limit: int = 25):
           WHEN m.name LIKE ? ESCAPE '\\' THEN 3 WHEN replace(c.formula, ' ', '') LIKE ? ESCAPE '\\' THEN 4
           ELSE 5 END, m.name, c.id LIMIT ?"""
         rows = connection.execute(_SELECT + where + ranking, args + [query, compact, literal + "%", "%" + literal + "%", "%" + compact_literal + "%", limit + 1]).fetchall()
-    return dict(query=query, source=_SOURCE, results=[_summary(row) for row in rows[:limit]],
+    # measured_at stays out of structure_details, whose reply a project saves as
+    # a strict attachment snapshot; the title it is read from is saved there.
+    results = [_summary(row) | dict(measured_at=_measured_at(row["title"] or "")) for row in rows[:limit]]
+    return dict(query=query, source=_SOURCE, results=results,
                 count=min(limit, len(rows)), limited=len(rows) > limit)
 
 
@@ -384,6 +438,8 @@ class FeffJobs:
         if xray_edge(absorber, request.edge) is None:
             _fail("The selected absorption edge is unavailable for this element.", "edge")
         request = request.model_copy(update={"absorber": absorber})
+        if (finished := self._finished(request, source_provenance.get("cif_sha256"))) is not None:
+            return finished
         executables = _executables()
         slot = self._slot()
         ident = uuid.uuid4().hex
@@ -410,6 +466,38 @@ class FeffJobs:
             slot.close()
             raise
         return self.get(ident)
+
+    def _finished(self, request: FeffJobRequest, cif_sha256: str | None):
+        """The newest complete job that ran this same request, marked reused.
+
+        FEFF's paths follow from its input alone, so a second identical request
+        need not run it again. A blind agent testing its fit ranges called
+        `larchctl fit --structure` six times and ran FEFF six times on one
+        structure. An attached CIF must also be the same file, by its hash.
+        """
+        wanted, found = request.model_dump(), None
+        with self.lock:
+            for directory in self.root.iterdir():
+                try:
+                    if not _JOB_ID.fullmatch(directory.name) or directory.is_symlink() or not directory.is_dir():
+                        continue
+                    record = json.loads((directory / "status.json").read_text())
+                    if (record.get("status") != "complete" or record.get("request") != wanted
+                            or record.get("provenance", {}).get("cif_sha256") != cif_sha256
+                            or time.time() - float(record["created"]) > _REUSE_SECONDS
+                            or not (directory / "paths.json").exists()):
+                        continue
+                except (OSError, KeyError, TypeError, ValueError):
+                    continue
+                if found is None or record["created"] > found[1]["created"]:
+                    found = (directory, record)
+            if found is None:
+                return None
+            # Pruning by count removes the least recently touched first.
+            os.utime(found[0])
+        job = self.get(found[0].name)
+        job["reused"] = True
+        return job
 
     def get(self, ident):
         directory = self._directory(ident)
@@ -508,7 +596,7 @@ class FeffJobs:
                 slot.close()
 
 
-def build_structures_router(store):
+def build_structures_router(store, jobs=None):
     router = APIRouter(tags=["Artemis structures"])
     from .sessions import RequestScopedStore
 
@@ -544,12 +632,31 @@ def build_structures_router(store):
         return structure_details(ident)
 
     @router.post("/feff/jobs", status_code=202)
-    def start(request: FeffJobRequest):
-        return jobs.start(request)
+    def start(request: FeffJobRequest, response: Response,
+              view: Literal["full", "summary"] = Query(default="full")):
+        """Start FEFF, or answer 200 with a finished job that ran this same request.
+
+        A reused job arrives complete, path files and all, so `?view=summary`
+        applies here as it does to the status poll.
+        """
+        job = jobs.start(request)
+        if job.get("reused"):
+            response.status_code = 200
+        if view == "summary":
+            from .agent_fit import feff_job_summary
+
+            return feff_job_summary(job)
+        return job
 
     @router.get("/feff/jobs/{ident}")
-    def status(ident: str):
-        return jobs.get(ident)
+    def status(ident: str, view: Literal["full", "summary"] = Query(default="full")):
+        """A job's state. `?view=summary` leaves out the CIF, the log and the path files."""
+        record = jobs.get(ident)
+        if view == "summary":
+            from .agent_fit import feff_job_summary
+
+            return feff_job_summary(record)
+        return record
 
     from .artemis_attachments import build_attachments_router
     router.include_router(build_attachments_router(store))

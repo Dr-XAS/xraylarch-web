@@ -502,4 +502,37 @@ describe("backend proxy", () => {
     expect(posted.status).toBe(404)
     expect(fetcher).toHaveBeenCalledTimes(1)
   })
+
+  it("forwards a comparison with its query", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ comparisons: [] }), {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "athena", "projects", "cu", "compare"]
+    const response = await GET(
+      new Request(`http://localhost/api/backend/${path.join("/")}?groups=a,b`),
+      { params: Promise.resolve({ path }) },
+    )
+    expect(response.status).toBe(200)
+    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/athena/projects/cu/compare")
+    expect(fetcher.mock.calls[0][0].search).toBe("?groups=a,b")
+  })
+
+  it("forwards an Idempotency-Key on a command", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ version: 4 }), {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "athena", "projects", "cu", "command"]
+    const response = await POST(
+      new Request(`http://localhost/api/backend/${path.join("/")}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": "retry-1" },
+        body: JSON.stringify({ version: 3, action: "undo", group_ids: [], options: {} }),
+      }),
+      { params: Promise.resolve({ path }) },
+    )
+    expect(response.status).toBe(200)
+    expect(fetcher.mock.calls[0][1].headers.get("idempotency-key")).toBe("retry-1")
+  })
 })
