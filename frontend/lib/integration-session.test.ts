@@ -1,6 +1,8 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
 
-import { clearIntegrationReturnSelection, clearIntegrationSession, integrationReturnSelectionStorageKey, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession, saveReturnSelection, integrationSessionStorageKey } from "./integration-session"
+import { clearIntegrationReturnSelection, clearIntegrationSession, integrationOperations, integrationReturnSelectionStorageKey, loadIntegrationSession, parseSafeInternalReturn, saveIntegrationSession, saveReturnSelection, integrationSessionStorageKey } from "./integration-session"
 
 const session = { mode: "integration" as const, projectId: "p1", capability: "browser-capability", allowedOperations: ["read_project"], returnTo: "/analysis/1", sourceGroupId: "g1", expiresAt: "2099-01-01T00:00:00Z" }
 
@@ -48,7 +50,18 @@ describe("integration session storage", () => {
     expect(loadIntegrationSession()).toBeNull()
   })
 
-  it.each(["deconvolve", "self_absorption"])("round trips the %s command operation through validated storage", operation => {
+  it("accepts every operation the backend grants a native Athena launch", () => {
+    // A launch whose grant names one operation this set lacks is rejected whole, so a
+    // backend action added without a matching entry here breaks every integrated launch.
+    const service = readFileSync(resolve(__dirname, "../../backend/xraylarch_web/integration_service.py"), "utf8")
+    const tuple = service.match(/_NATIVE_ATHENA_OPERATIONS = \(([^)]*)\)/)
+    expect(tuple).not.toBeNull()
+    const granted = [...tuple![1].matchAll(/"([a-z0-9_]+)"/g)].map(match => match[1])
+    expect(granted.length).toBeGreaterThan(40)
+    expect([...integrationOperations].sort()).toEqual([...granted].sort())
+  })
+
+  it.each(["deconvolve", "self_absorption", "assign_reference"])("round trips the %s command operation through validated storage", operation => {
     const granted = { ...session, allowedOperations: ["read_project", operation] }
     saveIntegrationSession(granted)
     expect(loadIntegrationSession()).toEqual(granted)

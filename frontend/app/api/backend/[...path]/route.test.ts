@@ -348,4 +348,70 @@ describe("backend proxy", () => {
 
     expect(response.headers.get("content-disposition")).toBe(disposition)
   })
+
+  it("forwards a group digest but still refuses an unlisted group subroute", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ version: 3 }), {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const allowed = ["api", "athena", "projects", "cu", "groups", "foil", "digest"]
+    const digest = await GET(
+      new Request(`http://localhost/api/backend/${allowed.join("/")}`),
+      { params: Promise.resolve({ path: allowed }) },
+    )
+    expect(digest.status).toBe(200)
+    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/athena/projects/cu/groups/foil/digest")
+
+    const denied = ["api", "athena", "projects", "cu", "groups", "foil", "arrays"]
+    const rejected = await GET(
+      new Request(`http://localhost/api/backend/${denied.join("/")}`),
+      { params: Promise.resolve({ path: denied }) },
+    )
+    expect(rejected.status).toBe(404)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
+  it("forwards the capability catalog and one action, but not a deeper path", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ actions: [] }), {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    for (const path of [["api", "athena", "capabilities"], ["api", "athena", "capabilities", "set_e0"]]) {
+      const response = await GET(
+        new Request(`http://localhost/api/backend/${path.join("/")}`),
+        { params: Promise.resolve({ path }) },
+      )
+      expect(response.status).toBe(200)
+    }
+    expect(fetcher).toHaveBeenCalledTimes(2)
+
+    const deeper = ["api", "athena", "capabilities", "set_e0", "options"]
+    const rejected = await GET(
+      new Request(`http://localhost/api/backend/${deeper.join("/")}`),
+      { params: Promise.resolve({ path: deeper }) },
+    )
+    expect(rejected.status).toBe(404)
+    expect(fetcher).toHaveBeenCalledTimes(2)
+  })
+  it("forwards the transcript with its query, but refuses to write one", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ records: [] }), {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "athena", "projects", "cu", "transcript"]
+    const response = await GET(
+      new Request(`http://localhost/api/backend/${path.join("/")}?limit=5&since=2`),
+      { params: Promise.resolve({ path }) },
+    )
+    expect(response.status).toBe(200)
+    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/athena/projects/cu/transcript")
+    expect(fetcher.mock.calls[0][0].search).toBe("?limit=5&since=2")
+
+    // The transcript is written by issuing commands, never by posting to it.
+    const posted = await POST(
+      new Request(`http://localhost/api/backend/${path.join("/")}`, { method: "POST" }),
+      { params: Promise.resolve({ path }) },
+    )
+    expect(posted.status).toBe(404)
+    expect(fetcher).toHaveBeenCalledTimes(1)
+  })
 })
