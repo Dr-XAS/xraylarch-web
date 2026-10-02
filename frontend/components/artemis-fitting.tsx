@@ -1,7 +1,7 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { History, Plus, RefreshCw, SlidersHorizontal, Trash2, Upload, type LucideIcon } from "lucide-react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import { ChevronRight, History, Plus, RefreshCw, SlidersHorizontal, Trash2, Upload, type LucideIcon } from "lucide-react"
 import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
 import {
@@ -272,6 +272,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const [busy, setBusy] = useState<"fit" | "upload" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const pathDetailsId = useId()
+  const [expandedPathIds, setExpandedPathIds] = useState<Set<string>>(() => new Set())
   const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
   const [radialContext, setRadialContext] = useState<RadialShellContext | null>(null)
   const radialState = useRadialShells(radialContext?.structure ?? null, radialContext?.siteIndex)
@@ -541,6 +543,10 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         <button type="button" onClick={() => inputRef.current?.click()}><Upload size={13} />Add feff*.dat</button>
         <input ref={inputRef} className={styles.fileInput} type="file" multiple accept=".dat" aria-label="Upload FEFF path files"
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
+        {draft.paths.length > 1 && <div className={styles.pathViewActions}>
+          <button type="button" aria-label="Expand all path details" disabled={draft.paths.every(path => expandedPathIds.has(path.id))} onClick={() => setExpandedPathIds(new Set(draft.paths.map(path => path.id)))}>Expand all</button>
+          <button type="button" aria-label="Collapse all path details" disabled={!draft.paths.some(path => expandedPathIds.has(path.id))} onClick={() => setExpandedPathIds(new Set())}>Collapse all</button>
+        </div>}
       </div>
       <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
         onSelection={(ids, include) => edit(previous => ({ ...previous, paths: previous.paths.map(path => ids.includes(path.id) ? { ...path, enabled: include } : path) }))}
@@ -548,17 +554,27 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         renderPath={(path, shell) => {
           const i = draft.paths.findIndex(item => item.id === path.id)
           const member = radialContext && radialState.data ? radialPathNeighbor(path.metadata, radialContext.structure, radialState.data) : undefined
-          return <div className={styles.path}>
+          const expanded = expandedPathIds.has(path.id)
+          const detailsId = `${pathDetailsId}-${path.id}`
+          return <div className={styles.path} data-path-id={path.id}>
         <div className={styles.pathHeader}>
-          <div className={styles.pathIdentity}>
-            <label className={styles.check}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /><span>{path.filename}</span></label>
-            <FeffPathShellLabel shell={shell} nleg={path.metadata.nleg} hasContext={!!radialContext} hasAnalysis={!!radialState.data} loading={radialState.loading} error={radialState.error} />
-          </div>
-          <button type="button" aria-label={`Remove path ${i + 1}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
+          <label className={styles.pathInclude} title={`Include ${path.filename} in the fit`}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /></label>
+          <button type="button" className={styles.pathToggle} aria-label={`${expanded ? "Collapse" : "Expand"} path ${i + 1} details`} aria-expanded={expanded} aria-controls={detailsId}
+            onClick={() => setExpandedPathIds(previous => { const next = new Set(previous); if (next.has(path.id)) next.delete(path.id); else next.add(path.id); return next })}>
+            <ChevronRight size={14} className={styles.pathChevron} aria-hidden="true" />
+            <span className={styles.pathIdentity}>
+              <span className={styles.pathFilename} title={path.filename}>{path.filename}</span>
+              <FeffPathShellLabel shell={shell} nleg={path.metadata.nleg} hasContext={!!radialContext} hasAnalysis={!!radialState.data} loading={radialState.loading} error={radialState.error} />
+            </span>
+          </button>
+          <button type="button" aria-label={`Remove path ${i + 1}`} title={`Remove ${path.filename}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
+        {path.label && path.label !== path.filename && <p className={styles.pathLabel} title={path.label}>{path.label}</p>}
         <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
         {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
         {member && <p className={styles.metadata}>{member.element} pair {member.group_id}</p>}
+        {/* Keep the inputs mounted so folding a path preserves edits and native undo. */}
+        <div id={detailsId} className={styles.pathDetails} hidden={!expanded}>
         <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
@@ -567,6 +583,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
             ["deltar", "ΔR (Å)", "Change in the FEFF effective half-path length."],
             ["sigma2", "σ² (Å²)", "Mean-square relative displacement."],
           ] as const).map(([field, label, title]) => <label key={field} title={title}>{label}<input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
+        </div>
         </div>
       </div>}} />
       {draft.paths.length > 0 && <p className={styles.help}>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>}

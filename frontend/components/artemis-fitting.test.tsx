@@ -223,9 +223,12 @@ describe("ArtemisFittingPanel", () => {
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
     for (const [index, source] of example().paths.entries()) {
-      expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).toBeVisible()
+      expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).not.toBeVisible()
       expect(screen.getByText(source.filename)).toBeVisible()
     }
+    fireEvent.click(screen.getByRole("button", { name: "Expand all path details" }))
+    for (const index of [1, 2, 3, 4]) expect(screen.getByLabelText(`Path ${index} S₀²`)).toBeVisible()
+    expect(api).not.toHaveBeenCalled()
     expect(onPathsChange.mock.calls.at(-1)?.[0]).toHaveLength(4)
     await runFit()
     const submitted = submittedModel()
