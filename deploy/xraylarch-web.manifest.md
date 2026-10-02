@@ -67,6 +67,15 @@ clean environment and provides only `XRAYLARCH_DATA_ROOT`, `BACKEND_URL`,
 `NEXT_BACKEND_URL`, and non-secret runtime variables. It does not inherit
 provider, email, Slack, or Dr.XAS database secrets.
 
+Bug reports filed from the app are written below the data root at
+`data/bug_reports/<report_id>/` with owner-only permissions and are reviewed on
+disk; no endpoint reads them back. The clean environment therefore leaves the
+Slack heads-up off. An operator who wants it may add the non-secret channel id
+`XRAYLARCH_BUGREPORT_SLACK_CHANNEL` and the bot token
+`XRAYLARCH_SLACK_BOT_TOKEN` (scope `chat:write`) to the backend environment only;
+a missing or failing Slack post never affects the saved report.
+`XRAYLARCH_BUG_REPORT_MAX_BYTES` (default 100000000) caps a single submission.
+
 The backend-only integration launcher additionally reads the optional private
 regular file `/local/apps/xraylarch-web/config/integration.json`, owned by the
 service user with no group/other permissions. Its explicit allowlist contains

@@ -447,4 +447,23 @@ describe("backend proxy", () => {
     expect(response.status).toBe(200)
     expect(fetcher.mock.calls[0][1].headers.get("idempotency-key")).toBe("retry-1")
   })
+
+  it("forwards bug report submissions and only accepts POST", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: "success", report_id: "bug_20261002_101500_abcdef12" }), {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const path = ["api", "bug-reports"]
+    const form = new FormData()
+    form.set("description", "The plot went blank")
+    form.set("user_email", "ana@example.org")
+    const response = await POST(new Request("http://localhost/api/backend/api/bug-reports", { method: "POST", body: form }), { params: Promise.resolve({ path }) })
+    expect(response.status).toBe(200)
+    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/bug-reports")
+    expect((await response.json()).report_id).toBe("bug_20261002_101500_abcdef12")
+    fetcher.mockClear()
+    const rejected = await GET(new Request("http://localhost/api/backend/api/bug-reports"), { params: Promise.resolve({ path }) })
+    expect(rejected.status).toBe(404)
+    expect(fetcher).not.toHaveBeenCalled()
+  })
 })

@@ -329,3 +329,22 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-cif-selection { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 6px 12px; font-size: var(--text-label); color: var(--ath-muted); border-bottom: 1px solid var(--ath-line); }
 .ath-cif-selection select { flex: 1; min-width: 0; max-width: 100%; }
 .ath-cif-empty { margin: 0; padding: 18px; font-size: var(--text-body); line-height: var(--leading-body); color: var(--ath-muted); }
+
+/* Bug report / feedback dialog */
+.ath-report .ath-modal-body { display: flex; flex-direction: column; gap: 2px; }
+.ath-report-types { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.ath-app .ath-report-types button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: 1px solid var(--ath-line); border-radius: 999px; background: var(--ath-surface-muted); color: var(--ath-muted); font-size: var(--text-label); }
+.ath-app .ath-report-types button.selected { border-color: var(--ath-green); color: var(--ath-ink); background: var(--ath-popover); }
+.ath-report textarea { font-size: var(--text-input); line-height: 1.6; }
+.ath-report-drop { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 10px 12px; margin: 2px 0 8px; border: 1px dashed var(--ath-line); border-radius: 6px; background: var(--ath-surface-muted); }
+.ath-report-drop.dragging { border-color: var(--ath-green); background: var(--ath-popover); }
+.ath-report-drop .ath-hint { margin: 0; }
+.ath-app .ath-report-drop > button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; }
+.ath-report-files { list-style: none; display: grid; gap: 4px; padding: 0; margin: 0 0 10px; }
+.ath-report-files li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 1px solid var(--ath-line); border-radius: 4px; font-size: var(--text-label); }
+.ath-report-files li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ath-report-files li small { color: var(--ath-muted); margin-left: 6px; }
+.ath-app .ath-report-files li button { padding: 2px; border: 0; background: transparent; color: var(--ath-muted); }
+.ath-report-error { margin: -6px 0 10px; color: var(--ath-error-ink, #994f30); font-size: var(--text-caption); line-height: 1.5; }
+.ath-app .ath-status .ath-report-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 0; background: transparent; color: var(--ath-muted); font-size: var(--text-caption); text-decoration: underline dotted; }
+.ath-app .ath-status .ath-report-link:hover { color: var(--ath-ink); }

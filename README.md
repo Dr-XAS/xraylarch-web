@@ -362,6 +362,16 @@ controls persist when closing and reopening the panel. The
 [preference reference](docs/athena-smoothing-preferences-reference.md) records
 why Athena's effective SG default is order 9 despite its literal default 4.
 
+**Help → Report a bug or feedback…** (also the **Report bug** link in the
+status bar) files a bug, feature request or feedback to this server's local bug
+library. Each report is one folder under `XRAYLARCH_DATA_ROOT/bug_reports/` in
+the same `report.json` layout Dr.XAS uses, with the description, pasted or
+chosen screenshots, attached files, browser and build metadata, a summary of the
+open project and its recent journal, and, when the checkbox is left on, a copy
+of the current project. Nothing leaves the host unless the operator sets the
+optional Slack variables described in the deploy manifest. There is no read
+endpoint or admin page: reports are reviewed on disk.
+
 ### Run locally
 
 The frontend uses Node.js 24 LTS (`frontend/.nvmrc`); Node.js 22 or newer is
