@@ -9,11 +9,12 @@ test("shows matching shell labels beside every fitting and generated FEFF filena
   await page.goto("/")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   const fitting = page.getByRole("region", { name: "Artemis EXAFS fitting setup" })
-  const pathCard = (index: number) => fitting.getByRole("textbox", { name: `Path ${index} label`, exact: true }).locator("../..")
+  const pathCard = (index: number) => fitting.locator("[data-path-id]").filter({ has: page.getByRole("checkbox", { name: `Include path ${index}`, exact: true }) })
   for (const index of [1, 2, 4]) {
     await expect(pathCard(index).getByText("Shell unassigned", { exact: true })).toBeVisible()
   }
   await expect(pathCard(3).getByText("Multiple scattering", { exact: true })).toBeVisible()
+  await fitting.getByRole("button", { name: "Expand all path details", exact: true }).click()
   const expressions = fitting.getByRole("textbox", { name: /^Path \d+ (?:S₀²|ΔE₀|ΔR|σ²)/ })
   await expect(expressions).toHaveCount(16)
   const originalExpressions = await expressions.evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value))
