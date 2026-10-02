@@ -262,7 +262,9 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-parameters .ath-panel-heading { border-bottom: 1px solid var(--ath-line); }
 .ath-parameters .ath-panel-heading svg { color: var(--ath-muted); }
 .ath-parameter-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--ath-line); }
-.ath-app .ath-parameter-tabs button { scroll-margin-top: 8px; min-height: 38px; border-radius: 0; border-bottom: 2px solid transparent; justify-content: center; font-size: var(--text-body); }
+.ath-app .ath-parameter-tabs button { scroll-margin-top: 8px; min-width: 0; min-height: 38px; border-radius: 0; border-bottom: 2px solid transparent; justify-content: center; gap: 6px; font-size: var(--text-section); line-height: var(--leading-heading); white-space: normal; }
+.ath-parameter-tabs button svg { flex: 0 0 20px; }
+.ath-parameter-tabs button span { min-width: 0; overflow-wrap: anywhere; }
 .ath-app .ath-parameter-tabs button[aria-selected=true] { color: var(--ath-primary); background: var(--ath-primary-soft); border-bottom-color: var(--ath-primary); }
 .ath-parameter-tab-panel { min-width: 0; min-height: 0; height: 0; flex: 1 1 0px; display: flex; flex-direction: column; }
 .ath-parameter-tab-panel[hidden] { display: none; }
@@ -276,6 +278,14 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-app summary { line-height: var(--leading-control); display: flex; align-items: center; gap: 8px; list-style: none; color: var(--ath-ink); padding: 10px 0; font-size: var(--text-body); font-weight: 600; }
 .ath-app summary::before { content: '›'; display: inline-block; color: var(--ath-muted); font-size: var(--text-section); line-height: 1; width: 8px; }.ath-app details[open] > summary::before { transform: rotate(90deg); }
 .ath-app summary small { margin-left: auto; color: var(--ath-muted); font-size: var(--text-caption); }
+.ath-app summary.ath-parameter-section-heading { min-height: 44px; gap: 6px; padding: 8px 0; font-size: var(--text-section); font-weight: 500; line-height: var(--leading-heading); cursor: pointer; }
+.ath-app summary.ath-parameter-section-heading::before { content: ''; width: 12px; height: 12px; flex: 0 0 12px; background: currentColor; clip-path: polygon(29% 21%, 67% 50%, 29% 79%); }
+.ath-parameter-section-heading::-webkit-details-marker { display: none; }
+.ath-parameter-section-heading > svg { flex: 0 0 20px; }
+.ath-parameter-section-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ath-parameter-section-title > .ath-context-label > span { flex-wrap: wrap; }
+.ath-app .ath-parameter-section-title small { font-weight: 400; }
+.ath-parameter-section-heading:focus-visible { outline-offset: -2px; border-radius: 4px; }
 .ath-fields { display: grid; align-items: end; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding-bottom: 10px; }
 .ath-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label); color: var(--ath-muted); margin-bottom: 8px; min-width: 0; }
 .ath-fields .ath-field { margin-bottom: 0; }.ath-field > span { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px; line-height: var(--leading-control); }.ath-field > span small { color: var(--ath-muted); font-size: var(--text-caption); text-align: right; }
