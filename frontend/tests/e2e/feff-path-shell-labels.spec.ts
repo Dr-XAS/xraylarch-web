@@ -1,0 +1,65 @@
+import { expect, test } from "@playwright/test"
+
+test("shows matching shell labels beside every fitting and generated FEFF filename", async ({ page }, info) => {
+  test.setTimeout(180_000)
+  const errors: string[] = [], fits: string[] = []
+  page.on("pageerror", error => errors.push(error.message))
+  page.on("request", request => { if (/\/fit(?:-saved)?$/.test(request.url())) fits.push(request.url()) })
+  await page.setViewportSize({ width: 1500, height: 1000 })
+  await page.goto("/")
+  await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
+  await page.getByRole("button", { name: "Open Cu₂O EXAFS", exact: true }).click()
+  const fitting = page.getByRole("region", { name: "Artemis EXAFS fitting setup" })
+  const pathCard = (index: number) => fitting.getByRole("textbox", { name: `Path ${index} label`, exact: true }).locator("../..")
+  for (const index of [1, 2, 4]) {
+    await expect(pathCard(index).getByText("Shell unassigned", { exact: true })).toBeVisible()
+  }
+  await expect(pathCard(3).getByText("Multiple scattering", { exact: true })).toBeVisible()
+  const expressions = fitting.getByRole("textbox", { name: /^Path \d+ (?:S₀²|ΔE₀|ΔR|σ²)/ })
+  await expect(expressions).toHaveCount(16)
+  const originalExpressions = await expressions.evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value))
+  const originalRange = await Promise.all(["R min (Å)", "R max (Å)"].map(name => fitting.getByRole("textbox", { name, exact: true }).inputValue()))
+
+  await page.getByRole("button", { name: "Open attached Cuprite CIF", exact: true }).click()
+  const dialog = page.getByRole("dialog", { name: "Crystal structures & FEFF paths" })
+  await dialog.getByRole("radio", { name: "Absorber site 1", exact: true }).click()
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  for (const index of [1, 2, 4]) {
+    await expect(pathCard(index).getByText(/^Shell \d+$/)).toBeVisible()
+  }
+  const firstLabel = pathCard(1).getByText("Shell 1", { exact: true })
+  await expect(firstLabel.locator('[aria-hidden="true"]')).toHaveCSS("background-color", "rgb(6, 182, 212)")
+  await expect(pathCard(2).getByText("Shell 2", { exact: true }).locator('[aria-hidden="true"]')).toHaveCSS("background-color", "rgb(167, 139, 250)")
+  await pathCard(1).screenshot({ path: info.outputPath("fitting-feff-shell-label-desktop.png") })
+  await expect(pathCard(3).getByText("Multiple scattering", { exact: true })).toBeVisible()
+  expect(await expressions.evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value))).toEqual(originalExpressions)
+  expect(await Promise.all(["R min (Å)", "R max (Å)"].map(name => fitting.getByRole("textbox", { name, exact: true }).inputValue()))).toEqual(originalRange)
+  for (const index of [1, 2, 3, 4]) await expect(fitting.getByRole("checkbox", { name: `Include path ${index}`, exact: true })).toBeChecked()
+
+  await page.getByRole("button", { name: "Open attached Cuprite CIF", exact: true }).click()
+  await dialog.getByRole("textbox", { name: "FEFF cluster radius" }).fill("6")
+  await dialog.getByRole("textbox", { name: "FEFF maximum path radius" }).fill("4.1")
+  await dialog.getByRole("combobox", { name: "FEFF maximum legs" }).selectOption("2")
+  await dialog.getByRole("button", { name: "Generate FEFF paths", exact: true }).click()
+  await expect(dialog.getByText("FEFF calculation complete", { exact: true })).toBeVisible({ timeout: 90_000 })
+  const generated = dialog.getByRole("checkbox", { name: /^Select generated / })
+  expect(await generated.count()).toBeGreaterThan(0)
+  for (const checkbox of await generated.all()) {
+    await expect(checkbox.locator("..").getByText(/^Shell \d+$/)).toBeVisible()
+  }
+  const generatedFilename = await generated.first().locator("..").locator("strong").boundingBox()
+  const generatedShell = await generated.first().locator("..").getByText(/^Shell \d+$/).boundingBox()
+  expect(generatedFilename).not.toBeNull()
+  expect(generatedShell).not.toBeNull()
+  expect(Math.abs(generatedShell!.y - generatedFilename!.y)).toBeLessThan(5)
+  expect(generatedShell!.x).toBeGreaterThan(generatedFilename!.x + generatedFilename!.width)
+  await generated.first().locator("../..").screenshot({ path: info.outputPath("generated-feff-shell-label.png") })
+  await dialog.getByRole("button", { name: "Close", exact: true }).click()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await pathCard(1).scrollIntoViewIfNeeded()
+  await expect(firstLabel).toBeVisible()
+  expect(await pathCard(1).evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
+  await pathCard(1).screenshot({ path: info.outputPath("fitting-feff-shell-label-mobile.png") })
+  expect(errors).toEqual([])
+  expect(fits).toEqual([])
+})

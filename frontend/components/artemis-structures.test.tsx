@@ -112,6 +112,10 @@ describe("ArtemisStructures", () => {
     await findAndSelect()
     await generate()
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeVisible()
+    for (const filename of ["feff0001.dat", "feff0002.dat"]) {
+      const candidate = screen.getByRole("checkbox", { name: `Select generated ${filename}` }).closest("label")!
+      expect(within(candidate).getByText("Shell unavailable")).toBeVisible()
+    }
     await act(async () => { fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Remove Copper CIF from project" })) })
     expect(screen.getByRole("dialog")).toBeVisible()
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
@@ -202,6 +206,10 @@ describe("ArtemisStructures", () => {
     await findAndSelect()
     api.mockResolvedValueOnce(generated)
     await generate()
+    for (const [index, filename] of ["feff0001.dat", "feff0002.dat"].entries()) {
+      const candidate = screen.getByRole("checkbox", { name: `Select generated ${filename}` }).closest("label")!
+      expect(within(candidate).getByText(`Shell ${index + 1}`)).toBeVisible()
+    }
     await click("Select shell 1 paths")
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
     await click("Select shell 2 paths")

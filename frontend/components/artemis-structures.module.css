@@ -53,6 +53,8 @@
 .sites label, .paths label { display: flex; gap: 7px; align-items: flex-start; padding: 7px 0; font-size: var(--text-label); }
 .sites input, .paths input { margin: 2px 0 0; accent-color: var(--ath-primary, #268553); flex-shrink: 0; }
 .sites label span, .paths label span { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.paths label .pathIdentity { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 5px 8px; min-width: 0; }
+.paths label .pathIdentity span { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; }
 .sites strong, .paths strong { font-weight: 500; font-size: var(--text-label); overflow-wrap: anywhere; }
 .sites small, .paths small { font-size: var(--text-caption); color: var(--ath-muted, #647669); overflow-wrap: anywhere; }
 .status, .warning, .error { display: flex; flex-direction: column; gap: 4px; padding: 9px; border-radius: 4px; margin: 10px 0; background: var(--ath-canvas, #f5f8f5); color: var(--ath-muted, #647669); font-size: var(--text-body); line-height: var(--leading-body); overflow-wrap: anywhere; }

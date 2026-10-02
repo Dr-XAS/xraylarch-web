@@ -10,6 +10,7 @@ import { useRadialShells } from "@/lib/use-radial-shells"
 import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
 import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
+import { FeffPathShellLabel } from "./feff-path-shell-label"
 import type { AthenaProject } from "@/lib/athena"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"
@@ -480,9 +481,19 @@ export function ArtemisStructures({ contextKey, projectId, version, onProjectCha
               const next = include ? [...new Set([...selected, ...ids])] : selected.filter(id => !ids.includes(id))
               if (next.length > availableSlots) { setError(`These groups need ${next.length} path slots; only ${availableSlots} are available.`); return }
               setSelected(next); setError("")
-            }} renderPath={path => {
+            }} renderPath={(path, shell) => {
               const member = structure && jobRadial ? radialPathNeighbor(path.metadata, structure, jobRadial) : undefined
-              return <div className={styles.paths}><label><input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={controlsDisabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} /><span><strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong><small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs{member ? ` · ${member.element} pair ${member.group_id}` : ""}</small><small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small></span></label></div>
+              return <div className={styles.paths}><label>
+                <input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={controlsDisabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} />
+                <span>
+                  <span className={styles.pathIdentity}>
+                    <strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong>
+                    <FeffPathShellLabel shell={shell} nleg={path.metadata.nleg} hasContext={!!structure && !!site} hasAnalysis={!!jobRadial} loading={radialState.loading} error={radialState.error} />
+                  </span>
+                  <small>R {numberText(path.metadata.reff)} Å · N {numberText(path.metadata.degen)} · {path.metadata.nleg} legs{member ? ` · ${member.element} pair ${member.group_id}` : ""}</small>
+                  <small>{path.metadata.geometry.map(atom => atom.atom).join(" → ")}</small>
+                </span>
+              </label></div>
             }} />
         </>}
       </div>}

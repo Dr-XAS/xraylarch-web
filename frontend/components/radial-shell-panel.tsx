@@ -1,8 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { shellColor, shellRange } from "@/lib/radial-shells"
+import { shellRange } from "@/lib/radial-shells"
 import type { RadialShellState } from "@/lib/use-radial-shells"
+import { ShellSwatch } from "./feff-path-shell-label"
 import styles from "./radial-shell-panel.module.css"
 
 export function RadialShellPanel({ state, selected, onToggle, disabled = false }: {
@@ -32,7 +33,7 @@ export function RadialShellPanel({ state, selected, onToggle, disabled = false }
       <div className={styles.scroll} tabIndex={0} role="region" aria-label="Shell distance ranges">
         <table aria-label="Radial shell distances"><thead><tr><th>Shell</th><th>Distance range (Å)</th><th>Neighbors</th><th>Elements / pair groups</th></tr></thead>
           <tbody>{state.data.shells.map(shell => <tr key={shell.index}>
-            <th scope="row"><span className={styles.swatch} style={{ background: shellColor(shell.index) }} />{onToggle ? <label><input type="checkbox" aria-label={`Show shell ${shell.index}`} checked={selected?.includes(shell.index) ?? false} onChange={() => onToggle(shell.index)} />Shell {shell.index}</label> : `Shell ${shell.index}`}</th>
+            <th scope="row"><ShellSwatch index={shell.index} />{onToggle ? <label><input type="checkbox" aria-label={`Show shell ${shell.index}`} checked={selected?.includes(shell.index) ?? false} onChange={() => onToggle(shell.index)} />Shell {shell.index}</label> : `Shell ${shell.index}`}</th>
             <td>{shellRange(shell).replace(" Å", "")}</td><td>{shell.coordination_number}</td>
             <td><details><summary>{Object.entries(shell.elements).map(([element, count]) => `${element} × ${count}`).join(" · ")}</summary>
               {shell.groups.map(group => <div key={group.id}>{group.element} · pair {group.id} · N {group.coordination_number} · {shellRange(group)}</div>)}

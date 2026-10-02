@@ -1,0 +1,2 @@
+.label { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; color: var(--ath-muted); font-size: var(--text-caption); line-height: var(--leading-body); white-space: nowrap; }
+.swatch { display: inline-block; flex: 0 0 8px; width: 8px; height: 8px; border-radius: 50%; background: var(--ath-muted); }
