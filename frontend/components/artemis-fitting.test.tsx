@@ -303,7 +303,9 @@ describe("ArtemisFittingPanel", () => {
     const request = submittedModel()
     expect(request).toMatchObject({ transform: { kweight: [1, 2], fitspace: "k" }, paths: [{ filename: "feff0002.dat", content: "contents not a file path", s02: "amp * 0.5" }] })
     expect(request.paths[0].metadata.degen).toBe(12)
-    expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } })
+    // The status text renders in the commit that sets the result; onFitResult runs in that
+    // commit's passive effect, which can flush after findByText has already resolved.
+    await waitFor(() => expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } }))
   })
 
   it("saves Set and Def draft text with editable bounds", async () => {

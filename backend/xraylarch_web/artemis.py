@@ -12,14 +12,14 @@ import math
 import tempfile
 import threading
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal, Union
 
 import numpy as np
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from larch import Group
 from larch.fitting import ParameterGroup, param, param_group
 from larch.xafs import feffit, feffit_dataset, feffit_report, feffit_transform, feffpath
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
 from .errors import WebInputError
 
@@ -69,7 +69,7 @@ class PathInput(StrictModel):
         return self
 
 
-class FitPath(PathInput):
+class PathSettings(StrictModel):
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     label: str = Field(default="", max_length=120)
     enabled: bool = True
@@ -77,6 +77,20 @@ class FitPath(PathInput):
     e0: str = Field(default="del_e0", max_length=256)
     deltar: str = Field(default="del_r", max_length=256)
     sigma2: str = Field(default="sig2", max_length=256)
+
+
+class FitPath(PathInput, PathSettings):
+    pass
+
+
+class FeffJobPath(PathSettings):
+    """A path named by the FEFF job that made it, so its file need not travel back.
+
+    Only the fit route takes these. A saved model keeps the file text, because a
+    job is deleted after 24 hours and the model has to outlive it.
+    """
+    feff_job: str = Field(pattern=r"^[0-9a-f]{32}$", description="a FEFF job id, complete and under 24 hours old")
+    feff_path: str = Field(pattern=r"^feff[0-9]{4}$", description="one of that job's paths[].id, such as feff0001")
 
 
 class FitParameter(StrictModel):
@@ -131,6 +145,37 @@ class FitRequest(StrictModel):
     parameters: list[FitParameter] = Field(min_length=1, max_length=32)
     paths: list[FitPath] = Field(min_length=1, max_length=24)
     transform: FitTransform = Field(default_factory=FitTransform)
+
+
+def _path_source(value) -> str:
+    return "job" if isinstance(value, dict) and ("feff_job" in value or "feff_path" in value) else "file"
+
+
+class FitRouteRequest(FitRequest):
+    """The fit route's body: each path either carries its file or names a FEFF job's."""
+    paths: list[Annotated[Union[Annotated[FitPath, Tag("file")], Annotated[FeffJobPath, Tag("job")]],
+                          Discriminator(_path_source)]] = Field(min_length=1, max_length=24)
+
+    def resolve(self, jobs) -> FitRequest:
+        """Read each named path's file out of its job, once per job."""
+        records, paths = {}, []
+        for path in self.paths:
+            if isinstance(path, FitPath):
+                paths.append(path)
+                continue
+            if path.feff_job not in records:
+                record = jobs.get(path.feff_job)
+                if record["status"] != "complete":
+                    _fail(f"FEFF job {path.feff_job} is {record['status']}, not complete; poll it until "
+                          "status is 'complete'.", "feff_job")
+                records[path.feff_job] = {item["id"]: item for item in record["paths"]}
+            source = records[path.feff_job].get(path.feff_path)
+            if source is None:
+                _fail(f"FEFF job {path.feff_job} has no path {path.feff_path}; it has "
+                      f"{', '.join(sorted(records[path.feff_job])) or 'none'}.", "feff_path")
+            paths.append(FitPath(filename=source["filename"], content=source["content"],
+                                 **path.model_dump(exclude={"feff_job", "feff_path"})))
+        return FitRequest(version=self.version, parameters=self.parameters, paths=paths, transform=self.transform)
 
 
 def _expression(expression: str, names: set[str], field: str) -> tuple[ast.AST, set[str]]:
@@ -495,25 +540,43 @@ def build_artemis_router(store) -> APIRouter:
     def inspect(source: PathInput):
         return inspect_path(source)
 
+    @router.get("/capabilities")
+    def capabilities():
+        """The fit and FEFF request bodies, for a caller with no form to fill in."""
+        from .agent_fit import capabilities as describe
+
+        return describe()
+
     @router.get("/examples/cuprite")
     def example():
         return cuprite_example()
 
+    from .artemis_structures import FeffJobs
+
+    jobs = FeffJobs(store.settings.data_root, store=store)
+
     @router.post("/projects/{ident}/groups/{group_id}/fit")
-    def fit(ident: str, group_id: str, request: FitRequest):
+    def fit(ident: str, group_id: str, request: FitRouteRequest,
+            view: Literal["full", "summary"] = Query(default="full")):
+        """Fit one group. `?view=summary` returns the fitted values without the curves."""
         project = store.load(ident)
         # Draft access is capability-guarded by Athena's integration router.
         # Do not create an unguarded alternative entry point to those spectra.
         if project.get("integration") is True:
             _fail("Import the integration draft into a local project before fitting.", "project")
         store.check(project, request.version)
-        result = fit_group(store.group(project, group_id), request)
+        result = fit_group(store.group(project, group_id), request.resolve(jobs))
         store.check(store.load(ident), request.version)
-        return dict(project_id=ident, version=request.version, **result)
+        reply = dict(project_id=ident, version=request.version, **result)
+        if view == "summary":
+            from .agent_fit import fit_summary
+
+            return fit_summary(reply)
+        return reply
 
     from .artemis_structures import build_structures_router
 
-    router.include_router(build_structures_router(store))
+    router.include_router(build_structures_router(store, jobs))
     from .artemis_persistence import build_persistence_router
 
     router.include_router(build_persistence_router(store))

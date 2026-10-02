@@ -32,6 +32,25 @@ def _domain_status(error: WebInputError) -> int:
     return 400
 
 
+def _validation_message(issues) -> str:
+    """Say what each field got wrong, not only which fields.
+
+    "site_index" alone sent a caller guessing whether the index starts at
+    zero or one; Pydantic's own text says "greater than or equal to 1". The
+    issue text is a constraint or a validator's message, never the value
+    sent, so nothing submitted is echoed back.
+    """
+    described = []
+    for issue in issues[:5]:
+        location = ".".join(str(part) for part in issue.get("loc") or () if part != "body")
+        text = str(issue.get("msg") or "invalid").removeprefix("Value error, ")
+        described.append(f"{location}: {text}"[:240] if location else text[:240])
+    if len(issues) > 5:
+        described.append(f"and {len(issues) - 5} more")
+    return "The request contains invalid fields: " + "; ".join(described) + "." if described \
+        else "The request contains invalid fields."
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or Settings.from_environment()
     app = FastAPI(title="XrayLarch Web", version=__version__)
@@ -59,7 +78,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return _error_response(
             ErrorEnvelope(
                 code="invalid_request",
-                message="The request contains invalid fields.",
+                message=_validation_message(error.errors()),
                 fields=fields,
                 recovery="Review the highlighted fields and retry.",
             ),

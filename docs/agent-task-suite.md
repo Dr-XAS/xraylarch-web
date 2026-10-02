@@ -3,11 +3,12 @@
 Written 2026-09-18. Companion to `agent-interface-scope.md`, which argues that without
 this file the interface work "is a nice API and proves nothing."
 
-Four tasks, phrased the way someone with spectra would phrase them. Each carries two
-kinds of assertion. A **state** assertion is machine-checkable from `?view=summary`,
-`?view=parameters` or a group digest, so it can be run unattended. An **answer**
-assertion is on the prose the arm returns, and needs a grader, though most of it
-reduces to a number that either matches the project or doesn't.
+Five tasks, phrased the way someone with spectra would phrase them; T5 was added on
+2026-10-01. Each carries two kinds of assertion. A **state** assertion is
+machine-checkable from `?view=summary`, `?view=parameters` or a group digest, so it can
+be run unattended. An **answer** assertion is on the prose the arm returns, and needs a
+grader, though most of it reduces to a number that either matches the project or
+doesn't.
 
 Every task starts from a fresh project with the bundled copper series loaded, which is
 one command: `example`. The three foil scans are Cu foil at 10 K, 50 K and 300 K. The
@@ -99,33 +100,65 @@ first number concludes the transform is fine.
 that it is below the true Cu–Cu distance because no phase correction is applied. An
 answer that reports 2.30 Å as the bond length fails, regardless of state.
 
-## T4 — Make them comparable first
+## T4 — Does the short scan need cutting first
+
+> The 300 K scan is shorter than the other two, and I want all three in one merge. Do I
+> need to cut the long ones down to match first? Do whatever it takes, merge them, and
+> tell me where the merged spectrum ends.
+
+Reworded on 2026-10-01; see "The old T4" below. The question now has a right answer the
+arm has to find, rather than an instruction it can follow without understanding. The
+`demeter-larch` merge covers only the energy range every member shares, so truncating
+the two long scans first changes nothing: cutting them at 10146 eV gives the same merged
+values point for point, one point shorter at the top.
+
+**State:** six groups; one merge whose `derived.parents` is exactly the three
+originals. Truncating first is allowed and not checked.
+
+The trap behind the question is still there. The 300 K scan is 204 points shorter than
+the others, so the default merge drops it, and truncating does not save it either: the
+cut scans keep 460 and 468 points against its 408. Passing needs
+`exclude_short_data: false`, a `short_data_margin` of at least 60 after a cut, or the
+300 K scan selected first. Groups are measured only against the first one selected.
+
+**Answer:** says the cut is unnecessary, because the merge covers only the shared range
+(or, having cut, that the cut changed nothing), and gives the merged spectrum's end
+within 15 eV of 10140. It ends at 10134.3 eV with a cold scan selected first and at
+10139.2 eV with the 300 K scan first, on whose grid it then lands.
+
+### The old T4
+
+Runs one to four used this wording:
 
 > The 300 K scan is shorter than the other two. Cut the long ones down to match before
 > merging, so the merge isn't averaging three points against two at the top end.
 
-A numeric feedback loop. The arm has to read a number out of one group, feed it into an
-action on two others, then confirm it landed. `truncate` has a preview, so an arm that
-uses the preview should reach this in fewer rejected commands than one that doesn't.
+It also asserted that the three foils' ranges end within 15 eV of each other, and its
+answer was the energy truncated at, within 15 eV of 10146. The premise is false for
+`demeter-larch`, as the fourth run's CLI arm pointed out, and the range assertion
+rewarded an arm for doing what it was told rather than for being right. T4 results from
+before the rewording are not comparable with later ones.
 
-**State:** the three original groups' energy ranges end within 15 eV of each other; four
-groups; the merge's `derived.parents` is exactly the three truncated originals.
+## T5 — A distance, not a peak
 
-This one has a second trap behind the first. Matching the energy ranges does not match
-the point counts: the truncated scans keep 460 and 468 points against the 300 K scan's
-408, so the default merge still drops it. Passing needs `exclude_short_data: false`, a
-`short_data_margin` of at least 60, or the 300 K scan selected first. Groups are only
-measured against the first one selected, so with the shortest scan first nothing is
-excluded and the merge lands on its grid, ending at 10139 eV. The threshold was 10 eV when this
-was drafted, and the first run missed it at 11.54 eV because `truncate` snaps to the
-nearest measured point and the two long scans are on a coarser grid up there than the
-300 K one. Fifteen is the honest number for a cut that lands on real data.
+> How far apart are the copper atoms in the 10 K foil? I need the nearest-neighbour
+> distance to a couple of hundredths of an angstrom, and how far to trust it.
 
-**Answer:** states the energy it truncated at, within 15 eV of 10146.
+Added 2026-10-01, after the fit route took `?view=summary`. T3 ends on a |chi(R)| peak
+that is not a bond length. This task asks for the bond length, which can come only from
+fitting FEFF paths: from the bundled AMCSD structures through a FEFF job, or with
+`larchctl fit "10 K" --structure 11145`.
+
+**State:** the project is at the version it started at, with five groups. A fit saves
+nothing.
+
+**Answer:** between 2.52 and 2.58 Å, from a fit with twelve Cu neighbours, with an
+uncertainty or a stated reason to doubt it. The structure fit gives 2.547 Å with
+sigma2 0.0038 Å². An answer of 2.30 Å, the peak, fails.
 
 ## What this suite does not cover
 
-No fitting, no LCF or PCA, no import of anything that isn't the bundled example, and
+No LCF or PCA, fitting only in T5, no import of anything that isn't the bundled example, and
 nothing touching the twelve actions that exist for file-format repair. That's deliberate
 for a first run. If the app-driving arm can't do these four, widening the suite measures
 nothing new, and if it can, the next version should add a task per analysis route.
@@ -398,3 +431,413 @@ This is the transcript warning from the first run coming back in a worse form. T
 finding was that project state could not answer the question and the transcript could.
 In fact the transcript gave the wrong answer, and project state had the right one, under
 a key no view exposed.
+
+## Third run, 2026-10-01
+
+The first run with two blind arms per task: a subagent with only `larchctl`, and one
+with only HTTP. Neither read backend source. The harness in
+`backend/xraylarch_web/agent_suite.py` makes the run repeatable:
+
+- `setup` loads the example into a fresh project behind a metering proxy.
+- `report` runs the state assertions and prints the meter's totals.
+- `finish` stamps the end of the arm's run. Without it, the meter also counted my own
+  reads after the run, one of which was a 957 KB full project GET.
+
+Wire bytes are what the backend sent, whether or not the arm printed them. Tool calls
+and end context are read from the subagent's transcript.
+
+| arm | task | result | requests | rejected | wire bytes | tool calls | end context |
+|---|---|---|---|---|---|---|---|
+| CLI | T1 | FAIL: one align preview refused | 29 | 1 | 440,540 | 8 | 33,401 |
+| CLI | T2 | pass | 58 | 4 | 172,270 | 22 | 49,267 |
+| CLI | T3 | pass | 12 | 0 | 27,337 | 5 | 23,406 |
+| CLI | T4 | pass | 28 | 0 | 81,914 | 11 | 34,778 |
+| HTTP | T1 | FAIL: one preview refused | 12 | 1 | 37,419 | 7 | 40,474 |
+| HTTP | T2 | pass | 23 | 0 | 87,527 | 17 | 48,467 |
+| HTTP | T3 | pass | 7 | 0 | 17,615 | 4 | 26,653 |
+| HTTP | T4 | pass | 18 | 0 | 63,612 | 11 | 42,246 |
+
+The CLI T1 arm's wire bytes are about 370 KB of CSV exports, which it wrote to disk.
+To decide whether the scans were comparable it rebuilt the overlay in numpy. The HTTP
+arm did the same through the export route.
+
+Answers: T2 reported a spread of 0.44. T3 cut kmax to 18 and put the first shell at
+2.27 Å, saying that it is not the bond length. T4 merged with `exclude_short_data:
+false`.
+
+What it found, and what changed in `2bf6abf01` and `a83a21bf8`:
+
+- **Both T1 arms tried to measure a shift with the align preview**, and both were
+  refused because the foils are linked. Reading a number should not need a write's
+  permissions. `GET .../compare` now measures every group against the first: the shift
+  align would fit, the E0 and edge-step differences, the XANES difference, chi(k)
+  amplitude per k window, and the shared range. It is read-only, so it works on linked
+  groups.
+- **Neither arm could tell that the shared reference is a copy of the 300 K scan**
+  without comparing exports byte for byte. The summary's `same_data` and compare's
+  `same_data_as` now say it outright.
+- **The CLI T2 arm's four rejections** came from two sources. One was the legacy align
+  path, reached when `method` was omitted. The other was a label passed as
+  `standard_id`. Align now takes the native path unless only a `reference_id` is sent,
+  and larchctl resolves labels in every option that names a group.
+- **A parameters reply did not say what Larch did with the value.** Under
+  `?view=summary` it now carries `applied`, requested beside effective.
+
+## Fourth run, 2026-10-01
+
+Same eight arms on the new code, same harness.
+
+| arm | task | result | requests | rejected | wire bytes | tool calls | end context |
+|---|---|---|---|---|---|---|---|
+| CLI | T1 | pass | 23 | 0 | 71,052 | 5 | 25,627 |
+| CLI | T2 | pass | 39 | 0 | 127,437 | 11 | 35,614 |
+| CLI | T3 | pass | 10 | 0 | 32,999 | 4 | 25,413 |
+| CLI | T4 | FAIL: ranges not matched | 26 | 0 | 84,350 | 10 | 39,228 |
+| HTTP | T1 | pass | 7 | 0 | 23,291 | 6 | 37,376 |
+| HTTP | T2 | pass | 16 | 0 | 50,681 | 11 | 38,939 |
+| HTTP | T3 | pass | 10 | 0 | 42,845 | 7 | 30,067 |
+| HTTP | T4 | pass | 12 | 0 | 37,623 | 8 | 43,018 |
+
+Against the third run:
+
+- Both T1 arms pass, on 84% and 38% fewer wire bytes, with no exports.
+- The CLI T2 arm went from 22 tool calls and 4 rejections to 11 and none.
+- The HTTP T2 arm went from 23 requests to 16.
+
+The T1 answers say more than before. Both name the 300 K scan's energy offset and its
+damped chi(k), and attribute the damping to Debye–Waller. One reads the beamline and
+year from the citation. Both notice that the shared reference is the 300 K scan.
+
+**The one failure is the task's fault.** The CLI T4 arm declined to truncate. It said
+that the merge already restricts itself to the range every member covers, so cutting
+first changes nothing. That is correct: truncating the cold scans at 10146 eV gives the
+same merged values point for point, one point shorter at the top. T4's premise ("so the
+merge isn't averaging three points against two") is false for `demeter-larch`, and the
+assertion "ranges end within 15 eV" rewards an arm for doing what it was told rather
+than for being right. I have left the task as it is, because rewording it breaks
+comparison with the earlier runs. The CLI T4 result should be read as a correct refusal.
+AGENTS.md and the truncate note now say the cut is unnecessary. T4 was reworded after the
+fifth run anyway; see "The old T4".
+
+**The arms were reading a stale AGENTS.md.** Subagents receive the project's AGENTS.md
+as an attachment cached when the session started, not the file on disk. So no arm in
+this run saw the compare section, and the gains came from the catalog and the CLI.
+Future runs should tell each arm to Read AGENTS.md from disk.
+
+Friction from this run, fixed in `bbfc52e6d` and `c0d15d193`:
+
+- **The HTTP T3 arm looked for `applied` under `last_operation`**, where the rest of
+  what a command did is reported, and did not find it. It has moved there.
+- **The digest table had no file or citation.** The CLI T1 arm needed `--json` to find
+  out where a scan came from. The table now prints both, and the same-data line names
+  the file.
+- **compare's SHIFT column read as the summary's SHIFT**, which is a different number.
+  It is now ALIGN BY.
+- **compare's `same_data_as` covered only the selection.** The duplicate worth knowing
+  about is usually the one nobody selected, so it now looks across the project.
+- **Naming a merge "… 300 K …" made "Cu foil · 300 K" ambiguous** under substring
+  matching. A whole-label match now wins.
+- **The merge preview said nothing about agreement.** `agreement` now gives the merge's
+  scatter and each member's rms from it as fractions of the merged range. The CLI
+  prints the preview as a table.
+- **"Fit if you need distances" led nowhere.** The Artemis fit route takes
+  `?view=summary`, which is 2.5 KB rather than 250 KB. `larchctl fit` builds a fit from
+  the Cuprite example, from FEFF run on a bundled structure, or from path files. T5
+  above tests it.
+- **The truncate note did not say that interval bounds are inclusive**, or that a bound
+  outside the data is refused. It now says both.
+
+
+## Fifth run, 2026-10-01
+
+Six arms: T5, the new distance task, on both interfaces, and T2 and T3 again to check
+the fourth run's fixes. Each arm was told to Read AGENTS.md from disk rather than trust
+the cached attachment, so this is the first run that saw the compare and fit sections.
+
+| arm | task | result | requests | 422s | wire bytes | tool calls | end context |
+|---|---|---|---|---|---|---|---|
+| CLI | T5 | pass, 2.547 ± 0.005 Å | 109 | 3 | 755,252 | 8 | 41,783 |
+| HTTP | T5 | pass, 2.548 ± 0.01 Å | 33 | 10 | 118,950 | 11 | 49,340 |
+| CLI | T2 | pass | 37 | 0 | 122,294 | 12 | 45,556 |
+| HTTP | T2 | pass | 15 | 0 | 50,077 | 12 | 47,839 |
+| CLI | T3 | pass, kmax 18 | 20 | 0 | 98,077 | 8 | 35,374 |
+| HTTP | T3 | pass, kmax 18 | 12 | 0 | 80,436 | 10 | 43,278 |
+
+No command was rejected in any arm. The 422s are fit and FEFF bodies refused by the
+Artemis validators, which the transcript does not record.
+
+**Both T5 arms got the distance, and both said how far to trust it.** Each fitted the
+first shell of FEFF run on fcc copper and landed within 0.001 Å of the other. Each then
+went past the stderr. The HTTP arm refitted eleven times over kmax, kmin, R window, k
+weight and a second structure, held del_e0 either side of its best value, and put the
+uncertainty in the 0.86 del_e0/del_r correlation rather than in the 0.002 Å stderr. It
+also checked the result against copper's lattice constant. Neither quoted the 2.30 Å
+peak.
+
+**Context rose by 9–13 K tokens per arm, and AGENTS.md is the likeliest cause.** Against
+the fourth run, the T2 arms take about the same requests, wire bytes and tool calls,
+and finish about 10 K tokens higher. Each arm still received the stale attachment, then
+Read the current file on top of it: about 16 KB, some 4 K tokens, with line numbers
+added. That accounts for under half of the rise; the rest I cannot attribute from these
+numbers. Either way the guide is now a cost every arm pays before it starts. At 313
+lines after this run's additions, it is the next thing to watch.
+
+**Both T3 arms fitted a distance they were not asked for.** T3 asks only for a better
+transform range. Having read "the peaks are not bond lengths", both arms ran FEFF and a
+fit and reported 2.547–2.549 Å. That is correct and costs about 50 KB of wire. Whether
+it is welcome depends on the user.
+
+**The CLI T5 arm's 755 KB is FEFF, run twenty times.** Each `larchctl fit --structure`
+reran FEFF and polled a 20 KB status reply, and the arm ran twenty fits to test the
+ranges. None of that reached its context, since the CLI printed only tables, but it is
+server work and wall time.
+
+Friction from this run, fixed after it:
+
+- **A refused field did not say why.** `site_index: 0` came back as "invalid fields:
+  site_index", and both HTTP T5 arms found by trial that it counts from 1. Every 422
+  now carries each field's constraint in its message: "site_index: Input should be
+  greater than or equal to 1".
+- **`GET /api/artemis/capabilities` was a 404**, so the HTTP arms rebuilt the fit body
+  from the Cuprite example: which path fields are needed, which parameter kinds exist,
+  whether `kweight` is a list. It now describes the fit and FEFF bodies from their
+  validators, with defaults, bounds, and the traps in notes.
+- **The CLI fit ignored the group's kmax** and fitted k 3–12 after the arm had just set
+  18. It now takes the group's k window once its kmax has been set, cuts it to FEFF's
+  k 20, and prints where each range came from.
+- **`-t kweight=2` was refused**, because the route takes a list. The CLI wraps it, and
+  takes `1,2,3`.
+- **A fit in k space reported "Fit succeeded" at an R-factor of 0.37.** The fit summary
+  now carries `concerns`: R-factor above 0.05, more variables than independent points,
+  a parameter at its bound, a correlation above 0.9.
+- **Testing the ranges took one invocation, and one FEFF run, per fit.** `larchctl fit
+  --vary kmax=14,16,18 --vary del_e0=3,9` runs FEFF once and tabulates r, sigma2, S0²,
+  E0 and R-factor per variant, with the spread of r for each key.
+- **Polling a FEFF job read 20 KB per poll**, half of it the CIF and the FEFF input.
+  `GET .../feff/jobs/{job}?view=summary` answers in under 1 KB with the status and each
+  path's scatterers, degeneracy and reff; `larchctl` polls with it and reads the full
+  reply once.
+- **`fit --help` did not list the default guesses.** It does now, with their bounds,
+  and so do the defaults of `-t`.
+- **`do align` printed "version 3 -> 4" and nothing else.** A command now prints each
+  field it moved on a group it kept (`~ Cu foil · 300 K  energy_shift 0.000->-2.959
+  edge_step 2.729->2.717`), with skip reasons, processing errors and warnings by group
+  label. Align previews print as a table.
+- **"300 K" stopped resolving once a merge was labelled "… 10 K, 50 K, 300 K …".** A
+  whole part of a label between its `·`s now wins over a substring.
+- **`describe align` read "default 'inspect'"**, which `/command` refuses, and did not
+  say whether the standard belongs in `group_ids`. Both options now say.
+- **A summary merge preview still carried the new group's forty starting parameters**,
+  the longest block left in it. Under `?view=summary` it now keeps E0 alone.
+- **AGENTS.md did not say whether to merge `mu` or `norm`** when edge steps differ, that
+  unlinking drops the merge's reference channel, how `-o` values are parsed, or that the
+  original edge steps should be read before aligning. It says all four.
+
+Not fixed: `structures` lists no cell or temperature, so the CLI T5 arm picked a
+high-temperature cell without knowing (the fit's deltar absorbs it). A fit body still
+carried every path file's text rather than naming a FEFF job's paths; that was fixed
+after the run, below.
+
+## After the fifth run, 2026-10-01
+
+Nine questions were left open after the fifth run. These are the decisions taken.
+
+**Changed:**
+
+- **AGENTS.md is slimmed, from 315 lines to 245.** It keeps every rule and drops
+  the worked numbers from the copper example. Those numbers were most of its length, and
+  they were also the suite's answers: the 2.547 Å fit, the 2.30 against 2.73 edge
+  steps, kmax 18, and the claim that a cut before merging changes nothing. An arm that
+  read the guide could pass T2 to T5 by quoting it. Runs after this one measure the
+  interface, not the guide, and their context costs are not comparable with runs
+  three to five.
+- **T4 is reworded**, under "The old T4" above. Its premise was false for
+  `demeter-larch`, as the fourth run's CLI arm said.
+- **A fit path can name a FEFF job's path** as `{id, feff_job, feff_path}`, and the
+  server reads the file out of the job. `larchctl fit --structure` now polls the
+  summary view and never reads the 20 KB full reply. Saved Artemis models still carry
+  the file text, because a job is deleted after 24 hours and a model has to outlive
+  it.
+- **A merge's `derived` names the `array` it averaged**, and `larchctl` prints it
+  (`merge of 3 (norm)`). The label stays native Athena's "merge". Changing it would
+  touch the browser and project files for a fact that belongs in the derivation.
+- **The frontend proxy allows `GET .../compare` and forwards `Idempotency-Key`.** The
+  Artemis routes were already allowed by prefix. Before this, compare was a 404
+  through the proxy, and a keyed retry lost its key on the way through.
+
+**Kept as they are:**
+
+- **Align does not find E0 again.** It matches native Athena, which pins E0 through
+  an alignment. The catalog note, AGENTS.md and the CLI's `~` lines already say so,
+  and `parameters` with `e0: null` is one command away.
+- **The example's shared reference stays a copy of the 300 K scan.** It is the demo's
+  documented provenance (`docs/athena-reference-links.md`). It is also a fair trap: two
+  labels holding one measurement is a thing real projects do, `same_data` is tested
+  against it, and both fourth-run T1 arms caught it.
+- **The arm reaches this backend over loopback**, through the Dr.XAS backend's
+  existing `internal_url`, never over the ingress. See question 1 in
+  `agent-interface-scope.md`.
+- **The two arms do not share numerics.** Dr.XAS pins upstream Larch from August 2025,
+  and this backend runs a fork 97 files further on. Its align is not Larch's at all.
+  Equivalence is scored per quantity with a tolerance, which is how the answer
+  assertions are already written. See question 3.
+
+
+## Sixth run, 2026-10-01
+
+All five tasks on both interfaces: ten arms, the first run since AGENTS.md was slimmed
+and T4 reworded.
+
+The harness changed, so this run is a new baseline. Through the fifth run each arm was
+a subagent of the session that wrote the code, and it received a cached copy of
+AGENTS.md before it read the current one. Here each arm was a headless `claude -p`
+(Opus 5.5) in a fresh directory that held only the current AGENTS.md and a link to
+`backend/`. Each arm had its own `metered_app` backend and data root, and was allowed
+Bash, Read and Write. Context and tool-call counts are not comparable with earlier
+runs. Wire bytes and requests are.
+
+| arm | task | result | requests | wire bytes | tool calls | end context | wall | cost |
+|---|---|---|---|---|---|---|---|---|
+| CLI | T1 | pass | 10 | 28,758 | 4 | 37,088 | 38 s | $0.30 |
+| HTTP | T1 | pass | 5 | 15,546 | 3 | 43,568 | 37 s | $0.34 |
+| CLI | T2 | pass, spread 0.440 | 20 | 59,752 | 8 | 40,461 | 55 s | $0.39 |
+| HTTP | T2 | pass, spread 0.440 | 15 | 46,415 | 11 | 48,534 | 68 s | $0.51 |
+| CLI | T3 | pass, kmax 17 | 26 | 73,992 | 6 | 38,227 | 42 s | $0.33 |
+| HTTP | T3 | pass, kmax 17 | 19 | 62,377 | 9 | 53,596 | 56 s | $0.51 |
+| CLI | T4 | pass, ends 10134.3 eV | 28 | 84,755 | 10 | 43,116 | 70 s | $0.46 |
+| HTTP | T4 | pass, ends 10134.32 eV | 9 | 25,950 | 5 | 46,004 | 48 s | $0.40 |
+| CLI | T5 | pass, 2.547 ± 0.01 Å | 65 | 171,529 | 6 | 41,009 | 54 s | $0.36 |
+| HTTP | T5 | pass, 2.549 ± 0.005 Å | 29 | 71,052 | 7 | 48,740 | 55 s | $0.45 |
+
+Every arm passed both its state assertions and its answer. No command was rejected and
+no request drew a 4xx, including the 422s that the fifth run's HTTP T5 arm hit ten
+times. The ten arms cost $4.05 in all.
+
+**The slim guide did not cost the answers.** Without the copper numbers to quote,
+every arm read its facts off the tools. Both T1 arms named the 300 K scan with its E0
+offset (+2.92 eV), edge-step ratio (1.19), shorter range (10146 eV against 11362),
+and different beamline and year from the citations, and both saw that the shared
+reference is a copy of it. Both T3 arms chose kmax 17 from the `signal_to_noise`
+table, where the fifth run's arms had copied the guide's 18. Both said the 2.27 Å peak
+is not a bond length.
+
+**The reworded T4 works.** Both arms said the cut is unnecessary because the merge
+already keeps to the shared range, and that the point-count check drops the 300 K scan.
+Both turned `exclude_short_data` off, merged `norm` because the edge steps differ, and
+gave the end as 10134.3 eV. They differed only in scope. The CLI arm unlinked the 300 K
+scan, aligned it (−2.959 eV), found its E0 again, and previewed a second time to show
+the largest scatter falling from 0.20 to 0.035 of the range. The HTTP arm merged the
+scans as they were, reported the 3 eV offset, and offered to align and redo the merge.
+
+**The FEFF job paths were used.** Both HTTP arms that fitted (T3 and T5) named job
+paths as `{id, feff_job, feff_path}` and never sent a file's text. Each polled the job
+once under `?view=summary`. The HTTP T5 arm made 29 requests for 71 KB, where the fifth
+run's made 33 for 119 KB with ten refusals. The CLI T5 arm made 65 for 172 KB, where
+the fifth run's made 109 for 755 KB.
+
+**The CLI still runs FEFF once per `fit --structure`.** The CLI T5 arm called it six
+times to test kmin, kmax, R range, k weight and a held E0, and each call ran a new FEFF
+job on the same structure. `--vary` exists for exactly this, but it covers one change
+at a time against a shared baseline. Fixed after the run: `POST /feff/jobs` now
+answers a request identical to one that completed in the last 23 hours with that job,
+status 200, marked `reused`, and runs no FEFF. The comparison is the whole request,
+and for an attached CIF also the file's hash. The POST takes `?view=summary`, since a
+reused job arrives with its path files. `larchctl` sends it, and the browser gets a
+complete job it does not need to poll.
+
+**The CLI T5 arm fitted at k 3–12, the route's default**, because nobody had set the
+group's kmax. The CLI said where the range came from, and the arm then showed that
+moving kmax from 12 to 17 does not move r. Its uncertainty, ±0.01 Å, it placed in the
+E0–distance correlation (0.85–0.90), like the fifth run's arms.
+
+**One answer stated something false.** The CLI T5 arm added that the 10 K group's E0
+sits "about 3 eV lower than the other foils'". Only the 300 K scan's does, and the
+50 K scan's matches. The claim was an aside and does not affect the distance. The
+summary and the compare table it read were both correct.
+
+**Both T3 arms again fitted a distance they were not asked for**, 2.547–2.548 Å. The
+guide's line that peaks are not bond lengths is enough to send them to Artemis. That
+costs a FEFF job and about 30 KB, and is still left as is.
+
+## Seventh run, 2026-10-01
+
+T5 on both interfaces again, to check FEFF job reuse. The harness is the sixth run's.
+
+| arm | task | result | requests | wire bytes | FEFF runs | tool calls | end context | wall | cost |
+|---|---|---|---|---|---|---|---|---|---|
+| CLI | T5 | pass, 2.547 ± 0.005 Å | 48 | 116,259 | 1 of 5 POSTs | 7 | 41,517 | 50 s | $0.38 |
+| HTTP | T5 | pass, 2.549 ± 0.005 Å | 29 | 66,435 | 1 of 1 | 7 | 49,157 | 55 s | $0.46 |
+
+**Reuse did what it was for.** The CLI arm called `fit --structure` five times and FEFF
+ran once. The other four POSTs came back 200 with the finished job, and the job
+directory held one calculation at the end. Against the sixth run's CLI arm, requests
+fell from 65 to 48 and wire bytes from 172 KB to 116 KB, with no FEFF poll after the
+first job. The HTTP arm ran FEFF once and then refitted twenty times from the job's
+paths. It sent the POST with `?view=summary` as AGENTS.md now says.
+
+**Both answers are the sixth run's, with tighter error bars.** Both arms fitted at
+k 3–16, found the del_e0/del_r correlation (0.85–0.86) to be what limits the distance,
+and checked the result against copper's lattice constant. Neither stated anything
+false. The CLI arm chose its kmax itself, with `-t`, rather than taking the route's
+k 3–12.
+
+After this run, the fifth run's last open item was fixed. Structure search results now
+carry each entry's `cell`, and `measured_at`: the temperature in K and pressure in GPa
+that the entry's title states. AMCSD has no column for these, but about one title in
+five gives them as "Sample: at T = 577 K" or "Note: P = 5.2 GPa". Values from sample
+history, such as "synthesized at" or "after heating to", are skipped, and a title
+that states two different values gives neither but keeps its words in `stated`. The
+field is left out of `GET /structures/{id}`, because a project saves that reply as a
+strict attachment snapshot. `larchctl structures` prints `A` and `MEASURED` columns,
+so the copper series from 293 K to 1343 K no longer looks like eleven copies of one
+structure.
+
+## Eighth run, 2026-10-01
+
+All five tasks on both interfaces, the sixth run's harness, on the code and guide after
+FEFF job reuse and structure conditions. This is the baseline to compare later runs
+with.
+
+| arm | task | result | requests | wire bytes | tool calls | end context | wall | cost |
+|---|---|---|---|---|---|---|---|---|
+| CLI | T1 | pass | 11 | 34,400 | 4 | 37,958 | 35 s | $0.31 |
+| HTTP | T1 | pass | 6 | 16,230 | 3 | 41,785 | 41 s | $0.34 |
+| CLI | T2 | pass, spread 0.44 | 28 | 85,724 | 10 | 42,591 | 64 s | $0.44 |
+| HTTP | T2 | pass, spread 0.44 | 15 | 48,312 | 10 | 49,583 | 84 s | $0.53 |
+| CLI | T3 | pass, kmax 17 | 25 | 67,274 | 5 | 38,187 | 35 s | $0.31 |
+| HTTP | T3 | pass, kmax 17 | 20 | 67,025 | 10 | 49,677 | 61 s | $0.49 |
+| CLI | T4 | pass, ends 10134.3 eV | 12 | 39,599 | 7 | 39,204 | 41 s | $0.35 |
+| HTTP | T4 | pass, ends 10134.32 eV | 14 | 41,742 | 7 | 49,580 | 60 s | $0.48 |
+| CLI | T5 | pass, 2.549 ± 0.01 Å | 48 | 117,321 | 7 | 41,994 | 51 s | $0.38 |
+| HTTP | T5 | pass, 2.549 ± 0.004 Å | 37 | 80,998 | 8 | 53,641 | 74 s | $0.54 |
+
+Every arm passed its state assertions and its answer, no command was rejected, and no
+request drew a 4xx. The ten arms cost $4.17. I found nothing false in any answer.
+
+**The structure conditions were used.** Both T3 arms picked AMCSD 13087, the copper
+entry measured at 293 K, as the bundled structure nearest 10 K; the sixth run's arms
+took 11145, whose conditions are unstated. Both T5 arms fitted from 11145 and from
+13087 and got the same r to 0.0004 Å, which is the evidence that `del_r` absorbs the
+cell difference. That is two FEFF jobs per T5 arm, one per structure, so reuse had
+nothing to save here.
+
+**Both T4 arms aligned before merging**, where in the sixth run only the CLI arm did.
+Each unlinked the 300 K scan, aligned it by −2.959 eV, found its E0 again, merged
+`norm` with `exclude_short_data: false`, and gave the end as 10134.3 eV. The HTTP arm
+put its choice of array in the merge's label, "merge (norm) · Cu foil 10 K + 50 K +
+300 K", through the `label` option. The CLI T4 arm made 12 requests for 40 KB, against
+28 for 85 KB in the sixth run.
+
+**T1 arms now say what to do next without doing it.** Both named the 300 K scan with
+its offsets and its source, saw that the shared reference is the same file, put the
+falling chi(k) amplitude down to Debye–Waller damping, and listed the unlink, align and
+E0 steps for the user to approve. The HTTP arm estimated the extra sigma² behind the
+damping at about 0.006 Å² from the compare ratios alone.
+
+**T2 differed only in finishing.** The HTTP arm found E0 again on both moved scans and
+noticed the 300 K edge step return from 2.717 to 2.729 when it did. The CLI arm left
+E0 pinned and offered to find it again. Both reported the original edge steps, read
+before aligning.
+
+Nothing in this run calls for a change. What remains is the open question of what
+a T3 arm should do unasked: both still fitted a distance, and that is the user's call.

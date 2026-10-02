@@ -147,7 +147,8 @@ def _signal_to_noise(group, arrays) -> dict:
         "note": "rms chi(k) per k window over a noise floor measured across the "
                 "whole k support, so the ratio does not move when the transform "
                 "range does. A window whose ratio is near 1 is noise; put kmax "
-                "below where that starts.",
+                "below where that starts. Each group has its own floor, so compare "
+                "where a group's ratios fall, not ratios across groups.",
     }
 
 
@@ -160,6 +161,7 @@ def group_digest(group: dict) -> dict:
 
     digest = {
         "group": group_summary(group),
+        "citation": group["source"].get("citation"),
         "sampling": _sampling(group),
         "warnings": result.get("warnings") or [],
     }
@@ -198,6 +200,13 @@ def _noise(group) -> dict:
     from .athena_context import measurement_uncertainty
 
     try:
-        return measurement_uncertainty(group)
+        noise = measurement_uncertainty(group)
     except (ScientificError, ValueError, KeyError, IndexError) as exc:
         return {"unavailable": str(exc)}
+    noise["note"] = (
+        "Measured over the current transform range, so these move when kmin or "
+        "kmax does. recommended_kmax is Larch's kmax_suggest: the first k past "
+        "the middle of that range where the back-transformed signal drops below "
+        "epsilon_k, which Larch itself calls fair but pessimistic. "
+        "signal_to_noise is the steadier guide to where the data stops.")
+    return noise

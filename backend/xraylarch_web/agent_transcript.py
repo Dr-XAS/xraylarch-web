@@ -37,6 +37,8 @@ import math
 import os
 from datetime import datetime, timezone
 
+from .agent_views import describe_numbers
+
 # A run of numbers this long in an options dict is data — deglitch point
 # indices, a reorder's id list — not a setting anyone will read back. The
 # marker keeps the length and both ends so a reader can tell what was elided.
@@ -57,7 +59,7 @@ def _condense(value):
         numbers = [item for item in value
                    if isinstance(item, (int, float)) and not isinstance(item, bool)]
         if len(value) > ARRAY_FLOOR and len(numbers) == len(value):
-            return f"<{len(value)} numbers, {value[0]:.6g} .. {value[-1]:.6g}>"
+            return describe_numbers(value)
         kept = [_condense(item) for item in value[:LIST_CAP]]
         # A reorder of a hundred groups sends a hundred ids. Truncating them is
         # fine; doing it without saying so is not, because a reader has no way

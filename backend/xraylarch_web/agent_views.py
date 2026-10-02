@@ -27,6 +27,21 @@ _COUNTED = ("marked", "frozen")
 ARRAY_FLOOR = 8
 
 
+def describe_numbers(values: list) -> str:
+    """The marker an elided array leaves: its length, its ends, and its extremes.
+
+    For an axis the ends are the extremes and the marker stops there. For a
+    curve they are not: a merge's stddev is small at both ends and largest at
+    the edge, and an alignment's derivative is near zero at both ends of its
+    window, so a marker showing only the ends hides the part a caller wanted.
+    """
+    head = f"<{len(values)} numbers, {values[0]:.6g} .. {values[-1]:.6g}"
+    steps = [b - a for a, b in zip(values, values[1:])]
+    if all(step >= 0 for step in steps) or all(step <= 0 for step in steps):
+        return head + ">"
+    return head + f", min {min(values):.6g}, max {max(values):.6g}>"
+
+
 def elide_arrays(value: Any) -> Any:
     """Replace plotting arrays with a description of what was left out.
 
@@ -42,7 +57,7 @@ def elide_arrays(value: Any) -> Any:
         numbers = [item for item in value
                    if isinstance(item, (int, float)) and not isinstance(item, bool)]
         if len(value) > ARRAY_FLOOR and len(numbers) == len(value):
-            return f"<{len(value)} numbers, {value[0]:.6g} .. {value[-1]:.6g}>"
+            return describe_numbers(value)
         return [elide_arrays(item) for item in value]
     return value
 
@@ -91,10 +106,16 @@ def _derivation(group) -> dict | None:
         return None
     parents = source.get("parents") or ([source["parent"]] if source.get("parent") else [])
     derived = {"operation": operation, "parents": parents}
-    if excluded := (source.get("merge") or {}).get("excluded"):
+    if operation == "merge":
+        # The label is native Athena's "merge" whatever was averaged, and a
+        # merge of normalized spectra reads an edge step of about 1 where one
+        # of mu reads the members' average, so say which it was.
+        derived["array"] = source.get("array")
+        # Always present on a merge, so an empty list means nothing was left
+        # out rather than that nobody looked.
         derived["excluded"] = [
             {"id": item["group_id"], "label": item["label"], "reason": item["reason"]}
-            for item in excluded
+            for item in (source.get("merge") or {}).get("excluded") or ()
         ]
     return derived
 
@@ -119,6 +140,9 @@ def group_summary(group: dict) -> dict:
         "id": group["id"],
         "label": group["label"],
         "data_type": group["data_type"],
+        # Two groups read from one file are the same measurement, which no
+        # number in this summary can say on its own.
+        "file": group["source"].get("filename"),
         "is_normalized": group["is_normalized"],
         "is_difference": group["is_difference"],
         "marked": group["marked"],
@@ -155,6 +179,23 @@ def _analysis_summary(analysis: dict, version: int) -> dict:
     }
 
 
+def _same_data(project: dict) -> list[list[str]]:
+    """Labels that hold identical raw arrays, one list per measurement.
+
+    The bundled example carries the 300 K scan twice, once as a sample and once
+    as the foils' shared reference, and a caller reading only numbers took
+    several digests and a byte comparison of two exports to establish it.
+    """
+    from .athena_alignment import signature
+
+    seen: dict[str, list[str]] = {}
+    for group in project["groups"]:
+        # A chi group keeps k in the energy slot, so its arrays are not a scan.
+        if group["data_type"] != "chi" and group["energy"]:
+            seen.setdefault(signature(group), []).append(group["label"])
+    return [labels for labels in seen.values() if len(labels) > 1]
+
+
 def project_summary(project: dict) -> dict:
     """The whole project with no arrays anywhere."""
     groups = [group_summary(group) for group in project["groups"]]
@@ -173,6 +214,7 @@ def project_summary(project: dict) -> dict:
         "format": project.get("format"),
         "counts": counts,
         "groups": groups,
+        "same_data": _same_data(project),
         "analyses": [
             _analysis_summary(analysis, project["version"])
             for analysis in project.get("analyses") or ()
@@ -211,6 +253,24 @@ def project_parameters(project: dict) -> dict:
 
 
 VIEWS = {"summary": project_summary, "parameters": project_parameters}
+
+
+def applied_parameters(project: dict, group_ids: list[str], keys) -> list[dict]:
+    """What a parameters command asked for and what processing then used.
+
+    Without this the reply to a parameters command says only that the version
+    moved, and the one thing the caller wants to know, whether Larch honoured
+    the value or clipped it, costs another read.
+    """
+    wanted = set(group_ids)
+    return [
+        {"id": group["id"], "label": group["label"],
+         "processing_error": group["processing_error"],
+         "values": {key: {"requested": group["parameters"].get(key),
+                          "effective": ((group.get("result") or {}).get("effective") or {}).get(key)}
+                    for key in keys}}
+        for group in project["groups"] if group["id"] in wanted
+    ]
 
 
 def project_view(project: dict, view: str) -> dict:
