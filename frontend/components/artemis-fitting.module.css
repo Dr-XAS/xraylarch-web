@@ -47,6 +47,11 @@
 .editor input[type=checkbox] { accent-color: var(--ath-primary, #268553); margin: 0; width: 13px; height: 13px; flex-shrink: 0; }
 .pathHeader button, .parameterHeader button { flex-shrink: 0; padding: 5px; }
 .metadata { margin: 5px 0 8px; color: var(--ath-muted, #647669); font-size: var(--text-caption); }
+.disorder { margin-top: 8px; border-top: 1px solid var(--ath-line, #dce5dc); padding-top: 8px; }
+.disorder > summary { cursor: pointer; font-size: var(--text-label); color: var(--ath-primary, #268553); }
+.disorder > .check, .disorder > .fullField { margin-top: 8px; }
+.disorder > summary:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+.disorderExpression { overflow-wrap: anywhere; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0; }
 .grid label, .parameterValues label, .fullField { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label); color: var(--ath-muted, #647669); min-width: 0; }
 .grid .fullField { grid-column: 1 / -1; }

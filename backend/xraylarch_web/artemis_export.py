@@ -25,6 +25,7 @@ from .artemis import (
     _parameters, _read_path,
 )
 from .errors import WebInputError
+from .artemis_disorder import canonical_expression
 
 
 def _fail(message):
@@ -214,9 +215,9 @@ def export_larix(group, version):
             # symbol first to retain its original meaning in every expression.
             for field in _PATH_PARAMETERS:
                 tree, _ = _expression(getattr(definition, field), set(values) | _PATH_NAMES,
-                                      f"{definition.label or definition.id}.{field}")
-                _evaluate(tree, values | {name: metadata[name] for name in _PATH_NAMES}, field)
-                expression = ast.unparse(_SubstituteDegeneracy(metadata["degen"]).visit(tree))
+                                      f"{definition.label or definition.id}.{field}", allow_disorder=field == "sigma2")
+                _evaluate(tree, values | {name: metadata[name] for name in _PATH_NAMES}, field, path=path)
+                expression = canonical_expression(ast.unparse(_SubstituteDegeneracy(metadata["degen"]).visit(tree)))
                 setattr(path, field, f"{metadata['degen']!r} * ({expression})" if field == "s02" else expression)
             path.degen = 1.0
             path.use = definition.enabled

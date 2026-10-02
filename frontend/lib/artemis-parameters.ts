@@ -7,10 +7,11 @@ const fields: PathField[] = ["s02", "e0", "deltar", "sigma2"]
 // Match the numerical grammar in backend/xraylarch_web/artemis.py. This only
 // discovers references; expression evaluation remains in the Larch backend.
 const functions = new Set(["sqrt", "exp", "log", "sin", "cos", "tan", "abs"])
+const disorderFunctions = new Set(["sigma2_eins", "sigma2_debye", "eins", "debye"])
 const constants = new Set(["pi", "e"])
 const pathNames = new Set(["reff", "degen", "nleg"])
 const reserved = new Set([
-  "rmass", "rnorman", "gam_ch", "rs_int", "vint", "vmu", "vfermi", "nan", "inf", "skip",
+  "rmass", "rnorman", "gam_ch", "rs_int", "vint", "vmu", "vfermi", "nan", "inf", "skip", "feffpath",
   "items", "keys", "values", "False", "None", "True", "and", "as", "assert", "async", "await",
   "break", "class", "continue", "def", "del", "elif", "else", "except", "finally", "for", "from",
   "global", "if", "import", "in", "is", "lambda", "nonlocal", "not", "or", "pass", "raise",
@@ -18,8 +19,8 @@ const reserved = new Set([
 ])
 const numberToken = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/
 
-function references(expression: string, allowPathNames: boolean): string[] {
-  const fail = (): never => { throw new Error(`Cannot sync expression “${expression}”. Use parameter names, numbers, arithmetic, or sqrt/exp/log/sin/cos/tan/abs.`) }
+function references(expression: string, allowPathNames: boolean, allowDisorder = false): string[] {
+  const fail = (): never => { throw new Error(`Cannot sync expression “${expression}”. Use parameter names, numbers, arithmetic, or supported math. Debye/Einstein functions take two arguments and belong directly in a path’s σ² field.`) }
   if (!expression.trim() || expression.length > 256) fail()
   const tokens = expression.match(/(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?|[A-Za-z_][A-Za-z0-9_]*|\*\*|\S/g) ?? []
   const names = new Set<string>()
@@ -34,14 +35,19 @@ function references(expression: string, allowPathNames: boolean): string[] {
       if (!Number.isFinite(Number(token)) || Math.abs(Number(token)) > 1e12) fail()
     } else if (/^[A-Za-z][A-Za-z0-9_]{0,31}$/.test(token)) {
       if (tokens[index] === "(") {
-        if (!functions.has(token)) fail()
+        const thermal = disorderFunctions.has(token)
+        if (!functions.has(token) && !(thermal && allowDisorder)) fail()
         index++
         sum()
+        if (thermal) {
+          if (tokens[index++] !== ",") fail()
+          sum()
+        }
         if (tokens[index++] !== ")") fail()
       } else if (constants.has(token) || (allowPathNames && pathNames.has(token))) {
         // Built-in constants and FEFF metadata are not fit parameters.
       } else {
-        if (functions.has(token) || pathNames.has(token) || reserved.has(token)) fail()
+        if (functions.has(token) || disorderFunctions.has(token) || pathNames.has(token) || reserved.has(token)) fail()
         names.add(token)
       }
     } else fail()
@@ -114,7 +120,7 @@ export function planArtemisParameterSync(parameters: Definition[], paths: PathEx
   }
   for (const path of included) {
     for (const field of fields) {
-      for (const name of references(path[field], true)) visit(name, path[field].trim() === name ? field : undefined)
+      for (const name of references(path[field], true, field === "sigma2")) visit(name, path[field].trim() === name ? field : undefined)
     }
   }
   if (required.size > 32) throw new Error(`This model needs ${required.size} parameters; the limit is 32. Simplify the path expressions before syncing.`)

@@ -211,8 +211,10 @@ def validate_result(value):
     if not isinstance(value["paths"], list) or not 1 <= len(value["paths"]) <= 24:
         raise ValueError("Invalid saved fit paths.")
     for path in value["paths"]:
-        if not isinstance(path, dict) or set(path) != {"id", "label", "filename", "metadata", "values", "k", "r"}:
+        if not isinstance(path, dict) or set(path) - {"sigma2_expression"} != {"id", "label", "filename", "metadata", "values", "k", "r"}:
             raise ValueError("Incomplete saved fit path.")
+        if "sigma2_expression" in path and (not isinstance(path["sigma2_expression"], str) or not 1 <= len(path["sigma2_expression"]) <= 256):
+            raise ValueError("Invalid saved sigma2 expression.")
         if any(not isinstance(path[k], str) or len(path[k]) > 160 for k in ("id", "label", "filename")):
             raise ValueError("Invalid saved fit path identity.")
         PathMetadata.model_validate(path["metadata"])

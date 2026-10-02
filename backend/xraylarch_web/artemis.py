@@ -22,6 +22,7 @@ from larch.xafs import feffit, feffit_dataset, feffit_report, feffit_transform, 
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, model_validator
 
 from .errors import WebInputError
+from .artemis_disorder import DISORDER_FUNCTIONS, evaluate_disorder, prepare_disorder_dataset, runtime_expression
 
 _LARCH_LOCK = threading.RLock()
 _EXAMPLE = Path(__file__).parent / "resources" / "artemis" / "feffcu01.dat"
@@ -38,8 +39,8 @@ _FUNCTIONS = {name: getattr(math, name) for name in ("sqrt", "exp", "log", "sin"
 _FUNCTIONS["abs"] = abs
 _CONSTANTS = {"pi": math.pi, "e": math.e}
 _PATH_NAMES = {"reff", "degen", "nleg"}
-_RESERVED = set(_FUNCTIONS) | set(_CONSTANTS) | _PATH_NAMES | {
-    "rmass", "rnorman", "gam_ch", "rs_int", "vint", "vmu", "vfermi",
+_RESERVED = set(_FUNCTIONS) | DISORDER_FUNCTIONS | set(_CONSTANTS) | _PATH_NAMES | {
+    "rmass", "rnorman", "gam_ch", "rs_int", "vint", "vmu", "vfermi", "feffpath",
     "True", "False", "None", "nan", "inf", "skip",
 }
 _RESERVED.update(name for name in dir(ParameterGroup) if not name.startswith("_"))
@@ -178,7 +179,7 @@ class FitRouteRequest(FitRequest):
         return FitRequest(version=self.version, parameters=self.parameters, paths=paths, transform=self.transform)
 
 
-def _expression(expression: str, names: set[str], field: str) -> tuple[ast.AST, set[str]]:
+def _expression(expression: str, names: set[str], field: str, *, allow_disorder=False) -> tuple[ast.AST, set[str]]:
     """Allow a small numerical grammar before passing expressions to lmfit.
 
     In particular there are no attributes, indexing, collections, comprehensions,
@@ -214,13 +215,21 @@ def _expression(expression: str, names: set[str], field: str) -> tuple[ast.AST, 
         elif (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
               and value.func.id in _FUNCTIONS and len(value.args) == 1 and not value.keywords):
             visit(value.args[0])
+        elif (isinstance(value, ast.Call) and isinstance(value.func, ast.Name)
+              and value.func.id in DISORDER_FUNCTIONS):
+            if not allow_disorder:
+                _fail(f"{field}: Debye/Einstein functions require a current FEFF path; use them directly in the path's sigma2 expression, not a global Def.", field)
+            if len(value.args) != 2 or value.keywords:
+                _fail(f"{field}: {value.func.id} takes exactly two arguments: sample temperature and characteristic temperature, both in K.", field)
+            for argument in value.args:
+                visit(argument)
         else:
             _fail(f"{field}: use parameter names, arithmetic, or sqrt/exp/log/sin/cos/tan/abs only.", field)
     visit(node)
     return node, used
 
 
-def _evaluate(node: ast.AST, values: dict[str, float], field: str) -> float:
+def _evaluate(node: ast.AST, values: dict[str, float], field: str, *, path=None) -> float:
     def evaluate(value):
         if isinstance(value, ast.Constant):
             result = float(value.value)
@@ -229,7 +238,13 @@ def _evaluate(node: ast.AST, values: dict[str, float], field: str) -> float:
         elif isinstance(value, ast.UnaryOp):
             result = evaluate(value.operand) * (-1 if isinstance(value.op, ast.USub) else 1)
         elif isinstance(value, ast.Call):
-            result = _FUNCTIONS[value.func.id](evaluate(value.args[0]))
+            if value.func.id in DISORDER_FUNCTIONS:
+                try:
+                    result = evaluate_disorder(value.func.id, *(evaluate(arg) for arg in value.args), path)
+                except ValueError as exc:
+                    _fail(f"{field}: {exc}", field)
+            else:
+                result = _FUNCTIONS[value.func.id](evaluate(value.args[0]))
         else:
             left, right = evaluate(value.left), evaluate(value.right)
             if isinstance(value.op, ast.Add): result = left + right
@@ -242,6 +257,8 @@ def _evaluate(node: ast.AST, values: dict[str, float], field: str) -> float:
         return result
     try:
         return float(evaluate(node))
+    except WebInputError:
+        raise
     except (ValueError, ZeroDivisionError, OverflowError, KeyError):
         _fail(f"{field}: the expression is not finite at the initial parameter values.", field)
 
@@ -272,7 +289,7 @@ def _parameters(request: FitRequest):
             continue
         path_trees[path.id] = {}
         for field in _PATH_PARAMETERS:
-            tree, references = _expression(getattr(path, field), set(definitions) | _PATH_NAMES, f"{path.label or path.id}.{field}")
+            tree, references = _expression(getattr(path, field), set(definitions) | _PATH_NAMES, f"{path.label or path.id}.{field}", allow_disorder=field == "sigma2")
             path_trees[path.id][field] = tree
             used.update(references - _PATH_NAMES)
     while True:
@@ -444,7 +461,7 @@ def fit_group(group: dict, request: FitRequest) -> dict:
             path, metadata = _read_path(definition, Path(directory), index)
             if request.transform.kmax > metadata["kmax"] or request.transform.kmin < metadata["kmin"]:
                 _fail(f"{definition.filename}: the fit range must be within the FEFF calculation's {metadata['kmin']:g}–{metadata['kmax']:g} Å⁻¹ range.", "kmax")
-            initial_path = {field: _evaluate(trees[definition.id][field], initial_values | {key: metadata[key] for key in _PATH_NAMES}, f"{definition.label or definition.id}.{field}")
+            initial_path = {field: _evaluate(trees[definition.id][field], initial_values | {key: metadata[key] for key in _PATH_NAMES}, f"{definition.label or definition.id}.{field}", path=path)
                             for field in _PATH_PARAMETERS}
             if initial_path["sigma2"] < 0 or initial_path["s02"] < 0 or initial_path["deltar"] + metadata["reff"] <= 0:
                 _fail(f"{definition.label or definition.id}: initial S0² and sigma² must be nonnegative, and Reff + ΔR must be positive.", "paths")
@@ -452,10 +469,14 @@ def fit_group(group: dict, request: FitRequest) -> dict:
                 notices.append(f"{definition.label or definition.id}: the window taper extends beyond the FEFF k grid; Larch may extrapolate the path. Energy shifts can also extend the required FEFF range.")
             path.label = definition.id
             for field in _PATH_PARAMETERS:
-                setattr(path, field, getattr(definition, field).strip())
+                expression = getattr(definition, field).strip()
+                has_thermal_call = field == "sigma2" and any(isinstance(node, ast.Call) and node.func.id in DISORDER_FUNCTIONS
+                                                            for node in ast.walk(trees[definition.id][field]))
+                setattr(path, field, runtime_expression(expression) if has_thermal_call else expression)
             paths.append(path)
             path_records.append(dict(id=definition.id, label=definition.label or definition.filename,
-                                     filename=definition.filename, metadata=metadata))
+                                     filename=definition.filename, metadata=metadata,
+                                     sigma2_expression=definition.sigma2))
         transform_options = request.transform.model_dump()
         # This Larch version collapses noise estimates for a one-element list
         # to a scalar; pass the matching scalar weight to its residual routine.
@@ -463,6 +484,11 @@ def fit_group(group: dict, request: FitRequest) -> dict:
             transform_options["kweight"] = transform_options["kweight"][0]
         transform = feffit_transform(**transform_options, kstep=0.05, nfft=2048, rwindow="hanning")
         dataset = feffit_dataset(data=data, paths=paths, transform=transform)
+        has_disorder = any(isinstance(node, ast.Call) and node.func.id in DISORDER_FUNCTIONS
+                           for fields in trees.values() for node in ast.walk(fields["sigma2"]))
+        if has_disorder:
+            prepare_disorder_dataset(dataset)
+            notices.append("Debye/Einstein temperatures are in K and sigma² is in Å². A single-temperature fit generally cannot separate a free static offset from a free characteristic temperature; constrain one or use temperature-series evidence.")
         try:
             with np.errstate(over="raise", invalid="raise", divide="raise"):
                 result = feffit(parameters, dataset, rmax_out=10, path_outputs=True, max_nfev=2000)
@@ -472,6 +498,7 @@ def fit_group(group: dict, request: FitRequest) -> dict:
                                 fields=("fit",), recovery="Try physically meaningful starting values and tighter bounds; reduce free parameters if the model is underdetermined.") from exc
         for index, definition in enumerate(active):
             report = report.replace(str(Path(directory) / f"feff{index:04d}.dat"), definition.filename)
+            report = report.replace(f"'{runtime_expression(definition.sigma2)}'", f"'{definition.sigma2}'")
         parameter_rows, correlations = [], []
         for definition in request.parameters:
             fitted = result.params[definition.name]

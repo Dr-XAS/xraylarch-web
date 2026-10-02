@@ -233,8 +233,55 @@ Expressions support `+`, `-`, `*`, `/`, parentheses, and integer powers `**`
 with exponents from -8 to 8. Supported one-argument functions are `sqrt`, `exp`,
 `log`, `sin`, `cos`, `tan`, and `abs`; constants are `pi` and `e`. Path expressions
 can additionally use the current path's `reff`, `degen`, and `nleg`. This is a
-bounded expression language, not a Python or Larch scripting console. Larch's
-Debye/Einstein disorder functions are outside this first iteration.
+bounded expression language, not a Python or Larch scripting console.
+The σ² path field also accepts `sigma2_eins(T, theta)` and
+`sigma2_debye(T, theta)`, with Artemis aliases `eins` and `debye`.
+Both arguments are in K and the result is in Å². These functions use the
+current FEFF path and must appear directly in its σ² expression, rather than
+inside a global Def parameter or another path field.
+
+### Insert a Debye–Waller factor
+
+Open **Insert Debye–Waller factor** below a path's expressions. Choose
+**Independent σ² · Guess**, **Fixed σ² · Set**, **Einstein**, or
+**Correlated Debye**. Enter the measured sample temperature explicitly;
+the initial characteristic temperature of 300 K is an editable fitting start,
+not an inferred material property. **Refine characteristic temperature** chooses
+Guess or Set. **Add static σ²** inserts a fixed additive variance; for example,
+`sig2_static_1 + sigma2_eins(temperature_1, theta_e_1)`.
+
+**Apply σ² model and sync** replaces the selected path's σ² and synchronizes the GDS
+table for included paths. New names avoid collisions with existing parameters;
+retained parameters keep their values and bounds. Use shared names explicitly
+to couple paths, or edit the expression to impose a physically justified
+constraint. The edit uses normal model autosave and project Undo/Redo.
+Models, history and project exports preserve these expressions; Larix exports
+translate the two Artemis aliases to native Larch function names. Native Larix
+execution still depends on its installed Larch and compatible FEFF libraries.
+The fit viewer's **Path disorder** table reports each path's final σ² alongside
+its expression.
+
+σ² is the variance of relative displacement, with EXAFS damping
+`exp(-2*k**2*sigma2)`; it is neither σ nor a crystallographic B factor.
+Thermal models include zero-point motion, accept T = 0 and require theta > 0.
+Einstein uses Larch's effective mass from the path atoms (the pair reduced mass
+for single scattering). Correlated Debye uses the complete path geometry,
+atomic masses and FEFF Norman radius. The web evaluates Larch's Python
+translation of the FEFF6 correlated Debye routine, with FEFF6 constants, so a
+compatible native library is not required. Numerical regression compares it
+with an independent adaptive covariance integral, including multiple scattering.
+
+At one temperature, an independently varied static term and characteristic
+temperature generally cannot be distinguished; constrain one using physical
+evidence. Debye is most appropriate for simple, nearly isotropic solids.
+An Einstein effective mass for a multiple-scattering path follows Larch's
+convention and is not a general model of correlated angular motion.
+Sharing or multiplying σ² across paths requires a geometry-specific reason;
+the number of legs alone does not determine the constraint.
+See the [source-backed disorder inventory](artemis-disorder-research.md) for
+Artemis examples and the distinctions among cumulants, dynamical-matrix and
+molecular-dynamics methods. Simultaneous temperature-series fitting remains
+outside the current single-spectrum fitter.
 
 The exposed physical path parameters follow the
 [Artemis path reference](https://bruceravel.github.io/demeter/documents/Artemis/path/pathparams.html):
@@ -501,7 +548,7 @@ The original fitting implementation was also checked separately:
 Future work includes arbitrary external CIF/Atoms input, disordered structures
 and automatic averaging over absorber sites, desktop Artemis project interchange,
 simultaneous multi-dataset fits, q-space and wavelet fitting,
-background co-refinement, additional cumulants, physical disorder functions,
+background co-refinement, additional cumulants, dynamical-matrix/trajectory disorder inputs,
 restraints, and the remaining desktop GDS parameter types. Directly importing a
 FEFF path uses an existing calculation; the AMCSD workflow separately creates
 FEFF input and runs FEFF8L.
