@@ -161,8 +161,9 @@ def test_finish_keeps_what_was_read_afterwards_out_of_the_meter(tmp_path, capsys
     path = tmp_path / "run.json"
     with TestClient(app) as client:
         path.write_text(json.dumps(agent_suite.setup(client) | {"started": 0.0}))
-        assert agent_suite.main(["finish", str(path)]) == 0
+        assert agent_suite.main(["finish", str(path)], http=client) == 0
         project = json.loads(path.read_text())["project_id"]
+        assert json.loads(path.read_text())["final"]["summary"]["id"] == project
         client.get(f"/api/athena/projects/{project}")  # the operator looking, arrays and all
         agent_suite.main(["report", "T1", str(path), "--meter", str(log)], http=client)
     out = capsys.readouterr().out

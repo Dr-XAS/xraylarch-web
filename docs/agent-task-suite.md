@@ -841,3 +841,49 @@ before aligning.
 
 Nothing in this run calls for a change. What remains is the open question of what
 a T3 arm should do unasked: both still fitted a distance, and that is the user's call.
+
+## Replaying a run, 2026-10-04
+
+A run's transcript can now rebuild its project on later code:
+
+```
+python -m xraylarch_web.agent_suite replay transcript.jsonl --out again.json
+python -m xraylarch_web.agent_suite check T2 again.json
+```
+
+The transcript is the project's `transcript.jsonl` from the run's data root, or the
+JSON that `GET .../transcript?limit=500` or `larchctl log --json --limit 500` returns.
+`replay` makes a fresh project, sends each successful command in order with its group
+ids translated to the new project's, and writes a run file describing the project as
+the arm found it, so `check` and `report` read it like any other run. It stops at the
+first record it cannot send faithfully and says why: options condensed in the record,
+a group it never saw created, or a command that is rejected now. It also reports a
+command that creates a different number of groups, or one under a different label,
+and a version gap that means the original project was changed by something the
+transcript did not record.
+
+The eighth run's transcripts are not in the repository, so the first replayable
+baseline is the next run. Keep each arm's `transcript.jsonl` beside its `run.json` and
+`meter.jsonl`.
+
+`finish` now also keeps a snapshot of the final project, its summary and parameters
+views, in the run file, and `replay --out` does the same for the replayed project.
+`diff run.json again.json` then compares the two quantity by quantity: an energy
+within 0.1 eV, an edge step within 0.005 and a k within 0.01 Å⁻¹ are the same number,
+everything else is compared exactly, groups pair by label, and the ids a group holds
+(its reference, a merge's parents) are compared through label and occurrence.
+It exits 1 on any difference and lists each one with its tolerance. A run file
+without a snapshot is read live from its project id, which is right only while that
+backend is still up.
+
+Before the next baseline, review found two false passes. Relationship comparisons
+now distinguish groups with duplicate names, and replay run files retain original
+rejections so a failed command cannot disappear from a task's grade. Snapshot reads
+also reject HTTP error responses instead of storing them as project snapshots.
+
+Replaying the hand-driven sessions still in the local data root showed what the tool
+is for. Transcripts from before 2026-10-01 diverge in two places, both of them
+interface changes made since: `example` now creates five groups where the record
+says three, and an `align` of the foils that was accepted then is rejected now,
+because the foils share a reference and align refuses linked groups. A transcript
+from after those changes replays without a divergence and passes T2.
