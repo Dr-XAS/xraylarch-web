@@ -1,0 +1,12 @@
+  ok   seq 1 example  +Cu foil · 10 K +Cu foil · 50 K +Cu foil · 300 K +Cu₂O · room temperature +Cu foil · shared reference
+  ok   seq 2 assign_reference
+  skip seq 3 align  preview
+  ok   seq 4 align
+  skip seq 5 merge  preview
+  ok   seq 6 merge  +Cu foil · aligned 10 K + 50 K + 300 K · mu merge
+teWVtFf7L7UKwDWYiy-56SYs: replayed 4 commands, skipped 2 preview
+T2 PASS
+  ok   6 groups  (found 6)
+  ok   one merge of all three foils, by derived.parents  (Cu foil · aligned 10 K + 50 K + 300 K · mu merge <- ['Cu foil · 10 K', 'Cu foil · 50 K', 'Cu foil · 300 K'])
+  ok   50 K and 300 K shifted, 10 K not  (· 10 K 0.0, · 50 K -0.018, · 300 K -2.959)
+no differences beyond tolerance

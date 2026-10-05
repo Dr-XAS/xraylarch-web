@@ -1,0 +1,7 @@
+  ok   seq 1 example  +Cu foil · 10 K +Cu foil · 50 K +Cu foil · 300 K +Cu₂O · room temperature +Cu foil · shared reference
+  ok   seq 2 parameters
+I3E7mHCuisuON_uEBtZ08PSW: replayed 2 commands
+T3 PASS
+  ok   10 K effective kmax below 24  (kmax 18.0)
+  ok   and within available_kmax  (available 25.0)
+no differences beyond tolerance

@@ -1,6 +1,6 @@
 # Scope: making xraylarch-web drivable by an agent
 
-Status: Phase 1 built, Phase 2 partly built. Written 2026-09-18, updated 2026-10-04.
+Status: Phase 1 built, Phase 2 partly built. Written 2026-09-18, updated 2026-10-05.
 
 ## What this is for
 
@@ -341,6 +341,11 @@ steps within 0.005, k within 0.01 Å⁻¹), groups matched by label and ids comp
 through label and occurrence, so duplicate names remain distinct. That is the numerical equivalence check question 3
 asks for, on the app-driving side; the native-tools adapter, and with it the
 comparison, does not exist yet.
+
+The [October 5 baseline](agent-runs/2026-10-05/README.md) retains all ten arms'
+transcripts, final snapshots and API evidence. All state checks and replay comparisons
+passed; strict answer grading passed nine of ten. Read-only FEFF and fit responses
+are retained for review but are not reproduced by command replay.
 
 Fixtures are already here. `examples/xafsdata` holds the Cu foil series, and the
 `example` command action builds the five-group benchmark project in a single call: the

@@ -1,0 +1,20 @@
+{
+  "date": "2026-10-05",
+  "code_revision": "2569bd0d9fe52058eab26ce4e7b042f62f5cba1a",
+  "branch": "fix/flaky-frontend-tests",
+  "agent_protocol": "Fresh Codex subagent for each arm, fork_turns=none, inherited session model and effort; no model override. Only task, API operating guide and connection supplied.",
+  "model_id": "not exposed by collaboration tool; inherited session default",
+  "comparison_limit": "Different model/agent protocol from run eight. No comparable model-token or cost metrics.",
+  "task_count": 5,
+  "interfaces": [
+    "cli",
+    "http"
+  ],
+  "api_guide_sha256": "10b048eb10fd5252ee009f0b74f62452a7f2c056df73280ca9790bb4f08cc378",
+  "replay_scope": "Successful project commands only; read-only FEFF calculations and fits are captured in evidence.jsonl but not rerun by transcript replay.",
+  "source_rejections": "Retained in replay run files for original transcript-dependent grades.",
+  "isolation": "Each arm has its own backend and data root, loopback ephemeral port, fresh example project. No shared FEFF cache.",
+  "evidence": "HTTP request bodies and replies without headers; only requests between started and finished timestamps; no project arrays unless requested by the arm.",
+  "runtime_root": "/tmp/xraylarch-agent-baseline-2026-10-05",
+  "metric_timing": "started.json written by arm before API use; finish stamped when coordinator detects answer.md, before snapshots and verification."
+}

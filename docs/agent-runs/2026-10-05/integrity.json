@@ -1,0 +1,107 @@
+{
+  "passed": true,
+  "arms": [
+    {
+      "arm": "cli-t1",
+      "requests": 9,
+      "response_bytes": 28074,
+      "wall_seconds": 33.79072093963623,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "http-t1",
+      "requests": 5,
+      "response_bytes": 15546,
+      "wall_seconds": 31.919164896011353,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "cli-t2",
+      "requests": 17,
+      "response_bytes": 53555,
+      "wall_seconds": 48.1805899143219,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "http-t2",
+      "requests": 10,
+      "response_bytes": 32658,
+      "wall_seconds": 38.999293088912964,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "cli-t3",
+      "requests": 26,
+      "response_bytes": 65716,
+      "wall_seconds": 41.427205085754395,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "http-t3",
+      "requests": 16,
+      "response_bytes": 52183,
+      "wall_seconds": 64.13290619850159,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "cli-t4",
+      "requests": 7,
+      "response_bytes": 23150,
+      "wall_seconds": 29.043705940246582,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "http-t4",
+      "requests": 5,
+      "response_bytes": 18552,
+      "wall_seconds": 24.836562871932983,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "cli-t5",
+      "requests": 20,
+      "response_bytes": 51382,
+      "wall_seconds": 45.331664085388184,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    },
+    {
+      "arm": "http-t5",
+      "requests": 16,
+      "response_bytes": 47090,
+      "wall_seconds": 55.05730700492859,
+      "state_pass": true,
+      "replay_pass": true,
+      "diff_pass": true
+    }
+  ],
+  "checks": [
+    "JSON parsed",
+    "Distinct original/replay projects",
+    "Snapshot comparison within tolerances",
+    "State and replay exit statuses",
+    "Meter totals recomputed",
+    "Request evidence counts match meter",
+    "No non-2xx requests",
+    "No rejected transcript records",
+    "No final processing errors",
+    "Identical operating guides"
+  ]
+}

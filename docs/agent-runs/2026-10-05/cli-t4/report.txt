@@ -1,0 +1,5 @@
+T4 PASS
+  ok   6 groups  (found 6)
+  ok   one merge of all three foils, by derived.parents  (Cu foil · 10 K + 50 K + 300 K merge <- ['Cu foil · 10 K', 'Cu foil · 50 K', 'Cu foil · 300 K'])
+  transcript: 1 commands, 1 previews, 0 rejected
+  meter: 7 requests (5 GET, 2 POST), 23,150 response bytes, ~5,787 tokens, status {'200': 7}

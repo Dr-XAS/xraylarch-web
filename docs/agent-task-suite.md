@@ -887,3 +887,29 @@ interface changes made since: `example` now creates five groups where the record
 says three, and an `align` of the foils that was accepted then is rejected now,
 because the foils share a reference and align refuses linked groups. A transcript
 from after those changes replays without a divergence and passes T2.
+
+## Ninth run, 2026-10-05
+
+The first retained replayable baseline is in
+[`agent-runs/2026-10-05`](agent-runs/2026-10-05/README.md). All five tasks ran on
+CLI and HTTP with fresh Codex agents, separate backends and data roots. This changes
+the model and agent protocol from run eight, so model cost and context comparisons
+are unavailable.
+
+All ten arms passed state checks; every saved transcript replayed onto a fresh
+project, passed its task checks, and matched the original final summary and effective
+parameters within tolerance. No request failed. Original answers, prompts, operating
+guides, request/reply evidence, meters, transcripts, final snapshots and replay reports
+are retained alongside a capture script.
+
+Strict answer grading gives nine of ten. CLI T1 correctly quantified the alignment
+correction, edge steps and k support, but did not report E0 or energy endpoints,
+leaving only one of the rubric's three specified facts explicit. The omission stays
+a failure; no answer or rubric was changed after the run. Independent review found
+no concrete false statements in the answers.
+
+Both T3 arms chose kmax 18 and also fitted a distance. Both T4 arms merged μ without
+truncating or aligning, retaining all three parents. Both T5 arms found 2.5489 Å and
+reported a practical ±0.02 Å with energy-offset sensitivity evidence. The saved API
+evidence includes these fits; command replay checks project mutations, not read-only
+fit calculations.

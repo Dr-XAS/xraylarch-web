@@ -1,0 +1,9 @@
+{"time": 1791233824.9429939, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_", "query": "view=summary", "status": 200, "bytes": 3132}
+{"time": 1791233833.6690078, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_", "query": "view=summary", "status": 200, "bytes": 3132}
+{"time": 1791233833.675683, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_", "query": "view=summary", "status": 200, "bytes": 3132}
+{"time": 1791233833.687066, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_", "query": "view=summary", "status": 200, "bytes": 3132}
+{"time": 1791233833.7180412, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_/groups/SnSyUVyNBT6L04yNu23qEQsr/digest", "query": "", "status": 200, "bytes": 3245}
+{"time": 1791233833.741987, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_/groups/Uob3UUvC58ieYLKHgFsn2rTx/digest", "query": "", "status": 200, "bytes": 3480}
+{"time": 1791233833.712577, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_/compare", "query": "groups=Uob3UUvC58ieYLKHgFsn2rTx%2CsRb0c9OiGLWsn7axyxkYJINe%2CSnSyUVyNBT6L04yNu23qEQsr", "status": 200, "bytes": 2215}
+{"time": 1791233838.4254148, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_", "query": "view=summary", "status": 200, "bytes": 3132}
+{"time": 1791233838.44324, "method": "GET", "path": "/api/athena/projects/DaJDCocQaMPDTr4u7UtCI9v_/groups/sRb0c9OiGLWsn7axyxkYJINe/digest", "query": "", "status": 200, "bytes": 3474}

@@ -1,0 +1,7 @@
+  ok   seq 1 example  +Cu foil · 10 K +Cu foil · 50 K +Cu foil · 300 K +Cu₂O · room temperature +Cu foil · shared reference
+ikGSB8kwuT8GsEtUfcrojixj: replayed 1 commands
+T1 PASS
+  ok   version unchanged  (1 -> 1)
+  ok   5 groups  (found 5)
+  ok   no rejected commands
+no differences beyond tolerance

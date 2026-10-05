@@ -1,0 +1,33 @@
+{
+  "state_pass": true,
+  "assertions": [
+    {
+      "name": "version unchanged",
+      "ok": true,
+      "detail": "1 -> 1"
+    },
+    {
+      "name": "5 groups",
+      "ok": true,
+      "detail": "found 5"
+    },
+    {
+      "name": "no rejected commands",
+      "ok": true,
+      "detail": ""
+    }
+  ],
+  "meter": {
+    "requests": 9,
+    "gets": 9,
+    "posts": 0,
+    "bytes": 28074,
+    "status": {
+      "200": 9
+    }
+  },
+  "wall_seconds": 33.79072093963623,
+  "replay_exit": 0,
+  "replay_check_exit": 0,
+  "diff_exit": 0
+}

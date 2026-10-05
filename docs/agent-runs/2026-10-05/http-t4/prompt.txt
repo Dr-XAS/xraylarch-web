@@ -1,0 +1,1 @@
+The 300 K scan is shorter than the other two, and I want all three in one merge. Do I need to cut the long ones down to match first? Do whatever it takes, merge them, and tell me where the merged spectrum ends.
