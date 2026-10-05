@@ -1,0 +1,55 @@
+{
+  "source_commit": "b8269f8ca28e54e7f9ec49382b1b6edc11eab085",
+  "full_backend_suite_run": false,
+  "private_users_databases": true,
+  "dependency_changes": false,
+  "backend_total_passed": 400,
+  "runs": [
+    {
+      "cwd": "/tmp/drxas-native-app-comparison-20261005/backend",
+      "command": "DRXAS_USERS_DB_PATH=/tmp/drxas-alignment-regression-users.db /Users/huang.jeffrey/Desktop/Dr.XAS/backend/.venv/bin/python -m pytest tests/test_alignment_global.py tests/test_alignment.py tests/test_alignment_recipe.py tests/test_xas_utilities.py tests/test_native_app_comparison.py -q",
+      "passed": 94,
+      "warnings": 8,
+      "seconds": 6.66
+    },
+    {
+      "cwd": "/tmp/drxas-native-app-comparison-20261005",
+      "command": "DRXAS_USERS_DB_PATH=/tmp/drxas-transform-tests-01a10e14.db /Users/huang.jeffrey/Desktop/Dr.XAS/backend/.venv/bin/python -m pytest backend/tests/test_fourier_preservation.py backend/tests/test_fourier_tools.py backend/tests/test_processing_recipe.py backend/tests/test_xas_quality.py backend/tests/test_actions_endpoints.py backend/tests/test_tool_schema_lint.py -q --tb=short --disable-warnings",
+      "passed": 306,
+      "warnings": 45,
+      "seconds": 6.65
+    },
+    {
+      "cwd": "/Users/huang.jeffrey/Desktop/xraylarch-web",
+      "command": "python3 docs/agent-runs/2026-10-05-native-fixes/test_verify_evidence.py -v",
+      "passed": 3,
+      "seconds": 0.003
+    }
+  ],
+  "failing_first": {
+    "alignment_initial": {
+      "failed": 7,
+      "passed": 0
+    },
+    "alignment_padding_boundary": {
+      "failed": 1
+    },
+    "transform_initial": {
+      "failed": 7,
+      "passed": 1
+    },
+    "transform_filtered_followup": {
+      "failed": 1
+    }
+  },
+  "backend_runtime": {
+    "python": "3.12.14",
+    "packages": {
+      "numpy": "2.5.3",
+      "scipy": "1.16.1",
+      "xraylarch": "2026.3.1.post140+g3d0f61fd1",
+      "pytest": "8.4.1",
+      "openai-agents": "0.4.2"
+    }
+  }
+}

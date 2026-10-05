@@ -1,0 +1,86 @@
+{
+  "original_commit": "fb40964f5aab0242a8519190bd05adf4f468633b",
+  "fixed_alignment_file_sha256": "b15d459459d6e8f92d6d2fe06b15bbabacd29253cecf405dc5c72ae18eca5001",
+  "max_shift_ev": 15.0,
+  "e_window_ev": 40.0,
+  "foils": [
+    {
+      "label": "Cu foil · 50 K",
+      "original": {
+        "energy_shift": 11.859897120930638,
+        "reference_edge": 8977.58,
+        "target_edge_before": 8977.58,
+        "target_edge_after": 8989.43989712093,
+        "match_emin": 8957.58,
+        "match_emax": 8997.58,
+        "sse": 5.083723714543654,
+        "runtime_seconds": 0.0002970420173369348
+      },
+      "fixed": {
+        "energy_shift": -0.007455274824092041,
+        "reference_edge": 8977.58,
+        "target_edge_before": 8977.58,
+        "target_edge_after": 8977.572544725175,
+        "match_emin": 8957.58,
+        "match_emax": 8997.58,
+        "sse": 0.008249319008633805,
+        "runtime_seconds": 0.01048958400497213
+      }
+    },
+    {
+      "label": "Cu foil · 300 K",
+      "original": {
+        "energy_shift": 8.927755131686334,
+        "reference_edge": 8977.58,
+        "target_edge_before": 8980.5,
+        "target_edge_after": 8989.427755131686,
+        "match_emin": 8957.58,
+        "match_emax": 8997.58,
+        "sse": 5.071274561270734,
+        "runtime_seconds": 0.00017874999321065843
+      },
+      "fixed": {
+        "energy_shift": -2.9772837612725316,
+        "reference_edge": 8977.58,
+        "target_edge_before": 8980.5,
+        "target_edge_after": 8977.522716238727,
+        "match_emin": 8957.58,
+        "match_emax": 8997.58,
+        "sse": 0.03116815798118779,
+        "runtime_seconds": 0.009117791982134804
+      }
+    }
+  ],
+  "benchmarks": [
+    {
+      "n_points": 1700,
+      "nominal_energy_step_ev": 0.1,
+      "jitter_ev": 0,
+      "seed": 13,
+      "runtime_seconds": 0.004503750009462237,
+      "energy_shift": -2.3700000000008004
+    },
+    {
+      "n_points": 1700,
+      "nominal_energy_step_ev": 0.1,
+      "jitter_ev": 0.03,
+      "seed": 13,
+      "runtime_seconds": 1.6535799159901217,
+      "energy_shift": -2.3700000000008004
+    }
+  ],
+  "cause": "Single bounded scalar optimization selected a secondary-feature basin of a multimodal derivative SSE objective. Global piecewise quadratic search retains the same derivative objective.",
+  "validation": {
+    "failing_first": "7/7 new measured, multifeature synthetic and sub-2eV bound tests fail before fix; separate one-sided padding test failed before its correction.",
+    "focused_command": "DRXAS_USERS_DB_PATH=/tmp/drxas-alignment-regression-users.db /Users/huang.jeffrey/Desktop/Dr.XAS/backend/.venv/bin/python -m pytest tests/test_alignment_global.py tests/test_alignment.py tests/test_alignment_recipe.py tests/test_xas_utilities.py tests/test_native_app_comparison.py -q",
+    "focused_cwd": "/private/tmp/drxas-native-app-comparison-20261005/backend",
+    "result": "94 passed, 8 warnings in 6.66s",
+    "randomized_check": "1000 deterministic seed13 nonuniform cases match or improve 5001-point exhaustive grid residuals"
+  },
+  "limitations": [
+    "Matches derivatives and retains steepest-slope edge guess; different chemical edge shapes or glitches can still give misleading alignment.",
+    "Exact interval enumeration grows with both spectra sample counts inside shift/window bounds; dense irregular grids cost more than regular grids.",
+    "Measured scientific values are not identical to Athena because objective differs; fixed shifts differ by about .011/.018 eV from comparison expected values."
+  ],
+  "fixed_commit": "b8269f8ca28e54e7f9ec49382b1b6edc11eab085"
+}

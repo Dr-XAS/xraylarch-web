@@ -1,0 +1,9 @@
+{
+  "status": "failed",
+  "arm": "native",
+  "task": "T3",
+  "model": "gpt56luna",
+  "error_type": "ArgoConfigurationError",
+  "usage": null,
+  "total_wall_seconds": 9.084967190166935
+}
