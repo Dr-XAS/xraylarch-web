@@ -1,0 +1,5 @@
+{"time": 1791235788.7178435, "method": "GET", "path": "/openapi.json", "query": "", "status": 200, "bytes": 98782}
+{"time": 1791235788.8954372, "method": "POST", "path": "/api/athena/projects", "query": "", "status": 200, "bytes": 323}
+{"time": 1791235788.9197695, "method": "POST", "path": "/api/athena/projects/3Se-LRaCfpllRusBFYBuxVuc/command", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791235789.783031, "method": "GET", "path": "/api/athena/projects/3Se-LRaCfpllRusBFYBuxVuc/transcript", "query": "", "status": 200, "bytes": 684}
+{"time": 1791235789.8210323, "method": "GET", "path": "/api/athena/projects/3Se-LRaCfpllRusBFYBuxVuc", "query": "", "status": 200, "bytes": 956786}

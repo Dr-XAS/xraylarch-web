@@ -1,0 +1,8 @@
+  ok   seq 1 example  +Cu foil · 10 K +Cu foil · 50 K +Cu foil · 300 K +Cu₂O · room temperature +Cu foil · shared reference
+  skip seq 2 merge  preview
+  ok   seq 3 merge  +Cu foil · 10 K + 50 K + 300 K · mu merge
+9mNFlCKbFjnbE2ZeHSwy6PmO: replayed 2 commands, skipped 1 preview
+T4 PASS
+  ok   6 groups  (found 6)
+  ok   one merge of all three foils, by derived.parents  (Cu foil · 10 K + 50 K + 300 K · mu merge <- ['Cu foil · 10 K', 'Cu foil · 50 K', 'Cu foil · 300 K'])
+no differences beyond tolerance

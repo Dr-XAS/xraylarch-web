@@ -1,6 +1,6 @@
 # Scope: making xraylarch-web drivable by an agent
 
-Status: Phase 1 built, Phase 2 partly built. Written 2026-09-18, updated 2026-10-01.
+Status: Phase 1 built, Phase 2 partly built. Written 2026-09-18, updated 2026-10-05.
 
 ## What this is for
 
@@ -223,13 +223,25 @@ actually uses well.
 - **Replay.** A transcript replays deterministically onto a fresh project. That is how
   regression evals work and how two agent runs get compared.
 
-  *Not built.* The records carry what replay needs — action, options, and the selection
-  by label as well as by id — but the driver does not exist, and the hard part is not
-  the driver. A new project mints fresh group ids, so a replay has to resolve the
-  selection by label, and a run that merged twice has two groups called `Merge · 2
-  groups` with nothing in the transcript to say which one the next command meant.
-  Fixing that means recording the *position* a created group landed in, which is worth
-  doing alongside the eval harness rather than guessing at now.
+  *Built* on 2026-10-04, in `backend/xraylarch_web/agent_replay.py`, driven by
+  `agent_suite replay transcript.jsonl --out run.json`, after which `check` and
+  `report` read the replayed project like any other run. A new project mints fresh
+  group ids, and a run that merged twice has two groups called `merge` with nothing in
+  a label to say which one the next command meant. Nothing new had to be recorded:
+  each successful record already lists the groups it `created`, in project order, and
+  creation order is project order on the replay side too, so the driver keeps a map
+  from recorded id to replayed id and extends it as each command creates groups. The
+  selection and the options that name a group (`standard_id`, `reference_id`,
+  `source_id`) go through the map before sending. What it cannot resolve it names
+  rather than guesses: a record whose options were condensed to a shape, a group it
+  never saw created, a command accepted then and rejected now, or a command that
+  creates a different number of groups, or one under a different label, is a
+  divergence, and the first one stops the replay unless told to keep going. Previews,
+  rejected commands and retries answered from the record are skipped and counted. A
+  gap between one record's `version_after` and the next one's `version_before` is
+  reported as a change the transcript did not see, such as an import. Original
+  rejections remain in the saved run for task grading. Eleven tests in
+  `test_agent_replay.py`.
 
 - **Idempotency keys** on `/command`, so a retry after a timeout does not merge twice.
 
@@ -320,7 +332,20 @@ Without this part, the work above is a nice API and proves nothing.
 The app-driving half of the harness exists: `backend/xraylarch_web/agent_suite.py`
 sets a fresh example project up behind a metering proxy, runs each task's state
 assertions with `report`, and totals requests and wire bytes up to the moment `finish`
-stamps. The native-tools adapter, and with it the comparison, does not exist yet.
+stamps, and keeps a snapshot of the final project in the run file. `replay` rebuilds a
+recorded run's project from its transcript on whatever code is checked out, so a run
+that passed can be checked again after a change without paying for the arm again.
+`diff` compares two final projects quantity by quantity with the tolerances the answer
+assertions use (`backend/xraylarch_web/agent_diff.py`: energies within 0.1 eV, edge
+steps within 0.005, k within 0.01 Å⁻¹), groups matched by label and ids compared
+through label and occurrence, so duplicate names remain distinct. That is the numerical equivalence check question 3
+asks for, on the app-driving side; the native-tools adapter, and with it the
+comparison, does not exist yet.
+
+The [October 5 baseline](agent-runs/2026-10-05/README.md) retains all ten arms'
+transcripts, final snapshots and API evidence. All state checks and replay comparisons
+passed; strict answer grading passed nine of ten. Read-only FEFF and fit responses
+are retained for review but are not reproduced by command replay.
 
 Fixtures are already here. `examples/xafsdata` holds the Cu foil series, and the
 `example` command action builds the five-group benchmark project in a single call: the
@@ -357,8 +382,7 @@ recovery hint are built, with 14 tests in `test_agent_transcript.py`, three more
 `test_larchctl.py`, and one more proxy-allowlist test. Two Phase 2 items are left.
 `render` is waiting on whether the experimental arm is a vision model (question 2).
 The capability token was waiting on question 1, which is now answered: loopback, so the
-token need not survive a proxy hop. Replay is deferred for the
-reason given under Layer 3.
+token need not survive a proxy hop. Replay was built on 2026-10-04; see Layer 3.
 
 Two existing tests changed shape, both deliberately. `test_agent_actions` reads the
 dispatcher through the syntax tree and had to be pointed at its new name — its

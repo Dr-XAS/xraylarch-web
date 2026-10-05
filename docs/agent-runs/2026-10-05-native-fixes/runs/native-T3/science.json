@@ -1,0 +1,289 @@
+{
+  "originals": [
+    {
+      "label": "Cu foil · 10 K",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-0--3dfa0656b08102bd94435651d57d83cb",
+      "e0": 8977.58,
+      "edge_step": 2.2987522766566553,
+      "n_points": 612,
+      "energy_min": 8786.204,
+      "energy_max": 11362.47,
+      "available_kmax": 25.0,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.58,
+          "step": 2.2987522766566553,
+          "make_flat": true,
+          "pre1": -180.0,
+          "pre2": -90.0,
+          "norm1": 25.0,
+          "norm2": 2384.8899999999994,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 25.019159051203296,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "e1a7125fd28edc1339552eef95f248373579f960eda72dd413b1c69ee823475a"
+    },
+    {
+      "label": "Cu foil · 50 K",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-1--f1081259554a88fe8a214dcb5129fe2a",
+      "e0": 8977.58,
+      "edge_step": 2.2895627605421636,
+      "n_points": 620,
+      "energy_min": 8782.347,
+      "energy_max": 11362.54,
+      "available_kmax": 25.0,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.58,
+          "step": 2.2895627605421636,
+          "make_flat": true,
+          "pre1": -185.0,
+          "pre2": -92.5,
+          "norm1": 25.0,
+          "norm2": 2384.960000000001,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 25.01952622291409,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "4b8da5e6d4e70e7a04fb9dcfbc1cacf2820dc734c53d7dcac2ebf244f1dd6286"
+    },
+    {
+      "label": "Cu foil · 300 K",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-2--ab51a8ae956384fe3da75e1cefffb24b",
+      "e0": 8980.5,
+      "edge_step": 2.729378951827502,
+      "n_points": 408,
+      "energy_min": 8779.0,
+      "energy_max": 10145.86,
+      "available_kmax": 17.45,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8980.5,
+          "step": 2.729378951827502,
+          "make_flat": true,
+          "pre1": -190.0,
+          "pre2": -95.0,
+          "norm1": 25.0,
+          "norm2": 1165.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 17.489145277903592,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "c047048a22f4a36da5a8b8d00ee98e96d566d288703fad36e6e26a99e47fb48d"
+    },
+    {
+      "label": "Cu₂O · room temperature",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-3--4eab373c0a8d69f709f7f9b117d580e5",
+      "e0": 8980.8172851,
+      "edge_step": 1.611082075713506,
+      "n_points": 445,
+      "energy_min": 8774.46257909,
+      "energy_max": 9827.42270576,
+      "available_kmax": 14.9,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8980.8172851,
+          "step": 1.611082075713506,
+          "make_flat": true,
+          "pre1": -200.0,
+          "pre2": -100.0,
+          "norm1": 25.0,
+          "norm2": 845.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 14.90661566153382,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "c74f82a11551f3f390f604eecb84e64950ddf57b5ee3eaadb4cad7fc5dc68115"
+    },
+    {
+      "label": "Cu foil · shared reference",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-4--c7f95c22817b16822d9619fa8fa36d0e",
+      "e0": 8980.5,
+      "edge_step": 2.729378951827502,
+      "n_points": 408,
+      "energy_min": 8779.0,
+      "energy_max": 10145.86,
+      "available_kmax": 17.45,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8980.5,
+          "step": 2.729378951827502,
+          "make_flat": true,
+          "pre1": -190.0,
+          "pre2": -95.0,
+          "norm1": 25.0,
+          "norm2": 1165.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 17.489145277903592,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "5fc09a9b5ab1a108047e850444c65fb5c8130bb0ba71e57bf37e3ca475326905"
+    }
+  ],
+  "alignments": [],
+  "merges": [],
+  "transforms": [
+    {
+      "source_label": "Cu foil · 10 K",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-0_ft--e33680563987127203cdc8489f869f71",
+      "seq": 4,
+      "kmin": 3.0,
+      "kmax": 14.6,
+      "r_peak": 2.270291566070749
+    }
+  ],
+  "fits": [],
+  "measurements": [
+    {
+      "seq": 2,
+      "tool": "check_xas_data_quality",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-0--3dfa0656b08102bd94435651d57d83cb",
+      "e0": 8977.58,
+      "edge_step": 2.2987522766566553,
+      "energy_min": 8786.204,
+      "energy_max": 11362.47,
+      "epsilon_k": 0.001167329134370102,
+      "kmax_suggest": 14.600000000000001
+    },
+    {
+      "seq": 4,
+      "tool": "fourier_transform_xas",
+      "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-0_ft--e33680563987127203cdc8489f869f71",
+      "e0": 8977.58,
+      "kmin": 3.0,
+      "kmax": 14.6,
+      "r_peak": 2.270291566070749
+    }
+  ]
+}

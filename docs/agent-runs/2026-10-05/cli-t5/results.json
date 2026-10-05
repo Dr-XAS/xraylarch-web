@@ -1,0 +1,29 @@
+{
+  "state_pass": true,
+  "assertions": [
+    {
+      "name": "version unchanged",
+      "ok": true,
+      "detail": "1 -> 1"
+    },
+    {
+      "name": "5 groups",
+      "ok": true,
+      "detail": "found 5"
+    }
+  ],
+  "meter": {
+    "requests": 20,
+    "gets": 12,
+    "posts": 8,
+    "bytes": 51382,
+    "status": {
+      "200": 19,
+      "202": 1
+    }
+  },
+  "wall_seconds": 45.331664085388184,
+  "replay_exit": 0,
+  "replay_check_exit": 0,
+  "diff_exit": 0
+}

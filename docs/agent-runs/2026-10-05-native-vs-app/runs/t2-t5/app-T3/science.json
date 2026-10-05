@@ -1,0 +1,49 @@
+{
+  "originals": [],
+  "alignments": [],
+  "merges": [],
+  "transforms": [],
+  "fits": [],
+  "measurements": [
+    {
+      "seq": 5,
+      "tool": null
+    },
+    {
+      "seq": 6,
+      "tool": "http_request"
+    },
+    {
+      "seq": 7,
+      "tool": null
+    },
+    {
+      "seq": 8,
+      "tool": "http_request"
+    },
+    {
+      "seq": 11,
+      "tool": null
+    },
+    {
+      "seq": 12,
+      "tool": "http_request"
+    },
+    {
+      "seq": 15,
+      "tool": null
+    },
+    {
+      "seq": 16,
+      "tool": "http_request"
+    },
+    {
+      "seq": 19,
+      "tool": null
+    },
+    {
+      "seq": 20,
+      "tool": "http_request"
+    }
+  ]
+}

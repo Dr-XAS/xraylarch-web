@@ -17,12 +17,19 @@ assertions here read ``derived.parents`` and nothing else.
     python -m xraylarch_web.agent_suite check T2 run.json
     python -m xraylarch_web.agent_suite finish run.json
     python -m xraylarch_web.agent_suite report T2 run.json --meter meter.jsonl
+    python -m xraylarch_web.agent_suite replay transcript.jsonl --out again.json
+    python -m xraylarch_web.agent_suite diff run.json again.json
 
 ``setup`` makes a fresh project with the example loaded and records its id,
 version and group ids. ``check`` and ``report`` read that file, so the checks
 know which groups were there before the arm started and which it made.
 ``finish`` stamps the moment the arm stopped, so the meter counts the arm's
-requests and not the ones made afterwards to look at what it did.
+requests and not the ones made afterwards to look at what it did, and keeps
+a snapshot of the final project in the run file. ``replay`` sends a saved
+transcript's commands to a new project and writes a run file for it, so a
+recorded arm can be checked again on later code without being run again;
+see ``agent_replay``. ``diff`` compares two run files' final projects
+quantity by quantity, each with its tolerance; see ``agent_diff``.
 
 To meter a backend, serve it through the factory with a log path set:
 
@@ -87,8 +94,9 @@ class Observed:
                 and set(group["derived"]["parents"]) == parents]
 
     def rejected(self) -> list[dict]:
-        return [record for record in self.transcript
-                if not record["ok"] and record["seq"] > self.setup["seq"]]
+        return list(self.setup.get("source_rejections", [])) + [
+            record for record in self.transcript
+            if not record["ok"] and record["seq"] > self.setup["seq"]]
 
 
 def _count(observed: Observed, expected: int) -> Assertion:
@@ -281,6 +289,21 @@ def metered_app():
     return Meter(create_app(), Path(os.environ["XRAYLARCH_AGENT_METER"]))
 
 
+def _final(http, target: str) -> dict:
+    """A final snapshot: from a run file that holds one, else read live.
+
+    A run file without `final` was finished before snapshots existed, or not
+    finished at all; its project is read now, which is right only while that
+    backend is still up and the project untouched.
+    """
+    from .agent_diff import snapshot
+    path = Path(target)
+    if path.exists():
+        run = json.loads(path.read_text())
+        return run.get("final") or snapshot(http, run["project_id"])
+    return snapshot(http, target)
+
+
 def _print_check(task: str, assertions: list[Assertion]) -> bool:
     passed = all(item.ok for item in assertions)
     print(f"{task} {'PASS' if passed else 'FAIL'}")
@@ -306,24 +329,64 @@ def main(argv: list[str] | None = None, http: httpx.Client | None = None) -> int
     reported.add_argument("task", choices=sorted(TASKS))
     reported.add_argument("run", type=Path)
     reported.add_argument("--meter", type=Path)
+    replayed = sub.add_parser("replay", help="send a saved transcript's commands to a new project")
+    replayed.add_argument("transcript", type=Path, help="transcript.jsonl, or the transcript route's JSON")
+    replayed.add_argument("--out", type=Path, help="write a run file for check and report")
+    replayed.add_argument("--name", default="replay")
+    replayed.add_argument("--setup-seq", type=int,
+                          help="the record after which the arm started; default, the first example")
+    replayed.add_argument("--keep-going", action="store_true",
+                          help="go on past a command that cannot be replayed")
+    compared = sub.add_parser("diff", help="two final projects, quantity by quantity with tolerances")
+    compared.add_argument("a", help="a run file with a final snapshot, or a project id")
+    compared.add_argument("b", help="a run file with a final snapshot, or a project id")
     args = parser.parse_args(argv)
 
     if args.command == "tasks":
         for task in TASKS.values():
             print(f"{task.key}\n  prompt: {task.prompt}\n  answer: {task.answer}\n")
         return 0
+    http = http or httpx.Client(base_url=args.url, timeout=120)
     if args.command == "finish":
+        from .agent_diff import snapshot
         run = json.loads(args.run.read_text())
+        # Stamp first: the snapshot's own requests then fall outside the meter.
         run["finished"] = time.time()
+        try:
+            run["final"] = snapshot(http, run["project_id"])
+        except httpx.HTTPError as exc:
+            # The stamp is what the meter needs; a lost snapshot is said, not fatal.
+            print(f"final snapshot not taken: {exc}")
         args.run.write_text(json.dumps(run, indent=2, ensure_ascii=False))
         return 0
-    http = http or httpx.Client(base_url=args.url, timeout=120)
+    if args.command == "diff":
+        from .agent_diff import compare, render
+        differences = compare(_final(http, args.a), _final(http, args.b))
+        print(render(differences))
+        return 0 if not differences else 1
     if args.command == "setup":
         run = setup(http, args.name)
         run["started"] = time.time()
         args.out.write_text(json.dumps(run, indent=2, ensure_ascii=False))
         print(run["project_id"])
         return 0
+    if args.command == "replay":
+        from .agent_replay import load_records, replay
+        result = replay(http, load_records(args.transcript), name=args.name,
+                        setup_seq=args.setup_seq, keep_going=args.keep_going)
+        for step in result.steps:
+            mark = {"replayed": "ok  ", "skipped": "skip", "diverged": "FAIL"}[step.status]
+            print(f"  {mark} seq {step.seq} {step.action}" + (f"  {step.note}" if step.note else ""))
+        skipped = ", ".join(f"{count} {reason}" for reason, count in result.skipped().items())
+        print(f"{result.project_id}: replayed {result.replayed()} commands"
+              + (f", skipped {skipped}" if skipped else ""))
+        for line in result.divergences:
+            print(f"  diverged: {line}")
+        if args.out:
+            from .agent_diff import snapshot
+            run = {**result.setup, "final": snapshot(http, result.project_id)}
+            args.out.write_text(json.dumps(run, indent=2, ensure_ascii=False))
+        return 0 if result.ok else 1
     run = json.loads(args.run.read_text())
     # Read the meter before observing, so the checks' own requests aren't
     # counted; `finished` keeps out whatever was read after the arm stopped.

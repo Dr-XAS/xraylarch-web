@@ -1,0 +1,11 @@
+{
+  "all_other_summary_and_effective_parameters_unchanged": true,
+  "differences": [
+    {
+      "label": "Cu foil \u00b7 10 K",
+      "field": "kmax",
+      "before": 24.0,
+      "after": 18.0
+    }
+  ]
+}

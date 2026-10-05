@@ -1,0 +1,28 @@
+{
+  "state_pass": true,
+  "assertions": [
+    {
+      "name": "6 groups",
+      "ok": true,
+      "detail": "found 6"
+    },
+    {
+      "name": "one merge of all three foils, by derived.parents",
+      "ok": true,
+      "detail": "Cu foil · 10 K + 50 K + 300 K merge <- ['Cu foil · 10 K', 'Cu foil · 50 K', 'Cu foil · 300 K']"
+    }
+  ],
+  "meter": {
+    "requests": 7,
+    "gets": 5,
+    "posts": 2,
+    "bytes": 23150,
+    "status": {
+      "200": 7
+    }
+  },
+  "wall_seconds": 29.043705940246582,
+  "replay_exit": 0,
+  "replay_check_exit": 0,
+  "diff_exit": 0
+}

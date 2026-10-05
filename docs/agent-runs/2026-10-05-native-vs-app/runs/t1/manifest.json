@@ -1,0 +1,18 @@
+{
+  "model": "gpt56luna",
+  "tasks": [
+    "T1"
+  ],
+  "native_revision": "fb40964f5aab0242a8519190bd05adf4f468633b",
+  "app_revision": "6e5acda87",
+  "fixture_sha256": "4173b0dd79acf69bc1e6cce3c863aff88abdb24db811b68353b1b0874f398406",
+  "pairs": {
+    "T1": {
+      "native": {
+        "returncode": 0,
+        "started": 1791235762.5624037,
+        "finished": 1791235784.5663965
+      }
+    }
+  }
+}

@@ -1,0 +1,201 @@
+{
+  "checks": {
+    "T2_originals_unchanged": true,
+    "T2_alignment_science": false,
+    "T3_originals_unchanged": true,
+    "T3_transform_science": false
+  },
+  "tasks": {
+    "T2": {
+      "originals": {
+        "Cu foil · 10 K": {
+          "initial_sha256": "4eaad49a708fde38016821fa3c304485cb771d74e05842b69f1d99a0cd7942d5",
+          "final_sha256": "4eaad49a708fde38016821fa3c304485cb771d74e05842b69f1d99a0cd7942d5",
+          "unchanged": true
+        },
+        "Cu foil · 50 K": {
+          "initial_sha256": "6ddd0f2d8cd80e366cd434a0e093ccbcb29444f4bf61ffc573498b05381ccfcf",
+          "final_sha256": "6ddd0f2d8cd80e366cd434a0e093ccbcb29444f4bf61ffc573498b05381ccfcf",
+          "unchanged": true
+        },
+        "Cu foil · 300 K": {
+          "initial_sha256": "7b874a3560d8e8b454662a966ddbeb80a46ec8a029eab2413af0882877c5806b",
+          "final_sha256": "7b874a3560d8e8b454662a966ddbeb80a46ec8a029eab2413af0882877c5806b",
+          "unchanged": true
+        },
+        "Cu₂O · room temperature": {
+          "initial_sha256": "9a9d3f5b3b007365d059d7170812653ac01f449db1db51d8032843a423af457f",
+          "final_sha256": "9a9d3f5b3b007365d059d7170812653ac01f449db1db51d8032843a423af457f",
+          "unchanged": true
+        },
+        "Cu foil · shared reference": {
+          "initial_sha256": "1b0cb954534560a116a9f629011ba2fcaffc24e3f35baa3b19e757f9739b08db",
+          "final_sha256": "1b0cb954534560a116a9f629011ba2fcaffc24e3f35baa3b19e757f9739b08db",
+          "unchanged": true
+        }
+      },
+      "alignments": [
+        {
+          "label": "Cu foil · 50 K",
+          "xas_ref": "xas1--eval-comparison-3eb35945c602--copper-1_aligned--93eda2ef243163756726df50d52e1056",
+          "source_ref": "xas1--eval-comparison-3eb35945c602--copper-1--aaec6b19225d0b42d5c63551bdd4440a",
+          "reported_shift_ev": 11.859897120930633,
+          "actual_delta_min_ev": 11.859897120930327,
+          "actual_delta_max_ev": 11.859897120930327,
+          "sampled_edge_ev": 8989.43989712093,
+          "reference_sampled_edge_ev": 8977.58,
+          "edge_residual_ev": 11.859897120930327,
+          "app_expected_shift_ev": -0.018,
+          "checks": {
+            "energy_delta_matches_shift": true,
+            "mu_unchanged": true,
+            "edge_residual_below_0_15_ev": false,
+            "shift_within_0_1_ev_app_expected": false
+          },
+          "source_mu_sha256": "d69e42022791e5b8d39a2952e6be1cc934ba366bac340cbc6da11fa8466bc8df",
+          "derived_mu_sha256": "d69e42022791e5b8d39a2952e6be1cc934ba366bac340cbc6da11fa8466bc8df"
+        },
+        {
+          "label": "Cu foil · 300 K",
+          "xas_ref": "xas1--eval-comparison-3eb35945c602--copper-2_aligned--bf68fc151eab0de23dff885833e2845c",
+          "source_ref": "xas1--eval-comparison-3eb35945c602--copper-2--3b914e1ea92e57c72d1296a59389beb1",
+          "reported_shift_ev": 8.927755131686334,
+          "actual_delta_min_ev": 8.927755131686354,
+          "actual_delta_max_ev": 8.927755131686354,
+          "sampled_edge_ev": 8989.427755131686,
+          "reference_sampled_edge_ev": 8977.58,
+          "edge_residual_ev": 11.847755131686426,
+          "app_expected_shift_ev": -2.959,
+          "checks": {
+            "energy_delta_matches_shift": true,
+            "mu_unchanged": true,
+            "edge_residual_below_0_15_ev": false,
+            "shift_within_0_1_ev_app_expected": false
+          },
+          "source_mu_sha256": "eeceb91869bfb7fe458a9e6e1d26ec5845cf07a9d5061f51fe3d24e4a4bda616",
+          "derived_mu_sha256": "eeceb91869bfb7fe458a9e6e1d26ec5845cf07a9d5061f51fe3d24e4a4bda616"
+        }
+      ]
+    },
+    "T3": {
+      "originals": {
+        "Cu foil · 10 K": {
+          "initial_sha256": "19e0f0f28e82f2912ba6262e34783261de9ac68f4e62a1389631fe38849bee7e",
+          "final_sha256": "19e0f0f28e82f2912ba6262e34783261de9ac68f4e62a1389631fe38849bee7e",
+          "unchanged": true
+        },
+        "Cu foil · 50 K": {
+          "initial_sha256": "83a0ae4306491720553f25e1460e6427c40a30b8fa5175a49c5e2a29532c68db",
+          "final_sha256": "83a0ae4306491720553f25e1460e6427c40a30b8fa5175a49c5e2a29532c68db",
+          "unchanged": true
+        },
+        "Cu foil · 300 K": {
+          "initial_sha256": "7c87a7ceb955ae98bdf69a6ab868ead93eb2deb760ea23bbc506086feb60e786",
+          "final_sha256": "7c87a7ceb955ae98bdf69a6ab868ead93eb2deb760ea23bbc506086feb60e786",
+          "unchanged": true
+        },
+        "Cu₂O · room temperature": {
+          "initial_sha256": "ce26ebf71213e29ec6b2409eefe99d5c63c49da46af745bc6590654a1a1f238c",
+          "final_sha256": "ce26ebf71213e29ec6b2409eefe99d5c63c49da46af745bc6590654a1a1f238c",
+          "unchanged": true
+        },
+        "Cu foil · shared reference": {
+          "initial_sha256": "6e158cbe4f566f5d8cef08909908b9501ce155187818427548c1f058ebd56d05",
+          "final_sha256": "6e158cbe4f566f5d8cef08909908b9501ce155187818427548c1f058ebd56d05",
+          "unchanged": true
+        }
+      },
+      "transforms": [
+        {
+          "xas_ref": "xas1--eval-comparison-8b9f968bc5de--copper-0_ft--ca67939c1e4cf8473a9022d66c218446",
+          "source_ref": "xas1--eval-comparison-8b9f968bc5de--copper-0--c29bde40ec769a22f6b83c7511bbd7a9",
+          "initial_settings": {
+            "kmin": 3.0,
+            "dk": 1.0,
+            "dk2": 1.0,
+            "kweight": 2.0,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "with_phase": false,
+            "kmax": 24.0
+          },
+          "actual_settings": {
+            "kmin": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "kweight": 2,
+            "window": "kaiser",
+            "rmax_out": 6.0,
+            "nfft": null,
+            "kstep": null,
+            "with_phase": null,
+            "kmax": 14.6
+          },
+          "missing_metadata_fields": [
+            "dk2",
+            "nfft",
+            "kstep",
+            "with_phase"
+          ],
+          "recompute_settings": {
+            "kmin": 2.0,
+            "kmax": 14.6,
+            "dk": 1.0,
+            "kweight": 2,
+            "window": "kaiser",
+            "rmax_out": 6.0,
+            "dk2": 1.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "with_phase": true
+          },
+          "checks": {
+            "source_is_10k": true,
+            "chi_unchanged": true,
+            "k_unchanged": true,
+            "upper_limit_reduced": true,
+            "other_ft_settings_preserved": false,
+            "recomputed_ft_matches": true
+          },
+          "source_chi_sha256": "0d7975f0c899d218f2608062df9e093d98ec3f9dab119c55fd0abeca57ee90b0",
+          "derived_chi_sha256": "0d7975f0c899d218f2608062df9e093d98ec3f9dab119c55fd0abeca57ee90b0",
+          "recomputed_arrays": {
+            "kwin": {
+              "matched": true,
+              "actual_sha256": "ec3baa0ba69ec694f2e82e0ab2e3120d9e92d8cfff5d27ae05924fc585cbaa3d",
+              "max_absolute_error": 0.0
+            },
+            "r": {
+              "matched": true,
+              "actual_sha256": "3516af0621e9dc8ec09f168c411d40aa9e75d0b101afb7696c2858bdb5f9c4f4",
+              "max_absolute_error": 0.0
+            },
+            "chir_mag": {
+              "matched": true,
+              "actual_sha256": "f4e04a95062aac991251c2d56e1eec9a0ae0eb9daec03c031f75a87f7627f5db",
+              "max_absolute_error": 0.0
+            },
+            "chir_re": {
+              "matched": true,
+              "actual_sha256": "18d3151e340ccfff164c3eb7d321fe1df5cb2cb8dbf6733d56f9fa6e249e901f",
+              "max_absolute_error": 0.0
+            },
+            "chir_im": {
+              "matched": true,
+              "actual_sha256": "af7f1788ae8cba07200346d9ee8e49660d8b348521097e4e2c9199436142e2bd",
+              "max_absolute_error": 0.0
+            },
+            "chir_pha": {
+              "matched": true,
+              "actual_sha256": "698f18c815e04380d94d364a5550d44885100b3c7142ccf5ddd7d84e79553c16",
+              "max_absolute_error": 0.0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "passed": false
+}

@@ -1,0 +1,1 @@
+The EXAFS Fourier transform on the 10 K scan is running out to k = 24, and the data up there is noise. Bring the k range in to where the data is real, then tell me where the first shell sits.

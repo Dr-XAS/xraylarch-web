@@ -1,0 +1,55 @@
+{
+  "method": "Coordinator review plus independent reviewer against published literal rubric and captured API evidence; no reruns or answer edits.",
+  "grades": {
+    "cli-t1": {
+      "pass": false,
+      "reason": "Literal T1 rubric requires two of E0 offset, edge-step difference and energy endpoints. Answer gives edge-step values, fitted alignment shift and k endpoints, but not E0 difference or energy endpoints. Scientific explanation is supported; this is an omission, not a false statement."
+    },
+    "http-t1": {
+      "pass": true,
+      "reason": "Names 300 K, E0 2.92 eV higher and edge step 18.7% larger; evidence supports claims."
+    },
+    "cli-t2": {
+      "pass": true,
+      "reason": "Reports original edge-step spread 0.439816 and verifies all three merge parents."
+    },
+    "http-t2": {
+      "pass": true,
+      "reason": "Reports original edge-step spread 0.43982 and verifies all three merge parents."
+    },
+    "cli-t3": {
+      "pass": true,
+      "reason": "Saved kmax 18; reports uncorrected peak at 2.27 Å and distinguishes phase-corrected fit distance of 2.5467 Å. Fit and sensitivity values match evidence."
+    },
+    "http-t3": {
+      "pass": true,
+      "reason": "Saved kmax 18; reports uncorrected peak at 2.27 Å and distinguishes phase-corrected fit distance of 2.5490 Å. Fit and sensitivity values match evidence."
+    },
+    "cli-t4": {
+      "pass": true,
+      "reason": "Says cutting unnecessary and reports stored endpoint of 10134.32 eV. Merge includes all three original parents without exclusions."
+    },
+    "http-t4": {
+      "pass": true,
+      "reason": "Explains shared overlap and short-scan exclusion separately; reports endpoint of 10134.32 eV. Captured saved merge includes all three parents."
+    },
+    "cli-t5": {
+      "pass": true,
+      "reason": "Fits a twelve-neighbour FEFF Cu–Cu path to 2.5489 Å and reports a practical ±0.02 Å from energy-offset sensitivity. Values and caveats match saved fits."
+    },
+    "http-t5": {
+      "pass": true,
+      "reason": "Fits a twelve-neighbour FEFF Cu–Cu path to 2.5489 Å, quantifies k, R, weight and energy-offset sensitivity, and distinguishes practical uncertainty from formal error. Values match evidence."
+    }
+  },
+  "reviewers": [
+    "coordinator",
+    "independent review_replay agent"
+  ],
+  "summary": {
+    "state_pass": 10,
+    "answer_pass": 9,
+    "total": 10,
+    "false_statements_identified": 0
+  }
+}

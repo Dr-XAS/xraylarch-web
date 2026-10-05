@@ -1,0 +1,24 @@
+{
+  "model": "gpt56luna",
+  "tasks": [
+    "T1"
+  ],
+  "native_revision": "fb40964f5aab0242a8519190bd05adf4f468633b",
+  "app_revision": "6e5acda87",
+  "fixture_sha256": "4173b0dd79acf69bc1e6cce3c863aff88abdb24db811b68353b1b0874f398406",
+  "pairs": {
+    "T1": {
+      "app": {
+        "returncode": 0,
+        "started": 1791235862.0763965,
+        "finished": 1791235883.5417016,
+        "state_returncode": 0,
+        "requests": 2,
+        "response_bytes": 5346,
+        "request_errors": 0,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    }
+  }
+}

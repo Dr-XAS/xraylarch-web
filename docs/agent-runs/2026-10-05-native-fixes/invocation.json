@@ -1,0 +1,88 @@
+{
+  "source_revision": "b8269f8ca28e54e7f9ec49382b1b6edc11eab085",
+  "adapter_revision": "fb40964f5aab0242a8519190bd05adf4f468633b",
+  "baseline_evidence_revision": "dd8169f7d4643e10f8148b1495c4df96f6147543",
+  "source_archive_command": [
+    "git",
+    "archive",
+    "--format=tar.gz",
+    "--output=/tmp/drxas-native-fixes-b8269f8.tar.gz",
+    "b8269f8ca28e54e7f9ec49382b1b6edc11eab085",
+    "backend",
+    "materials"
+  ],
+  "source_archive_sha256": "f0855c2202d96f34550ac4abd9f97a9f1c9515225e0ccc9f962cb31dd4452ad4",
+  "driver_sha256": "2af0ee856137439fc26619d29d55be059c31a47e306c772200640f1e2fd19d1b",
+  "fixture_bytes_sha256": "4173b0dd79acf69bc1e6cce3c863aff88abdb24db811b68353b1b0874f398406",
+  "fixture_canonical_sha256": "554e3cf17c753d064412b71e0f42d76cb548d90c6fcf26e62128788e55b432eb",
+  "remote_host_alias": "drxas",
+  "remote_scratch_root": "/tmp/drxas-native-fixes-20261005-01a10e14",
+  "credential_environment_source": "$HOME/.drxas_env; sourced without logging values",
+  "command_argv": [
+    "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+    "/tmp/drxas-native-app-20261005-01a10dd4/run_pair.py",
+    "--python",
+    "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+    "--app-python",
+    "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+    "--native-root",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/native",
+    "--app-root",
+    "/tmp/drxas-native-app-20261005-01a10dd4/app",
+    "--fixture",
+    "/tmp/drxas-native-app-20261005-01a10dd4/fixture/fixture.json",
+    "--out",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/runs-configured",
+    "--model",
+    "gpt56luna",
+    "--tasks",
+    "T2",
+    "T3",
+    "--arms",
+    "native",
+    "--native-revision",
+    "b8269f8ca28e54e7f9ec49382b1b6edc11eab085",
+    "--app-revision",
+    "6e5acda87",
+    "--timeout",
+    "600"
+  ],
+  "configuration_recovery": {
+    "first_attempts": "setup-failure-1",
+    "environment_source": "/local/drxas-ops/env/drxas.env.dev",
+    "failure": "ArgoConfigurationError before model startup",
+    "usage": null,
+    "model_calls": 0,
+    "recovery": "Load existing provider environment from $HOME/.drxas_env; run into fresh runs-configured directory"
+  },
+  "successful_attempts_per_task": 1,
+  "scientific_retries": 0,
+  "payload_validation_command": [
+    "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/validate_native_fix_payloads.py",
+    "--runs",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/runs-configured",
+    "--out",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/payload-validation.json"
+  ],
+  "baseline_payload_validation_command": [
+    "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/validate_native_fix_payloads.py",
+    "--runs",
+    "/tmp/drxas-native-app-20261005-01a10dd4/runs/t2-t5",
+    "--out",
+    "/tmp/drxas-native-fixes-20261005-01a10e14/baseline-payload-validation.json"
+  ],
+  "evidence_exclusions": [
+    "private payloads",
+    "private SQLite databases",
+    "sessions",
+    "raw process logs"
+  ],
+  "limitations": [
+    "One completed model attempt per task does not establish reliability.",
+    "Provider verified served model ID but reported no revision.",
+    "App arm was not rerun; comparison uses preserved baseline app evidence.",
+    "Raw payloads remain in private remote scratch; this evidence records hashes and scalar array checks."
+  ]
+}

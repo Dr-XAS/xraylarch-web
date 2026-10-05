@@ -1,0 +1,29 @@
+{
+  "state_pass": true,
+  "assertions": [
+    {
+      "name": "10 K effective kmax below 24",
+      "ok": true,
+      "detail": "kmax 18.0"
+    },
+    {
+      "name": "and within available_kmax",
+      "ok": true,
+      "detail": "available 25.0"
+    }
+  ],
+  "meter": {
+    "requests": 16,
+    "gets": 9,
+    "posts": 7,
+    "bytes": 52183,
+    "status": {
+      "200": 15,
+      "202": 1
+    }
+  },
+  "wall_seconds": 64.13290619850159,
+  "replay_exit": 0,
+  "replay_check_exit": 0,
+  "diff_exit": 0
+}

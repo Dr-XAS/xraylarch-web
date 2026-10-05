@@ -1,0 +1,86 @@
+{
+  "model": "gpt56luna",
+  "tasks": [
+    "T2",
+    "T3",
+    "T4",
+    "T5"
+  ],
+  "native_revision": "fb40964f5aab0242a8519190bd05adf4f468633b",
+  "app_revision": "6e5acda87",
+  "fixture_sha256": "4173b0dd79acf69bc1e6cce3c863aff88abdb24db811b68353b1b0874f398406",
+  "pairs": {
+    "T2": {
+      "native": {
+        "returncode": 0,
+        "started": 1791235899.00566,
+        "finished": 1791235922.3175592
+      },
+      "app": {
+        "returncode": 0,
+        "started": 1791235928.3345375,
+        "finished": 1791235961.7724721,
+        "state_returncode": 0,
+        "requests": 11,
+        "response_bytes": 37705,
+        "request_errors": 0,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    },
+    "T3": {
+      "native": {
+        "returncode": 0,
+        "started": 1791235963.2404938,
+        "finished": 1791235986.8548946
+      },
+      "app": {
+        "returncode": 0,
+        "started": 1791235993.2415173,
+        "finished": 1791236014.7975764,
+        "state_returncode": 0,
+        "requests": 5,
+        "response_bytes": 15958,
+        "request_errors": 0,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    },
+    "T4": {
+      "native": {
+        "returncode": 0,
+        "started": 1791236016.1507776,
+        "finished": 1791236032.4433165
+      },
+      "app": {
+        "returncode": 0,
+        "started": 1791236037.1276977,
+        "finished": 1791236060.9328713,
+        "state_returncode": 0,
+        "requests": 7,
+        "response_bytes": 19929,
+        "request_errors": 1,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    },
+    "T5": {
+      "native": {
+        "returncode": 0,
+        "started": 1791236062.376226,
+        "finished": 1791236088.5443065
+      },
+      "app": {
+        "returncode": 0,
+        "started": 1791236093.9259138,
+        "finished": 1791236129.3145251,
+        "state_returncode": 0,
+        "requests": 12,
+        "response_bytes": 38126,
+        "request_errors": 0,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    }
+  }
+}

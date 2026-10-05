@@ -1,0 +1,1 @@
+Align all three scans to the 10 K one, merge them, and tell me how much the edge step varies across the three originals.

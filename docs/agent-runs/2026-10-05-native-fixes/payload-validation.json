@@ -1,0 +1,196 @@
+{
+  "checks": {
+    "T2_originals_unchanged": true,
+    "T2_alignment_science": true,
+    "T3_originals_unchanged": true,
+    "T3_transform_science": true
+  },
+  "tasks": {
+    "T2": {
+      "originals": {
+        "Cu foil · 10 K": {
+          "initial_sha256": "96568d207ba8635d4f0ca606a438a8ed21775f183d6274e25c4c237e5a23913f",
+          "final_sha256": "96568d207ba8635d4f0ca606a438a8ed21775f183d6274e25c4c237e5a23913f",
+          "unchanged": true
+        },
+        "Cu foil · 50 K": {
+          "initial_sha256": "cc9128420770018b7d3ebc7dabbacb69fe9fe7f14c6c4006b2a087a5babf288a",
+          "final_sha256": "cc9128420770018b7d3ebc7dabbacb69fe9fe7f14c6c4006b2a087a5babf288a",
+          "unchanged": true
+        },
+        "Cu foil · 300 K": {
+          "initial_sha256": "155dd520786b323583d5c69ad401050320fe57bc9ef5634ff27625956bf11386",
+          "final_sha256": "155dd520786b323583d5c69ad401050320fe57bc9ef5634ff27625956bf11386",
+          "unchanged": true
+        },
+        "Cu₂O · room temperature": {
+          "initial_sha256": "b31ebb08342215ca8edc55f5e9211c31a4093910452d87df1d5b29248fb7d67f",
+          "final_sha256": "b31ebb08342215ca8edc55f5e9211c31a4093910452d87df1d5b29248fb7d67f",
+          "unchanged": true
+        },
+        "Cu foil · shared reference": {
+          "initial_sha256": "9138ff6a839b9a2fe36ab84b3114a290a23f434895e29f0302a50b5585b77064",
+          "final_sha256": "9138ff6a839b9a2fe36ab84b3114a290a23f434895e29f0302a50b5585b77064",
+          "unchanged": true
+        }
+      },
+      "alignments": [
+        {
+          "label": "Cu foil · 50 K",
+          "xas_ref": "xas1--eval-comparison-3cab219be8f9--copper-1_aligned--1f5437b23442cbf2c862d33c5a8cc1db",
+          "source_ref": "xas1--eval-comparison-3cab219be8f9--copper-1--2f3971a80ab9d8507fe5ad7431a5f3f8",
+          "reported_shift_ev": -0.00745527482409207,
+          "actual_delta_min_ev": -0.0074552748246787814,
+          "actual_delta_max_ev": -0.0074552748246787814,
+          "sampled_edge_ev": 8977.572544725175,
+          "reference_sampled_edge_ev": 8977.58,
+          "edge_residual_ev": -0.0074552748246787814,
+          "app_expected_shift_ev": -0.018,
+          "checks": {
+            "energy_delta_matches_shift": true,
+            "mu_unchanged": true,
+            "edge_residual_below_0_15_ev": true,
+            "shift_within_0_1_ev_app_expected": true
+          },
+          "source_mu_sha256": "d69e42022791e5b8d39a2952e6be1cc934ba366bac340cbc6da11fa8466bc8df",
+          "derived_mu_sha256": "d69e42022791e5b8d39a2952e6be1cc934ba366bac340cbc6da11fa8466bc8df"
+        },
+        {
+          "label": "Cu foil · 300 K",
+          "xas_ref": "xas1--eval-comparison-3cab219be8f9--copper-2_aligned--335a04b361402a75c08ab0eb695fc625",
+          "source_ref": "xas1--eval-comparison-3cab219be8f9--copper-2--f1b9e534be24c209e3db5f627323a7a7",
+          "reported_shift_ev": -2.9772837612725316,
+          "actual_delta_min_ev": -2.9772837612727017,
+          "actual_delta_max_ev": -2.9772837612727017,
+          "sampled_edge_ev": 8977.522716238727,
+          "reference_sampled_edge_ev": 8977.58,
+          "edge_residual_ev": -0.05728376127262891,
+          "app_expected_shift_ev": -2.959,
+          "checks": {
+            "energy_delta_matches_shift": true,
+            "mu_unchanged": true,
+            "edge_residual_below_0_15_ev": true,
+            "shift_within_0_1_ev_app_expected": true
+          },
+          "source_mu_sha256": "eeceb91869bfb7fe458a9e6e1d26ec5845cf07a9d5061f51fe3d24e4a4bda616",
+          "derived_mu_sha256": "eeceb91869bfb7fe458a9e6e1d26ec5845cf07a9d5061f51fe3d24e4a4bda616"
+        }
+      ]
+    },
+    "T3": {
+      "originals": {
+        "Cu foil · 10 K": {
+          "initial_sha256": "e1a7125fd28edc1339552eef95f248373579f960eda72dd413b1c69ee823475a",
+          "final_sha256": "e1a7125fd28edc1339552eef95f248373579f960eda72dd413b1c69ee823475a",
+          "unchanged": true
+        },
+        "Cu foil · 50 K": {
+          "initial_sha256": "4b8da5e6d4e70e7a04fb9dcfbc1cacf2820dc734c53d7dcac2ebf244f1dd6286",
+          "final_sha256": "4b8da5e6d4e70e7a04fb9dcfbc1cacf2820dc734c53d7dcac2ebf244f1dd6286",
+          "unchanged": true
+        },
+        "Cu foil · 300 K": {
+          "initial_sha256": "c047048a22f4a36da5a8b8d00ee98e96d566d288703fad36e6e26a99e47fb48d",
+          "final_sha256": "c047048a22f4a36da5a8b8d00ee98e96d566d288703fad36e6e26a99e47fb48d",
+          "unchanged": true
+        },
+        "Cu₂O · room temperature": {
+          "initial_sha256": "c74f82a11551f3f390f604eecb84e64950ddf57b5ee3eaadb4cad7fc5dc68115",
+          "final_sha256": "c74f82a11551f3f390f604eecb84e64950ddf57b5ee3eaadb4cad7fc5dc68115",
+          "unchanged": true
+        },
+        "Cu foil · shared reference": {
+          "initial_sha256": "5fc09a9b5ab1a108047e850444c65fb5c8130bb0ba71e57bf37e3ca475326905",
+          "final_sha256": "5fc09a9b5ab1a108047e850444c65fb5c8130bb0ba71e57bf37e3ca475326905",
+          "unchanged": true
+        }
+      },
+      "transforms": [
+        {
+          "xas_ref": "xas1--eval-comparison-5ca765e772fb--copper-0_ft--e33680563987127203cdc8489f869f71",
+          "source_ref": "xas1--eval-comparison-5ca765e772fb--copper-0--3dfa0656b08102bd94435651d57d83cb",
+          "initial_settings": {
+            "kmin": 3.0,
+            "dk": 1.0,
+            "dk2": 1.0,
+            "kweight": 2.0,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "with_phase": false,
+            "kmax": 24.0
+          },
+          "actual_settings": {
+            "kmin": 3.0,
+            "dk": 1.0,
+            "dk2": 1.0,
+            "kweight": 2,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "with_phase": false,
+            "kmax": 14.6
+          },
+          "missing_metadata_fields": [],
+          "recompute_settings": {
+            "kmin": 3.0,
+            "kmax": 14.6,
+            "dk": 1.0,
+            "kweight": 2,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "dk2": 1.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "with_phase": false
+          },
+          "checks": {
+            "source_is_10k": true,
+            "chi_unchanged": true,
+            "k_unchanged": true,
+            "upper_limit_reduced": true,
+            "other_ft_settings_preserved": true,
+            "recomputed_ft_matches": true
+          },
+          "source_chi_sha256": "0d7975f0c899d218f2608062df9e093d98ec3f9dab119c55fd0abeca57ee90b0",
+          "derived_chi_sha256": "0d7975f0c899d218f2608062df9e093d98ec3f9dab119c55fd0abeca57ee90b0",
+          "recomputed_arrays": {
+            "kwin": {
+              "matched": true,
+              "actual_sha256": "b0e40fd703f733dce39dbb873449ad45b02b29ba9c5e9262672b73bfe9719a1f",
+              "max_absolute_error": 0.0
+            },
+            "r": {
+              "matched": true,
+              "actual_sha256": "a201f124b351d1d423cd1192f3ff5a3e11db9b606b433338133cb969200bf6cc",
+              "max_absolute_error": 0.0
+            },
+            "chir_mag": {
+              "matched": true,
+              "actual_sha256": "acdab787faf5ce13f23c7ea6ae4a7cbea2b59b725d917ba8075f817c345ca5e7",
+              "max_absolute_error": 0.0
+            },
+            "chir_re": {
+              "matched": true,
+              "actual_sha256": "75d9dcd61a4c88714aa3c9b8c40cf87103703b8ac41b2ea92d9c2110f0298349",
+              "max_absolute_error": 0.0
+            },
+            "chir_im": {
+              "matched": true,
+              "actual_sha256": "c7a12bbd7a1fe7df34cc1b0bed4a9e650dbc7fe2dbb5ce8e6cbf9e3201e990f0",
+              "max_absolute_error": 0.0
+            },
+            "chir_pha": {
+              "matched": true,
+              "actual_sha256": "01031ab2d65090fd0054ba846bc7a84048ad862c23ead8b1a02367818436b1a2",
+              "max_absolute_error": 0.0
+            }
+          }
+        }
+      ]
+    }
+  },
+  "passed": true
+}

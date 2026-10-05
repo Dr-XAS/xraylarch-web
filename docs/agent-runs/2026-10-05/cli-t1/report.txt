@@ -1,0 +1,6 @@
+T1 PASS
+  ok   version unchanged  (1 -> 1)
+  ok   5 groups  (found 5)
+  ok   no rejected commands
+  transcript: 0 commands, 0 previews, 0 rejected
+  meter: 9 requests (9 GET, 0 POST), 28,074 response bytes, ~7,018 tokens, status {'200': 9}

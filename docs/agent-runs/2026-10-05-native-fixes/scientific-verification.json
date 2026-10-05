@@ -1,0 +1,115 @@
+{
+  "passed": true,
+  "tasks": {
+    "T2": {
+      "task": "T2",
+      "passed": true,
+      "checks": {
+        "completed": true,
+        "explicit_model": true,
+        "served_model": true,
+        "frozen_task_prompt": true,
+        "frozen_fixture": true,
+        "originals_unchanged": true,
+        "workflow_state": true,
+        "Cu foil · 50 K.one_alignment": true,
+        "Cu foil · 50 K.reference": true,
+        "Cu foil · 50 K.shift": true,
+        "Cu foil · 50 K.edge_residual": true,
+        "Cu foil · 50 K.energy_min_shift": true,
+        "Cu foil · 50 K.energy_max_shift": true,
+        "Cu foil · 50 K.point_count": true,
+        "Cu foil · 300 K.one_alignment": true,
+        "Cu foil · 300 K.reference": true,
+        "Cu foil · 300 K.shift": true,
+        "Cu foil · 300 K.edge_residual": true,
+        "Cu foil · 300 K.energy_min_shift": true,
+        "Cu foil · 300 K.energy_max_shift": true,
+        "Cu foil · 300 K.point_count": true
+      },
+      "values": {
+        "Cu foil · 50 K": {
+          "artifact": "xas1--eval-comparison-3cab219be8f9--copper-1_aligned--1f5437b23442cbf2c862d33c5a8cc1db",
+          "shift_ev": -0.00745527482409207,
+          "app_shift_ev": -0.018,
+          "edge_residual_ev": -0.0074552748246787814
+        },
+        "Cu foil · 300 K": {
+          "artifact": "xas1--eval-comparison-3cab219be8f9--copper-2_aligned--335a04b361402a75c08ab0eb695fc625",
+          "shift_ev": -2.9772837612725316,
+          "app_shift_ev": -2.959,
+          "edge_residual_ev": -0.05728376127262891
+        },
+        "original_edge_step_spread": 0.4398161912853382
+      },
+      "scope": "Saved artifact summaries; full-array checks are separate"
+    },
+    "T3": {
+      "task": "T3",
+      "passed": true,
+      "checks": {
+        "completed": true,
+        "explicit_model": true,
+        "served_model": true,
+        "frozen_task_prompt": true,
+        "frozen_fixture": true,
+        "originals_unchanged": true,
+        "workflow_state": true,
+        "one_transform": true,
+        "preserved.kmin": true,
+        "preserved.kweight": true,
+        "preserved.dk": true,
+        "preserved.dk2": true,
+        "preserved.window": true,
+        "preserved.rmax_out": true,
+        "preserved.nfft": true,
+        "preserved.kstep": true,
+        "preserved.with_phase": true,
+        "upper_limit_reduced": true,
+        "first_shell_peak": true,
+        "unchanged.energy_min": true,
+        "unchanged.energy_max": true,
+        "unchanged.e0": true,
+        "unchanged.edge_step": true,
+        "unchanged.n_points": true,
+        "unchanged.processing": true
+      },
+      "values": {
+        "artifact": "xas1--eval-comparison-5ca765e772fb--copper-0_ft--e33680563987127203cdc8489f869f71",
+        "initial_ft": {
+          "kmin": 3.0,
+          "kmax": 24.0,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "dk2": 1.0,
+          "window": "hanning",
+          "rmax_out": 10.0,
+          "nfft": 2048,
+          "kstep": 0.05,
+          "with_phase": false
+        },
+        "final_ft": {
+          "source_ref": "xas1--eval-comparison-5ca765e772fb--copper-0--3dfa0656b08102bd94435651d57d83cb",
+          "kmin": 3.0,
+          "kmax": 14.6,
+          "dk": 1.0,
+          "dk2": 1.0,
+          "nfft": 2048,
+          "kstep": 0.05,
+          "with_phase": false,
+          "kweight": 2,
+          "window": "hanning",
+          "rmax_out": 10.0,
+          "r_peak": 2.270291566070749,
+          "n_independent": 75.84789359463944
+        }
+      },
+      "scope": "Saved artifact summaries; full-array checks are separate"
+    }
+  },
+  "tolerances": {
+    "shift_ev": 0.1,
+    "edge_residual_ev": 0.15,
+    "r_peak_A": 0.1
+  }
+}

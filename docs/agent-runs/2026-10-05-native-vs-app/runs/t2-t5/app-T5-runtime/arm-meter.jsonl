@@ -1,0 +1,12 @@
+{"time": 1791236107.5757434, "method": "GET", "path": "/api/artemis/capabilities", "query": "view=summary", "status": 200, "bytes": 5429}
+{"time": 1791236107.575425, "method": "GET", "path": "/api/athena/projects/_leK5DmLCVqvw273NXZlOeo3", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791236108.8281784, "method": "GET", "path": "/api/artemis/structures", "query": "q=copper&element=Cu&view=summary", "status": 200, "bytes": 11873}
+{"time": 1791236110.151309, "method": "GET", "path": "/api/artemis/structures/11145", "query": "view=summary", "status": 200, "bytes": 4823}
+{"time": 1791236112.466867, "method": "POST", "path": "/api/artemis/feff/jobs", "query": "view=summary", "status": 202, "bytes": 407}
+{"time": 1791236114.0775523, "method": "GET", "path": "/api/artemis/feff/jobs/2875aac8dc544f0fb9f0b41c128ca361", "query": "view=summary", "status": 200, "bytes": 933}
+{"time": 1791236117.303402, "method": "POST", "path": "/api/artemis/projects/_leK5DmLCVqvw273NXZlOeo3/groups/Xs1xu5Y9XXoaekOoqw6mIf6O/fit", "query": "view=summary", "status": 200, "bytes": 1907}
+{"time": 1791236123.9579484, "method": "POST", "path": "/api/artemis/projects/_leK5DmLCVqvw273NXZlOeo3/groups/Xs1xu5Y9XXoaekOoqw6mIf6O/fit", "query": "view=summary", "status": 200, "bytes": 1905}
+{"time": 1791236123.9560053, "method": "POST", "path": "/api/artemis/projects/_leK5DmLCVqvw273NXZlOeo3/groups/Xs1xu5Y9XXoaekOoqw6mIf6O/fit", "query": "view=summary", "status": 200, "bytes": 1989}
+{"time": 1791236123.9586966, "method": "POST", "path": "/api/artemis/projects/_leK5DmLCVqvw273NXZlOeo3/groups/Xs1xu5Y9XXoaekOoqw6mIf6O/fit", "query": "view=summary", "status": 200, "bytes": 1835}
+{"time": 1791236123.9582305, "method": "POST", "path": "/api/artemis/projects/_leK5DmLCVqvw273NXZlOeo3/groups/Xs1xu5Y9XXoaekOoqw6mIf6O/fit", "query": "view=summary", "status": 200, "bytes": 2056}
+{"time": 1791236123.9584677, "method": "POST", "path": "/api/artemis/projects/_leK5DmLCVqvw273NXZlOeo3/groups/Xs1xu5Y9XXoaekOoqw6mIf6O/fit", "query": "view=summary", "status": 200, "bytes": 1838}

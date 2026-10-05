@@ -1,0 +1,1 @@
+How far apart are the copper atoms in the 10 K foil? I need the nearest-neighbour distance to a couple of hundredths of an angstrom, and how far to trust it.

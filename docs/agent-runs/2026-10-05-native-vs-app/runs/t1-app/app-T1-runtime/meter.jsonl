@@ -1,0 +1,13 @@
+{"time": 1791235860.6308744, "method": "GET", "path": "/openapi.json", "query": "", "status": 200, "bytes": 98782}
+{"time": 1791235860.810434, "method": "POST", "path": "/api/athena/projects", "query": "", "status": 200, "bytes": 323}
+{"time": 1791235860.824671, "method": "POST", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA/command", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791235861.909566, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA/transcript", "query": "", "status": 200, "bytes": 684}
+{"time": 1791235861.9456148, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA", "query": "", "status": 200, "bytes": 956786}
+{"time": 1791235875.9693604, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791235877.6637309, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA/compare", "query": "groups=St-o7Z-x9tZPHVyV__pwg6nt%2CHv24325mG6ohK208krtWOT9Q%2C2uFGpYFPPk28dQ73NBq0f_2z&view=summary", "status": 200, "bytes": 2215}
+{"time": 1791235883.9656045, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791235884.020097, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA", "query": "view=parameters", "status": 200, "bytes": 8599}
+{"time": 1791235884.1282775, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA/transcript", "query": "limit=500", "status": 200, "bytes": 684}
+{"time": 1791235884.5770798, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791235884.6315439, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA", "query": "view=parameters", "status": 200, "bytes": 8599}
+{"time": 1791235884.6850948, "method": "GET", "path": "/api/athena/projects/0_qBZqs4OUBVFfZEtGwPFjtA/transcript", "query": "limit=500", "status": 200, "bytes": 684}

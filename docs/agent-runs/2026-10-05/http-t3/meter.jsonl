@@ -1,0 +1,16 @@
+{"time": 1791233986.354176, "method": "GET", "path": "/api/athena/capabilities/parameters", "query": "", "status": 200, "bytes": 2687}
+{"time": 1791233986.3562748, "method": "GET", "path": "/api/athena/projects/fJcvRboA1aOzwJE7i5T7P6iQ", "query": "view=summary", "status": 200, "bytes": 3132}
+{"time": 1791233986.375628, "method": "GET", "path": "/api/artemis/capabilities", "query": "", "status": 200, "bytes": 5429}
+{"time": 1791233991.905975, "method": "GET", "path": "/api/athena/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/digest", "query": "", "status": 200, "bytes": 3480}
+{"time": 1791233991.9225368, "method": "GET", "path": "/api/artemis/structures", "query": "q=copper&element=Cu", "status": 200, "bytes": 11873}
+{"time": 1791234002.492893, "method": "POST", "path": "/api/athena/projects/fJcvRboA1aOzwJE7i5T7P6iQ/command", "query": "view=summary", "status": 200, "bytes": 3167}
+{"time": 1791234002.553416, "method": "GET", "path": "/api/artemis/structures/11145", "query": "", "status": 200, "bytes": 4823}
+{"time": 1791234002.568341, "method": "GET", "path": "/api/athena/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/digest", "query": "", "status": 200, "bytes": 3494}
+{"time": 1791234009.143893, "method": "POST", "path": "/api/artemis/feff/jobs", "query": "view=summary", "status": 202, "bytes": 406}
+{"time": 1791234010.1616309, "method": "GET", "path": "/api/artemis/feff/jobs/8c7ce94b1a204a76b2a10823924bddeb", "query": "view=summary", "status": 200, "bytes": 706}
+{"time": 1791234020.4962418, "method": "POST", "path": "/api/artemis/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/fit", "query": "view=summary", "status": 200, "bytes": 1909}
+{"time": 1791234034.676647, "method": "POST", "path": "/api/artemis/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/fit", "query": "view=summary", "status": 200, "bytes": 1992}
+{"time": 1791234034.755063, "method": "POST", "path": "/api/artemis/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/fit", "query": "view=summary", "status": 200, "bytes": 1910}
+{"time": 1791234034.785533, "method": "POST", "path": "/api/artemis/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/fit", "query": "view=summary", "status": 200, "bytes": 1842}
+{"time": 1791234034.815076, "method": "POST", "path": "/api/artemis/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/fit", "query": "view=summary", "status": 200, "bytes": 1839}
+{"time": 1791234034.84466, "method": "GET", "path": "/api/athena/projects/fJcvRboA1aOzwJE7i5T7P6iQ/groups/ktqX3FZjUEB_5wfQUHA7ihsn/digest", "query": "", "status": 200, "bytes": 3494}
