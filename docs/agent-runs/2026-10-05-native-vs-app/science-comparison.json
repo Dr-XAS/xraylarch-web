@@ -1,0 +1,1303 @@
+{
+  "schema_version": 1,
+  "runs_root": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs",
+  "tasks": {
+    "T1": {
+      "task": "T1",
+      "numerical_status": "equivalent",
+      "comparisons": [
+        {
+          "field": "Cu foil · 10 K.e0",
+          "kind": "measurement",
+          "native": 8977.58,
+          "app": 8977.58,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.1,
+          "status": "equivalent",
+          "evidence": {}
+        },
+        {
+          "field": "Cu foil · 10 K.edge_step",
+          "kind": "measurement",
+          "native": 2.2987522766566553,
+          "app": 2.2987522766566553,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.005,
+          "status": "equivalent",
+          "evidence": {}
+        },
+        {
+          "field": "Cu foil · 50 K.e0",
+          "kind": "measurement",
+          "native": 8977.58,
+          "app": 8977.58,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.1,
+          "status": "equivalent",
+          "evidence": {}
+        },
+        {
+          "field": "Cu foil · 50 K.edge_step",
+          "kind": "measurement",
+          "native": 2.2895627605421636,
+          "app": 2.2895627605421636,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.005,
+          "status": "equivalent",
+          "evidence": {}
+        },
+        {
+          "field": "Cu foil · 300 K.e0",
+          "kind": "measurement",
+          "native": 8980.5,
+          "app": 8980.5,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.1,
+          "status": "equivalent",
+          "evidence": {}
+        },
+        {
+          "field": "Cu foil · 300 K.edge_step",
+          "kind": "measurement",
+          "native": 2.729378951827502,
+          "app": 2.729378951827502,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.005,
+          "status": "equivalent",
+          "evidence": {}
+        }
+      ],
+      "details": {
+        "initial_edge_step_spread": {
+          "native": 0.4398161912853382,
+          "app": 0.4398161912853382
+        }
+      },
+      "answer_grade": null,
+      "state_grade": "separate coordinator assertions",
+      "sources": {
+        "native": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t1/native-T1",
+        "app": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t1-app/app-T1",
+        "app_runtime": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t1-app/app-T1-runtime"
+      }
+    },
+    "T2": {
+      "task": "T2",
+      "numerical_status": "different",
+      "comparisons": [
+        {
+          "field": "Cu foil · 50 K.alignment_shift_ev",
+          "kind": "measurement",
+          "native": 11.859897120930633,
+          "app": -0.018,
+          "app_minus_native": -11.877897120930633,
+          "absolute_tolerance": 0.1,
+          "status": "different",
+          "evidence": {
+            "native_seq": 2,
+            "app": "final minus initial energy_shift"
+          }
+        },
+        {
+          "field": "Cu foil · 300 K.alignment_shift_ev",
+          "kind": "measurement",
+          "native": 8.927755131686334,
+          "app": -2.959,
+          "app_minus_native": -11.886755131686334,
+          "absolute_tolerance": 0.1,
+          "status": "different",
+          "evidence": {
+            "native_seq": 4,
+            "app": "final minus initial energy_shift"
+          }
+        },
+        {
+          "field": "original_edge_step_spread",
+          "kind": "measurement",
+          "native": 0.4398161912853382,
+          "app": 0.4398161912853382,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 0.005,
+          "status": "equivalent",
+          "evidence": {}
+        }
+      ],
+      "details": {
+        "initial_edge_step_spread": {
+          "native": 0.4398161912853382,
+          "app": 0.4398161912853382
+        },
+        "native_alignments": [
+          {
+            "source_label": "Cu foil · 50 K",
+            "xas_ref": "xas1--eval-comparison-3eb35945c602--copper-1_aligned--93eda2ef243163756726df50d52e1056",
+            "seq": 2,
+            "reference_label": "Cu foil · 10 K",
+            "energy_shift_ev": 11.859897120930633
+          },
+          {
+            "source_label": "Cu foil · 300 K",
+            "xas_ref": "xas1--eval-comparison-3eb35945c602--copper-2_aligned--bf68fc151eab0de23dff885833e2845c",
+            "seq": 4,
+            "reference_label": "Cu foil · 10 K",
+            "energy_shift_ev": 8.927755131686334
+          }
+        ],
+        "native_merges": [
+          {
+            "source_label": null,
+            "xas_ref": "xas1--eval-comparison-3eb35945c602--copper-0_merged--fb2eb1d710e8f08ab6095ba19735d0c1",
+            "seq": 12,
+            "source_refs": [
+              "xas1--eval-comparison-3eb35945c602--copper-0--5e2682fe275f645c74fc16ac59f011aa",
+              "xas1--eval-comparison-3eb35945c602--copper-1_aligned--93eda2ef243163756726df50d52e1056",
+              "xas1--eval-comparison-3eb35945c602--copper-2_aligned--bf68fc151eab0de23dff885833e2845c"
+            ],
+            "source_labels": [
+              "Cu foil · 10 K",
+              "Cu foil · 50 K",
+              "Cu foil · 300 K"
+            ],
+            "energy_min": 8796.258,
+            "energy_max": 10147.68,
+            "n_spectra": 3,
+            "trim": true
+          }
+        ],
+        "app_merges": [
+          {
+            "label": "merge",
+            "energy_min": 8786.204,
+            "energy_max": 10134.32,
+            "parents": [
+              "IL7xxKMUeTQb4RhTdgtdJejZ",
+              "9Pat8qrvce5RCy6YhdQ-1x5q",
+              "zBQT9WA74PbfTFXe2hRmKvJV"
+            ],
+            "source_labels": [
+              "Cu foil · 10 K",
+              "Cu foil · 50 K",
+              "Cu foil · 300 K"
+            ],
+            "derived": {
+              "operation": "merge",
+              "parents": [
+                "IL7xxKMUeTQb4RhTdgtdJejZ",
+                "9Pat8qrvce5RCy6YhdQ-1x5q",
+                "zBQT9WA74PbfTFXe2hRmKvJV"
+              ],
+              "array": "mu",
+              "excluded": []
+            },
+            "processing_error": null
+          }
+        ]
+      },
+      "answer_grade": null,
+      "state_grade": "separate coordinator assertions",
+      "sources": {
+        "native": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/native-T2",
+        "app": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T2",
+        "app_runtime": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T2-runtime"
+      }
+    },
+    "T3": {
+      "task": "T3",
+      "numerical_status": "different",
+      "comparisons": [
+        {
+          "field": "10 K.kmin",
+          "kind": "invariant",
+          "native": 2.0,
+          "app": 3.0,
+          "app_minus_native": 1.0,
+          "absolute_tolerance": 1e-06,
+          "status": "different",
+          "evidence": {
+            "native_seq": 4
+          },
+          "expected_unchanged_kmin": 3.0
+        },
+        {
+          "field": "10 K.kmax",
+          "kind": "choice_comparison",
+          "native": 14.6,
+          "app": 18.0,
+          "app_minus_native": 3.4000000000000004,
+          "absolute_tolerance": 0.1,
+          "status": "different",
+          "evidence": {
+            "native_seq": 4,
+            "app_peak_seq": 19
+          }
+        },
+        {
+          "field": "10 K.r_peak",
+          "kind": "choice_comparison",
+          "native": 2.270291566070749,
+          "app": 2.27,
+          "app_minus_native": -0.00029156607074876106,
+          "absolute_tolerance": 0.1,
+          "status": "equivalent",
+          "evidence": {
+            "native_seq": 4,
+            "app_peak_seq": 19
+          }
+        }
+      ],
+      "details": {
+        "initial_edge_step_spread": {
+          "native": 0.4398161912853382,
+          "app": 0.4398161912853382
+        },
+        "native_transform": {
+          "source_label": "Cu foil · 10 K",
+          "xas_ref": "xas1--eval-comparison-8b9f968bc5de--copper-0_ft--ca67939c1e4cf8473a9022d66c218446",
+          "seq": 4,
+          "kmin": 2.0,
+          "kmax": 14.6,
+          "r_peak": 2.270291566070749
+        },
+        "app_transform": {
+          "source_label": "Cu foil · 10 K",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "r_peak": 2.27,
+          "effective": {
+            "e0": 8977.58,
+            "step": 2.2987522766566553,
+            "pre1": -180.0,
+            "pre2": -90.0,
+            "norm1": 25.0,
+            "norm2": 2384.8899999999994,
+            "nnorm": 2,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": 25.019159051203296,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 18.0,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": 25.0,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "data_type": "mu",
+            "is_normalized": false,
+            "edge_step": 2.2987522766566553,
+            "exafs": true,
+            "fnorm_edge_step": null,
+            "fnorm_scale": null,
+            "background_standard": false,
+            "background_standard_kmin": null,
+            "background_standard_kmax": null,
+            "background_standard_points": null,
+            "available_kmax": 25.0,
+            "background_covariance_available": true,
+            "rstep": 0.030679615757712823,
+            "background_standard_id": null,
+            "element": "Cu",
+            "edge": "K"
+          },
+          "requested": {
+            "e0": null,
+            "step": null,
+            "pre1": null,
+            "pre2": null,
+            "norm1": null,
+            "norm2": null,
+            "nnorm": null,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": null,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 18.0,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": null,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": null,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05
+          },
+          "peak_seq": 19,
+          "peak_definition": "strongest reported local maximum of phase-uncorrected |chi(R)|",
+          "reported_peaks": [
+            {
+              "r": 2.27,
+              "magnitude": 8.5155
+            },
+            {
+              "r": 4.786,
+              "magnitude": 3.7856
+            },
+            {
+              "r": 4.142,
+              "magnitude": 3.6681
+            },
+            {
+              "r": 3.405,
+              "magnitude": 1.7763
+            },
+            {
+              "r": 5.369,
+              "magnitude": 1.3592
+            },
+            {
+              "r": 5.829,
+              "magnitude": 0.4998
+            }
+          ]
+        },
+        "native_peak_definition": "global maximum of phase-uncorrected |chi(R)| returned by native Fourier tool",
+        "interpretation": "kmin must remain 3; kmax choices may differ while both satisfy the task. Numerical comparison does not grade prose."
+      },
+      "answer_grade": null,
+      "state_grade": "separate coordinator assertions",
+      "sources": {
+        "native": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/native-T3",
+        "app": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T3",
+        "app_runtime": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T3-runtime"
+      }
+    },
+    "T4": {
+      "task": "T4",
+      "numerical_status": "equivalent",
+      "comparisons": [
+        {
+          "field": "merged_energy_max_ev",
+          "kind": "measurement",
+          "native": 10134.32,
+          "app": 10134.32,
+          "app_minus_native": 0.0,
+          "absolute_tolerance": 15.0,
+          "status": "equivalent",
+          "evidence": {}
+        }
+      ],
+      "details": {
+        "initial_edge_step_spread": {
+          "native": 0.4398161912853382,
+          "app": 0.4398161912853382
+        },
+        "native_merges": [
+          {
+            "source_label": null,
+            "xas_ref": "xas1--eval-comparison-ff83ce85209b--copper-0_merged--f5d6c5403b7b30a2caeb6c42e15fb2bd",
+            "seq": 2,
+            "source_refs": [
+              "xas1--eval-comparison-ff83ce85209b--copper-0--721e4af288b629d15c0070cceb94497d",
+              "xas1--eval-comparison-ff83ce85209b--copper-1--7f539dd633b7b42bb54a524f27be6b1f",
+              "xas1--eval-comparison-ff83ce85209b--copper-2--f75dc3589871ab4512851fdd55e82151"
+            ],
+            "source_labels": [
+              "Cu foil · 10 K",
+              "Cu foil · 50 K",
+              "Cu foil · 300 K"
+            ],
+            "energy_min": 8786.204,
+            "energy_max": 10134.32,
+            "n_spectra": 3,
+            "trim": true
+          }
+        ],
+        "app_merges": [
+          {
+            "label": "merge",
+            "energy_min": 8786.204,
+            "energy_max": 10134.32,
+            "parents": [
+              "izB_QeL794g6gCl0X-oEU0ua",
+              "4_zgZCftjdBZcvR7JeC65cP2",
+              "aul7u-MokxxfXS22esyj0Di2"
+            ],
+            "source_labels": [
+              "Cu foil · 10 K",
+              "Cu foil · 50 K",
+              "Cu foil · 300 K"
+            ],
+            "derived": {
+              "operation": "merge",
+              "parents": [
+                "izB_QeL794g6gCl0X-oEU0ua",
+                "4_zgZCftjdBZcvR7JeC65cP2",
+                "aul7u-MokxxfXS22esyj0Di2"
+              ],
+              "array": "norm",
+              "excluded": []
+            },
+            "processing_error": null
+          }
+        ]
+      },
+      "answer_grade": null,
+      "state_grade": "separate coordinator assertions",
+      "sources": {
+        "native": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/native-T4",
+        "app": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T4",
+        "app_runtime": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T4-runtime"
+      }
+    },
+    "T5": {
+      "task": "T5",
+      "numerical_status": "equivalent",
+      "comparisons": [
+        {
+          "field": "first_10K_12_neighbour_fit_r_angstrom",
+          "kind": "measurement",
+          "native": 2.552082881361755,
+          "app": 2.549,
+          "app_minus_native": -0.003082881361755163,
+          "absolute_tolerance": 0.02,
+          "status": "equivalent",
+          "evidence": {
+            "native_seq": 2,
+            "app_seq": 27
+          }
+        }
+      ],
+      "details": {
+        "initial_edge_step_spread": {
+          "native": 0.4398161912853382,
+          "app": 0.4398161912853382
+        },
+        "fits": {
+          "selection": "first chronological successful 10 K fit with twelve neighbours; native species uses protocol fixture",
+          "native_first": {
+            "source_label": "Cu foil · 10 K",
+            "seq": 2,
+            "r": 2.552082881361755,
+            "stderr": 0.0013106211750171007,
+            "degeneracy": 12.0,
+            "scatterers": null,
+            "species_provenance": "protocol copper fixture",
+            "material_id": "eval_copper_11145",
+            "absorber_requested": "Cu",
+            "sigma2": 0.004289523164658693,
+            "rfactor": 0.0017992066263694687,
+            "transform": {
+              "kmin": 3.0,
+              "kmax": 10.0,
+              "rmin": 1.0,
+              "rmax": 3.0,
+              "kweight": null,
+              "dk": null,
+              "auto_select_window": null,
+              "fix_s02": false
+            },
+            "explicit_transform_arguments": {
+              "fix_s02": false
+            },
+            "requested_parameters": {
+              "amp": 0.8,
+              "e0": 0,
+              "sigma2": 0.003,
+              "deltar": 0
+            },
+            "constraints": null,
+            "defs": null,
+            "fitted_parameters": {
+              "nvar": 4,
+              "kmin": 3.0,
+              "kmax": 10.0,
+              "rmin": 1.0,
+              "rmax": 3.0,
+              "s02": 0.9719870944343264,
+              "s02_err": 0.05283656681219064,
+              "deltae": 6.943710620957458,
+              "errore": 0.04749957788442916,
+              "reduced_chi2": 6.762575377716023,
+              "rfactor": 0.0017992066263694687,
+              "correlations": [
+                {
+                  "name1": "amp",
+                  "name2": "sigma2",
+                  "correlation": 0.9467573591355658
+                }
+              ]
+            },
+            "path": {
+              "path_label": "pjsv6xq2v",
+              "deltar": -0.004117118638244836,
+              "deltar_err": 0.0013106211750171007,
+              "R": 2.552082881361755,
+              "sigma2": 0.004289523164658693,
+              "sigma2_err": 0.0004824263019327689,
+              "n_feff": 12.0,
+              "coordination_number": 11.663845133211916,
+              "coordination_number_err": 0.6340388017462877
+            },
+            "diagnostics": {
+              "success": true,
+              "verdict": "ok",
+              "score": 100.0,
+              "s02": 0.9719870944343264,
+              "s02_err": 0.05283656681219064,
+              "sigma2": 0.004289523164658693,
+              "sigma2_err": 0.0004824263008236401,
+              "deltae": 6.943710620957458,
+              "deltae_err": 0.04749957788442916,
+              "deltar": -0.004117118638244836,
+              "deltar_err": 0.001310621177241652,
+              "rfactor": 0.0017992066263694687,
+              "reduced_chi2": 6.762575377716023,
+              "nvarys": 4,
+              "n_independent": 9.91267681314614,
+              "overparam_ratio": 0.404,
+              "n_paths": 1,
+              "errorbars": true,
+              "correlations": [
+                {
+                  "a": "amp",
+                  "b": "sigma2",
+                  "value": 0.9467573591355658,
+                  "expected": true
+                }
+              ],
+              "checks": [
+                {
+                  "name": "s02_range",
+                  "status": "ok",
+                  "message": "S0² = 0.972 (physical).",
+                  "value": 0.9719870944343264
+                },
+                {
+                  "name": "sigma2_range",
+                  "status": "ok",
+                  "message": "σ² = 0.00429 Å² (physical).",
+                  "value": 0.004289523164658693
+                },
+                {
+                  "name": "deltae",
+                  "status": "ok",
+                  "message": "ΔE0 = 6.94 eV.",
+                  "value": 6.943710620957458
+                },
+                {
+                  "name": "deltar_range",
+                  "status": "ok",
+                  "message": "ΔR = -0.004117 Å.",
+                  "value": -0.004117118638244836
+                },
+                {
+                  "name": "rfactor",
+                  "status": "ok",
+                  "message": "R-factor = 0.001799 (good).",
+                  "value": 0.0017992066263694687
+                },
+                {
+                  "name": "reduced_chi2",
+                  "status": "info",
+                  "message": "Reduced χ² = 6.763 is contextual for EXAFS because experimental uncertainties may be underestimated.",
+                  "value": 6.762575377716023
+                },
+                {
+                  "name": "information_budget",
+                  "status": "ok",
+                  "message": "4 varied parameters vs. ~9.9 independent points.",
+                  "value": 0.40352369752388384
+                },
+                {
+                  "name": "corr_amp_sigma2",
+                  "status": "info",
+                  "message": "S0²–σ² correlation = 0.95 (expected EXAFS correlation).",
+                  "value": 0.9467573591355658
+                }
+              ],
+              "recommendations": []
+            },
+            "governance": {
+              "evidence_grade": "corroborated",
+              "admissible_claims": [
+                "report_value",
+                "structural_conclusion",
+                "speciation"
+              ],
+              "blocked_claims": [
+                "definitive_identification"
+              ],
+              "guidance": ""
+            },
+            "stability_verdict": "robust",
+            "window_selection": {}
+          },
+          "app_first": {
+            "source_label": "Cu foil · 10 K",
+            "seq": 27,
+            "r": 2.549,
+            "stderr": 0.00149497,
+            "degeneracy": 12.0,
+            "scatterers": "Cu-Cu",
+            "sigma2": 0.00359697,
+            "rfactor": 0.00179348,
+            "transform": {
+              "fitspace": "r",
+              "kmin": 3.0,
+              "kmax": 18.0,
+              "kweight": [
+                2
+              ],
+              "dk": 2.0,
+              "window": "hanning",
+              "rmin": 1.5,
+              "rmax": 3.0,
+              "dr": 0.0
+            },
+            "requested_transform": {
+              "fitspace": "r",
+              "kmin": 3.0,
+              "kmax": 18.0,
+              "kweight": [
+                2
+              ],
+              "dk": 2.0,
+              "window": "hanning",
+              "rmin": 1.5,
+              "rmax": 3.0,
+              "dr": 0.0
+            },
+            "requested_parameters": [
+              {
+                "name": "amp",
+                "kind": "guess",
+                "value": 1.0,
+                "min": 0.5,
+                "max": 1.5
+              },
+              {
+                "name": "del_e0",
+                "kind": "guess",
+                "value": 0.0,
+                "min": -20.0,
+                "max": 20.0
+              },
+              {
+                "name": "del_r",
+                "kind": "guess",
+                "value": 0.0,
+                "min": -0.5,
+                "max": 0.5
+              },
+              {
+                "name": "sig2",
+                "kind": "guess",
+                "value": 0.005,
+                "min": 0.0,
+                "max": 0.02
+              }
+            ],
+            "requested_paths": [
+              {
+                "id": "nn",
+                "label": "Cu first shell",
+                "enabled": true,
+                "s02": "amp",
+                "e0": "del_e0",
+                "deltar": "del_r",
+                "sigma2": "sig2",
+                "feff_job": "2875aac8dc544f0fb9f0b41c128ca361",
+                "feff_path": "feff0001"
+              }
+            ],
+            "fitted_parameters": [
+              {
+                "name": "amp",
+                "kind": "guess",
+                "value": 0.896968,
+                "stderr": 0.0235002,
+                "initial": 1.0
+              },
+              {
+                "name": "del_e0",
+                "kind": "guess",
+                "value": 6.52922,
+                "stderr": 0.340189,
+                "initial": 0.0
+              },
+              {
+                "name": "del_r",
+                "kind": "guess",
+                "value": -0.00716071,
+                "stderr": 0.00149497,
+                "initial": 0.0
+              },
+              {
+                "name": "sig2",
+                "kind": "guess",
+                "value": 0.00359697,
+                "stderr": 0.000147287,
+                "initial": 0.005
+              }
+            ],
+            "statistics": {
+              "n_varys": 4,
+              "n_independent": 15.3239,
+              "n_data": 98,
+              "nfev": 31,
+              "chi_square": 142.121,
+              "reduced_chi_square": 12.5505,
+              "r_factor": 0.00179348,
+              "aic": 42.1305,
+              "bic": 45.0482,
+              "errorbars": true
+            },
+            "correlations": [
+              {
+                "left": "amp",
+                "right": "sig2",
+                "value": 0.876456
+              },
+              {
+                "left": "del_e0",
+                "right": "del_r",
+                "value": 0.873385
+              },
+              {
+                "left": "del_r",
+                "right": "sig2",
+                "value": 0.122179
+              },
+              {
+                "left": "amp",
+                "right": "del_r",
+                "value": 0.122044
+              }
+            ],
+            "concerns": [],
+            "warnings": [
+              "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+            ],
+            "path": {
+              "id": "nn",
+              "label": "Cu first shell",
+              "scatterers": "Cu-Cu",
+              "nleg": 2,
+              "degen": 12.0,
+              "reff": 2.5562,
+              "r": 2.549,
+              "s02": 0.896968,
+              "sigma2": 0.00359697,
+              "e0": 6.52922,
+              "deltar": -0.00716071
+            }
+          },
+          "native_reported_fits": [
+            {
+              "source_label": "Cu foil · 10 K",
+              "xas_ref": "xas1--eval-comparison-abfd2240f2be--copper-0--b71219b6fc4c123506fc04cf00d48322",
+              "seq": 2,
+              "r": 2.552082881361755,
+              "stderr": 0.0013106211750171007,
+              "degeneracy": 12.0,
+              "sigma2": 0.004289523164658693,
+              "rfactor": 0.0017992066263694687,
+              "statistics": {
+                "nvar": 4,
+                "kmin": 3.0,
+                "kmax": 10.0,
+                "rmin": 1.0,
+                "rmax": 3.0,
+                "s02": 0.9719870944343264,
+                "s02_err": 0.05283656681219064,
+                "deltae": 6.943710620957458,
+                "errore": 0.04749957788442916,
+                "reduced_chi2": 6.762575377716023,
+                "rfactor": 0.0017992066263694687,
+                "correlations": [
+                  {
+                    "name1": "amp",
+                    "name2": "sigma2",
+                    "correlation": 0.9467573591355658
+                  }
+                ]
+              },
+              "diagnostics": {
+                "success": true,
+                "verdict": "ok",
+                "score": 100.0,
+                "s02": 0.9719870944343264,
+                "s02_err": 0.05283656681219064,
+                "sigma2": 0.004289523164658693,
+                "sigma2_err": 0.0004824263008236401,
+                "deltae": 6.943710620957458,
+                "deltae_err": 0.04749957788442916,
+                "deltar": -0.004117118638244836,
+                "deltar_err": 0.001310621177241652,
+                "rfactor": 0.0017992066263694687,
+                "reduced_chi2": 6.762575377716023,
+                "nvarys": 4,
+                "n_independent": 9.91267681314614,
+                "overparam_ratio": 0.404,
+                "n_paths": 1,
+                "errorbars": true,
+                "correlations": [
+                  {
+                    "a": "amp",
+                    "b": "sigma2",
+                    "value": 0.9467573591355658,
+                    "expected": true
+                  }
+                ],
+                "checks": [
+                  {
+                    "name": "s02_range",
+                    "status": "ok",
+                    "message": "S0² = 0.972 (physical).",
+                    "value": 0.9719870944343264
+                  },
+                  {
+                    "name": "sigma2_range",
+                    "status": "ok",
+                    "message": "σ² = 0.00429 Å² (physical).",
+                    "value": 0.004289523164658693
+                  },
+                  {
+                    "name": "deltae",
+                    "status": "ok",
+                    "message": "ΔE0 = 6.94 eV.",
+                    "value": 6.943710620957458
+                  },
+                  {
+                    "name": "deltar_range",
+                    "status": "ok",
+                    "message": "ΔR = -0.004117 Å.",
+                    "value": -0.004117118638244836
+                  },
+                  {
+                    "name": "rfactor",
+                    "status": "ok",
+                    "message": "R-factor = 0.001799 (good).",
+                    "value": 0.0017992066263694687
+                  },
+                  {
+                    "name": "reduced_chi2",
+                    "status": "info",
+                    "message": "Reduced χ² = 6.763 is contextual for EXAFS because experimental uncertainties may be underestimated.",
+                    "value": 6.762575377716023
+                  },
+                  {
+                    "name": "information_budget",
+                    "status": "ok",
+                    "message": "4 varied parameters vs. ~9.9 independent points.",
+                    "value": 0.40352369752388384
+                  },
+                  {
+                    "name": "corr_amp_sigma2",
+                    "status": "info",
+                    "message": "S0²–σ² correlation = 0.95 (expected EXAFS correlation).",
+                    "value": 0.9467573591355658
+                  }
+                ],
+                "recommendations": []
+              },
+              "governance": {
+                "evidence_grade": "corroborated",
+                "admissible_claims": [
+                  "report_value",
+                  "structural_conclusion",
+                  "speciation"
+                ],
+                "blocked_claims": [
+                  "definitive_identification"
+                ],
+                "guidance": ""
+              },
+              "stability_verdict": "robust"
+            }
+          ],
+          "app_reported_fits": [
+            {
+              "seq": 27,
+              "request": {
+                "version": 1,
+                "parameters": [
+                  {
+                    "name": "amp",
+                    "kind": "guess",
+                    "value": 1.0,
+                    "min": 0.5,
+                    "max": 1.5
+                  },
+                  {
+                    "name": "del_e0",
+                    "kind": "guess",
+                    "value": 0.0,
+                    "min": -20.0,
+                    "max": 20.0
+                  },
+                  {
+                    "name": "del_r",
+                    "kind": "guess",
+                    "value": 0.0,
+                    "min": -0.5,
+                    "max": 0.5
+                  },
+                  {
+                    "name": "sig2",
+                    "kind": "guess",
+                    "value": 0.005,
+                    "min": 0.0,
+                    "max": 0.02
+                  }
+                ],
+                "paths": [
+                  {
+                    "id": "nn",
+                    "label": "Cu first shell",
+                    "enabled": true,
+                    "s02": "amp",
+                    "e0": "del_e0",
+                    "deltar": "del_r",
+                    "sigma2": "sig2",
+                    "feff_job": "2875aac8dc544f0fb9f0b41c128ca361",
+                    "feff_path": "feff0001"
+                  }
+                ],
+                "transform": {
+                  "fitspace": "r",
+                  "kmin": 3.0,
+                  "kmax": 18.0,
+                  "kweight": [
+                    2
+                  ],
+                  "dk": 2.0,
+                  "window": "hanning",
+                  "rmin": 1.5,
+                  "rmax": 3.0,
+                  "dr": 0.0
+                }
+              },
+              "result": {
+                "project_id": "_leK5DmLCVqvw273NXZlOeo3",
+                "version": 1,
+                "group_id": "Xs1xu5Y9XXoaekOoqw6mIf6O",
+                "group_label": "Cu foil · 10 K",
+                "success": true,
+                "message": "Fit succeeded.",
+                "warnings": [
+                  "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+                ],
+                "statistics": {
+                  "n_varys": 4,
+                  "n_independent": 15.3239,
+                  "n_data": 98,
+                  "nfev": 31,
+                  "chi_square": 142.121,
+                  "reduced_chi_square": 12.5505,
+                  "r_factor": 0.00179348,
+                  "aic": 42.1305,
+                  "bic": 45.0482,
+                  "errorbars": true
+                },
+                "transform": {
+                  "fitspace": "r",
+                  "kmin": 3.0,
+                  "kmax": 18.0,
+                  "kweight": [
+                    2
+                  ],
+                  "dk": 2.0,
+                  "window": "hanning",
+                  "rmin": 1.5,
+                  "rmax": 3.0,
+                  "dr": 0.0
+                },
+                "parameters": [
+                  {
+                    "name": "amp",
+                    "kind": "guess",
+                    "value": 0.896968,
+                    "stderr": 0.0235002,
+                    "initial": 1.0
+                  },
+                  {
+                    "name": "del_e0",
+                    "kind": "guess",
+                    "value": 6.52922,
+                    "stderr": 0.340189,
+                    "initial": 0.0
+                  },
+                  {
+                    "name": "del_r",
+                    "kind": "guess",
+                    "value": -0.00716071,
+                    "stderr": 0.00149497,
+                    "initial": 0.0
+                  },
+                  {
+                    "name": "sig2",
+                    "kind": "guess",
+                    "value": 0.00359697,
+                    "stderr": 0.000147287,
+                    "initial": 0.005
+                  }
+                ],
+                "correlations": [
+                  {
+                    "left": "amp",
+                    "right": "sig2",
+                    "value": 0.876456
+                  },
+                  {
+                    "left": "del_e0",
+                    "right": "del_r",
+                    "value": 0.873385
+                  },
+                  {
+                    "left": "del_r",
+                    "right": "sig2",
+                    "value": 0.122179
+                  },
+                  {
+                    "left": "amp",
+                    "right": "del_r",
+                    "value": 0.122044
+                  }
+                ],
+                "paths": [
+                  {
+                    "id": "nn",
+                    "label": "Cu first shell",
+                    "scatterers": "Cu-Cu",
+                    "nleg": 2,
+                    "degen": 12.0,
+                    "reff": 2.5562,
+                    "r": 2.549,
+                    "s02": 0.896968,
+                    "sigma2": 0.00359697,
+                    "e0": 6.52922,
+                    "deltar": -0.00716071
+                  }
+                ],
+                "concerns": [],
+                "note": "r is reff + deltar for each path: a fitted distance, with the scattering phase taken from the FEFF calculation, unlike the digest's |chi(R)| peaks. A parameter flagged at_bound stopped at its min or max, so its stderr says nothing and the bound is doing the fitting. Correlations below 0.1 are left out; above about 0.9 they mean the pair is not separately determined by this data. concerns lists what a plot of the fit would have shown at a glance; success only means the minimiser stopped. Nothing was saved: the fit route reads the group and returns."
+              }
+            },
+            {
+              "seq": 39,
+              "request": {
+                "version": 1,
+                "parameters": [
+                  {
+                    "name": "amp",
+                    "kind": "guess",
+                    "value": 1,
+                    "min": 0.5,
+                    "max": 1.5
+                  },
+                  {
+                    "name": "del_e0",
+                    "kind": "set",
+                    "value": 9
+                  },
+                  {
+                    "name": "del_r",
+                    "kind": "guess",
+                    "value": 0,
+                    "min": -0.5,
+                    "max": 0.5
+                  },
+                  {
+                    "name": "sig2",
+                    "kind": "guess",
+                    "value": 0.005,
+                    "min": 0,
+                    "max": 0.02
+                  }
+                ],
+                "paths": [
+                  {
+                    "id": "nn",
+                    "label": "Cu first shell",
+                    "enabled": true,
+                    "s02": "amp",
+                    "e0": "del_e0",
+                    "deltar": "del_r",
+                    "sigma2": "sig2",
+                    "feff_job": "2875aac8dc544f0fb9f0b41c128ca361",
+                    "feff_path": "feff0001"
+                  }
+                ],
+                "transform": {
+                  "fitspace": "r",
+                  "kmin": 3,
+                  "kmax": 18,
+                  "kweight": [
+                    2
+                  ],
+                  "dk": 2,
+                  "window": "hanning",
+                  "rmin": 1.5,
+                  "rmax": 3,
+                  "dr": 0
+                }
+              },
+              "result": {
+                "project_id": "_leK5DmLCVqvw273NXZlOeo3",
+                "version": 1,
+                "group_id": "Xs1xu5Y9XXoaekOoqw6mIf6O",
+                "group_label": "Cu foil · 10 K",
+                "success": true,
+                "message": "Fit succeeded.",
+                "warnings": [
+                  "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+                ],
+                "statistics": {
+                  "n_varys": 4,
+                  "n_independent": 13.4141,
+                  "n_data": 98,
+                  "nfev": 31,
+                  "chi_square": 126.324,
+                  "reduced_chi_square": 13.4186,
+                  "r_factor": 0.00176975,
+                  "aic": 38.0817,
+                  "bic": 40.4669,
+                  "errorbars": true
+                },
+                "transform": {
+                  "fitspace": "r",
+                  "kmin": 3.0,
+                  "kmax": 16.0,
+                  "kweight": [
+                    2
+                  ],
+                  "dk": 2.0,
+                  "window": "hanning",
+                  "rmin": 1.5,
+                  "rmax": 3.0,
+                  "dr": 0.0
+                },
+                "parameters": [
+                  {
+                    "name": "amp",
+                    "kind": "guess",
+                    "value": 0.89847,
+                    "stderr": 0.0266743,
+                    "initial": 1.0
+                  },
+                  {
+                    "name": "del_e0",
+                    "kind": "guess",
+                    "value": 6.50285,
+                    "stderr": 0.376473,
+                    "initial": 0.0
+                  },
+                  {
+                    "name": "del_r",
+                    "kind": "guess",
+                    "value": -0.00729562,
+                    "stderr": 0.00167409,
+                    "initial": 0.0
+                  },
+                  {
+                    "name": "sig2",
+                    "kind": "guess",
+                    "value": 0.00360941,
+                    "stderr": 0.000171595,
+                    "initial": 0.005
+                  }
+                ],
+                "correlations": [
+                  {
+                    "left": "amp",
+                    "right": "sig2",
+                    "value": 0.886394
+                  },
+                  {
+                    "left": "del_e0",
+                    "right": "del_r",
+                    "value": 0.877856
+                  },
+                  {
+                    "left": "amp",
+                    "right": "del_r",
+                    "value": 0.12947
+                  },
+                  {
+                    "left": "del_r",
+                    "right": "sig2",
+                    "value": 0.129033
+                  }
+                ],
+                "paths": [
+                  {
+                    "id": "nn",
+                    "label": "Cu first shell",
+                    "scatterers": "Cu-Cu",
+                    "nleg": 2,
+                    "degen": 12.0,
+                    "reff": 2.5562,
+                    "r": 2.5489,
+                    "s02": 0.89847,
+                    "sigma2": 0.00360941,
+                    "e0": 6.50285,
+                    "deltar": -0.00729562
+                  }
+                ],
+                "concerns": [],
+                "note": "r is reff + deltar for each path: a fitted distance, with the scattering phase taken from the FEFF calculation, unlike the digest's |chi(R)| peaks. A parameter flagged at_bound stopped at its min or max, so its stderr says nothing and the bound is doing the fitting. Correlations below 0.1 are left out; above about 0.9 they mean the pair is not separately determined by this data. concerns lists what a plot of the fit would have shown at a glance; success only means the minimiser stopped. Nothing was saved: the fit route reads the group and returns."
+              }
+            }
+          ]
+        }
+      },
+      "answer_grade": null,
+      "state_grade": "separate coordinator assertions",
+      "sources": {
+        "native": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/native-T5",
+        "app": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T5",
+        "app_runtime": "/Users/huang.jeffrey/Desktop/xraylarch-web/docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T5-runtime"
+      }
+    }
+  },
+  "warnings": [],
+  "policy": {
+    "missing_data": "unknown; never equivalent",
+    "fit_selection": "first chronological qualifying fit",
+    "answer_grading": "not performed",
+    "state_grading": "not performed"
+  }
+}

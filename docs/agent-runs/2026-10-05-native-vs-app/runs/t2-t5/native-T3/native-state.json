@@ -1,0 +1,9 @@
+{
+  "checks": {
+    "originals_unchanged": true,
+    "10k_transform_range_reduced": false,
+    "no_other_spectrum_processed": true
+  },
+  "state_passed": false,
+  "answer_grading": "pending; state checks do not grade final prose"
+}

@@ -1,0 +1,18 @@
+{
+  "source_revision": "6e5acda87",
+  "python": "3.12.13 | packaged by Anaconda, Inc. | (main, Mar 19 2026, 20:20:58) [GCC 14.3.0]",
+  "interpreter": "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+  "larch": {
+    "file": "/tmp/drxas-native-app-20261005-01a10dd4/app/larch/__init__.py",
+    "version": "2026.3.1.post293+g6e5acda87"
+  },
+  "packages": {
+    "numpy": "2.4.6",
+    "scipy": "1.16.1",
+    "larixite": "2026.1.0",
+    "pyshortcuts": "1.9.10",
+    "xlwt": "1.3.0",
+    "openai": "2.7.1",
+    "openai-agents": "0.4.2"
+  }
+}
