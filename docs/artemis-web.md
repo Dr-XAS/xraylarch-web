@@ -749,9 +749,16 @@ and [model validation](https://bruceravel.github.io/demeter/documents/Artemis/fi
 
 ## FEFF path viewer
 
-The **FEFF path viewer** shows a clickable **FEFF0001**, **FEFF0002**, etc. legend
-inside its 3D canvas, including paths excluded from fitting. Toggle any combination
-of paths to overlay their representative trajectories. Each path has a distinct
+The **FEFF path viewer** displays one **CIF source** and absorber site at a time.
+Choose the source above the scene; its paths alone appear in the legend, geometry,
+details, contribution curves, and table. Generated paths retain their CIF identity
+when saved or exported. Older paths are grouped by their recorded FEFF input
+cluster or a uniquely matching attached CIF; files with an unknown source remain
+individually selectable. Switching sources does not change fit inclusion.
+
+A clickable **FEFF0001**, **FEFF0002**, etc. legend inside the 3D canvas includes
+paths excluded from fitting. Toggle any combination of paths from the selected
+source to overlay their representative trajectories. Each path has a distinct
 arrow color that matches its legend; numbered arrows follow the FEFF geometry
 order back to the absorber. Shared atoms are drawn once. Select **Path details**
 to inspect one visible path, then **Leg 1**, **Leg 2**, etc. to emphasize a
@@ -841,7 +848,7 @@ destructive interference can make the sum smaller than a single path.
 R is not phase corrected, so peaks fall roughly 0.2–0.5 Å below the true
 interatomic distance.
 
-The table lists every path — included or not — with its FEFF header values
+The table lists every path in the selected source — included or not — with its FEFF header values
 (legs, `Reff`, degeneracy) and, once the curves exist, three measures of size:
 
 | Column | Meaning |
@@ -858,7 +865,7 @@ The filters narrow the table, the plot, and the in-canvas legend together, so
 the three never disagree. **Legs** separates single scattering (two legs) from
 multiple scattering (three or more). **R_eff at most** drops distant paths.
 **Peak |χ(R)| at least** drops paths below a fraction of the largest path in
-the model and needs the contributions to have been computed first; a path whose
+the selected source and needs the contributions to have been computed first; a path whose
 amplitude is unknown is never hidden. Filtering is a display choice: it does
 not change which paths are included in the fit. Use the EXAFS fitting tab's
 inclusion toggles for that.

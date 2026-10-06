@@ -22,6 +22,7 @@ const summaries: FeffPathSummary[] = [
   { id: "cu3", filename: "feff0003.dat", label: "Cu fourth shell", enabled: true,
     metadata: { absorber: "Cu", edge: "K", reff: 5.11, degen: 6, nleg: 2, kmin: 0, kmax: 15, geometry: [site(0, 0), site(5.11)] } },
 ]
+for (const path of summaries) path.metadata.sourceCif = { sha256: "a".repeat(64), label: "Copper CIF", siteIndex: 1 }
 const transform: ArtemisPreviewRequest["transform"] = { fitspace: "r", kmin: 3, kmax: 12, kweight: [2], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 }
 const model: ArtemisPreviewRequest = {
   parameters: [{ name: "amp", kind: "guess", value: 0.9, expression: "", min: null, max: null }], transform,
@@ -56,6 +57,32 @@ function view(overrides: Partial<Parameters<typeof FeffPathViewer>[0]> = {}) {
 }
 
 describe("FEFF path contributions", () => {
+  it("restricts curves, their complex sum, table, and legend to one CIF without recalculating the model", async () => {
+    api.mockResolvedValue(preview)
+    const mixed = structuredClone(summaries)
+    mixed[2].metadata.sourceCif = { sha256: "b".repeat(64), label: "Second CIF", siteIndex: 1 }
+    const original = structuredClone(model)
+    view({ paths: mixed })
+    show()
+    await waitFor(() => expect(plot).toHaveBeenCalled())
+    expect(rowNames()).toEqual(["feff0001.dat", "feff0002.dat"])
+    let traces = plot.mock.calls.at(-1)![0].data
+    expect(traces.map(trace => trace.name)).toEqual(["Selected source · sum of all 2 included paths", "Cu first shell", "Cu triangle"])
+    traces[0].y.forEach(value => expect(value).toBeCloseTo(1.3, 12))
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by legs" }), { target: { value: "multiple" } })
+    const picker = screen.getByRole("combobox", { name: "FEFF path CIF source" })
+    fireEvent.change(picker, { target: { value: (within(picker).getByRole("option", { name: /Second CIF/ }) as HTMLOptionElement).value } })
+    expect(rowNames()).toEqual(["feff0003.dat"])
+    expect(screen.queryByRole("button", { name: "Show feff0001.dat" })).not.toBeInTheDocument()
+    traces = plot.mock.calls.at(-1)![0].data
+    expect(traces.map(trace => trace.name)).toEqual(["Selected source · sum of all 1 included paths", "Cu fourth shell"])
+    traces[0].y.forEach(value => expect(value).toBeCloseTo(0.004, 12))
+    fireEvent.click(screen.getByRole("button", { name: "k space" }))
+    expect(plot.mock.calls.at(-1)![0].data[0].y).toEqual(preview.paths[2].k.chi)
+    expect(api).toHaveBeenCalledOnce()
+    expect(model).toEqual(original)
+  })
+
   it("draws each path's own curve and the sum, and labels the axes for the plot k-weight", async () => {
     api.mockResolvedValue(preview)
     view()

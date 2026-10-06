@@ -190,6 +190,8 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("10")
     expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeEnabled()
     expect(onPathsChange.mock.calls.at(-1)?.[0].map((item: { filename: string }) => item.filename)).toEqual(setup.example.paths.map(item => item.filename))
+    expect(onPathsChange.mock.calls.at(-1)?.[0].map((item: ArtemisInspectedPath) => item.metadata.sourceCif)).toEqual(
+      setup.example.paths.map(() => ({ sha256: setup.example.cif_sha256, label: "Cuprite · AMCSD 0015851", siteIndex: 1, attachmentId: setup.attachmentId })))
     expect(onFitResult.mock.calls.every(([result]) => result === null)).toBe(true)
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(api).not.toHaveBeenCalled()

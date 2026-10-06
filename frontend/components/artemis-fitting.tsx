@@ -96,11 +96,12 @@ function draftForGroup(group: AthenaGroup | undefined, initial: SavedDraft | und
 function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
   return { ...path, id: nextId(), label: path.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" }
 }
-function exampleDraft(example: ArtemisExample, revision = 0): Draft {
+function exampleDraft(example: ArtemisExample, attachmentId: string, revision = 0): Draft {
   const viewerCluster = parseFeffCluster(example.feff_input)
+  const sourceCif = { sha256: example.cif_sha256, label: "Cuprite · AMCSD 0015851", siteIndex: 1, attachmentId }
   return { revision, paths: example.paths.map((path, index) => ({ ...pathDraft(path), ...example.path_parameters?.[index],
     label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
-    metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata })),
+    metadata: { ...path.metadata, sourceCif, ...(viewerCluster ? { viewerCluster } : {}) } })),
     parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }
 }
 function numberValue(value: string, label: string) {
@@ -262,7 +263,7 @@ export function ArtemisFittingPanel(props: PanelProps) {
     const exampleKey = `${setup.projectId}:${setup.groupId}`
     // Prepare the Cu₂O model even while a foil is selected. Never replace a
     // saved draft, including a model whose paths the user deliberately removed.
-    if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
+    if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example, setup.attachmentId), result: null })
   }
   const key = `${props.projectId ?? "none"}:${props.group?.id ?? "none"}`
   useEffect(() => {

@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest"
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { createHash, webcrypto } from "node:crypto"
 import { useState, type ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
@@ -30,7 +31,7 @@ function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure 
       { index: 7, element: "Fe", species: "Fe", multiplicity: 8, wyckoff: "8b", x: 0.25, y: 0.25, z: 0.25, occupancy: 1 },
     ], ...overrides }
 }
-function attachment(): ArtemisStructureAttachment { return { id: "cif1", amcsd_id: 13088, attached_at: "2026-09-16T00:00:00Z", sha256: "abc", structure: structure() } }
+function attachment(): ArtemisStructureAttachment { return { id: "cif1", amcsd_id: 13088, attached_at: "2026-09-16T00:00:00Z", sha256: "a".repeat(64), structure: structure() } }
 function tungstenAttachment(): ArtemisStructureAttachment {
   return { ...attachment(), structure: structure({ mineral: "Tungsten oxide", formula: "W O3", elements: ["O", "W"],
     sites: structure().sites.map(site => ({ ...site, element: site.index === 3 ? "W" : "O", species: site.index === 3 ? "W" : "O" })) }) }
@@ -112,7 +113,7 @@ beforeEach(() => {
     return job()
   })
 })
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
   it("uploads and displays a custom CIF, then generates FEFF from its saved attachment", async () => {
@@ -793,7 +794,9 @@ describe("ArtemisStructures", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
     expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeDisabled()
     await click("Add selected paths (1)")
-    expect(onAddPaths).toHaveBeenCalledExactlyOnceWith([{ ...job().paths[0], id: undefined, label: "Copper · AMCSD 0013088 · Cu site 3 · feff0001.dat" }].map(({ id: _id, ...path }) => path))
+    expect(onAddPaths).toHaveBeenCalledExactlyOnceWith([{ ...job().paths[0], id: undefined,
+      metadata: { ...job().paths[0].metadata, sourceCif: { sha256: attachment().sha256, attachmentId: "cif1", label: "Copper · AMCSD 0013088", siteIndex: 3 } },
+      label: "Copper · AMCSD 0013088 · Cu site 3 · feff0001.dat" }].map(({ id: _id, ...path }) => path))
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeDisabled()
     expect(screen.getByText(/Added 1 generated path/)).toBeVisible()
     expect(screen.getByText("FEFF input")).toBeVisible()
@@ -897,7 +900,45 @@ describe("ArtemisStructures", () => {
       { atom: "Cu", x: -2.55, y: 0, z: 0, ipot: 1 },
     ] })
     expect(onAddPaths.mock.calls[0][0][0].metadata.degen).toBe(12)
+    expect(onAddPaths.mock.calls[0][0][0].metadata.sourceCif).toEqual({ sha256: attachment().sha256,
+      attachmentId: "cif1", label: "Copper · AMCSD 0013088", siteIndex: 3 })
     expect(completed.paths[0].metadata).not.toHaveProperty("viewerCluster")
+    expect(completed.paths[0].metadata).not.toHaveProperty("sourceCif")
+  })
+
+  it("identifies a completed job by its actual CIF when the saved attachment snapshot differs", async () => {
+    vi.stubGlobal("crypto", webcrypto)
+    const { onAddPaths } = setup()
+    await findAndSelect()
+    const completed = job()
+    completed.provenance.cif = "data_completed_snapshot\n_cell_length_a 3.62"
+    api.mockResolvedValueOnce(completed)
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    await click("Add selected paths (1)")
+    await waitFor(() => expect(onAddPaths).toHaveBeenCalledOnce())
+    expect(onAddPaths.mock.calls[0][0][0].metadata.sourceCif).toEqual({
+      sha256: createHash("sha256").update(completed.provenance.cif).digest("hex"),
+      label: "Copper · AMCSD 0013088", siteIndex: 3,
+    })
+  })
+
+  it("does not add paths to another spectrum after hashing their CIF finishes", async () => {
+    const hashed = deferred<ArrayBuffer>()
+    vi.stubGlobal("crypto", { subtle: { digest: vi.fn(() => hashed.promise) } })
+    const { onAddPaths, rerender } = setup()
+    await findAndSelect()
+    const completed = job()
+    completed.provenance.cif = "data_completed_snapshot"
+    api.mockResolvedValueOnce(completed)
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    await click("Add selected paths (1)")
+    expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeDisabled()
+    rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} />)
+    await act(async () => { hashed.resolve(new Uint8Array(32).buffer) })
+    expect(onAddPaths).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Generate FEFF paths" })).toBeEnabled()
   })
 
   it("recovers from polling failure without restarting FEFF, then ignores a late status after context changes", async () => {

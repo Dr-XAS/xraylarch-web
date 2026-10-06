@@ -98,6 +98,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const [job, setJob] = useState<ArtemisFeffJob | null>(null)
   const [selected, setSelected] = useState<string[]>([])
   const [added, setAdded] = useState<string[]>([])
+  const [addingPaths, setAddingPaths] = useState(false)
+  const addingPathsRef = useRef(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [pollRevision, setPollRevision] = useState(0)
@@ -118,7 +120,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   currentProject.current = projectId
   const attachPending = busy === "attach"
   const mutationPending = attachPending || removingId !== null
-  const controlsDisabled = disabled || mutationPending
+  const controlsDisabled = disabled || mutationPending || addingPaths
   const addedIds = existingPaths === undefined ? added : job?.paths.filter(path => existingPaths.some(existing => existing.filename === path.filename && existing.content === path.content)).map(path => path.id) ?? []
   // Replace swaps the whole model, so its selection may fill the model and may
   // keep a generated path already in it; Add only fills the open slots.
@@ -253,7 +255,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     setRemovingId(null)
     setError("")
     setNotice("")
-    return () => { lookupAbort.current?.abort(); jobAbort.current?.abort(); attachAbort.current?.abort() }
+    return () => { generation.current += 1; lookupAbort.current?.abort(); jobAbort.current?.abort(); attachAbort.current?.abort() }
   }, [contextKey, projectId])
 
   async function findStructures() {
@@ -448,27 +450,43 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     return () => { abort.abort(); if (timer) clearTimeout(timer) }
   }, [job?.id, job?.status, contextKey, pollRevision])
 
-  function addPaths(replace = false) {
-    if (!job || job.status !== "complete" || controlsDisabled || !selected.length) return
+  async function addPaths(replace = false) {
+    if (!job || job.status !== "complete" || controlsDisabled || addingPathsRef.current || !selected.length) return
     if (!replace && newSelected.length > availableSlots) { setError(`This model has room for ${availableSlots} more path${availableSlots === 1 ? "" : "s"}. Select fewer paths or remove existing ones.`); return }
-    const viewerCluster = parseFeffCluster(job.provenance?.feff_input)
-    const paths = job.paths.filter(path => selected.includes(path.id) && (replace || !addedIds.includes(path.id))).map(path => {
-      const suffix = ` · ${structureLabel(job.provenance.structure)} · ${job.request.absorber} site ${job.request.site_index} · ${path.filename}`
+    const token = generation.current, requestContext = contextKey, requestProject = projectId
+    const isCurrent = () => generation.current === token && context.current === requestContext && currentProject.current === requestProject
+    addingPathsRef.current = true
+    setAddingPaths(true)
+    try {
+      // A completed job belongs to its recorded CIF snapshot, even if another
+      // attachment is now open or the attached snapshot has changed.
+      const sourceAttachment = attachments.find(item => item.id === job.request.attachment_id && item.structure.cif === job.provenance.cif)
+      const sha256 = sourceAttachment && /^[0-9a-f]{64}$/.test(sourceAttachment.sha256) ? sourceAttachment.sha256
+        : Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(job.provenance.cif))))
+          .map(value => value.toString(16).padStart(2, "0")).join("")
+      if (!isCurrent()) return
       const mineral = job.provenance.structure.mineral || job.provenance.structure.formula || "Structure"
-      return { filename: path.filename, content: path.content, metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata, label: mineral.slice(0, Math.max(0, 120 - suffix.length)) + suffix }
-    })
-    const error = replace ? callback.current(paths, true) : callback.current(paths)
-    if (error) { setError(error); return }
-    setAdded(previous => replace ? [...selected] : [...previous, ...selected])
-    setSelected([])
-    setError("")
-    const count = `${paths.length} generated path${paths.length === 1 ? "" : "s"}`
-    // Adding joins the model: a path already there (an uploaded feff*.dat of
-    // the same shell, say) is still included and fitted alongside.
-    const others = replace ? [] : otherIncluded.map(path => path.filename)
-    setNotice(replace ? `Replaced the fit model's paths with ${count}. Review the path expressions before fitting.`
-      : others.length ? `Added ${count}. The model's earlier path${others.length === 1 ? "" : "s"} ${others.join(", ")} ${others.length === 1 ? "is" : "are"} still included and will be fitted with ${paths.length === 1 ? "it" : "them"}; untick ${others.length === 1 ? "it" : "them"} under FEFF paths to fit the generated path${paths.length === 1 ? "" : "s"} alone.`
-      : `Added ${count} to the current fit model. Review the path expressions before fitting.`)
+      const sourceCif = { sha256, label: `${mineral} · ${structureLabel(job.provenance.structure)}`.slice(0, 512), siteIndex: job.request.site_index,
+        ...(sourceAttachment ? { attachmentId: sourceAttachment.id } : {}) }
+      const viewerCluster = parseFeffCluster(job.provenance?.feff_input)
+      const paths = job.paths.filter(path => selected.includes(path.id) && (replace || !addedIds.includes(path.id))).map(path => {
+        const suffix = ` · ${structureLabel(job.provenance.structure)} · ${job.request.absorber} site ${job.request.site_index} · ${path.filename}`
+        return { filename: path.filename, content: path.content, metadata: { ...path.metadata, sourceCif, ...(viewerCluster ? { viewerCluster } : {}) }, label: mineral.slice(0, Math.max(0, 120 - suffix.length)) + suffix }
+      })
+      const error = replace ? callback.current(paths, true) : callback.current(paths)
+      if (error) { setError(error); return }
+      setAdded(previous => replace ? [...selected] : [...previous, ...selected])
+      setSelected([])
+      setError("")
+      const count = `${paths.length} generated path${paths.length === 1 ? "" : "s"}`
+      // Adding joins the model: a path already there (an uploaded feff*.dat of
+      // the same shell, say) is still included and fitted alongside.
+      const others = replace ? [] : otherIncluded.map(path => path.filename)
+      setNotice(replace ? `Replaced the fit model's paths with ${count}. Review the path expressions before fitting.`
+        : others.length ? `Added ${count}. The model's earlier path${others.length === 1 ? "" : "s"} ${others.join(", ")} ${others.length === 1 ? "is" : "are"} still included and will be fitted with ${paths.length === 1 ? "it" : "them"}; untick ${others.length === 1 ? "it" : "them"} under FEFF paths to fit the generated path${paths.length === 1 ? "" : "s"} alone.`
+        : `Added ${count} to the current fit model. Review the path expressions before fitting.`)
+    } catch (error) { if (isCurrent()) setError(errorText(error)) }
+    finally { addingPathsRef.current = false; setAddingPaths(false) }
   }
   // Included paths in the model that did not come from this calculation.
   const otherIncluded = (existingPaths ?? []).filter(existing => existing.enabled !== false

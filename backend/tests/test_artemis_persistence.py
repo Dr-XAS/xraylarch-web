@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 from test_artemis import model, spectrum
 from xraylarch_web.artemis import PathInput, inspect_path
-from xraylarch_web.artemis_persistence import input_fingerprint, validate_state
+from xraylarch_web.artemis_persistence import ModelDraft, input_fingerprint, validate_state
 from xraylarch_web.athena import AthenaStore
 from xraylarch_web.config import Settings
 from xraylarch_web.errors import WebInputError
@@ -117,6 +117,31 @@ def test_unfinished_model_survives_new_store_and_undo_redo(workspace, model):
         assert response.status_code == 200, response.text
         saved = response.json()
         assert ("artemis" in saved["groups"][0]) is expected
+
+
+def test_saved_path_keeps_cif_provenance_while_reinspecting_feff_metadata(workspace, model):
+    store, client, project, group_id = workspace
+    value = draft(model)
+    metadata = value["paths"][0]["metadata"]
+    original_reff = metadata["reff"]
+    source = dict(sha256="a" * 64, label="Copper · source.cif", siteIndex=1, attachmentId="removed-cif")
+    metadata.update(sourceCif=source, reff=99.0)
+    post(client, project, group_id, "model", model=value)
+    restored = AthenaStore(store.settings).load(project["id"])
+    saved_metadata = restored["groups"][0]["artemis"]["model"]["paths"][0]["metadata"]
+    assert saved_metadata["sourceCif"] == source
+    assert saved_metadata["reff"] == original_reff
+    exported = client.get(f"/api/athena/projects/{project['id']}/export?format=json")
+    assert exported.status_code == 200, exported.text
+    assert exported.json()["groups"][0]["artemis"]["model"]["paths"][0]["metadata"]["sourceCif"] == source
+
+
+@pytest.mark.parametrize("invalid", [dict(sha256="not-a-digest"), dict(siteIndex=0), dict(label=""), dict(attachmentId="../outside"), dict(extra="ignored?")])
+def test_cif_provenance_rejects_invalid_or_unknown_fields(model, invalid):
+    value = draft(model)
+    value["paths"][0]["metadata"]["sourceCif"] = dict(sha256="a" * 64, label="Copper", siteIndex=1) | invalid
+    with pytest.raises(ValidationError):
+        ModelDraft.model_validate(value)
 
 
 @pytest.mark.parametrize("action", ["fit", "fit-saved"])
