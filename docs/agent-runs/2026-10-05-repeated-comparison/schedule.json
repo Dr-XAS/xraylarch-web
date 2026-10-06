@@ -1,0 +1,220 @@
+{
+  "scheduled_attempts": 30,
+  "schedule": [
+    {
+      "repeat": 1,
+      "task": "T1",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 1,
+      "task": "T2",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 1,
+      "task": "T3",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 1,
+      "task": "T4",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 1,
+      "task": "T5",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 2,
+      "task": "T1",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 2,
+      "task": "T2",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 2,
+      "task": "T3",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 2,
+      "task": "T4",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 2,
+      "task": "T5",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 3,
+      "task": "T1",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 3,
+      "task": "T2",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 3,
+      "task": "T3",
+      "arms": [
+        "native",
+        "app"
+      ]
+    },
+    {
+      "repeat": 3,
+      "task": "T4",
+      "arms": [
+        "app",
+        "native"
+      ]
+    },
+    {
+      "repeat": 3,
+      "task": "T5",
+      "arms": [
+        "native",
+        "app"
+      ]
+    }
+  ],
+  "protocol_sha256": "d806316c6549b6b7248925d21633b3ca989fdef3bc1575842346a56720e537c5",
+  "native_revision": "19a0dfc90ff1a843f1b35c60a2cc3f1c574689ff",
+  "app_revision": "7f82058f312d2e7f48df64a0f38dfdcfc0c7cbe7",
+  "launch_results": [
+    {
+      "repeat": 1,
+      "task": "T1",
+      "arms": [
+        "native",
+        "app"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 1,
+      "task": "T2",
+      "arms": [
+        "app",
+        "native"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 1,
+      "task": "T3",
+      "arms": [
+        "native",
+        "app"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 1,
+      "task": "T4",
+      "arms": [
+        "app",
+        "native"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 1,
+      "task": "T5",
+      "arms": [
+        "native",
+        "app"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 2,
+      "task": "T1",
+      "arms": [
+        "app",
+        "native"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 2,
+      "task": "T2",
+      "arms": [
+        "native",
+        "app"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 2,
+      "task": "T3",
+      "arms": [
+        "app",
+        "native"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 2,
+      "task": "T4",
+      "arms": [
+        "native",
+        "app"
+      ],
+      "returncode": 1
+    },
+    {
+      "repeat": 2,
+      "task": "T5",
+      "arms": [
+        "app",
+        "native"
+      ],
+      "returncode": 1
+    }
+  ]
+}

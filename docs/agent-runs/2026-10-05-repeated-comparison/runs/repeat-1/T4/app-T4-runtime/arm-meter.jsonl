@@ -1,0 +1,4 @@
+{"time": 1791248914.4127004, "method": "GET", "path": "/api/athena/capabilities/merge", "query": "view=summary", "status": 200, "bytes": 2505}
+{"time": 1791248914.4121995, "method": "GET", "path": "/api/athena/projects/acuT8-AfsDgELhHqxxnAFC3t", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791248919.1178257, "method": "POST", "path": "/api/athena/projects/acuT8-AfsDgELhHqxxnAFC3t/merge/preview", "query": "view=summary", "status": 200, "bytes": 4932}
+{"time": 1791248920.864736, "method": "POST", "path": "/api/athena/projects/acuT8-AfsDgELhHqxxnAFC3t/command", "query": "view=summary", "status": 200, "bytes": 4200}

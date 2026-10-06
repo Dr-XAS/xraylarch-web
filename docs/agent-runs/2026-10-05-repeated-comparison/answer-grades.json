@@ -1,0 +1,235 @@
+{
+  "repeat-1/T1/native": {
+    "status": "pass",
+    "reason": "Names 300 K, +2.9 eV and edge steps 2.73 versus 2.29.",
+    "caveats": [
+      "Treats kmax_suggest=14.6 as usable-data cutoff; calibration/normalization cause not established."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T1/app": {
+    "status": "pass",
+    "reason": "Names 300 K, +2.92 eV and +18.7% edge step; comparisons supported.",
+    "caveats": [
+      "Unaligned XANES mismatch and thermal damping do not establish defective data; whether to merge temperatures depends on the scientific aim."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T3/native": {
+    "status": "pass",
+    "reason": "Reports 2.27 A peak and explains phase-uncorrected distance bias; k window is 3\u201314.6.",
+    "caveats": [
+      "Usable EXAFS only to 14.6 overstates the pessimistic recommendation, though the native tool uses that wording."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T5/native": {
+    "status": "pass",
+    "reason": "Distance 2.55208 A, stderr 0.00131 A and window spread 0.00258 A agree with twelve-Cu fit evidence.",
+    "caveats": [
+      "Practical +/-0.01 A is qualified judgement, not measured total uncertainty."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T2/native": {
+    "status": "pass",
+    "reason": "Original edge-step spread 0.440 matches 0.439816; stated 18% of mean is correct.",
+    "caveats": [],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T4/native": {
+    "status": "pass",
+    "reason": "Explains direct merge with automatic common-range trimming and endpoint 10134.320 eV.",
+    "caveats": [
+      "No prior cut needed is implicit rather than explicit; no separate source truncation occurred."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T1/native": {
+    "status": "pass",
+    "reason": "Names 300 K, +2.9 eV and edge steps 2.73 versus 2.29.",
+    "caveats": [
+      "Treats kmax_suggest as usable-data cutoff."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T2/native": {
+    "status": "pass",
+    "reason": "Original spread 0.4398, shifts, percentages and all-three-parent merge are supported.",
+    "caveats": [],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T2/app": {
+    "status": "pass",
+    "reason": "Original spread 0.4398 and three-parent mu merge are supported.",
+    "caveats": [
+      "19.2% relative to 10 K is a small rounding error: 19.13% rounds to 19.1%."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T3/app": {
+    "status": "pass",
+    "reason": "Final k window 3\u201318, peak 2.27 A and phase-uncorrected distance caveat are supported.",
+    "caveats": [
+      "Approximate physical distance 2.5\u20132.6 A is background expectation, not a fitted distance from this attempt."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T4/native": {
+    "status": "pass",
+    "reason": "Direct overlap merge and endpoint 10134.320 eV are supported.",
+    "caveats": [
+      "No prior cut needed is implicit in the automatic common-range explanation."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T4/app": {
+    "status": "pass",
+    "reason": "Explicitly says no cut; norm merge includes all three parents and ends at 10139.21 eV.",
+    "caveats": [
+      "Claimed common energy range is not literal at the lower endpoint: output starts at 8779 eV, below the 10 K and 50 K starting energies. This follows inherited guide/merge behavior and does not fail the task endpoint rubric."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T1/native": {
+    "status": "pass",
+    "reason": "Names 300 K and gives all three requested numerical differences.",
+    "caveats": [
+      "Fit-worthy is inferred from quality alone, without a fit or capacity check."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T1/app": {
+    "status": "pass",
+    "reason": "Gives +2.92 eV, about 19% edge-step increase, and verified comparison data.",
+    "caveats": [
+      "Calling shorter/damped EXAFS noisier is not supported by comparison alone; unaligned XANES differences do not isolate their cause."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-1/T5/app": {
+    "status": "fail",
+    "reason": "No final answer or qualifying fit: frozen evaluator HTTP boundary rejected the cuprite example route advertised in its guide.",
+    "caveats": [
+      "Configured interface failure; this is not an incorrect fitted distance. The attempted call and failed SDK usage are retained, without retry."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T2/app": {
+    "status": "pass",
+    "reason": "Original spread 0.43982 and normalized three-parent merge are supported.",
+    "caveats": [
+      "19.2% relative to 10 K should be 19.1%; 17.9% relative to the minimum should be 19.2%."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T3/app": {
+    "status": "pass",
+    "reason": "kmax 18, peak 2.27 A and phase-uncorrected distance caveat are supported.",
+    "caveats": [
+      "2.5\u20132.8 A is contextual expectation, not a fitted distance."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T3/native": {
+    "status": "pass",
+    "reason": "kmax 14.6, peak 2.27 A and phase-uncorrected distance caveat are supported.",
+    "caveats": [
+      "Signal beyond 14.6 is noise-dominated overstates a conservative recommendation; 2.55 A is not fitted in this attempt."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T4/app": {
+    "status": "pass",
+    "reason": "No prior cut, normalized all-three-parent merge and endpoint 10139.21 eV are supported.",
+    "caveats": [
+      "Shared-range explanation is too broad at the lower endpoint: 8779 eV is below 8786.204 eV."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T5/app": {
+    "status": "pass",
+    "reason": "First twelve-Cu fit 2.5490 A, stderr 0.00149496 A, correlation 0.873384 and reported sensitivity sweeps are supported.",
+    "caveats": [
+      "Practical +/-0.01 A understates maximum sensitivity displacement of 0.0134 A from the main fit, or 0.0144 A from rounded 2.55 A.",
+      "Omits the kmax=20 FEFF taper-extrapolation warning and the kmax=14 amp\u2013sig2 correlation concern."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-2/T5/native": {
+    "status": "pass",
+    "reason": "Distance 2.55208 A, stderr 0.00131 A, window spread 0.00258 A and twelve-Cu fit are supported.",
+    "caveats": [
+      "Strong amplitude\u2013sigma2 correlation is supported, but naming it the main limitation omits untested calibration/model errors; window stability does not establish total +/-0.01 A."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T1/app": {
+    "status": "pass",
+    "reason": "Names 300 K, E0 difference 2.92 eV, edge-step ratio 1.187 and endpoint 10145.86 eV.",
+    "caveats": [
+      "Shared-reference duplicate arrays are intentional fixture structure, not a demonstrated data-integrity defect or evidence that 300 K is not independent of 10/50 K."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T2/native": {
+    "status": "pass",
+    "reason": "Spread 0.4398, 18.0% of mean, 10 K difference 0.4306/18.7%, and merge of three aligned parents are supported.",
+    "caveats": [],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T2/app": {
+    "status": "pass",
+    "reason": "Spread 0.43982, 18.0% of mean, 19.1% relative to 10 K, shifts, mu merge endpoint and three parents are supported.",
+    "caveats": [],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T3/native": {
+    "status": "pass",
+    "reason": "Range to 14.6, peak 2.27 A, window and weight are supported.",
+    "caveats": [
+      "Conservative recommendation is overstated as the only usable range; 2.55 A is contextual rather than fitted."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T3/app": {
+    "status": "pass",
+    "reason": "Range to 18, peak 2.27 A and phase-uncorrected caveat are supported.",
+    "caveats": [
+      "2.5\u20132.6 A is context rather than a fitted distance."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T4/app": {
+    "status": "pass",
+    "reason": "No prior cut, all-three-parent mu merge and endpoint 10139.21 eV are supported.",
+    "caveats": [
+      "One-point linear extrapolation for both cold scans was supported by preview and disclosed, mitigating the lower-overlap caveat."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T4/native": {
+    "status": "fail",
+    "reason": "Opens Yes to whether a prior cut is necessary and endorses restriction as safest; never states that prior cutting is unnecessary or changes nothing.",
+    "caveats": [
+      "Actual direct trim=True merge and endpoint 10134.320 eV satisfy state/science, but the answer fails the explicit no-prior-cut rubric."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T5/native": {
+    "status": "pass",
+    "reason": "Peak 2.2702916 A followed by robust twelve-Cu fit at 2.5520829 A, stderr 0.0013106 A, window range 2.5500295\u20132.5526100 A and robust verdict are supported.",
+    "caveats": [
+      "Practical +/-0.01 A trust is inferred from window stability; it does not measure calibration/model systematic uncertainty."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  },
+  "repeat-3/T5/app": {
+    "status": "fail",
+    "reason": "No answer or fit: model put label 10 K in an ID-only group digest path before reading the project result; the evaluator boundary raised ValueError and the SDK ended with UserError.",
+    "caveats": [
+      "Invalid model path plus fail-stop evaluator behavior; different from the repeat-1 advertised-route omission. Failed usage and tool evidence are retained without retry."
+    ],
+    "reviewer": "independent read-only review_eval agent"
+  }
+}

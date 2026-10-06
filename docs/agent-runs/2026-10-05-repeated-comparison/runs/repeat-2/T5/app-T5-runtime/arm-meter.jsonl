@@ -1,0 +1,13 @@
+{"time": 1791249149.4932163, "method": "GET", "path": "/api/artemis/capabilities", "query": "view=summary", "status": 200, "bytes": 5912}
+{"time": 1791249149.492253, "method": "GET", "path": "/api/athena/projects/kJ_J5cGDmkdeK4An7qFVKqSf", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791249149.493721, "method": "GET", "path": "/api/athena/projects/kJ_J5cGDmkdeK4An7qFVKqSf/transcript", "query": "view=summary", "status": 200, "bytes": 684}
+{"time": 1791249151.0608754, "method": "GET", "path": "/api/artemis/structures", "query": "q=copper&element=Cu&view=summary", "status": 200, "bytes": 11873}
+{"time": 1791249152.3441944, "method": "GET", "path": "/api/artemis/structures/11145", "query": "view=summary", "status": 200, "bytes": 4823}
+{"time": 1791249153.9681172, "method": "POST", "path": "/api/artemis/feff/jobs", "query": "view=summary", "status": 202, "bytes": 407}
+{"time": 1791249155.314475, "method": "GET", "path": "/api/artemis/feff/jobs/85e4d0c310764d7b9c62bc8848ad0e48", "query": "view=summary", "status": 200, "bytes": 932}
+{"time": 1791249157.9074485, "method": "POST", "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit", "query": "view=summary", "status": 200, "bytes": 1931}
+{"time": 1791249165.6713428, "method": "POST", "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit", "query": "view=summary", "status": 200, "bytes": 1933}
+{"time": 1791249165.6692302, "method": "POST", "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit", "query": "view=summary", "status": 200, "bytes": 2014}
+{"time": 1791249165.67162, "method": "POST", "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit", "query": "view=summary", "status": 200, "bytes": 2086}
+{"time": 1791249165.6718519, "method": "POST", "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit", "query": "view=summary", "status": 200, "bytes": 1865}
+{"time": 1791249165.6720684, "method": "POST", "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit", "query": "view=summary", "status": 200, "bytes": 1863}

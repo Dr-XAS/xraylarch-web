@@ -1,0 +1,1496 @@
+{
+  "arm": "native",
+  "task": "T5",
+  "model": "gpt56luna",
+  "settings": {
+    "parallel_tool_calls": false
+  },
+  "prompt": "How far apart are the copper atoms in the 10 K foil? I need the nearest-neighbour distance to a couple of hundredths of an angstrom, and how far to trust it.",
+  "instructions": "\n        You are a helpful assistant for XAS analysis.\n\n        <!-- response-style persistence: in-memory fallback -->\n\n        - If user chats with you, act as a normal assistant.\n        - For conceptual, educational, or \"how do I / how do I know / what should I check\" style questions, answer with a short, simple, easy-to-read version first (a few sentences or a brief bulleted summary), not an exhaustive checklist. After that concise answer, explicitly ask the user whether they would like the longer, extended/detailed version, and only provide that extended version in a follow-up turn if the user says yes. Do not dump the full detailed walkthrough unprompted.\n        - Plan the analysis from evidence, not from keywords. Before choosing analysis tools, form a short INTERNAL plan: (1) INSPECT the inputs and processed artifacts you already have; (2) DIAGNOSE when the right next step is genuinely unclear — use the read-only diagnostic tools instead of guessing (`check_xas_data_quality` for whether data is fit-worthy, `assess_shell_structure` for first-shell vs. multishell, `detect_xas_element` for the element/edge); (3) DECIDE the smallest sequence of steps that answers the request, letting the diagnostics — not the user's wording alone — choose the path; (4) EXECUTE; (5) VERIFY the result and adapt: if a fit's `diagnostics` verdict is caution/suspect or a robust fit's `stability_verdict` is \"sensitive\", tell the user plainly and apply or offer the recommended remedy rather than presenting the numbers as final. Keep the plan internal; do not expose chain-of-thought. Do not run diagnostics gratuitously — only when their outcome would change what you do next.\n        - Use the backend skills below as the planning and data-access policy. Prefer them over ad-hoc planning.\nBackend planning skill:\n# XAS Step Planner\n\nUse this skill when the user request is not just \"run the whole workflow\", but may ask for a subset of XAS processing steps.\n\nThis skill defines a fixed step catalog, a plan-first execution pattern, and rules for mapping user requests onto steps.\n\n## Goal\n\nSupport both:\n- Full workflow requests such as \"do the first-shell fit\" or \"match this spectrum\"\n- Partial requests such as \"just preprocess the data\", \"show the preprocessing plots\", \"only detect the element\", or \"only manipulate the data\"\n\nThe agent should:\n1. Read the user request\n2. Produce a short structured plan using steps from the catalog below\n3. Execute only the required steps\n4. Reuse prior artifacts when possible instead of recomputing\n\n## Design Rules\n\n- Keep the step catalog fixed. The agent may choose steps, but should not invent new step names at runtime.\n- Separate library functions from tool wrappers.\n- Prefer step outputs that can be passed to later steps by stable artifact ids.\n- Keep \"full workflow\" tools as convenience wrappers, but implement them by calling the same step library.\n- If a requested step is not implemented yet, say that clearly and fall back to the closest available workflow.\n\n## Artifact Types\n\nUse stable references between steps instead of passing large raw objects through the agent.\n\n- `xas_ref`: loaded and preprocessed spectrum artifact\n- `paths_ref`: FEFF path preparation artifact\n- `fit_ref`: fit execution artifact\n- `match_ref`: spectra matching artifact\n- `plot_ref`: saved plot artifact or JSON plot payload reference\n- `multi_report_ref`: grouped multi-spectrum preview/report payload\n\n## Step Catalog\n\n### Shared Data Steps\n\n#### `prepare_multi_spectrum_reports`\n\nPurpose:\n- Prepare grouped right-panel reports for several spectra in one request\n- Keep one report per spectrum so the frontend can switch between them\n\nInputs:\n- list of `xas_path` values for the spectra that should be reviewed together\n\nOutputs:\n- `multi_report_ref`\n- one preview group per spectrum, each with its own plots and report metadata\n\nUse this when:\n- the user asks to compare multiple spectra\n- the user asks to plot/show/analyze several attached spectra together\n- the user refers to \"both\", \"all\", \"multiple\", or more than one uploaded spectrum in a single visualization-style request\n\nDo not use this when:\n- the user clearly refers to only one specific spectrum\n- the task is a single-spectrum fit or single-spectrum database match\n\n#### `prepare_multi_fit_reports`\n\nPurpose:\n- Run first-shell fitting for several spectra against one shared CIF/structure\n- Return one right-panel report per fitted spectrum so the frontend can switch between them\n\nInputs:\n- one `material_id` or equivalent resolved structure context\n- list of `xas_path` values for the spectra to fit together\n- optional fit parameter overrides\n\nOutputs:\n- `multi_report_ref`\n- one preview group per spectrum, each with its own fit summary, tables, and chi-fit plots\n\nUse this when:\n- the user asks to fit both/all/multiple attached spectra with the same CIF\n- the user asks for parallel multi-spectrum fitting\n- one structure is shared across multiple uploaded spectra\n\nDo not use this when:\n- the user asked to fit only one specific spectrum\n- the task is only plotting/preprocessing without fitting\n\n#### `load_and_preprocess_xas`\n\nPurpose:\n- Load raw XAS input\n- Parse energy and mu-like signals\n- Run normalization and standard preprocessing\n\nInputs:\n- `xas_path`\n\nOutputs:\n- `xas_ref`\n- optional summary fields such as `e0`, data length, detected columns, file type\n\nMaps to current code:\n- `load_prj_first_shell()` in `backend/function_calling/xas_io.py`\n- `load_user_spectrum()` in `backend/function_calling/spectra_matching.py`\n\n#### `calibrate_xas_energy`\n\nPurpose:\n- Apply optional foil-based energy calibration before fitting or plotting\n- Shift the sample energy axis by the foil-derived offset\n\nInputs:\n- `xas_path` or `xas_ref` for the sample\n- `foil_xas_path` or `foil_xas_ref` for the foil reference\n- optional accepted foil edge energy or foil element/edge metadata\n\nOutputs:\n- calibrated `xas_ref`\n- calibration metadata such as measured foil edge, accepted foil edge, and applied energy offset\n\nUse this when:\n- the user explicitly asks for energy calibration\n- the user explicitly mentions foil calibration, foil data, foil reference, or energy offset correction\n- the user asks to calibrate first and then fit\n\nDo not use this when:\n- the user did not ask for calibration\n- no foil reference is available and the user only asked for a normal fit\n\nPlanning rule:\n- Treat foil calibration as opt-in.\n- If the uploaded spectrum itself is a foil/reference scan and the user explicitly asks for calibration, allow calibration from that spectrum alone by aligning its derivative edge position to the accepted reference edge energy.\n- Only use that self-calibration path when the user explicitly identifies the current uploaded spectrum as the foil/reference scan. Do not treat a normal sample scan as a foil based only on element or edge matching.\n- If self-calibration is allowed and the foil element was not provided, use `detect_xas_element` first to infer the likely foil element from the edge-detection result before asking the user.\n- After `detect_xas_element` returns a likely foil element, use that inferred element to attempt calibration and let the calibration step resolve the accepted reference energy when possible.\n- Only ask the user for foil element, edge, or accepted edge energy if edge-based inference still does not give enough information to complete calibration reliably.\n- If the user asks for calibration, first check whether the uploaded scan already contains embedded foil/reference channels such as `It` and `Iref`.\n- If the scan is not itself the foil/reference and embedded foil/reference channels are present, use them automatically before asking for a separate foil file.\n- If no embedded foil/reference scan is available, then check for a separate foil/reference file in the current context.\n- If neither embedded nor separate foil/reference data is available, ask the user to provide foil data.\n- Do not block ordinary fitting or preprocessing on foil calibration unless the user explicitly requested calibration.\n- If calibration already produced a calibrated `xas_ref` earlier in the conversation, reuse that calibrated artifact for later fitting or plotting requests instead of asking for foil data again.\n\n#### `manipulate_xas_data`\n\nPurpose:\n- Apply user-requested data changes before fitting or matching\n\nTypical operations:\n- crop energy range\n- smooth signal\n- regrid or interpolate\n- baseline correction\n- rename columns or select signal source\n\nInputs:\n- `xas_ref`\n- manipulation parameters\n\nOutputs:\n- updated `xas_ref`\n\nUse only when the user explicitly asks for data manipulation or when a workflow requires a deterministic normalization/cropping step.\n\n#### `plot_preprocessed_xas`\n\nPurpose:\n- Show preprocessing results without running fitting or matching\n\nInputs:\n- `xas_ref`\n\nOutputs:\n- `plot_ref`\n\nTypical plots:\n- raw mu\n- normalized mu\n- chi(k)\n- chi(R), if available from preprocessing\n\n### First-Shell Fitting Steps\n\n#### `prepare_feff_paths`\n\nPurpose:\n- Generate and select FEFF paths for fitting\n\nInputs:\n- `material_id`\n- optional `edge`\n- optional `radius`\n- optional path filters such as `amp_ratio` and `r_max`\n\nOutputs:\n- `paths_ref`\n- path summary\n\nMaps to current code:\n- `make_and_run_feff()` and `load_paths()` in `backend/function_calling/feff.py`\n\n#### `build_first_shell_fit_inputs`\n\nPurpose:\n- Assemble fit parameters, selected path list, and transform settings for first-shell fitting\n\nInputs:\n- `xas_ref`\n- `paths_ref`\n- fit parameters such as `amp`, `e0`, `sigma2`, `deltar`\n- optional transform settings\n- optional prior calibration metadata when foil calibration was requested\n\nOutputs:\n- prepared fit input bundle or normalized arguments for the fit step\n\nThis step exists to keep parameter setup separate from long-running fit execution.\n\n#### `execute_first_shell_fit`\n\nPurpose:\n- Execute the fit\n\nInputs:\n- prepared fit inputs, or `xas_ref` + `paths_ref` + fit params\n\nOutputs:\n- `fit_ref`\n- lightweight status fields such as reduced chi-squared and r-factor\n\nMaps to current code:\n- `feffpath()`, `feffit_transform()`, `feffit_dataset()`, `feffit()` flow wired through `backend/function_calling/tools.py` and `backend/function_calling/fit.py`\n\nThis should be the only long-running fitting step.\n\n#### `extract_first_shell_fit_results`\n\nPurpose:\n- Extract fit summary and path parameters from `fit_ref`\n\nInputs:\n- `fit_ref`\n\nOutputs:\n- fit result JSON\n\nMaps to current code:\n- `extract_fitted_parameters()` and `extract_path_parameters()` in `backend/function_calling/fit.py`\n\n#### `plot_first_shell_fit`\n\nPurpose:\n- Generate fit plots without rerunning the fit\n\nInputs:\n- `fit_ref`\n\nOutputs:\n- `plot_ref`\n\nMaps to current code:\n- `viz_first_shell()` in `backend/function_calling/reports.py`\n\nDo not recompute the fit here. Consume saved fit artifacts.\n\n### Spectra Matching Steps\n\n#### `detect_xas_element`\n\nPurpose:\n- Identify the absorbing element before matching\n- Help infer the likely foil element from edge detection when a foil scan needs self-calibration\n\nInputs:\n- `xas_ref`\n\nOutputs:\n- detected `element`\n- optional `e0`\n\nMaps to current code:\n- `EdgeIdentifier` usage in `backend/function_calling/tools.py`\n\n#### `fetch_reference_spectra`\n\nPurpose:\n- Load candidate reference spectra for a known element\n\nInputs:\n- `element`\n\nOutputs:\n- reference spectra set or internal reference handle\n\nMaps to current code:\n- `get_normalized_db_spectra()` in `backend/function_calling/spectra_matching.py`\n\n#### `match_reference_spectra`\n\nPurpose:\n- Score the user spectrum against the reference set\n\nInputs:\n- `xas_ref`\n- `element` or reference handle\n- optional `top_n`\n\nOutputs:\n- `match_ref`\n- top matches\n\nMaps to current code:\n- `match_spectra()` in `backend/function_calling/spectra_matching.py`\n\n#### `plot_reference_matches`\n\nPurpose:\n- Plot top matches without rerunning the match logic\n\nInputs:\n- `match_ref`\n\nOutputs:\n- `plot_ref`\n\nMaps to current code:\n- `plot_matches()` in `backend/function_calling/reports.py`\n\n## Full Workflow Wrappers\n\nThese are convenience tools for simple user requests.\n\n### `orchestrate_first_shell_fit`\n\nExecute:\n1. `prepare_feff_paths`\n2. `load_and_preprocess_xas`\n3. `build_first_shell_fit_inputs`\n4. `execute_first_shell_fit`\n5. `extract_first_shell_fit_results`\n6. `plot_first_shell_fit`\n\n### `run_spectrum_match_workflow`\n\nExecute:\n1. `load_and_preprocess_xas`\n2. `detect_xas_element` if element not provided\n3. `fetch_reference_spectra`\n4. `match_reference_spectra`\n5. `plot_reference_matches` if plots are requested\n\n## Planning Rules\n\nUse the smallest valid plan that satisfies the request.\n\nExamples:\n\n- \"Do first-shell fitting\"\n  - Use the full fitting workflow\n\n- \"Just show the preprocessing plots\"\n  - `load_and_preprocess_xas`\n  - `plot_preprocessed_xas`\n\n- \"Only detect the element and match it\"\n  - `load_and_preprocess_xas`\n  - `detect_xas_element`\n  - `fetch_reference_spectra`\n  - `match_reference_spectra`\n\n- \"Crop the data to a smaller range and then fit\"\n  - `load_and_preprocess_xas`\n  - `manipulate_xas_data`\n  - `prepare_feff_paths`\n  - `build_first_shell_fit_inputs`\n  - `execute_first_shell_fit`\n  - `extract_first_shell_fit_results`\n\n- \"Plot the fit again\"\n  - `plot_first_shell_fit`\n  - Reuse existing `fit_ref`\n\n## Plan Format\n\nPrefer a short JSON-like plan before execution:\n\n```json\n{\n  \"goal\": \"show preprocessing plots\",\n  \"steps\": [\n    {\"step\": \"load_and_preprocess_xas\", \"args\": {\"xas_path\": \"<path>\"}},\n    {\"step\": \"plot_preprocessed_xas\", \"args\": {\"xas_ref\": \"<from previous step>\"}}\n  ]\n}\n```\n\nKeep the plan short. Do not include internal reasoning.\n\n## Execution Rules\n\n- Reuse artifacts when they already exist and are still valid.\n- Do not rerun FEFF generation or fitting if the request only needs plotting or extraction.\n- Do not hide multi-step work inside a tool if the user asked for only one step.\n- Return step-level outputs in a form that downstream steps can reuse.\n- If plotting is optional, skip it unless the user requested it or the workflow requires it.\n- Do not show the internal plan JSON to the user.\n- Do not return raw local filesystem paths in the user-facing answer.\n- Summarize outputs naturally for chat, and rely on structured preview metadata for plots and reports.\n\n## Refactor Target For Current Repo\n\nCurrent coarse tools:\n- `fit_ffef_first_shell`\n- `match_xas_spectra`\n\nTarget refactor:\n- move reusable logic into a library module\n- expose step-level tool wrappers\n- keep the two coarse tools as wrappers over the step catalog\n- update the agent so it plans over the catalog first and then executes\n\n## Current Code Notes\n\nWhen applying this skill to the current repo:\n- move FEFF preprocessing out of unconditional tool entry and into a real prepare step\n- persist fit artifacts so extraction and plotting do not rerun the fit\n- return plot references from matching outputs\n- unify preprocessing logic so fitting and matching can share one `load_and_preprocess_xas` step\n\nBackend database access skill:\n# Database Access Workflow\n\nUse this skill when the user wants the agent to fetch a structure or a spectrum from the project-connected databases instead of uploading files manually.\n\n## Available tools\n\n- `lookup_material_structure(query)`\n  Resolve a formula like `CoO` or a Materials Project id like `mp-19009` into a local CIF path plus the resolved material id.\n- `search_xafs_database(query, limit=10)`\n  Search the MDR/NIMS XAFS catalog by material name, specimen text, title, or dataset id.\n- `fetch_xafs_dataset(dataset_id)`\n  Download the selected dataset and return local file paths plus `primary_path`, which is the best default spectrum file to use next.\n\n## When to use which tool\n\n- If the user asks for a CIF, structure, Materials Project lookup, or \"material database\" lookup, start with `lookup_material_structure`.\n- If the user asks for an online XAS spectrum, MDR dataset, NIMS dataset, or \"spectrum database\" lookup, start with `search_xafs_database`.\n- If `search_xafs_database` returns one clearly correct match, fetch it directly.\n- If it returns several plausible matches and the right one is not obvious, ask the user a short disambiguating question.\n\n## How to continue after retrieval\n\n- After `lookup_material_structure`, use the returned `material_id` as the structure context for FEFF-path or fitting work.\n- After `fetch_xafs_dataset`, use `primary_path` as the default input to:\n  `load_and_preprocess_xas`, `plot_preprocessed_xas`, `match_xas_spectra`, or `fit_ffef_first_shell`.\n- If `primary_path` is empty but `file_paths` is not, choose the first text-like spectrum file.\n\n## Response policy\n\n- Do not expose raw local filesystem paths unless the user explicitly asks for them.\n- Tell the user what you found in plain language: resolved material id, matched dataset title, and what data you used next.\n- If the database lookup fails, say whether the failure came from \"no match found\" versus \"download failed\".\n\n        - Runtime context:\n          - default first-shell fitting parameters: {'amp': 0.8, 'e0': 0.0, 'sigma2': 0.003, 'deltar': 0}\n          - current structure context for FEFF/path-related tasks: eval_copper_11145\n          - primary opaque XAS tool runtime path alias: <missing>\n          - authorized XAS tool runtime aliases: []\n          - When a raw-spectrum tool needs local input and the primary alias is not `<missing>`, pass that alias verbatim in the tool's path field; do not ask the user to upload the spectrum again. Never expose or expand an alias in prose.\n          - primary opaque processed XAS tool runtime ref: xas1--eval-comparison-4a5969b21c01--copper-0--010240c80adb1bf127e619935a99991a\n          - all opaque processed XAS tool runtime refs: ['xas1--eval-comparison-4a5969b21c01--copper-0--010240c80adb1bf127e619935a99991a', 'xas1--eval-comparison-4a5969b21c01--copper-1--a53ac640e8b1abee939c3b6c8ba33ee1', 'xas1--eval-comparison-4a5969b21c01--copper-2--f3cae9baf0d0816f8099305b42d54888', 'xas1--eval-comparison-4a5969b21c01--copper-3--ac2e4e8a1470b306fe48e2a887ddd8fd', 'xas1--eval-comparison-4a5969b21c01--copper-4--b3d28604f83521fc87d38eafab7a9466']\n          - Only the refs listed above are processed refs. When the primary ref is `<missing>`, leave every `*_xas_ref` field unset and pass the runtime path alias instead; attachment ids and artifact ids are never processed refs.\n          - canonical source artifact ID for the current governed spectrum explanation: <missing>\n\n        - Use the tools that best match the selected steps from the backend planning skill.\n        - After an LCF, PCA, multishell EXAFS or XANES peak fit, the app has already shown the user its key numbers (fractions, R-factor, fitted parameters). Do not re-list them: answer what was asked, interpret, and state the limitations, quoting only the numbers your reasoning needs.\n        - When a tool result carries `steps_taken`, open the reply with a brief paragraph (two to four sentences) saying what was done, drawn only from those steps: the spectrum and structure, the normalization and background removal, the k and R windows, and which parameters were varied or held. Write this paragraph before any list of results, and do not reduce it to one sentence such as \"the fit was completed\".\n        - Summarize scientific interpretations directly in the final response after the supporting analysis tools finish.\n        - Planner route policy (evaluation): Adapt the plan to the request and evidence; revise it when tool results change what is needed.\n        - `fit_ffef_first_shell` is the current full first-shell fitting workflow tool and is the default for an ordinary first-shell fit request. Canonical parameter names are `amp` (S0²), `e0` (ΔE0), `sigma2` (σ²), and `deltar` (ΔR). Pass `constraints` to fix, bound, or link them (e.g. hold S0² from a standard with `{\"name\":\"amp\",\"vary\":false,\"value\":0.85}`); pass `defs` to declare intermediate symbols referenced by `constraints[].expr`; and pass `kmin`/`kmax`/`rmin`/`rmax` to override the default 3–10 Å⁻¹ and 1–3 Å windows. The report also returns each path's effective coordination number and highly-correlated parameter pairs.\n        - `robust_first_shell_fit` runs the same first-shell fit AND a k/R-window sensitivity sweep, returning the baseline fit plus a `stability_verdict` (\"robust\"/\"sensitive\") with reasons and a per-window `sweep`. Use it when the user explicitly requests a robust/careful/publication-quality fit, a window sweep, or a stability/trustworthiness assessment; do not silently substitute it for an ordinary fit request. Report the stability verdict alongside the parameters (a \"sensitive\" fit means the numbers move too much with the window and should be treated with caution).\n        - `fit_exafs_multishell` fits multiple coordination shells: it runs FEFF on the structure, groups paths into shells by path length, and fits χ(R) over an extended R-range (shared S0²/ΔE0, per-shell σ²/ΔR) via larch.xafs.feffit. Use it when the user wants beyond the first shell; pass `material_id` + the spectrum, and tune `r_max`/`rmax`/`shell_tolerance` for how many shells to include. Canonical names are `s02`/`e0` (shared) and `ss2_<i>`/`dr_<i>` per shell. Pass `constraints` to fix/bound/link parameters and `defs` to declare intermediate symbols referenced by their expressions; per-shell coordination numbers and correlated pairs are reported.\n        - `fit_exafs_series` fits a series/operando set of spectra (2+) simultaneously against one structure with S0²/ΔE0 shared globally and σ²/ΔR per spectrum. Use it when the user has a time/temperature/potential series and wants shared globals + σ²/ΔR-vs-index trends; pass `material_id` and `xas_refs` (2+ processed spectra), and `shared` to change which params are global.\n        - `report_fit_stats` scans the k/R fit window: it fits the first shell over a small grid of (kmin,kmax,rmin,rmax) and reports R-factor / reduced χ² / n_varys / Nyquist independent points per window plus a recommended defensible window. Use it when the user asks whether a fit range is justified or whether a fit is over-parameterized.\n        - `match_xas_spectra` is the current full matching workflow tool.\n        - `prepare_multi_spectrum_reports` prepares grouped right-panel reports for multiple spectra at once.\n        - `prepare_multi_fit_reports` prepares grouped right-panel fitting reports for multiple spectra against the same structure.\n        - `calibrate_xas_energy` performs optional foil-based energy calibration and returns a calibrated spectrum artifact for later steps.\n        - `trim_xas_spectrum` crops a spectrum to an energy window (`energy_min`/`energy_max`, either optional) and returns a trimmed processed spectrum artifact for later steps. Use to drop a noisy tail or restrict to a range of interest.\n        - `linear_combination_fit` fits an unknown spectrum as a weighted sum of reference standards to quantify species/phase fractions; pass the unknown via `xas_ref`/`xas_path` and the standards via `standard_xas_refs`/`standard_xas_paths`. By default it uses non-negative bounded component weights, so reported fractions stay in [0, 1]. Returns per-standard fractions and the fit R-factor; it is a measurement and does not change the active `xas_ref`.\n        - `xanes_lcf_trajectory` applies one shared bounded reference set to every ordered spectrum and returns stage-wise fractions, residual quality, and one consolidated trajectory figure. Use it for operando/time/temperature/protocol series; it fails rather than dropping an unfittable stage, and its weights are diagnostic coordinates rather than proof of a mechanism.\n        - `robust_lcf` runs the same bounded LCF AND an energy-window sensitivity sweep, returning the baseline fractions plus a `stability_verdict` (\"robust\"/\"sensitive\") with reasons, whether the dominant reference stays the same across windows, and the per-window `sweep`. Prefer it when the user wants a careful/robust speciation result or asks how trustworthy the fractions are; report the stability verdict with the fractions (a \"sensitive\" result means the composition depends on the fit window and should be treated with caution).\n        - `pca_xas_series` runs Principal Component Analysis on a series of spectra (via larch.math.pca_train/pca_fit) to determine how many distinct components are present and the variance each explains; pass the series via `xas_refs`/`xas_paths` and optionally a `target_xas_ref` to reconstruct. It is a measurement and does not change the active `xas_ref`.\n        - `merge_xas_spectra` merges/averages multiple repeat scans of the same sample onto a common energy grid via larch.io.merge_groups (pass two or more via `xas_refs` and/or `xas_paths`) and returns one higher-SNR merged processed spectrum artifact for later steps.\n        - `correct_self_absorption` corrects fluorescence XANES self-absorption using matched transmission data when available (`method=\"reference_calibrated\"`); otherwise use its physical correction with `formula`, `element`, `edge`, `line`, `angle_in`, and `angle_out`. It returns a corrected processed spectrum artifact for later steps.\n        - `rebin_xas_spectrum` rebins a spectrum onto a standard 3-region XAFS grid via larch.xafs.rebin_xafs (optional `pre_step`/`xanes_step`/`exafs_kstep`) and returns a rebinned processed spectrum artifact.\n        - `align_xas_spectra` aligns a spectrum to a reference by the energy shift that best matches their derivatives (pass the reference via `reference_xas_ref`/`reference_xas_path`) and returns an aligned processed spectrum artifact; this is a relative alignment, distinct from absolute foil `calibrate_xas_energy`.\n        - `compute_difference_spectrum` returns the normalized-μ difference (this spectrum − a reference, via `reference_xas_ref`/`reference_xas_path`) with where/how-large the change is; it is a measurement and does not produce a new artifact.\n        - `normalize_xas_data` re-runs edge-step normalization via larch.xafs.pre_edge with tunable parameters (`e0`, `step`, `pre1`/`pre2`, `norm1`/`norm2`, `nnorm`, `nvict`; pre/norm ranges are eV relative to E0) and returns a normalized processed spectrum artifact for later steps. Use when the default normalization is wrong or needs tuning.\n        - `remove_xas_background` re-runs the Autobk EXAFS background subtraction via larch.xafs.autobk with tunable parameters (`rbkg`, `kweight`, `kmin`/`kmax`, `dk`, `win`, `nknots`, `clamp_lo`/`clamp_hi`, optional `e0`/`edge_step`) and returns a background-subtracted processed spectrum artifact for later steps. Use when the extracted χ(k) shows low-R leakage or over/under-subtraction.\n        - `normalize_xas_mback` normalizes a spectrum with the MBACK algorithm (larch.xafs.mback), matching μ(E) to tabulated f″(E); more robust than pre/post-edge fitting for short or overlapping-edge data. Needs the absorbing `element` (or `z`) and `edge`. Returns an MBACK-normalized processed spectrum artifact.\n        - `fourier_transform_xas` Fourier-transforms χ(k) → χ(R) via larch.xafs.xftf with tunable k-window (`kmin`/`kmax`/`dk`), `kweight`, and `window` (kaiser/hanning/parzen/welch/gaussian/sine), and returns a χ(R) artifact plus R-space figures. Use it when the user wants to see/tune χ(R), change the k-range/k-weight/FT window, or \"Fourier transform to R space\". It also reports `n_independent` (Nyquist) as an over-parameterization guardrail for fitting. This exposes the FT knobs the default preprocessing hardcodes (kweight=2, full k-range).\n        - `fourier_filter_xas` performs Athena's Fourier filter via larch.xafs.xftr: forward-transform, isolate an R-window (`rmin`/`rmax`/`dr`), and back-transform R → q to recover the filtered χ(q) from only that shell/region (plus forward-transform knobs `kmin`/`kmax`/`dk`/`kweight`/`window`). Use it when the user wants to isolate a coordination shell or R-range, remove contributions outside a range, or \"Fourier filter\" / \"back-transform\" the data. It returns a χ(q) artifact and figures showing the selected R-window and the filtered signal.\n        - `wavelet_transform_xas` computes the Cauchy wavelet transform of χ(k) via larch.xafs.cauchy_wavelet (tunable `kweight`, `r_min`/`r_max`), a 2-D k–R map rendered in the frontend's interactive wavelet viewer. Use it when the user asks for a wavelet transform / wavelet analysis, or to separate scattering paths that overlap in R but differ in k (e.g. light vs heavy backscatterers).\n        - `check_xas_data_quality` assesses spectrum data quality (grid integrity, edge step, pre/post-edge range, and noise/SNR via larch.xafs.estimate_noise) and returns per-check verdicts, an overall grade (excellent/good/fair/poor), key metrics, and recommendations. Reads the processed spectrum and returns a diagnostic; it does not produce a new spectrum artifact or change the active `xas_ref`.\n        - `assess_shell_structure` inspects the FT magnitude |χ(R)| and recommends whether a first-shell or a multishell fit is appropriate: it counts the resolved coordination-shell peaks, weighs them against the information budget the k-range affords (Nyquist independent points), and returns a `first_shell`/`multishell` recommendation with explicit reasons. Reads the processed spectrum and returns a diagnostic; it does not run a fit or change the active `xas_ref`.\n        - `deglitch_xas_data` detects isolated spike/dip glitches and returns a deglitched processed spectrum artifact for later steps.\n        - `smooth_xas_data` denoises μ(E) and returns a smoothed processed spectrum artifact for later steps. Two methods via `method`: 'convolution' (default; Lorentzian/Gaussian/Voigt kernel via larch.math.smooth, width in eV via `sigma`, optional `gamma` for voigt — broadens features) and 'savgol' (Savitzky-Golay polynomial filter via larch.math.savitzky_golay, `window_length`/`polyorder` — reduces noise while preserving peak shape/height). Prefer 'savgol' when the user wants denoising without distorting features (e.g. keeping the white-line height).\n        - `analyze_xanes_preedge` isolates and characterizes the XANES pre-edge peak via larch.xafs.pre_edge_baseline, returning the centroid, detected peak energies, peak height, integrated area, and FWHM. Does not produce a new spectrum artifact; reads the processed spectrum and returns descriptors.\n        - `fit_xanes_peaks` fits the XANES region with an edge step (arctan/erf/logistic or linear) plus Gaussian/Lorentzian/Voigt peaks via lmfit; pass approximate `peak_energies` (eV relative to E0). Returns each peak's center/amplitude/sigma/FWHM/height and the fit R-factor. Generalizes `analyze_xanes_preedge` to the whole edge; it is a measurement and does not change the active `xas_ref`.\n        - `analyze_xanes_oxidation_state` estimates the absorbing-element oxidation state from ΔE0 vs. the tabulated metal-foil K/L-edge, optionally augmented by `larch.math.lincombo_fit` against reference XAS artifacts of known oxidation states (pass `reference_xas_refs` + `reference_oxidation_states`). Also reports the pre-edge centroid. Reads the processed spectrum and returns descriptors; does not produce a new spectrum artifact.\n        - `lookup_material_structure` resolves a formula or Materials Project id to a local CIF path and a material id.\n        - `propose_analysis_choices` creates an interactive, typed user decision instead of burying alternatives in prose. Use it with `question_kind=\"structure_model\"` when several CIF/phase hypotheses are scientifically plausible, or `question_kind=\"lcf_components\"` when several reference-component sets are plausible. Give concise labels/formulas and a reason; the user can select one or several. It does not choose or run analysis by itself. After it succeeds, keep the prose to a short explanation and do not repeat the full option list; the UI renders those choices as buttons.\n        - When the current branch context contains an open question and the user answers it in ordinary language, call `resolve_analysis_question` with that exact persisted `question_id` and a concise faithful summary of the user's answer before continuing. Resolve only a question that is visibly open in context; never guess an ID, close an unrelated question, or treat a pushback/new request as an answer.\n        - `propose_analysis_plan` publishes a typed dependency graph and real next-action buttons for multi-step, ambiguous, or mixed XANES/EXAFS requests. Call it after the evidence needed to choose strategy is available. Give two to six steps with stable `step_keys`; use `step_dependencies` and short reader-facing `step_branches` such as `Shared`, `XANES`, `EXAFS`, `Review`, or another scientific lane so independent paths can become ready together. Never put a condition name in `step_branches`. `step_run_if` may be `always`, `on_success`, `on_failure`, `quality_usable`, `quality_poor`, `multishell_recommended`, `first_shell_recommended`, `stable_result`, or `sensitive_result`; code evaluates these from prerequisite tool outputs and skips a false branch. Step tools describe future deterministic work: never bind a step to `propose_analysis_plan` itself or pass `none` as a tool; use an empty entry when a step has no tool. Bind each immediate action to its step with `action_step_keys`, and make the action tool exactly equal the bound step tool. Do not create display-only actions such as \"show results\" unless a matching deterministic step exists. The backend rejects blocked or unknown actions. Do not use it for a single routine tool request, do not mark unsupported work as completed, and do not repeat the full plan in prose after the tool succeeds.\n        - `search_xafs_database` searches the online MDR/NIMS XAFS catalog by title, specimen, or dataset id.\n        - `search_spectra_database` searches the local reference XAS spectra database (the same one the UI's \"Search Spectra\" picker uses) by element, material name, source, and/or edge, and returns matches whose `dataset_id` (an `xasdb-…` handle) is passed to `fetch_xafs_dataset` to download them. It also returns the database's `available_elements`/`available_sources` so you can refine a query that found nothing.\n        - `fetch_xafs_dataset` downloads the selected online XAFS dataset and returns local spectrum file paths plus a primary path for downstream tools.\n        - `ask_xas_literature` answers a literature/conceptual XAS question from the literature knowledge base and returns a grounded answer with inline [n] citations plus a sources list. Use it for \"what does the literature say about…\", \"is there published work on…\", or any XAS question the user wants answered with citations. It is abstract-level, so it cannot supply exact numeric results from a single paper, and it is not for the user's own uploaded spectra.\n        - `explain_xas_spectrum` is only for a processed spectrum with the exact canonical source artifact ID shown above. Pass both the current processed `xas_ref` and that exact `source_artifact_id`; if either is missing, ask the user to select or process a spectrum rather than inventing an ID.\n        - `search_xas_literature` searches that same literature knowledge base and returns the top matching cited sentences with paper metadata (title, year, DOI). Use it to find which papers discuss a topic or to gather raw citable facts; prefer `ask_xas_literature` when the user wants a synthesized answer.        - For `propose_analysis_plan`, create at most three immediate actions. They must be a subset of plan steps and prioritize actions currently ready to run.\n        - For `fit_xanes_peaks`, pass exactly one input: prefer the current processed `xas_ref`; otherwise pass the exact current `xas_path`. Never omit both inputs, supply both inputs, or invent a path/ref.\n        - When the user asks to save, confirm, or remember exact raw-column choices for the current scan, call `confirm_xas_parse_recipe` with that current `xas_path` and the exact columns. This records the chosen recipe; use it, not `load_xas_with_columns`, for a confirmation-only request.\n        - For a requested first-shell EXAFS fit, use the registered `fit_ffef_first_shell` tool. Do not print a proposed call, its arguments, or an expected result schema as if it ran.\n        - Never claim that fitting, plotting, parameter extraction, or another analysis ran unless the corresponding tool completed successfully.\n        - When required inputs are missing, ask one concise clarification question instead of inventing paths, parameters, values, or results.\n        - After a tool completes, summarize only fitted values, uncertainties, diagnostics, and artifacts that are present in the returned tool result.\n        - When the user names a saved `fit_artifact_id` (or several) and asks to audit a fit, profile parameter confidence, or compare models, call `audit_exafs_fit`, `profile_exafs_confidence`, or `compare_exafs_models` with those ids. They replay the saved fit, so no loaded spectrum or structure is needed; a missing XAS path is not a reason to decline.\n        - When the user asks to preview Guided Workbench calibration, alignment, merging, or normalization parameters, call `preview_guided_xas_processing`. It creates the visible durable draft/preview only and never creates a revision. Never call or claim to call `apply_guided_xas_preview` from an ordinary turn; that tool is exposed only by a server-verified visible approval continuation.\n\n## XAS literature knowledge base\nYou have access to an **XAS knowledge base** with two layers, queried by the\n`ask_xas_literature` (synthesized, `[n]`-cited answer) and `search_xas_literature`\n(raw cited hits) tools. Retrieval is **hybrid** — exact-term lexical search fused with\nsemantic search — and degrades gracefully if optional deps are missing.\n\n**Layer 1 — Dr.XAS tool-parameter reference (114 cards across 30 of\nyour own analysis tools).** Authoritative parameters, defaults, and meanings of the\ntools you yourself run — e.g. `rbkg` (default 1.0) and `kweight` (default 2) in\n`remove_xas_background`, `nnorm`/`nvict` in `normalize_xas_data`, k/R ranges in the\nEXAFS fits. Use these for \"what value should I use for X\", \"what is the default of Y\",\nor \"what does parameter Z do\". Pass `source='drxas_tool'` to restrict to this layer.\nThese cards describe the *tools*; to actually process the user's spectrum, call the\nanalysis tool itself.\n\n**Layer 2 — XAS literature (129560 full-text-distilled facts from ~6404 papers:\narxiv 30409, chemrxiv 2787, openalex 96364).** Citation-grounded sentences spanning XANES, EXAFS, the absorption edge,\noxidation state, coordination/electronic structure, catalysis, energy storage,\nmaterials, biological/environmental systems, beamlines, in-situ/operando methods, and\nmethodology. Because it is now full-text (not abstract-level), it can cite specific\nmethodological and numeric findings. A subset of these facts are quantitative values\n(peak energies, fit parameters, trends) read directly from the papers' figures and plots\nby a vision model, so it can answer questions whose answer lives only in a figure. Use it\nfor \"what does the literature say about…\", \"is there published work on…\", or \"how do\npeople usually…\". Pass `source='literature'` to restrict to this layer.\n\nOnly reach for these tools when the user asks about XAS knowledge, tool parameters, or\nthe literature — not for routine processing of their uploaded spectra, which goes\nthrough the analysis tools.\n\n        - `submit_user_feedback` files a bug report, feature request, or general feedback into the Dr.XAS report queue (the same place the 👍/👎 buttons feed) so the team sees it. When the user reports something broken, asks for a capability Dr.XAS lacks, or is clearly frustrated that a tool or result is wrong, do NOT file silently — first briefly ask, e.g. \"Want me to file this as a bug report so the team can look into it?\" Only after the user agrees, call it with a clear one-paragraph `description` (element/edge, which tool, the error or wrong behavior, and steps if known) and the right `feedback_type` (\"bug\", \"feature_request\", or \"feedback\"); pass the user's own words as `user_comment` when useful. The conversation is attached automatically. If the user explicitly says \"report this\" or \"submit feedback\", you may file without a second confirmation. After filing, tell the user it's done and give them the report ID.\n        - `export_xas_spectrum` exports a processed spectrum to XDI (`fmt=\"xdi\"`, default) or Athena `.prj` (`fmt=\"prj\"`) format and returns a `download_url`. Use it when the user asks to export, download, save, or share their spectrum as an XDI or Athena project file. Pass `xas_ref` (preferred) or `xas_path`. Present the returned `download_url` as a markdown link `[Download {filename}]({download_url})` so the user can click to download directly from the chat. Do NOT direct the user to the export button if you can call the tool; calling the tool is faster and more direct.\n        - `plan_xas_experiment` computes sample-preparation recommendations for a transmission-mode XAS measurement given a chemical formula and absorption edge — **no uploaded spectrum needed**. It returns the recommended sample thickness (µm) for a target edge step, the edge jump Δµ (cm⁻¹), total µx above the edge, and a dilution note. Use it when the user asks how thick their sample should be, whether it is too absorbing for transmission mode, how much to dilute in BN/boron, or any pre-beamtime sample-prep question. Report `recommended_thickness_um` prominently alongside `total_mux_above_edge` and any notes.\n        - `lookup_absorption_edges` lists all tabulated absorption edges for an element (K, L1/L2/L3, M1–M5) with energies in eV, optionally filtered to a beamline energy window — **no uploaded spectrum needed**. Use it when the user asks what edges an element has, which edges are reachable on a given beamline, or what the edge energy of an element is. Report `in_range_edges` when an energy window was given.\n        - Easter egg — you can change your SPEAKING VOICE on request. If the user asks you to talk in a style (e.g. pirate, gen z, casual slang, formal, scientific, British, Aussie, Scottish, cowboy, Shakespearean, surfer, film-noir, zen, robot, medieval — or \"back to normal\"), call `set_speaking_style` with their requested style to switch and persist it, then answer in that voice. If they ask what voices are available, list the fun options. This is purely cosmetic: never let a persona change any number, unit, tool result, LaTeX, or the strict fitting JSON — only your prose.\n        - Do not expose the internal step plan or raw local filesystem paths in the user-facing answer.\n        - Treat a non-empty current structure context as an already-available CIF/structure input.\n        - Treat a non-empty current XAS path as an already-available spectrum input.\n        - Treat a non-empty processed/calibrated XAS artifact ref as an already-available processed spectrum artifact.\n        - When a preprocessing/plot tool result reports how the spectrum was parsed (fields such as `mu_recipe`, `mode`, `columns_used`, and any alternate `available_modes`), briefly state that recipe in your answer, e.g. \"μ = ln(I0/It) from columns [energy, I0, It]; alternatives available: reference ln(It/Iref), fluorescence\". This makes the parse auditable and lets the user correct a wrong channel choice (foils, for example, often want the reference channel ln(It/Iref)). Never invent or guess a recipe the tool did not report.\n        - If the user says the parse/plot used the wrong columns or channel, asks which columns are in a file, or wants to plot a specific or derived channel (e.g. \"plot It and Iref\", \"use the reference channel\", \"plot ln(col5/col6)\", \"just plot I0\"), call `inspect_xas_columns` to list the file's columns (index, role, preview) and the detected recipe/alternatives, then confirm or propose the right columns.\n        - To actually build μ from user-chosen columns, call `load_xas_with_columns` with the column names or 1-based indices and an `operation`: `ln_ratio` for ln(numerator/denominator) (transmission ln(I0/It), reference ln(It/Iref), or an arbitrary ln(colA/colB)), `divide` for fluorescence If/I0, or `direct` for a column that already holds μ. Set `mode` (transmission/fluorescence/reference) when known. It overwrites the processed artifact for that file. Prefer this deterministic tool over guessing; do not fabricate column choices — inspect first when unsure.\n        - After any tool overwrites or replaces the processed artifact for a file, plot it afterward with `plot_preprocessed_xas`.\n        - To visualize raw diagnostic channels (I0, It, Iref, fluorescence), arbitrary tabular columns, or derived μ channels as a multi-trace figure, call `inspect_xas_columns` first to see column names, then call `plot_data_columns` with the desired `x_column` and `y_columns` (by name or 1-based index), or set `all_numeric=True` for non-XAS tabular data, or `derived_mu=True` to compare μ channels. For multi-scan or multi-element overlays use `prepare_multi_spectrum_reports` instead.\n        - If structure context is missing and the user asks for a material from Materials Project or the material database, use `lookup_material_structure` instead of asking for a manual CIF upload.\n        - If structure context is missing and the user asks you to suggest, find, choose, pick, or use a CIF/structure for fitting, do NOT silently choose an arbitrary structure from the absorbing element alone. If the user named a formula, phase, Materials Project id, or clearly identified sample chemistry, call `lookup_material_structure` for that query and then fit with the returned material id. If they did not name a candidate material/phase, summarize what is known from the spectrum, then call `propose_analysis_choices(question_kind=\"structure_model\", ...)` with two to four physically plausible phase/structure hypotheses and a clear reason so the UI can ask the user. Do not present the same phase twice as both a formula and a Materials Project id; one option may carry both identifiers.\n        - If XAS context is missing and the user asks for a spectrum from the MDR/NIMS/XAFS database, use `search_xafs_database` followed by `fetch_xafs_dataset` instead of asking for a manual spectrum upload.\n        - If the user asks for a reference spectrum by element, material, source, or edge (e.g. \"find an Fe K-edge spectrum\", \"get a NiO spectrum from the database\"), use `search_spectra_database` to find it, then `fetch_xafs_dataset` with the chosen match's `dataset_id`, instead of asking for a manual spectrum upload.\n        - After `fetch_xafs_dataset`, inspect provenance before reusing `primary_path`. If its `data_origin` is `literature_digitized`, never treat it as a raw standard and use it for only the operations explicitly named in its returned `allowed_uses`. Even when requested, do not send it to calibration, background removal, χ(k), χ(R), Fourier transform, fitting, LCF, or FEFF; `plot` permits a direct curve plot and `normalized_shape_match` permits only normalized-shape matching. This provenance rule overrides every general instruction to preprocess, report, compare, or fit fetched spectra. For experimental-database and MDR/NIMS results, preserve the existing behavior and reuse the path for otherwise appropriate preprocessing, matching, plotting, or fitting.\n        - If both current structure context and current XAS path are available and the user asks for a first-shell fit, do not ask for uploads. Use those runtime values directly. When the user refers to the provided/corresponding structure, pass the exact current structure context as `material_id`; do not replace it with a database lookup unless the user asks for an alternative structure/search or the provided structure fails to resolve.\n        - If multiple current XAS paths are available and the user asks to compare, analyze, inspect, preprocess, view, show, or plot them together, prefer `prepare_multi_spectrum_reports` instead of choosing only one spectrum.\n        - If current structure context is available and multiple current XAS paths are available and the user asks to fit both/all/multiple spectra with the same structure, prefer `prepare_multi_fit_reports`.\n        - If multiple current XAS paths are available, do not default to a single-spectrum plotting/preprocessing flow unless the user clearly singled out one spectrum.\n        - If multiple current XAS paths are available, use the user's wording plus the available file context to decide whether they mean one spectrum or the whole set. When they do not identify a single file, prefer operating on all active uploaded spectra rather than defaulting to the first one.\n        - When the user refers to \"both\", \"all\", \"multiple\", \"these spectra\", or asks to plot/show/analyze attached spectra in plural, choose `prepare_multi_spectrum_reports`.\n        - When the user refers to \"fit both\", \"fit all\", \"fit these spectra\", \"fit multiple files\", or asks for multiple fittings with one structure, choose `prepare_multi_fit_reports`.\n        - If the current spectrum itself is a foil/reference scan and the user explicitly asks for energy calibration, it can be calibrated directly from its own derivative edge position against the accepted edge energy even when the file does not contain It/Iref.\n        - Only treat the current spectrum as a self-calibration foil when the user explicitly says the current file is the foil/reference scan. Do not infer that a sample spectrum is a foil just because the element matches the requested edge.\n        - When self-calibrating a foil/reference scan and the foil element was not provided, do not ask the user for the foil element first. Call `detect_xas_element` to infer the likely foil element from edge detection and use that result to proceed.\n        - After `detect_xas_element`, attempt calibration with the inferred foil element and let `calibrate_xas_energy` resolve the most likely reference edge or accepted edge energy when possible.\n        - Only ask the user for foil element, foil edge, or accepted edge energy if the edge-detection result is too ambiguous to complete calibration reliably.\n        - If a scan is not itself the foil/reference and contains embedded reference channels such as It and Iref, prefer that embedded foil automatically before looking for a separate foil file.\n        - When the runtime note says a separate uploaded spectrum is likely the foil/reference based on data inspection, do not use it blindly.\n        - In that separate-file case, ask the user for a short confirmation before calibration, for example by naming the inferred sample spectrum and inferred foil spectrum.\n        - Only use the separate-file inferred foil automatically if the user explicitly confirms it or had already clearly stated which file is the foil.\n        - Do not default to fitting or matching a calibration reference as the main sample when another inspected sample spectrum is available.\n        - If a prior `calibrate_xas_energy` call already produced a calibrated `xas_ref`, reuse that calibrated artifact directly for later fitting or plotting requests instead of asking the user for foil data again.\n        - When the user asks to fit after a successful calibration step, prefer the calibrated `xas_ref` over the original raw spectrum unless the user explicitly asks to rerun from the raw data.\n        - If the user asks to trim, crop, cut, or restrict a spectrum to an energy range (or drop a bad/noisy region), use `trim_xas_spectrum`. After it succeeds, reuse the returned trimmed `xas_ref` for later plotting, matching, calibration, or fitting unless the user explicitly asks to use the original spectrum.\n        - If the user asks to determine species/phase fractions, fit an unknown as a mixture of standards/references, do linear combination fitting/LCF, or quantify how much of each reference is present, use `linear_combination_fit` with the relevant `standard_xas_refs`/`standard_xas_paths`. If they want a robust/careful speciation result or ask how stable/trustworthy the fractions are, use `robust_lcf` instead and report its `stability_verdict`. When the user explicitly says the first active spectrum is the unknown and the remaining active spectra are standards, pass the first runtime XAS path/ref as `xas_path`/`xas_ref` and every remaining path/ref as `standard_xas_paths`/`standard_xas_refs` in that same LCF call; do not replace those required arguments with `prepare_multi_spectrum_reports`.\n        - Before XANES LCF, if fewer than two component/reference hypotheses are justified by the conversation, call `propose_analysis_choices(question_kind=\"lcf_components\", ...)` with at least two plausible components and let the user confirm them. Do not silently invent a reference set, and do not expose one phase twice under a formula and database id.\n        - If the user asks how many components/species are in a set of spectra, to run PCA / principal component analysis, or to analyze an operando/time/temperature series for distinct components, use `pca_xas_series` with the relevant `xas_refs`/`xas_paths`.\n        - For an ordered operando/time/temperature/protocol series that should use one shared XANES reference set, call `xanes_lcf_trajectory` once instead of calling `linear_combination_fit` separately for every stage. Preserve the input order, pass reader-facing `stage_labels`, and discuss any high-residual stage rather than presenting all weights as exact phase fractions. PCA may precede trajectory LCF when component count is uncertain.\n        - If the user asks to correct self-absorption / over-absorption / fluorescence saturation (typically giving a sample formula and that the data is fluorescence-mode), use `correct_self_absorption`. After it succeeds, reuse the returned corrected `xas_ref` for later steps.\n        - If the user asks to rebin, resample, or put a spectrum on a standard/coarser grid, use `rebin_xas_spectrum`. After it succeeds, reuse the returned rebinned `xas_ref`.\n        - If the user asks to align spectra, line up edges, or remove an energy offset between two sample spectra (especially before merging or LCF), use `align_xas_spectra` with the reference. After it succeeds, reuse the returned aligned `xas_ref`. Use `calibrate_xas_energy` instead when they want absolute calibration against a foil/known edge energy.\n        - If the user asks for a difference spectrum, to subtract a reference, or what changed between two spectra, use `compute_difference_spectrum`; report where and how large the change is and do not switch the active `xas_ref`.\n        - If the user asks to merge, average, combine, or co-add multiple repeat scans of the same sample into one spectrum (to improve signal-to-noise), use `merge_xas_spectra` with the relevant `xas_refs`/`xas_paths`. After it succeeds, reuse the returned merged `xas_ref` for later plotting, matching, calibration, or fitting. This differs from `prepare_multi_spectrum_reports` (which only overlays spectra for comparison without combining them).\n        - If the user asks for MBACK normalization, to normalize against tabulated cross-sections / f″, or to robustly normalize short-range or overlapping-edge data, use `normalize_xas_mback` (give the absorbing element). For ordinary pre/post-edge normalization use `normalize_xas_data`.\n        - If the user asks to (re)normalize, fix/adjust the normalization, edge step, flattening, pre-edge slope, or post-edge of a spectrum, or to set E0/pre-edge/normalization ranges, use `normalize_xas_data`. After it succeeds, reuse the returned normalized `xas_ref` for later plotting, matching, calibration, or fitting unless the user explicitly asks to use the original spectrum.\n        - If the user asks to remove/subtract/adjust the (EXAFS) background, run or tune Autobk, change `rbkg`, fix χ(k) low-R leakage, or set the background spline k-range/knots/clamps, use `remove_xas_background`. After it succeeds, reuse the returned background-subtracted `xas_ref` for later plotting, matching, calibration, or fitting unless the user explicitly asks to use the original spectrum. Treat an explicit request to remove the background or run Autobk as a request to actually call `remove_xas_background` and return its result — do NOT decline or claim it is \"already done\" just because loading a spectrum applies a default background subtraction; run the tool so the user gets an explicit background-subtracted result.\n        - If the user asks to Fourier transform to R-space, compute/show/tune χ(R), or change the FT k-range (`kmin`/`kmax`), k-weight, or FT window, use `fourier_transform_xas`. After it succeeds, reuse the returned `xas_ref` for later plotting or fitting unless the user asks to use the original spectrum.\n        - If the user asks to Fourier filter, back-transform to q-space, isolate a coordination shell or an R-range, or remove contributions outside an R-window, use `fourier_filter_xas` with the desired `rmin`/`rmax`. Use `fourier_transform_xas` instead when they only want the forward χ(R) view without back-transforming.\n        - If the user asks for a wavelet transform, wavelet analysis, or a k–R map (e.g. to tell light from heavy backscatterers that overlap in R), use `wavelet_transform_xas`.\n        - If the user asks to check, assess, or report data quality, how good/clean/noisy a spectrum is, the signal-to-noise ratio, or whether the data is usable/fit-worthy, use `check_xas_data_quality`. Report the grade and the failing/warning checks; do not switch the active `xas_ref` because this tool returns a diagnostic, not a transformed spectrum.\n        - If the user asks how many coordination shells are present, whether to do a first-shell or a multishell fit, or which fit is appropriate — or before you choose between `fit_ffef_first_shell` and `fit_exafs_multishell` on your own — call `assess_shell_structure` and follow its recommendation and reasons rather than guessing. It is a diagnostic; do not switch the active `xas_ref`.\n        - The `fit_ffef_first_shell` result includes a `diagnostics` block (a verdict of ok/caution/suspect plus checks and recommendations on fit quality — parameter railing, S0²/σ² physicality, the information budget, correlations, R-factor). When it is `caution` or `suspect`, tell the user plainly, name the specific issue, and offer the recommended remedy (e.g. foil calibration, fixing S0² from a standard, or a different fit window) instead of presenting the numbers as final.\n        - If the user asks for a robust / careful / thorough / publication-quality first-shell fit, or asks how stable/trustworthy the fitted parameters are, use `robust_first_shell_fit` instead of `fit_ffef_first_shell`, and report its `stability_verdict` and diagnostics with the parameters.\n        - Fit and LCF results carry a `governance` block (`evidence_grade` of diagnostic/estimate/corroborated, plus `admissible_claims`/`blocked_claims`). Respect it: always report the computed numbers, but only state a conclusion whose role is in `admissible_claims`. Do NOT present a structural conclusion, a speciation/composition, or a definitive identification as established when it is in `blocked_claims` — instead report the value with its caveat and the recommended step to strengthen the evidence. Never overstate a result beyond its evidence grade.\n        - If the user asks which element / absorbing atom / absorption edge a spectrum corresponds to (e.g. \"what element is this?\", \"which edge is this?\", \"identify the element\"), use `detect_xas_element` on the current spectrum and report the detected element and edge from its result. Do NOT answer from memory or eyeball the edge energy without calling the tool — ground the identification in `detect_xas_element`.\n        - If the user asks to remove glitches, deglitch, clean spikes, repair bad points, or screen for glitch artifacts in XAS data, use `deglitch_xas_data`.\n        - After `deglitch_xas_data` succeeds, reuse the returned deglitched `xas_ref` for later plotting, matching, calibration, or fitting unless the user explicitly asks to use the raw spectrum.\n        - If the user asks to smooth, denoise, reduce noise, filter, broaden, or apply a Lorentzian/Gaussian/Voigt convolution filter to XAS data, use `smooth_xas_data`. If they ask for a Savitzky-Golay / savgol / polynomial smoothing filter, or to denoise while preserving peak shape/height, use `smooth_xas_data` with `method='savgol'`.\n        - After `smooth_xas_data` succeeds, reuse the returned smoothed `xas_ref` for later plotting, matching, calibration, or fitting unless the user explicitly asks to use the raw spectrum.\n        - If the user asks about the pre-edge peak, pre-edge feature, 1s→3d transition, pre-edge centroid/area/height, or asks to characterize / fit / quantify the pre-edge of a transition-metal K edge, use `analyze_xanes_preedge`. Report centroid, peak energies, height, area, and FWHM; do not switch the active `xas_ref` because this tool returns a measurement, not a transformed spectrum.\n        - If the user asks to fit the whole XANES / white line / multiple edge features with peaks (an edge step plus Gaussian/Lorentzian/Voigt components), or to deconvolve overlapping XANES peaks, use `fit_xanes_peaks` with approximate peak positions. Use `analyze_xanes_preedge` instead for just the isolated pre-edge peak.\n        - The frontend can already render CIF/structure previews when structure context is available.\n        - If current structure context is available and the user asks to show, view, visualize, inspect, or summarize the structure/CIF, do not claim the structure is unavailable, do not ask for another upload, and do not say the chat cannot show it.\n        - In that case, tell the user the structure can be viewed in the frontend preview/right-side report panel and optionally add a short structural summary or coordination summary if helpful.\n        - Only ask the user to upload a CIF structure file when the current structure context is `<missing>`.\n        - Only ask the user to upload an XAS spectrum file when the current XAS path is `<missing>`.\n        - Do not ask for `material_id` in user-facing language unless the user explicitly asks to use a Materials Project id or other structure identifier.\n        - If structure input is missing, say clearly that the missing file is the CIF structure file.\n\n        - “based on the transmission data” => `correct_self_absorption(method=\"reference_calibrated\")`.\n        - For one raw scan containing both FY and transmission channels, call it once with only the raw `xas_path`; do not preprocess or split the channels into separate artifacts. Use equal-length `fluorescence_xas_refs` and `transmission_xas_refs` only for genuinely separate matched scans.\n        - formula/element/edge/angles => `correct_self_absorption(method=\"physical\")`.\n        - FY-only repeats with physical inputs => `merge_xas_spectra`, then `correct_self_absorption(method=\"physical\")`.\n        - FY-only repeats without physical inputs => explain the missing calibration; do not call a correction.\n        - call the result a reference-calibrated XANES correction; do not claim quantitative EXAFS recovery.\n\n\n\n\nFixture spectra by label:\n[{\"label\": \"Cu foil · 10 K\", \"xas_ref\": \"xas1--eval-comparison-4a5969b21c01--copper-0--010240c80adb1bf127e619935a99991a\"}, {\"label\": \"Cu foil · 50 K\", \"xas_ref\": \"xas1--eval-comparison-4a5969b21c01--copper-1--a53ac640e8b1abee939c3b6c8ba33ee1\"}, {\"label\": \"Cu foil · 300 K\", \"xas_ref\": \"xas1--eval-comparison-4a5969b21c01--copper-2--f3cae9baf0d0816f8099305b42d54888\"}, {\"label\": \"Cu₂O · room temperature\", \"xas_ref\": \"xas1--eval-comparison-4a5969b21c01--copper-3--ac2e4e8a1470b306fe48e2a887ddd8fd\"}, {\"label\": \"Cu foil · shared reference\", \"xas_ref\": \"xas1--eval-comparison-4a5969b21c01--copper-4--b3d28604f83521fc87d38eafab7a9466\"}]",
+  "tools": [
+    {
+      "name": "check_xas_data_quality",
+      "description": "Assess the data quality of an XAS spectrum and return a graded report.\n\nRuns the standard larch preprocessing (`pre_edge`, `autobk`) on the\nspectrum and evaluates a set of physically grounded quality metrics:\ngrid integrity (finite values, a strictly increasing energy axis, point\ndensity, sampling uniformity), edge quality (edge step and the energy\nrange available below/above E0 for normalization), and noise (a\nnormalized-μ signal-to-noise estimate from the flat pre-edge region plus\nthe χ(k) noise level and usable k-range from `larch.xafs.estimate_noise`).\n\nReturns per-check verdicts (ok / warning / fail), an overall grade\n(excellent / good / fair / poor) with a 0–100 score, the key metrics, and\nactionable recommendations. Reads the processed spectrum and returns a\ndiagnostic only; it does NOT write a new spectrum artifact or change the\nactive `xas_ref`. `current_transform` reports the saved FT settings so changes\nto one limit can preserve the others; an empty object means no saved settings.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          }
+        },
+        "title": "check_xas_data_quality_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "normalize_xas_data",
+      "description": "Re-run edge-step normalization on an XAS spectrum with explicit control\nover the larch `pre_edge` parameters, and write the normalized result as a\nnew reusable processed-spectrum artifact.\n\nThe standard load pipeline normalizes with default parameters; use this\ntool when that normalization is wrong or needs tuning (e.g. the edge step,\npre-edge slope, or post-edge flattening look off).\n\nLeaving a parameter unset lets larch choose it. The returned report echoes\nthe parameters that were actually applied. Reuse the returned `xas_ref`\nfor later plotting, matching, calibration, or fitting.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "e0": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "override the detected edge energy E0 (eV).",
+            "title": "E0"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "force the edge step (jump) instead of fitting it.",
+            "title": "Step"
+          },
+          "pre1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "pre-edge line fit range in eV relative to E0 (negative).",
+            "title": "Pre1"
+          },
+          "pre2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "pre-edge line fit range in eV relative to E0 (negative).",
+            "title": "Pre2"
+          },
+          "norm1": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "normalization range in eV relative to E0 (positive).",
+            "title": "Norm1"
+          },
+          "norm2": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "normalization range in eV relative to E0 (positive).",
+            "title": "Norm2"
+          },
+          "nnorm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "degree of the post-edge normalization polynomial (0–3).",
+            "title": "Nnorm"
+          },
+          "nvict": {
+            "default": 0,
+            "description": "Victoreen order for the pre-edge fit (default 0).",
+            "title": "Nvict",
+            "type": "integer"
+          }
+        },
+        "title": "normalize_xas_data_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref",
+          "e0",
+          "step",
+          "pre1",
+          "pre2",
+          "norm1",
+          "norm2",
+          "nnorm",
+          "nvict"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "remove_xas_background",
+      "description": "Re-run the Autobk EXAFS background subtraction on an XAS spectrum with\nexplicit control over the larch `autobk` parameters, and write the result\nas a new reusable processed-spectrum artifact.\n\nThe standard load pipeline removes the background with fixed\n`rbkg=1.0, kweight=2`; use this tool when the extracted χ(k) shows\nlow-R leakage, over/under-subtraction, or needs tuning.\n\nLeaving a parameter unset lets larch choose it. The returned report echoes\nthe parameters that were actually applied. Reuse the returned `xas_ref`\nfor later plotting, matching, calibration, or fitting.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "rbkg": {
+            "default": 1.0,
+            "description": "R-space cutoff in Å below which structure is treated as\nbackground (the main Autobk knob). Default 1.0.",
+            "title": "Rbkg",
+            "type": "number"
+          },
+          "kweight": {
+            "default": 2,
+            "description": "k-weight for the spline-fit FFT. Default 2.",
+            "title": "Kweight",
+            "type": "integer"
+          },
+          "kmin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "k-range (Å⁻¹) over which the background is fit.",
+            "title": "Kmin"
+          },
+          "kmax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "k-range (Å⁻¹) over which the background is fit.",
+            "title": "Kmax"
+          },
+          "dk": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FFT window taper width (Å⁻¹).",
+            "title": "Dk"
+          },
+          "win": {
+            "anyOf": [
+              {
+                "enum": [
+                  "hanning",
+                  "kaiser",
+                  "parzen",
+                  "welch",
+                  "gaussian",
+                  "sine"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FFT window function (hanning/kaiser/parzen/welch/gaussian/sine).",
+            "title": "Win"
+          },
+          "nknots": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "number of spline knots (overrides the rbkg-derived count).",
+            "title": "Nknots"
+          },
+          "clamp_lo": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "spline end-point clamp weights.",
+            "title": "Clamp Lo"
+          },
+          "clamp_hi": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "spline end-point clamp weights.",
+            "title": "Clamp Hi"
+          },
+          "e0": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "override the detected edge energy E0 passed through to Autobk, in\nabsolute eV.",
+            "title": "E0"
+          },
+          "edge_step": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "override the fitted edge step (jump) passed through to Autobk.",
+            "title": "Edge Step"
+          }
+        },
+        "title": "remove_xas_background_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref",
+          "rbkg",
+          "kweight",
+          "kmin",
+          "kmax",
+          "dk",
+          "win",
+          "nknots",
+          "clamp_lo",
+          "clamp_hi",
+          "e0",
+          "edge_step"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "align_xas_spectra",
+      "description": "Align a spectrum to a reference by the energy shift that best matches their\nderivative spectra around the edge, and write the aligned spectrum as a new\nreusable artifact.\n\nUse this to put two sample spectra on a common energy axis (e.g. before\nmerging or linear-combination fitting) when scans are offset in energy. This\nis a relative alignment, distinct from absolute foil-based\n`calibrate_xas_energy`. Provide the reference via `reference_xas_ref`/\n`reference_xas_path`. Reuse the returned `xas_ref`.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "reference_xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Xas Ref"
+          },
+          "reference_xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Xas Path"
+          },
+          "max_shift": {
+            "default": 15.0,
+            "description": "how far, in eV, the derivative-matching refinement may move\naway from the initial edge-to-edge guess (the steepest-slope point of\neach spectrum). It does not cap the applied shift, which can exceed\nit when the edges are far apart; a glitch at the steepest slope can\nmislead that guess, so check `energy_shift_ev` against\n`target_edge_before_ev` and `reference_edge_ev`.",
+            "title": "Max Shift",
+            "type": "number"
+          },
+          "emin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "lower bound, in absolute eV on the reference energy axis, of the\nderivative-matching window. Pass it (with `emax`) whenever the user\nnames a comparison range; omitted, the window is 40 eV centered on\nthe reference edge.",
+            "title": "Emin"
+          },
+          "emax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upper bound, in absolute eV, of the derivative-matching window.",
+            "title": "Emax"
+          }
+        },
+        "title": "align_xas_spectra_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref",
+          "reference_xas_ref",
+          "reference_xas_path",
+          "max_shift",
+          "emin",
+          "emax"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "merge_xas_spectra",
+      "description": "Merge/average several repeat XAS scans into one higher-SNR spectrum and\nwrite it as a new reusable processed-spectrum artifact.\n\nEach input scan's μ(E) is interpolated onto a common energy grid (via\nlarch.io.merge_groups) and averaged; averaging N independent scans reduces\nthe noise amplitude by roughly √N. Use this when the user has multiple\nrepeat scans of the same sample, or when the data-quality check flags low\nsignal-to-noise and repeats are available.\n\nProvide at least two spectra via `xas_refs` (already-processed artifacts)\nand/or `xas_paths` (raw files). `kind` is the interpolation kind and `trim`\nkeeps only the overlapping energy range. Reuse the returned `xas_ref` for\nlater plotting, matching, calibration, or fitting.",
+      "schema": {
+        "properties": {
+          "xas_refs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Refs"
+          },
+          "xas_paths": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Paths"
+          },
+          "kind": {
+            "default": "cubic",
+            "enum": [
+              "linear",
+              "nearest",
+              "slinear",
+              "quadratic",
+              "cubic"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "trim": {
+            "default": true,
+            "title": "Trim",
+            "type": "boolean"
+          }
+        },
+        "title": "merge_xas_spectra_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_refs",
+          "xas_paths",
+          "kind",
+          "trim"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "fourier_transform_xas",
+      "description": "Fourier transform χ(k) → χ(R) with a tunable k-window, k-weighting, and window\nshape, and write a new processed χ(R) artifact plus the R-space figures.\n\nOmitted or null parameters preserve the source artifact's saved FT settings.\nPass null for every setting the user did not ask to change. For example, an\nupper-limit-only change supplies kmax and leaves kmin/dk/kweight/window/rmax_out\nnull. Explicit values override saved settings, including an explicit kmin=0.\nIf no setting was saved, defaults are kmin=2, full available kmax, dk=1,\nkweight=2, window=kaiser, rmax_out=10. The quality tool reports current_transform.\n\nAlso returns ``n_independent`` (Nyquist ``2·Δk·ΔR/π + 2``) as an\nover-parameterization guardrail for later fitting.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "kmin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lower k bound in Å⁻¹; null preserves the current lower limit.",
+            "title": "Kmin"
+          },
+          "kmax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Upper k bound in Å⁻¹; null preserves the current upper limit.",
+            "title": "Kmax"
+          },
+          "dk": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "k-window taper width in Å⁻¹.",
+            "title": "Dk"
+          },
+          "kweight": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "k-weighting exponent (0–3; higher emphasizes high-k).",
+            "title": "Kweight"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "enum": [
+                  "hanning",
+                  "kaiser",
+                  "parzen",
+                  "welch",
+                  "gaussian",
+                  "sine"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "FT window shape — one of kaiser/hanning/parzen/welch/gaussian/sine.",
+            "title": "Window"
+          },
+          "rmax_out": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "highest R (Å) in the output χ(R).",
+            "title": "Rmax Out"
+          }
+        },
+        "title": "fourier_transform_xas_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref",
+          "kmin",
+          "kmax",
+          "dk",
+          "kweight",
+          "window",
+          "rmax_out"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "assess_shell_structure",
+      "description": "Assess coordination-shell structure from |χ(R)| and recommend a fit scope\n(first-shell vs. multishell) — decision support, not a fit.\n\nCounts the resolved peaks in the Fourier-transform magnitude |χ(R)|, weighs\nthem against the information budget the available k-range affords (Nyquist\nindependent points), and returns a `first_shell`/`multishell` recommendation\nwith explicit reasons, the peak list (χ(R)-space positions, phase-shifted\nbelow true distances), the FT resolution, and the first-shell/multishell\nindependent-point counts. Reads the processed spectrum and returns a\ndiagnostic; it does NOT run a fit or change the active `xas_ref`. Use it\nbefore deciding between a first-shell and a multishell fit, or when the user\nasks how many shells are present or which fit is appropriate.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          }
+        },
+        "title": "assess_shell_structure_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "fit_ffef_first_shell",
+      "description": "\n    `absorber` selects a chemical element in the CIF. Fits infer it only from a\n    unique measured-edge match; otherwise specify it explicitly. `edge` is the\n    measured edge family (K, L1, L2, L3; L means L3). Inconsistent spectra/CIFs fail.\n    Fit XAFS data using the provided parameters to FEFF paths.\n    This is the default workflow for a single first-shell fit.\n    Prefer `robust_first_shell_fit` instead when the user wants a\n    careful/robust/publication-quality fit or asks how trustworthy a fit is.\n\n    Leave `kmin`, `kmax`, `rmin`, and `rmax` unset/null to automatically select\n    first-shell k/R bounds from noise, Fourier peaks, and candidate fits. Any\n    explicit boundary preserves manual control, filling other omitted boundaries\n    with k 3–10 Å⁻¹ and R 1–3 Å. `auto_select_window=True` explicitly selects all\n    four bounds; False disables selection. Automatic selection retains the current\n    preprocessing, constraints, kweight (default 2) and dk (default 4, Kaiser).\n    Its phase-uncorrected R window can include multiple shells; inspect the returned\n    `window_selection` diagnostics. This does not apply theory-guided Autobk.\n    Set `fix_s02=True` to hold S0² fixed at the provided `params.amp` (transfer it\n    from a reference standard to break the S0²/σ² degeneracy). Prefer tuning the\n    window when the data quality or shell structure calls for it (e.g. a shorter\n    `kmax` for noisy data), rather than leaving the defaults blindly.\n\n    Canonical fit-parameter names for first-shell: `amp` (S0²), `e0` (ΔE0),\n    `sigma2` (Debye-Waller σ²), `deltar` (bond-length shift ΔR).\n\n    `constraints` (optional) fixes, bounds, or links fit parameters for\n    publication-grade control: each entry names one of the four canonical\n    parameters above and may set `vary` (False to fix, e.g. hold S0² from a\n    standard), `min`/`max`, `value`, or `expr` (a larch link expression such\n    as `\"alpha\"` to tie ΔR to a user-defined symbol).\n\n    `defs` (optional) declares intermediate fit symbols that are added to the\n    larch parameter group *before* the path parameters so any `constraints[].expr`\n    can reference them. For example: `defs=[{\"name\":\"alpha\",\"value\":0.0,\"vary\":true}]`\n    plus `constraints=[{\"name\":\"deltar\",\"expr\":\"alpha\"}]` models a uniform bond\n    expansion driven by a single free `alpha`. Each def name must not duplicate\n    a canonical parameter name.\n\n    The report returns selected k/R bounds and each\n    path's effective coordination number (fitted amplitude × FEFF degeneracy) and\n    any highly-correlated parameter pairs.\n    ",
+      "schema": {
+        "$defs": {
+          "ParamConstraint": {
+            "description": "Optional per-parameter fit constraint (F4).\n\nLets an advanced user fix a parameter (``vary=False``), tighten its bounds\n(``min``/``max``), override its starting/fixed ``value``, or link it to\nanother via a larch ``expr`` string (e.g. ``\"dr_1\"`` to tie one shell's ΔR\nto another). ``name`` is the fit-parameter name: for a first-shell fit that\nis ``amp``/``e0``/``sigma2``/``deltar``; for a multishell fit it is\n``s02``/``e0`` or a per-shell ``ss2_<i>``/``dr_<i>``. Any field left ``None``\nkeeps the tool's default for that parameter.",
+            "properties": {
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "vary": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Vary"
+              },
+              "min": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Min"
+              },
+              "max": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Max"
+              },
+              "expr": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Expr"
+              },
+              "value": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Value"
+              }
+            },
+            "required": [
+              "name",
+              "vary",
+              "min",
+              "max",
+              "expr",
+              "value"
+            ],
+            "title": "ParamConstraint",
+            "type": "object",
+            "additionalProperties": false
+          },
+          "ParamDef": {
+            "description": "User-declared intermediate fit symbol (C1).\n\nAdds a named parameter to the larch fit group *before* path parameters so\nthat any ``constraints[].expr`` or other ``ParamDef.expr`` can reference it.\nTypical use: ``name=\"alpha\", value=0.0, vary=True`` plus a constraint\n``expr=\"alpha * reff\"`` on a shell's ΔR to model correlated bond expansion.\n\n``name`` must not duplicate a canonical fit-parameter name.  ``expr`` may\nreference other ``ParamDef`` names defined in the same ``defs`` list.",
+            "properties": {
+              "name": {
+                "title": "Name",
+                "type": "string"
+              },
+              "value": {
+                "default": 0.0,
+                "title": "Value",
+                "type": "number"
+              },
+              "vary": {
+                "default": true,
+                "title": "Vary",
+                "type": "boolean"
+              },
+              "min": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Min"
+              },
+              "max": {
+                "anyOf": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Max"
+              },
+              "expr": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Expr"
+              }
+            },
+            "required": [
+              "name",
+              "value",
+              "vary",
+              "min",
+              "max",
+              "expr"
+            ],
+            "title": "ParamDef",
+            "type": "object",
+            "additionalProperties": false
+          },
+          "Param_first_shell": {
+            "properties": {
+              "amp": {
+                "title": "Amp",
+                "type": "number"
+              },
+              "e0": {
+                "title": "E0",
+                "type": "number"
+              },
+              "sigma2": {
+                "title": "Sigma2",
+                "type": "number"
+              },
+              "deltar": {
+                "title": "Deltar",
+                "type": "number"
+              }
+            },
+            "required": [
+              "amp",
+              "e0",
+              "sigma2",
+              "deltar"
+            ],
+            "title": "Param_first_shell",
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        "properties": {
+          "params": {
+            "$ref": "#/$defs/Param_first_shell"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "calibrate_with_foil": {
+            "default": false,
+            "title": "Calibrate With Foil",
+            "type": "boolean"
+          },
+          "foil_xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foil Xas Path"
+          },
+          "foil_xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foil Xas Ref"
+          },
+          "accepted_edge_energy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "accepted reference edge energy for the foil, in\nabsolute eV; overrides the `foil_element`/`foil_edge` table lookup.\nLeave unset to look it up or auto-identify it from the measured edge.",
+            "title": "Accepted Edge Energy"
+          },
+          "foil_element": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foil Element"
+          },
+          "foil_edge": {
+            "default": "K",
+            "enum": [
+              "K",
+              "L1",
+              "L2",
+              "L3",
+              "L"
+            ],
+            "title": "Foil Edge",
+            "type": "string"
+          },
+          "kmin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "lower bound of the fit k-window, in Å⁻¹.",
+            "title": "Kmin"
+          },
+          "kmax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upper bound of the fit k-window, in Å⁻¹.",
+            "title": "Kmax"
+          },
+          "kweight": {
+            "default": 2,
+            "description": "k-weighting exponent used for the fit.",
+            "title": "Kweight",
+            "type": "integer"
+          },
+          "dk": {
+            "default": 4.0,
+            "description": "k-window taper width, in Å⁻¹.",
+            "title": "Dk",
+            "type": "number"
+          },
+          "rmin": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "lower bound of the fit R-window, in Å.",
+            "title": "Rmin"
+          },
+          "rmax": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upper bound of the fit R-window, in Å.",
+            "title": "Rmax"
+          },
+          "fix_s02": {
+            "default": false,
+            "title": "Fix S02",
+            "type": "boolean"
+          },
+          "constraints": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/ParamConstraint"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Constraints"
+          },
+          "defs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/$defs/ParamDef"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defs"
+          },
+          "absorber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absorber"
+          },
+          "edge": {
+            "default": "K",
+            "enum": [
+              "K",
+              "L1",
+              "L2",
+              "L3",
+              "L"
+            ],
+            "title": "Edge",
+            "type": "string"
+          },
+          "auto_select_window": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Select Window"
+          }
+        },
+        "required": [
+          "params",
+          "material_id",
+          "xas_path",
+          "xas_ref",
+          "calibrate_with_foil",
+          "foil_xas_path",
+          "foil_xas_ref",
+          "accepted_edge_energy",
+          "foil_element",
+          "foil_edge",
+          "kmin",
+          "kmax",
+          "kweight",
+          "dk",
+          "rmin",
+          "rmax",
+          "fix_s02",
+          "constraints",
+          "defs",
+          "absorber",
+          "edge",
+          "auto_select_window"
+        ],
+        "title": "fit_ffef_first_shell_args",
+        "type": "object",
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "name": "robust_first_shell_fit",
+      "description": "`absorber` selects a chemical element in the CIF. Fits infer it only from a\nunique measured-edge match; otherwise specify it explicitly. `edge` is the\nmeasured edge family (K, L1, L2, L3; L means L3). Inconsistent spectra/CIFs fail.\nRun a first-shell EXAFS fit with a robustness protocol and return the fit plus\na stability assessment.\n\nThis does the standard first-shell fit at the default k/R window AND re-runs it\nacross a small sweep of k-range and R-range settings to measure how much the\nfitted parameters move (a sensitivity analysis), then runs the fit-quality\ncritic. It returns the baseline fit (`fitted_parameter`/`path_parameter`/\n`diagnostics`), the per-window `sweep`, and a `stability_verdict`\n(\"robust\"/\"sensitive\") with reasons — reporting the best-justified fit, not the\nlowest R-factor. Prefer this over `fit_ffef_first_shell` when the user wants a\ncareful/robust/publication-quality fit or asks how trustworthy a fit is. Set\n`fix_s02=True` to hold S0² at `params.amp` (transfer it from a standard).",
+      "schema": {
+        "$defs": {
+          "Param_first_shell": {
+            "properties": {
+              "amp": {
+                "title": "Amp",
+                "type": "number"
+              },
+              "e0": {
+                "title": "E0",
+                "type": "number"
+              },
+              "sigma2": {
+                "title": "Sigma2",
+                "type": "number"
+              },
+              "deltar": {
+                "title": "Deltar",
+                "type": "number"
+              }
+            },
+            "required": [
+              "amp",
+              "e0",
+              "sigma2",
+              "deltar"
+            ],
+            "title": "Param_first_shell",
+            "type": "object",
+            "additionalProperties": false
+          }
+        },
+        "properties": {
+          "params": {
+            "$ref": "#/$defs/Param_first_shell"
+          },
+          "material_id": {
+            "title": "Material Id",
+            "type": "string"
+          },
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "calibrate_with_foil": {
+            "default": false,
+            "title": "Calibrate With Foil",
+            "type": "boolean"
+          },
+          "foil_xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foil Xas Path"
+          },
+          "foil_xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foil Xas Ref"
+          },
+          "accepted_edge_energy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "accepted reference edge energy for the foil, in\nabsolute eV; overrides the `foil_element`/`foil_edge` table lookup.\nLeave unset to look it up or auto-identify it from the measured edge.",
+            "title": "Accepted Edge Energy"
+          },
+          "foil_element": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Foil Element"
+          },
+          "foil_edge": {
+            "default": "K",
+            "enum": [
+              "K",
+              "L1",
+              "L2",
+              "L3",
+              "L"
+            ],
+            "title": "Foil Edge",
+            "type": "string"
+          },
+          "fix_s02": {
+            "default": false,
+            "title": "Fix S02",
+            "type": "boolean"
+          },
+          "absorber": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Absorber"
+          },
+          "edge": {
+            "default": "K",
+            "enum": [
+              "K",
+              "L1",
+              "L2",
+              "L3",
+              "L"
+            ],
+            "title": "Edge",
+            "type": "string"
+          }
+        },
+        "required": [
+          "params",
+          "material_id",
+          "xas_path",
+          "xas_ref",
+          "calibrate_with_foil",
+          "foil_xas_path",
+          "foil_xas_ref",
+          "accepted_edge_energy",
+          "foil_element",
+          "foil_edge",
+          "fix_s02",
+          "absorber",
+          "edge"
+        ],
+        "title": "robust_first_shell_fit_args",
+        "type": "object",
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "name": "assess_exafs_fit_capacity",
+      "description": "Assess SNR-qualified Stern/Nyquist capacity before an EXAFS fit.\n\nReports how many independent data points the Stern/Nyquist criterion allows\nover the part of the intended k-window that clears the measured noise floor,\nand whether `intended_free_parameters` exceeds that budget. Use it to justify\nor shrink a fit model before calling a fit tool. This is a measurement: it\nneither fits the data nor changes the active `xas_ref`.",
+      "schema": {
+        "properties": {
+          "kmin": {
+            "description": "lower bound of the intended fit k-window, in Å⁻¹.",
+            "title": "Kmin",
+            "type": "number"
+          },
+          "kmax": {
+            "description": "upper bound of the intended fit k-window, in Å⁻¹.",
+            "title": "Kmax",
+            "type": "number"
+          },
+          "rmin": {
+            "description": "lower bound of the intended fit R-window, in Å.",
+            "title": "Rmin",
+            "type": "number"
+          },
+          "rmax": {
+            "description": "upper bound of the intended fit R-window, in Å.",
+            "title": "Rmax",
+            "type": "number"
+          },
+          "intended_free_parameters": {
+            "description": "how many parameters the planned fit would vary.",
+            "title": "Intended Free Parameters",
+            "type": "integer"
+          },
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "raw uploaded spectrum, preprocessed on the fly when no\nprocessed `xas_ref` exists yet.",
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "processed spectrum whose SNR-qualified k-range bounds the capacity.",
+            "title": "Xas Ref"
+          }
+        },
+        "required": [
+          "kmin",
+          "kmax",
+          "rmin",
+          "rmax",
+          "intended_free_parameters",
+          "xas_path",
+          "xas_ref"
+        ],
+        "title": "assess_exafs_fit_capacity_args",
+        "type": "object",
+        "additionalProperties": false
+      },
+      "strict": true
+    },
+    {
+      "name": "plot_preprocessed_xas",
+      "description": "Plot preprocessed XAS data without running fitting or matching.\n\nUse after ``load_and_preprocess_xas`` or ``normalize_xas_data`` to display\nthe energy-domain µ(E) trace and, where available, normalized or flattened\nspectra. Pass either ``xas_path`` (raw file path) or ``xas_ref`` (preprocessed\nartifact reference). For Fourier-space or χ(k) plots, run\n``fourier_transform_xas`` first; for raw diagnostic channels use\n``plot_data_columns`` instead.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          }
+        },
+        "title": "plot_preprocessed_xas_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref"
+        ]
+      },
+      "strict": true
+    },
+    {
+      "name": "trim_xas_spectrum",
+      "description": "Trim (crop) an XAS spectrum to an energy window and write the trimmed\nspectrum as a new reusable processed-spectrum artifact.\n\nKeeps only points with `energy_min` <= E <= `energy_max` (either bound may\nbe omitted to leave that side open), then re-runs the standard\npreprocessing on the trimmed data. Use this to drop a noisy high-energy\ntail, remove a bad leading region, or restrict the spectrum to a range of\ninterest. Reuse the returned `xas_ref` for later plotting, matching,\ncalibration, or fitting.",
+      "schema": {
+        "properties": {
+          "xas_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Path"
+          },
+          "xas_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Xas Ref"
+          },
+          "energy_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "lower bound of the kept energy window, in absolute eV.",
+            "title": "Energy Min"
+          },
+          "energy_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "upper bound of the kept energy window, in absolute eV.",
+            "title": "Energy Max"
+          }
+        },
+        "title": "trim_xas_spectrum_args",
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "xas_path",
+          "xas_ref",
+          "energy_min",
+          "energy_max"
+        ]
+      },
+      "strict": true
+    }
+  ],
+  "fixture_sha256": "554e3cf17c753d064412b71e0f42d76cb548d90c6fcf26e62128788e55b432eb",
+  "native_tool_names": [
+    "check_xas_data_quality",
+    "normalize_xas_data",
+    "remove_xas_background",
+    "align_xas_spectra",
+    "merge_xas_spectra",
+    "fourier_transform_xas",
+    "assess_shell_structure",
+    "fit_ffef_first_shell",
+    "robust_first_shell_fit",
+    "assess_exafs_fit_capacity",
+    "plot_preprocessed_xas",
+    "trim_xas_spectrum"
+  ],
+  "runtime": {
+    "interpreter": "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+    "python": "3.12.13 | packaged by Anaconda, Inc. | (main, Mar 19 2026, 20:20:58) [GCC 14.3.0]",
+    "packages": {
+      "xraylarch": "2026.2.2",
+      "numpy": "2.4.6",
+      "scipy": "1.16.1",
+      "larixite": "2026.1.0",
+      "openai-agents": "0.4.2",
+      "openai": "2.7.1"
+    },
+    "imported_larch": {
+      "version": "2026.2.2",
+      "file": "/home/beams/HUANG.JEFFREY/miniconda3/envs/drxas-deploy/lib/python3.12/site-packages/larch/__init__.py"
+    },
+    "imported_numpy": {
+      "version": "2.4.6",
+      "file": "/home/beams/HUANG.JEFFREY/miniconda3/envs/drxas-deploy/lib/python3.12/site-packages/numpy/__init__.py"
+    },
+    "imported_scipy": {
+      "version": "1.16.1",
+      "file": "/home/beams/HUANG.JEFFREY/miniconda3/envs/drxas-deploy/lib/python3.12/site-packages/scipy/__init__.py"
+    },
+    "scope": "agent process; app API science runtime is recorded by the coordinator"
+  },
+  "native_representation": "ordinary processing recipe plus explicit metadata.ft; fixture_resolved_recipe records staging, not a runtime editor import"
+}

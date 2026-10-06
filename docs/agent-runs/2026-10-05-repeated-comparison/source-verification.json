@@ -1,0 +1,23 @@
+{
+  "native": {
+    "archive_sha256": "25dfb19cf01891a944e7e9fdfeecc82b2c60776afcab1dd9b7a91134e41ca30d",
+    "tracked_files_checked": 3232,
+    "tracked_mismatches": [],
+    "untracked_non_bytecode_files": []
+  },
+  "app": {
+    "archive_sha256": "c382741f1b4670e25553fea82c394d8167d872cdb3fafd7eb82086403759d673",
+    "tracked_files_checked": 2230,
+    "tracked_mismatches": [],
+    "untracked_non_bytecode_files": [
+      "larch/_version.py"
+    ]
+  },
+  "app_generated_version": {
+    "path": "app/larch/_version.py",
+    "reason": "build metadata excluded from git archive",
+    "sha256": "ec637cad73a6e7cd8608981a4ff30f321917e3a19d7dc723385410a42dd29682",
+    "version": "2026.3.1.post321+g7f82058f3",
+    "generation": "setuptools_scm post-release from exact pin git describe"
+  }
+}

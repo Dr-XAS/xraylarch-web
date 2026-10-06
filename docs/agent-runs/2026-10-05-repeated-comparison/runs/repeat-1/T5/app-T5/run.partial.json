@@ -1,0 +1,28 @@
+{
+  "status": "failed",
+  "arm": "app",
+  "task": "T5",
+  "model": "gpt56luna",
+  "error_type": "UserError",
+  "usage": {
+    "seq": 7,
+    "kind": "sdk_usage",
+    "elapsed_seconds": 11.637816766044125,
+    "input_tokens": 4317,
+    "output_tokens": 152,
+    "provider_metadata": {
+      "provider_model_id": "gpt-5.6-luna-2026-07-09",
+      "reported_revision": "revision_unavailable",
+      "weights_digest": "not_applicable",
+      "adapter_digest": "not_applicable",
+      "tool_parser_digest": "not_applicable",
+      "quantization": "not_applicable",
+      "serving_engine": "not_applicable",
+      "provider_metadata_status": "verified"
+    },
+    "provider_models": [
+      "gpt-5.6-luna-2026-07-09"
+    ]
+  },
+  "total_wall_seconds": 11.7036041689571
+}

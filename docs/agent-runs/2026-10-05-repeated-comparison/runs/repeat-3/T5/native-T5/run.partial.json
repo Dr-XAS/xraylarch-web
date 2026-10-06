@@ -1,0 +1,7 @@
+{
+  "status": "running",
+  "arm": "native",
+  "task": "T5",
+  "model": "gpt56luna",
+  "started_at": "2026-10-06T01:16:12.646565+00:00"
+}

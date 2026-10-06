@@ -1,0 +1,6 @@
+T2 PASS
+  ok   6 groups  (found 6)
+  ok   one merge of all three foils, by derived.parents  (Cu foil · aligned merge <- ['Cu foil · 10 K', 'Cu foil · 50 K', 'Cu foil · 300 K'])
+  ok   50 K and 300 K shifted, 10 K not  (· 10 K 0.0, · 50 K -0.018, · 300 K -2.959)
+  transcript: 3 commands, 4 previews, 0 rejected
+  meter: 12 requests (5 GET, 7 POST), 44,540 response bytes, ~11,135 tokens, status {'200': 12}

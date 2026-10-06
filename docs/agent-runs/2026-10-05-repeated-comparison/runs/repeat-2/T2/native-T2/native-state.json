@@ -1,0 +1,9 @@
+{
+  "checks": {
+    "originals_unchanged": true,
+    "two_foils_aligned_to_10k": true,
+    "merge_contains_three_original_lineages": true
+  },
+  "state_passed": true,
+  "answer_grading": "pending; state checks do not grade final prose"
+}

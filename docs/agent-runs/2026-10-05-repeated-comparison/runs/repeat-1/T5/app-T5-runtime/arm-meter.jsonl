@@ -1,0 +1,2 @@
+{"time": 1791248960.7861276, "method": "GET", "path": "/api/artemis/capabilities", "query": "view=summary", "status": 200, "bytes": 5912}
+{"time": 1791248960.785352, "method": "GET", "path": "/api/athena/projects/7pb7q7Iuqp4JrJWxMyxWt_oV", "query": "view=summary", "status": 200, "bytes": 3131}

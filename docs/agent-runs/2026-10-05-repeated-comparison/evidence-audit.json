@@ -1,0 +1,294 @@
+{
+  "checks": {
+    "repeat-1/T1/native/frozen_prompt": true,
+    "repeat-1/T1/native/model_alias": true,
+    "repeat-1/T1/native/requested_settings": true,
+    "repeat-1/T1/app/frozen_prompt": true,
+    "repeat-1/T1/app/model_alias": true,
+    "repeat-1/T1/app/requested_settings": true,
+    "repeat-1/T2/native/frozen_prompt": true,
+    "repeat-1/T2/native/model_alias": true,
+    "repeat-1/T2/native/requested_settings": true,
+    "repeat-1/T2/app/frozen_prompt": true,
+    "repeat-1/T2/app/model_alias": true,
+    "repeat-1/T2/app/requested_settings": true,
+    "repeat-1/T3/native/frozen_prompt": true,
+    "repeat-1/T3/native/model_alias": true,
+    "repeat-1/T3/native/requested_settings": true,
+    "repeat-1/T3/app/frozen_prompt": true,
+    "repeat-1/T3/app/model_alias": true,
+    "repeat-1/T3/app/requested_settings": true,
+    "repeat-1/T4/native/frozen_prompt": true,
+    "repeat-1/T4/native/model_alias": true,
+    "repeat-1/T4/native/requested_settings": true,
+    "repeat-1/T4/app/frozen_prompt": true,
+    "repeat-1/T4/app/model_alias": true,
+    "repeat-1/T4/app/requested_settings": true,
+    "repeat-1/T5/native/frozen_prompt": true,
+    "repeat-1/T5/native/model_alias": true,
+    "repeat-1/T5/native/requested_settings": true,
+    "repeat-1/T5/app/frozen_prompt": true,
+    "repeat-1/T5/app/model_alias": true,
+    "repeat-1/T5/app/requested_settings": true,
+    "repeat-2/T1/native/frozen_prompt": true,
+    "repeat-2/T1/native/model_alias": true,
+    "repeat-2/T1/native/requested_settings": true,
+    "repeat-2/T1/app/frozen_prompt": true,
+    "repeat-2/T1/app/model_alias": true,
+    "repeat-2/T1/app/requested_settings": true,
+    "repeat-2/T2/native/frozen_prompt": true,
+    "repeat-2/T2/native/model_alias": true,
+    "repeat-2/T2/native/requested_settings": true,
+    "repeat-2/T2/app/frozen_prompt": true,
+    "repeat-2/T2/app/model_alias": true,
+    "repeat-2/T2/app/requested_settings": true,
+    "repeat-2/T3/native/frozen_prompt": true,
+    "repeat-2/T3/native/model_alias": true,
+    "repeat-2/T3/native/requested_settings": true,
+    "repeat-2/T3/app/frozen_prompt": true,
+    "repeat-2/T3/app/model_alias": true,
+    "repeat-2/T3/app/requested_settings": true,
+    "repeat-2/T4/native/frozen_prompt": true,
+    "repeat-2/T4/native/model_alias": true,
+    "repeat-2/T4/native/requested_settings": true,
+    "repeat-2/T4/app/frozen_prompt": true,
+    "repeat-2/T4/app/model_alias": true,
+    "repeat-2/T4/app/requested_settings": true,
+    "repeat-2/T5/native/frozen_prompt": true,
+    "repeat-2/T5/native/model_alias": true,
+    "repeat-2/T5/native/requested_settings": true,
+    "repeat-2/T5/app/frozen_prompt": true,
+    "repeat-2/T5/app/model_alias": true,
+    "repeat-2/T5/app/requested_settings": true,
+    "repeat-3/T1/native/frozen_prompt": true,
+    "repeat-3/T1/native/model_alias": true,
+    "repeat-3/T1/native/requested_settings": true,
+    "repeat-3/T1/app/frozen_prompt": true,
+    "repeat-3/T1/app/model_alias": true,
+    "repeat-3/T1/app/requested_settings": true,
+    "repeat-3/T2/native/frozen_prompt": true,
+    "repeat-3/T2/native/model_alias": true,
+    "repeat-3/T2/native/requested_settings": true,
+    "repeat-3/T2/app/frozen_prompt": true,
+    "repeat-3/T2/app/model_alias": true,
+    "repeat-3/T2/app/requested_settings": true,
+    "repeat-3/T3/native/frozen_prompt": true,
+    "repeat-3/T3/native/model_alias": true,
+    "repeat-3/T3/native/requested_settings": true,
+    "repeat-3/T3/app/frozen_prompt": true,
+    "repeat-3/T3/app/model_alias": true,
+    "repeat-3/T3/app/requested_settings": true,
+    "repeat-3/T4/native/frozen_prompt": true,
+    "repeat-3/T4/native/model_alias": true,
+    "repeat-3/T4/native/requested_settings": true,
+    "repeat-3/T4/app/frozen_prompt": true,
+    "repeat-3/T4/app/model_alias": true,
+    "repeat-3/T4/app/requested_settings": true,
+    "repeat-3/T5/native/frozen_prompt": true,
+    "repeat-3/T5/native/model_alias": true,
+    "repeat-3/T5/native/requested_settings": true,
+    "repeat-3/T5/app/frozen_prompt": true,
+    "repeat-3/T5/app/model_alias": true,
+    "repeat-3/T5/app/requested_settings": true,
+    "fixed_30_attempts": true,
+    "all_attempts_resolved": true,
+    "one_served_model": true,
+    "all_answers_graded": true,
+    "all_process_timestamps_retained": true,
+    "one_fixture_digest": true,
+    "native_schemas_unchanged": true,
+    "app_schemas_unchanged": true,
+    "no_private_runtime_files_exported": true,
+    "secret_pattern_scan_clear": true
+  },
+  "all_passed": true,
+  "forbidden_files": [],
+  "secret_pattern_files": [],
+  "attempt_status_counts": {
+    "completed": 28,
+    "failed": 2
+  },
+  "observed_process_start_order": [
+    {
+      "attempt": "repeat-1/T1/native",
+      "started": 1791248523.0523992,
+      "finished": 1791248544.909578,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-1/T3/native",
+      "started": 1791248547.7843537,
+      "finished": 1791248565.479452,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-1/T5/native",
+      "started": 1791248568.5415092,
+      "finished": 1791248588.992054,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-2/T2/native",
+      "started": 1791248591.836914,
+      "finished": 1791248612.136404,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-2/T4/native",
+      "started": 1791248615.0160863,
+      "finished": 1791248631.1599345,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-3/T1/native",
+      "started": 1791248634.0899649,
+      "finished": 1791248653.442323,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-1/T1/app",
+      "started": 1791248742.6442125,
+      "finished": 1791248762.49348,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-1/T2/app",
+      "started": 1791248769.8534198,
+      "finished": 1791248797.9756165,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-1/T2/native",
+      "started": 1791248847.700234,
+      "finished": 1791248869.3089101,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-1/T3/app",
+      "started": 1791248874.7352,
+      "finished": 1791248895.6458938,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-1/T4/app",
+      "started": 1791248902.3450642,
+      "finished": 1791248924.4094281,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-1/T4/native",
+      "started": 1791248926.1303272,
+      "finished": 1791248943.1891959,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-1/T5/app",
+      "started": 1791248948.9651968,
+      "finished": 1791248962.3074453,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-2/T1/app",
+      "started": 1791248969.0820603,
+      "finished": 1791248989.3378727,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-2/T1/native",
+      "started": 1791248990.7161639,
+      "finished": 1791249011.6218846,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-2/T2/app",
+      "started": 1791249016.931253,
+      "finished": 1791249054.1763945,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-2/T3/app",
+      "started": 1791249061.630876,
+      "finished": 1791249084.8954058,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-2/T3/native",
+      "started": 1791249086.2761867,
+      "finished": 1791249107.2833116,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-2/T4/app",
+      "started": 1791249112.6487021,
+      "finished": 1791249131.5467324,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-2/T5/app",
+      "started": 1791249137.824159,
+      "finished": 1791249170.3692782,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-2/T5/native",
+      "started": 1791249171.8472629,
+      "finished": 1791249193.756746,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-3/T1/app",
+      "started": 1791249198.9298873,
+      "finished": 1791249217.5713005,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-3/T2/app",
+      "started": 1791249223.5133963,
+      "finished": 1791249254.2785378,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-3/T2/native",
+      "started": 1791249255.8153222,
+      "finished": 1791249278.7267098,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-3/T3/native",
+      "started": 1791249278.7293587,
+      "finished": 1791249298.7858558,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-3/T3/app",
+      "started": 1791249304.5928292,
+      "finished": 1791249326.248586,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-3/T4/app",
+      "started": 1791249332.8249836,
+      "finished": 1791249352.1792727,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    },
+    {
+      "attempt": "repeat-3/T4/native",
+      "started": 1791249353.6581042,
+      "finished": 1791249372.4641778,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-3/T5/native",
+      "started": 1791249372.4665694,
+      "finished": 1791249399.7893355,
+      "timing_provenance": "pair manifest model_run started/finished"
+    },
+    {
+      "attempt": "repeat-3/T5/app",
+      "started": 1791249404.505263,
+      "finished": 1791249415.838301,
+      "timing_provenance": "app runtime run.json model-only started/finished"
+    }
+  ],
+  "concurrency_note": "parallel_tool_calls=false is requested configuration; events can overlap and joins use call_seq"
+}

@@ -1,0 +1,37 @@
+{
+  "name": "repeat-2-T1",
+  "task": "T1",
+  "status": "pass",
+  "implementation_revision": "ee1dde1cd",
+  "sha256": {
+    "docs/agent-runs/2026-10-05-repeated-comparison/runs/repeat-2/T1/app-T1/events.jsonl": "569430e0150476e22236ce6688e76b634af4191405a298417680f9c4558848fd",
+    "docs/agent-runs/2026-10-05-repeated-comparison/runs/repeat-2/T1/app-T1-runtime/transcript.jsonl": "2eae0b265b1443606a5ae113c426fced8afe4e086dfccc4184a4989d88464d18",
+    "docs/agent-runs/2026-10-05-repeated-comparison/runs/repeat-2/T1/app-T1-runtime/run.json": "a2b27452b54979bd8b68e3efaf56423eca1ad64090c0e9f53ebf4a8e71fe1ce1",
+    "docs/agent-runs/2026-10-05-repeated-comparison/runs/repeat-2/T1/app-T1/run.json": "d373fe4247a2e0aaafcf017e79f8a194383e456c7822116be1d77a0f9dff83d6",
+    "backend/xraylarch_web/agent_http_replay.py": "822162da6f8f5eb9991f078d891cbe41cf330c2e07ad7dead6be0d2a0e37635d",
+    "backend/xraylarch_web/agent_replay.py": "5b7167f2d2610264804202168684fa4a1c9e13a2b7520a7d40ce4b82fcfc1bdf",
+    "backend/xraylarch_web/agent_diff.py": "0dbd1970391c007abc877a5726f4b0c1733a2724d8359174cfd4a3209cb286ee",
+    "backend/xraylarch_web/agent_suite.py": "0bd5bc4a5cdc3d1a7bb17e68e7d8f173d8c2dce536c27fde2f16f0ecef59beec",
+    "docs/agent-runs/2026-10-05-artemis-replay/verify.py": "a3c5f0c1b99d15431b3c9334f24afe08337cc574be048a0a063cafe70e38208b"
+  },
+  "source_outcome": "completed",
+  "source_error_type": null,
+  "source": "docs/agent-runs/2026-10-05-repeated-comparison/runs/repeat-2/T1/app-T1-runtime/run.json",
+  "evidence": "docs/agent-runs/2026-10-05-repeated-comparison/runs/repeat-2/T1/app-T1/events.jsonl",
+  "setup_seq": 1,
+  "http_status": "no_scientific_operations",
+  "fit_validation": "not_run",
+  "fits": 0,
+  "feff_jobs": 0,
+  "http_commands": 0,
+  "http_divergences": [
+    "no scientific operations replayed"
+  ],
+  "http_skipped": 1,
+  "command_replay_ok": true,
+  "command_replay_count": 1,
+  "command_divergences": [],
+  "state_assertions_passed": true,
+  "command_snapshot_differences": [],
+  "http_snapshot_differences": []
+}

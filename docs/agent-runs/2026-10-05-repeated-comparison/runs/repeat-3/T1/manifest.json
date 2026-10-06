@@ -1,0 +1,38 @@
+{
+  "model": "gpt56luna",
+  "tasks": [
+    "T1"
+  ],
+  "native_revision": "19a0dfc90ff1a843f1b35c60a2cc3f1c574689ff",
+  "app_revision": "7f82058f312d2e7f48df64a0f38dfdcfc0c7cbe7",
+  "fixture_sha256": "4173b0dd79acf69bc1e6cce3c863aff88abdb24db811b68353b1b0874f398406",
+  "pairs": {
+    "T1": {
+      "native": {
+        "returncode": 0,
+        "started": 1791248634.0899649,
+        "finished": 1791248653.442323
+      },
+      "app": {
+        "returncode": 0,
+        "started": 1791249198.9298873,
+        "finished": 1791249217.5713005,
+        "state_returncode": 0,
+        "requests": 3,
+        "response_bytes": 12877,
+        "request_errors": 0,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    }
+  },
+  "setup_failures": [
+    {
+      "arm": "app",
+      "task": "T1",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    }
+  ]
+}

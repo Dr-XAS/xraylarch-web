@@ -1,0 +1,12 @@
+{"time": 1791249234.000041, "method": "GET", "path": "/api/athena/capabilities", "query": "view=summary", "status": 200, "bytes": 7531}
+{"time": 1791249234.000843, "method": "GET", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791249236.7735066, "method": "GET", "path": "/api/athena/capabilities/align", "query": "view=summary", "status": 200, "bytes": 2506}
+{"time": 1791249236.7746136, "method": "GET", "path": "/api/athena/capabilities/assign_reference", "query": "view=summary", "status": 200, "bytes": 747}
+{"time": 1791249236.7749662, "method": "GET", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V/compare", "query": "groups=meNkOUnpWc3jMd8zS6QKzd2q%2CF8sf0HJQ9MzSWpvNu7lAW42Y%2CMdnUcJcuxDxR7sgNV23qAikf&view=summary", "status": 200, "bytes": 2215}
+{"time": 1791249238.7684848, "method": "POST", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V/command", "query": "view=summary", "status": 200, "bytes": 2956}
+{"time": 1791249240.2351918, "method": "POST", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V/alignment/preview", "query": "view=summary", "status": 200, "bytes": 3986}
+{"time": 1791249242.6822386, "method": "POST", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V/command", "query": "view=summary", "status": 200, "bytes": 3668}
+{"time": 1791249244.468576, "method": "GET", "path": "/api/athena/capabilities/merge", "query": "view=summary", "status": 200, "bytes": 2505}
+{"time": 1791249244.4690166, "method": "GET", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V", "query": "view=summary", "status": 200, "bytes": 3668}
+{"time": 1791249246.8572235, "method": "POST", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V/merge/preview", "query": "view=summary", "status": 200, "bytes": 4669}
+{"time": 1791249248.2830307, "method": "POST", "path": "/api/athena/projects/9FhxLgwAP0J51dolln3WY35V/command", "query": "view=summary", "status": 200, "bytes": 4053}

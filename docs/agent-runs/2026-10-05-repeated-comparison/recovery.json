@@ -1,0 +1,591 @@
+{
+  "reason": "git archive lacks generated larch/_version.py; no app model began before repair",
+  "ordering_deviation": "completed native attempts retained; remaining unstarted arms follow original schedule order",
+  "source_version": "2026.3.1.post321+g7f82058f3",
+  "completed_before_recovery": [
+    {
+      "repeat": 1,
+      "task": "T1",
+      "arm": "native"
+    },
+    {
+      "repeat": 1,
+      "task": "T1",
+      "arm": "app"
+    },
+    {
+      "repeat": 1,
+      "task": "T2",
+      "arm": "app"
+    },
+    {
+      "repeat": 1,
+      "task": "T3",
+      "arm": "native"
+    },
+    {
+      "repeat": 1,
+      "task": "T5",
+      "arm": "native"
+    },
+    {
+      "repeat": 2,
+      "task": "T2",
+      "arm": "native"
+    },
+    {
+      "repeat": 2,
+      "task": "T4",
+      "arm": "native"
+    },
+    {
+      "repeat": 3,
+      "task": "T1",
+      "arm": "native"
+    }
+  ],
+  "pending": [
+    {
+      "repeat": 1,
+      "task": "T2",
+      "arm": "native"
+    },
+    {
+      "repeat": 1,
+      "task": "T3",
+      "arm": "app"
+    },
+    {
+      "repeat": 1,
+      "task": "T4",
+      "arm": "app"
+    },
+    {
+      "repeat": 1,
+      "task": "T4",
+      "arm": "native"
+    },
+    {
+      "repeat": 1,
+      "task": "T5",
+      "arm": "app"
+    },
+    {
+      "repeat": 2,
+      "task": "T1",
+      "arm": "app"
+    },
+    {
+      "repeat": 2,
+      "task": "T1",
+      "arm": "native"
+    },
+    {
+      "repeat": 2,
+      "task": "T2",
+      "arm": "app"
+    },
+    {
+      "repeat": 2,
+      "task": "T3",
+      "arm": "app"
+    },
+    {
+      "repeat": 2,
+      "task": "T3",
+      "arm": "native"
+    },
+    {
+      "repeat": 2,
+      "task": "T4",
+      "arm": "app"
+    },
+    {
+      "repeat": 2,
+      "task": "T5",
+      "arm": "app"
+    },
+    {
+      "repeat": 2,
+      "task": "T5",
+      "arm": "native"
+    },
+    {
+      "repeat": 3,
+      "task": "T1",
+      "arm": "app"
+    },
+    {
+      "repeat": 3,
+      "task": "T2",
+      "arm": "app"
+    },
+    {
+      "repeat": 3,
+      "task": "T2",
+      "arm": "native"
+    },
+    {
+      "repeat": 3,
+      "task": "T3",
+      "arm": "native"
+    },
+    {
+      "repeat": 3,
+      "task": "T3",
+      "arm": "app"
+    },
+    {
+      "repeat": 3,
+      "task": "T4",
+      "arm": "app"
+    },
+    {
+      "repeat": 3,
+      "task": "T4",
+      "arm": "native"
+    },
+    {
+      "repeat": 3,
+      "task": "T5",
+      "arm": "native"
+    },
+    {
+      "repeat": 3,
+      "task": "T5",
+      "arm": "app"
+    }
+  ],
+  "results": [
+    {
+      "repeat": 1,
+      "task": "T2",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791248847.700234,
+      "finished": 1791248869.3089101
+    },
+    {
+      "repeat": 1,
+      "task": "T3",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791248874.7352,
+      "finished": 1791248895.6458938,
+      "state_returncode": 0,
+      "requests": 7,
+      "response_bytes": 26620,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 1,
+      "task": "T4",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791248902.3450642,
+      "finished": 1791248924.4094281,
+      "state_returncode": 0,
+      "requests": 4,
+      "response_bytes": 14768,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 1,
+      "task": "T4",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791248926.1303272,
+      "finished": 1791248943.1891959
+    },
+    {
+      "repeat": 1,
+      "task": "T5",
+      "arm": "app",
+      "returncode": 1,
+      "started": 1791248948.9651968,
+      "finished": 1791248962.3074453,
+      "state_returncode": 0,
+      "requests": 2,
+      "response_bytes": 9043,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 2,
+      "task": "T1",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791248969.0820603,
+      "finished": 1791248989.3378727,
+      "state_returncode": 0,
+      "requests": 2,
+      "response_bytes": 5346,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 2,
+      "task": "T1",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791248990.7161639,
+      "finished": 1791249011.6218846
+    },
+    {
+      "repeat": 2,
+      "task": "T2",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249016.931253,
+      "finished": 1791249054.1763945,
+      "state_returncode": 0,
+      "requests": 12,
+      "response_bytes": 44540,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 2,
+      "task": "T3",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249061.630876,
+      "finished": 1791249084.8954058,
+      "state_returncode": 0,
+      "requests": 7,
+      "response_bytes": 26620,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 2,
+      "task": "T3",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791249086.2761867,
+      "finished": 1791249107.2833116
+    },
+    {
+      "repeat": 2,
+      "task": "T4",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249112.6487021,
+      "finished": 1791249131.5467324,
+      "state_returncode": 0,
+      "requests": 4,
+      "response_bytes": 14768,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 2,
+      "task": "T5",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249137.824159,
+      "finished": 1791249170.3692782,
+      "state_returncode": 0,
+      "requests": 13,
+      "response_bytes": 39454,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 2,
+      "task": "T5",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791249171.8472629,
+      "finished": 1791249193.756746
+    },
+    {
+      "repeat": 3,
+      "task": "T1",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249198.9298873,
+      "finished": 1791249217.5713005,
+      "state_returncode": 0,
+      "requests": 3,
+      "response_bytes": 12877,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 3,
+      "task": "T2",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249223.5133963,
+      "finished": 1791249254.2785378,
+      "state_returncode": 0,
+      "requests": 12,
+      "response_bytes": 41635,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 3,
+      "task": "T2",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791249255.8153222,
+      "finished": 1791249278.7267098
+    },
+    {
+      "repeat": 3,
+      "task": "T3",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791249278.7293587,
+      "finished": 1791249298.7858558
+    },
+    {
+      "repeat": 3,
+      "task": "T3",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249304.5928292,
+      "finished": 1791249326.248586,
+      "state_returncode": 0,
+      "requests": 7,
+      "response_bytes": 26620,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 3,
+      "task": "T4",
+      "arm": "app",
+      "returncode": 0,
+      "started": 1791249332.8249836,
+      "finished": 1791249352.1792727,
+      "state_returncode": 0,
+      "requests": 4,
+      "response_bytes": 14447,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    },
+    {
+      "repeat": 3,
+      "task": "T4",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791249353.6581042,
+      "finished": 1791249372.4641778
+    },
+    {
+      "repeat": 3,
+      "task": "T5",
+      "arm": "native",
+      "returncode": 0,
+      "started": 1791249372.4665694,
+      "finished": 1791249399.7893355
+    },
+    {
+      "repeat": 3,
+      "task": "T5",
+      "arm": "app",
+      "returncode": 1,
+      "started": 1791249404.505263,
+      "finished": 1791249415.838301,
+      "state_returncode": 0,
+      "requests": 2,
+      "response_bytes": 9043,
+      "request_errors": 0,
+      "measurement_hashes_match": false,
+      "measurements_match_atol": 1e-14
+    }
+  ],
+  "previous_recovery": {
+    "reason": "git archive lacks generated larch/_version.py; no app model began before repair",
+    "ordering_deviation": "completed native attempts retained; remaining unstarted arms follow original schedule order",
+    "source_version": "2026.3.1.post321+g7f82058f3",
+    "completed_before_recovery": [
+      {
+        "repeat": 1,
+        "task": "T1",
+        "arm": "native"
+      },
+      {
+        "repeat": 1,
+        "task": "T3",
+        "arm": "native"
+      },
+      {
+        "repeat": 1,
+        "task": "T5",
+        "arm": "native"
+      },
+      {
+        "repeat": 2,
+        "task": "T2",
+        "arm": "native"
+      },
+      {
+        "repeat": 2,
+        "task": "T4",
+        "arm": "native"
+      },
+      {
+        "repeat": 3,
+        "task": "T1",
+        "arm": "native"
+      }
+    ],
+    "pending": [
+      {
+        "repeat": 1,
+        "task": "T1",
+        "arm": "app"
+      },
+      {
+        "repeat": 1,
+        "task": "T2",
+        "arm": "app"
+      },
+      {
+        "repeat": 1,
+        "task": "T2",
+        "arm": "native"
+      },
+      {
+        "repeat": 1,
+        "task": "T3",
+        "arm": "app"
+      },
+      {
+        "repeat": 1,
+        "task": "T4",
+        "arm": "app"
+      },
+      {
+        "repeat": 1,
+        "task": "T4",
+        "arm": "native"
+      },
+      {
+        "repeat": 1,
+        "task": "T5",
+        "arm": "app"
+      },
+      {
+        "repeat": 2,
+        "task": "T1",
+        "arm": "app"
+      },
+      {
+        "repeat": 2,
+        "task": "T1",
+        "arm": "native"
+      },
+      {
+        "repeat": 2,
+        "task": "T2",
+        "arm": "app"
+      },
+      {
+        "repeat": 2,
+        "task": "T3",
+        "arm": "app"
+      },
+      {
+        "repeat": 2,
+        "task": "T3",
+        "arm": "native"
+      },
+      {
+        "repeat": 2,
+        "task": "T4",
+        "arm": "app"
+      },
+      {
+        "repeat": 2,
+        "task": "T5",
+        "arm": "app"
+      },
+      {
+        "repeat": 2,
+        "task": "T5",
+        "arm": "native"
+      },
+      {
+        "repeat": 3,
+        "task": "T1",
+        "arm": "app"
+      },
+      {
+        "repeat": 3,
+        "task": "T2",
+        "arm": "app"
+      },
+      {
+        "repeat": 3,
+        "task": "T2",
+        "arm": "native"
+      },
+      {
+        "repeat": 3,
+        "task": "T3",
+        "arm": "native"
+      },
+      {
+        "repeat": 3,
+        "task": "T3",
+        "arm": "app"
+      },
+      {
+        "repeat": 3,
+        "task": "T4",
+        "arm": "app"
+      },
+      {
+        "repeat": 3,
+        "task": "T4",
+        "arm": "native"
+      },
+      {
+        "repeat": 3,
+        "task": "T5",
+        "arm": "native"
+      },
+      {
+        "repeat": 3,
+        "task": "T5",
+        "arm": "app"
+      }
+    ],
+    "results": [
+      {
+        "repeat": 1,
+        "task": "T1",
+        "arm": "app",
+        "returncode": 0,
+        "started": 1791248742.6442125,
+        "finished": 1791248762.49348,
+        "state_returncode": 0,
+        "requests": 2,
+        "response_bytes": 5346,
+        "request_errors": 0,
+        "measurement_hashes_match": false,
+        "measurements_match_atol": 1e-14
+      }
+    ]
+  },
+  "coordinator_error": "KeyError T2 after successful app model and snapshot; recovered without repeating model"
+}

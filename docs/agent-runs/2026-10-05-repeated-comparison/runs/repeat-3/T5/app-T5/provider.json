@@ -1,0 +1,10 @@
+{
+  "provider_model_id": "gpt-5.6-luna-2026-07-09",
+  "reported_revision": "revision_unavailable",
+  "weights_digest": "not_applicable",
+  "adapter_digest": "not_applicable",
+  "tool_parser_digest": "not_applicable",
+  "quantization": "not_applicable",
+  "serving_engine": "not_applicable",
+  "provider_metadata_status": "verified"
+}

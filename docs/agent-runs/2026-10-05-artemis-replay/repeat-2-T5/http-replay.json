@@ -1,0 +1,2146 @@
+{
+  "ok": true,
+  "tolerances": {
+    "relative": 2e-05,
+    "absolute": 1e-09,
+    "distance_absolute": 5e-05
+  },
+  "steps": [
+    {
+      "seq": 1,
+      "method": "GET",
+      "path": "/api/athena/projects/kJ_J5cGDmkdeK4An7qFVKqSf",
+      "status": "replayed",
+      "differences": []
+    },
+    {
+      "seq": 3,
+      "method": "GET",
+      "path": "/api/artemis/capabilities",
+      "status": "skipped",
+      "note": "observation or preview outside scientific replay scope"
+    },
+    {
+      "seq": 5,
+      "method": "GET",
+      "path": "/api/athena/projects/kJ_J5cGDmkdeK4An7qFVKqSf/transcript",
+      "status": "skipped",
+      "note": "observation or preview outside scientific replay scope"
+    },
+    {
+      "seq": 13,
+      "method": "GET",
+      "path": "/api/artemis/structures",
+      "status": "skipped",
+      "note": "observation or preview outside scientific replay scope"
+    },
+    {
+      "seq": 17,
+      "method": "GET",
+      "path": "/api/artemis/structures/11145",
+      "status": "skipped",
+      "note": "observation or preview outside scientific replay scope"
+    },
+    {
+      "seq": 21,
+      "method": "POST",
+      "path": "/api/artemis/feff/jobs",
+      "status": "replayed",
+      "actual": {
+        "status": "complete",
+        "total_paths": 3,
+        "truncated": false,
+        "warnings": [
+          "FEFF path degeneracies are retained. Select up to 24 paths for fitting; the absorber site's crystallographic multiplicity is not an additional amplitude multiplier."
+        ],
+        "paths": [
+          {
+            "id": "feff0001",
+            "filename": "feff0001.dat",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "kmax": 20.0
+          },
+          {
+            "id": "feff0002",
+            "filename": "feff0002.dat",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 6.0,
+            "reff": 3.615,
+            "kmax": 20.0
+          },
+          {
+            "id": "feff0003",
+            "filename": "feff0003.dat",
+            "scatterers": "Cu-Cu-Cu",
+            "nleg": 3,
+            "degen": 48.0,
+            "reff": 3.8342,
+            "kmax": 20.0
+          }
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 25,
+      "method": "GET",
+      "path": "/api/artemis/feff/jobs/85e4d0c310764d7b9c62bc8848ad0e48",
+      "status": "replayed",
+      "expected": {
+        "status": "complete",
+        "total_paths": 3,
+        "truncated": false,
+        "warnings": [
+          "FEFF path degeneracies are retained. Select up to 24 paths for fitting; the absorber site's crystallographic multiplicity is not an additional amplitude multiplier."
+        ],
+        "paths": [
+          {
+            "id": "feff0001",
+            "filename": "feff0001.dat",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "kmax": 20.0
+          },
+          {
+            "id": "feff0002",
+            "filename": "feff0002.dat",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 6.0,
+            "reff": 3.615,
+            "kmax": 20.0
+          },
+          {
+            "id": "feff0003",
+            "filename": "feff0003.dat",
+            "scatterers": "Cu-Cu-Cu",
+            "nleg": 3,
+            "degen": 48.0,
+            "reff": 3.8342,
+            "kmax": 20.0
+          }
+        ]
+      },
+      "actual": {
+        "status": "complete",
+        "total_paths": 3,
+        "truncated": false,
+        "warnings": [
+          "FEFF path degeneracies are retained. Select up to 24 paths for fitting; the absorber site's crystallographic multiplicity is not an additional amplitude multiplier."
+        ],
+        "paths": [
+          {
+            "id": "feff0001",
+            "filename": "feff0001.dat",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "kmax": 20.0
+          },
+          {
+            "id": "feff0002",
+            "filename": "feff0002.dat",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 6.0,
+            "reff": 3.615,
+            "kmax": 20.0
+          },
+          {
+            "id": "feff0003",
+            "filename": "feff0003.dat",
+            "scatterers": "Cu-Cu-Cu",
+            "nleg": 3,
+            "degen": 48.0,
+            "reff": 3.8342,
+            "kmax": 20.0
+          }
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 29,
+      "method": "POST",
+      "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit",
+      "status": "replayed",
+      "expected": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 15.3239,
+          "n_data": 98,
+          "chi_square": 142.121,
+          "reduced_chi_square": 12.5505,
+          "r_factor": 0.00179348,
+          "aic": 42.1305,
+          "bic": 45.0482,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.896968,
+            "stderr": 0.0235,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.52921,
+            "stderr": 0.340194,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.00716074,
+            "stderr": 0.00149496,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00359697,
+            "stderr": 0.000147289,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.549,
+            "s02": 0.896968,
+            "sigma2": 0.00359697,
+            "e0": 6.52921,
+            "deltar": -0.00716074,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.122042
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.876457
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.873384
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.122177
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "actual": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 15.3239,
+          "n_data": 98,
+          "chi_square": 142.121,
+          "reduced_chi_square": 12.5505,
+          "r_factor": 0.00179348,
+          "aic": 42.1305,
+          "bic": 45.0482,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.896968,
+            "stderr": 0.0235,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.52921,
+            "stderr": 0.340194,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.00716074,
+            "stderr": 0.00149496,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00359697,
+            "stderr": 0.000147289,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.549,
+            "s02": 0.896968,
+            "sigma2": 0.00359697,
+            "e0": 6.52921,
+            "deltar": -0.00716074,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.122042
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.876457
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.873384
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.122177
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 33,
+      "method": "POST",
+      "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit",
+      "status": "replayed",
+      "expected": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 11.5042,
+          "n_data": 98,
+          "chi_square": 116.226,
+          "reduced_chi_square": 15.488,
+          "r_factor": 0.00175069,
+          "aic": 34.6072,
+          "bic": 36.3781,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 14.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.907273,
+            "stderr": 0.0323005,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.54336,
+            "stderr": 0.432969,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.0070027,
+            "stderr": 0.00199232,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00368264,
+            "stderr": 0.000219088,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5492,
+            "s02": 0.907273,
+            "sigma2": 0.00368264,
+            "e0": 6.54336,
+            "deltar": -0.0070027,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.145397
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.902785
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.887467
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.143687
+          }
+        ],
+        "concerns": [
+          "amp and sig2 are +0.90 correlated: this data does not determine them separately."
+        ],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "actual": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 11.5042,
+          "n_data": 98,
+          "chi_square": 116.226,
+          "reduced_chi_square": 15.488,
+          "r_factor": 0.00175069,
+          "aic": 34.6072,
+          "bic": 36.3781,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 14.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.907273,
+            "stderr": 0.0323005,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.54336,
+            "stderr": 0.432969,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.0070027,
+            "stderr": 0.00199232,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00368264,
+            "stderr": 0.000219088,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5492,
+            "s02": 0.907273,
+            "sigma2": 0.00368264,
+            "e0": 6.54336,
+            "deltar": -0.0070027,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.145397
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.902785
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.887467
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.143687
+          }
+        ],
+        "concerns": [
+          "amp and sig2 are +0.90 correlated: this data does not determine them separately."
+        ],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 35,
+      "method": "POST",
+      "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit",
+      "status": "replayed",
+      "expected": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 13.4141,
+          "n_data": 98,
+          "chi_square": 126.324,
+          "reduced_chi_square": 13.4186,
+          "r_factor": 0.00176975,
+          "aic": 38.0817,
+          "bic": 40.4669,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 16.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.89847,
+            "stderr": 0.0266742,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.50284,
+            "stderr": 0.376479,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.00729565,
+            "stderr": 0.00167409,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00360941,
+            "stderr": 0.000171597,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5489,
+            "s02": 0.89847,
+            "sigma2": 0.00360941,
+            "e0": 6.50284,
+            "deltar": -0.00729565,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.129468
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.886395
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.877856
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.129031
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "actual": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 13.4141,
+          "n_data": 98,
+          "chi_square": 126.324,
+          "reduced_chi_square": 13.4186,
+          "r_factor": 0.00176975,
+          "aic": 38.0817,
+          "bic": 40.4669,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 16.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.89847,
+            "stderr": 0.0266742,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.50284,
+            "stderr": 0.376479,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.00729565,
+            "stderr": 0.00167409,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00360941,
+            "stderr": 0.000171597,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5489,
+            "s02": 0.89847,
+            "sigma2": 0.00360941,
+            "e0": 6.50284,
+            "deltar": -0.00729565,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.129468
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.886395
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.877856
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.129031
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 37,
+      "method": "POST",
+      "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit",
+      "status": "replayed",
+      "expected": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 17.2338,
+          "n_data": 98,
+          "chi_square": 160.275,
+          "reduced_chi_square": 12.111,
+          "r_factor": 0.0018436,
+          "aic": 46.4317,
+          "bic": 49.8192,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 20.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.894934,
+            "stderr": 0.0215765,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.53329,
+            "stderr": 0.317119,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.00715087,
+            "stderr": 0.00138629,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00358094,
+            "stderr": 0.000133785,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.549,
+            "s02": 0.894934,
+            "sigma2": 0.00358094,
+            "e0": 6.53329,
+            "deltar": -0.00715087,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.118423
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.871321
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.871534
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.118585
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included.",
+          "Cu first shell: the window taper extends beyond the FEFF k grid; Larch may extrapolate the path. Energy shifts can also extend the required FEFF range."
+        ]
+      },
+      "actual": {
+        "success": true,
+        "statistics": {
+          "n_varys": 4,
+          "n_independent": 17.2338,
+          "n_data": 98,
+          "chi_square": 160.275,
+          "reduced_chi_square": 12.111,
+          "r_factor": 0.0018436,
+          "aic": 46.4317,
+          "bic": 49.8192,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 20.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.894934,
+            "stderr": 0.0215765,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "guess",
+            "value": 6.53329,
+            "stderr": 0.317119,
+            "initial": 0.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.00715087,
+            "stderr": 0.00138629,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00358094,
+            "stderr": 0.000133785,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.549,
+            "s02": 0.894934,
+            "sigma2": 0.00358094,
+            "e0": 6.53329,
+            "deltar": -0.00715087,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.118423
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.871321
+          },
+          {
+            "left": "del_e0",
+            "right": "del_r",
+            "value": 0.871534
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.118585
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included.",
+          "Cu first shell: the window taper extends beyond the FEFF k grid; Larch may extrapolate the path. Energy shifts can also extend the required FEFF range."
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 39,
+      "method": "POST",
+      "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit",
+      "status": "replayed",
+      "expected": {
+        "success": true,
+        "statistics": {
+          "n_varys": 3,
+          "n_independent": 15.3239,
+          "n_data": 98,
+          "chi_square": 1480.84,
+          "reduced_chi_square": 120.159,
+          "r_factor": 0.0186872,
+          "aic": 76.0449,
+          "bic": 78.2332,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.879791,
+            "stderr": 0.0719107,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "set",
+            "value": 3.0,
+            "stderr": 0.0,
+            "initial": 3.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.0206074,
+            "stderr": 0.0022586,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00353262,
+            "stderr": 0.000454325,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5356,
+            "s02": 0.879791,
+            "sigma2": 0.00353262,
+            "e0": 3.0,
+            "deltar": -0.0206074,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.189354
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.876395
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.187172
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "actual": {
+        "success": true,
+        "statistics": {
+          "n_varys": 3,
+          "n_independent": 15.3239,
+          "n_data": 98,
+          "chi_square": 1480.84,
+          "reduced_chi_square": 120.159,
+          "r_factor": 0.0186872,
+          "aic": 76.0449,
+          "bic": 78.2332,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.879791,
+            "stderr": 0.0719107,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "set",
+            "value": 3.0,
+            "stderr": 0.0,
+            "initial": 3.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": -0.0206074,
+            "stderr": 0.0022586,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00353262,
+            "stderr": 0.000454325,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5356,
+            "s02": 0.879791,
+            "sigma2": 0.00353262,
+            "e0": 3.0,
+            "deltar": -0.0206074,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.189354
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.876395
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.187172
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "differences": []
+    },
+    {
+      "seq": 41,
+      "method": "POST",
+      "path": "/api/artemis/projects/kJ_J5cGDmkdeK4An7qFVKqSf/groups/rhXF9apexzI5ctVuBjaDUwYy/fit",
+      "status": "replayed",
+      "expected": {
+        "success": true,
+        "statistics": {
+          "n_varys": 3,
+          "n_independent": 15.3239,
+          "n_data": 98,
+          "chi_square": 820.35,
+          "reduced_chi_square": 66.5655,
+          "r_factor": 0.0103523,
+          "aic": 66.9941,
+          "bic": 69.1824,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.89972,
+            "stderr": 0.0544749,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "set",
+            "value": 9.0,
+            "stderr": 0.0,
+            "initial": 9.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": 0.00238114,
+            "stderr": 0.00169097,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00364055,
+            "stderr": 0.000342999,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5586,
+            "s02": 0.89972,
+            "sigma2": 0.00364055,
+            "e0": 9.0,
+            "deltar": 0.00238114,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.191131
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.876229
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.189101
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "actual": {
+        "success": true,
+        "statistics": {
+          "n_varys": 3,
+          "n_independent": 15.3239,
+          "n_data": 98,
+          "chi_square": 820.35,
+          "reduced_chi_square": 66.5655,
+          "r_factor": 0.0103523,
+          "aic": 66.9941,
+          "bic": 69.1824,
+          "errorbars": true
+        },
+        "transform": {
+          "fitspace": "r",
+          "kmin": 3.0,
+          "kmax": 18.0,
+          "kweight": [
+            2
+          ],
+          "dk": 2.0,
+          "window": "hanning",
+          "rmin": 1.5,
+          "rmax": 3.0,
+          "dr": 0.0
+        },
+        "parameters": [
+          {
+            "name": "amp",
+            "kind": "guess",
+            "value": 0.89972,
+            "stderr": 0.0544749,
+            "initial": 0.9
+          },
+          {
+            "name": "del_e0",
+            "kind": "set",
+            "value": 9.0,
+            "stderr": 0.0,
+            "initial": 9.0
+          },
+          {
+            "name": "del_r",
+            "kind": "guess",
+            "value": 0.00238114,
+            "stderr": 0.00169097,
+            "initial": 0.0
+          },
+          {
+            "name": "sig2",
+            "kind": "guess",
+            "value": 0.00364055,
+            "stderr": 0.000342999,
+            "initial": 0.005
+          }
+        ],
+        "paths": [
+          {
+            "id": "p1",
+            "label": "Cu first shell",
+            "scatterers": "Cu-Cu",
+            "nleg": 2,
+            "degen": 12.0,
+            "reff": 2.5562,
+            "r": 2.5586,
+            "s02": 0.89972,
+            "sigma2": 0.00364055,
+            "e0": 9.0,
+            "deltar": 0.00238114,
+            "sigma2_expression": "sig2"
+          }
+        ],
+        "correlations": [
+          {
+            "left": "amp",
+            "right": "del_r",
+            "value": 0.191131
+          },
+          {
+            "left": "amp",
+            "right": "sig2",
+            "value": 0.876229
+          },
+          {
+            "left": "del_r",
+            "right": "sig2",
+            "value": 0.189101
+          }
+        ],
+        "concerns": [],
+        "warnings": [
+          "Uncertainties use Larch's high-R noise estimate; systematic model errors are not included."
+        ]
+      },
+      "differences": []
+    }
+  ],
+  "divergences": [],
+  "fits": 6,
+  "feff_jobs": 1,
+  "commands": 0,
+  "coverage": {
+    "athena": "summary checkpoints only; use agent_suite diff for effective parameters",
+    "artemis": "completed FEFF path metadata and fit summary quantities",
+    "excluded": "arrays, digest/parameters observations, previews, rejected requests"
+  },
+  "ignored_fit_fields": [
+    "statistics.nfev",
+    "message",
+    "note",
+    "identity"
+  ],
+  "project_id": "JE8r7xRAxyB72FqU5uQx4Wku",
+  "setup": {
+    "project_id": "JE8r7xRAxyB72FqU5uQx4Wku",
+    "version": 1,
+    "seq": 1,
+    "groups": {
+      "Cu foil · 10 K": "eoGI209EkeQBKbZk8UarFaG0",
+      "Cu foil · 50 K": "NsJEmtRujAEy_8vouDRfou9p",
+      "Cu foil · 300 K": "QschYC1v6PHjgmNcGztCQEXp",
+      "Cu₂O · room temperature": "tzydEMn04JYv8XEN8Q6FVPJp",
+      "Cu foil · shared reference": "oeiC-RLKhoDgB9GwWTDFnbyP"
+    },
+    "source_rejections": []
+  },
+  "ids": {
+    "rhXF9apexzI5ctVuBjaDUwYy": "eoGI209EkeQBKbZk8UarFaG0",
+    "kd82ThF7PEgeLlTjGmCfM69c": "NsJEmtRujAEy_8vouDRfou9p",
+    "GcLUYxx1JgN3bXHvYjOSOfA9": "QschYC1v6PHjgmNcGztCQEXp",
+    "tAy57WQqb4H2tX9ZQW2jbe2s": "tzydEMn04JYv8XEN8Q6FVPJp",
+    "kXaBy_HZVHOdn-iovdeRFfr4": "oeiC-RLKhoDgB9GwWTDFnbyP",
+    "kJ_J5cGDmkdeK4An7qFVKqSf": "JE8r7xRAxyB72FqU5uQx4Wku"
+  },
+  "jobs": {
+    "85e4d0c310764d7b9c62bc8848ad0e48": "9508dc14af4f4eea9b86432b7289d574"
+  },
+  "final": {
+    "summary": {
+      "id": "JE8r7xRAxyB72FqU5uQx4Wku",
+      "name": "Copper examples · foils and reference",
+      "version": 1,
+      "updated": "2026-10-06T01:20:12+00:00",
+      "format": "athena-web",
+      "counts": {
+        "marked": 4,
+        "frozen": 0,
+        "groups": 5,
+        "processed": 5,
+        "failed": 0
+      },
+      "groups": [
+        {
+          "id": "eoGI209EkeQBKbZk8UarFaG0",
+          "label": "Cu foil · 10 K",
+          "data_type": "mu",
+          "file": "cu_10k.xmu",
+          "is_normalized": false,
+          "is_difference": false,
+          "marked": true,
+          "frozen": false,
+          "element": "Cu",
+          "edge": "K",
+          "edge_origin": "inferred",
+          "e0": 8977.58,
+          "edge_step": 2.2987522766566624,
+          "energy_shift": 0.0,
+          "axis": "energy",
+          "range": [
+            8786.204,
+            11362.47
+          ],
+          "points": 612,
+          "processed": true,
+          "processing_error": null,
+          "exafs": true,
+          "available_kmax": 25.0,
+          "reference_id": "oeiC-RLKhoDgB9GwWTDFnbyP",
+          "background_standard_id": null,
+          "derived": null,
+          "warnings": []
+        },
+        {
+          "id": "NsJEmtRujAEy_8vouDRfou9p",
+          "label": "Cu foil · 50 K",
+          "data_type": "mu",
+          "file": "cu_50k.xmu",
+          "is_normalized": false,
+          "is_difference": false,
+          "marked": true,
+          "frozen": false,
+          "element": "Cu",
+          "edge": "K",
+          "edge_origin": "inferred",
+          "e0": 8977.58,
+          "edge_step": 2.28956276054216,
+          "energy_shift": 0.0,
+          "axis": "energy",
+          "range": [
+            8782.347,
+            11362.54
+          ],
+          "points": 620,
+          "processed": true,
+          "processing_error": null,
+          "exafs": true,
+          "available_kmax": 25.0,
+          "reference_id": "oeiC-RLKhoDgB9GwWTDFnbyP",
+          "background_standard_id": null,
+          "derived": null,
+          "warnings": []
+        },
+        {
+          "id": "QschYC1v6PHjgmNcGztCQEXp",
+          "label": "Cu foil · 300 K",
+          "data_type": "mu",
+          "file": "cu_rt01.xmu",
+          "is_normalized": false,
+          "is_difference": false,
+          "marked": true,
+          "frozen": false,
+          "element": "Cu",
+          "edge": "K",
+          "edge_origin": "inferred",
+          "e0": 8980.5,
+          "edge_step": 2.7293789518274982,
+          "energy_shift": 0.0,
+          "axis": "energy",
+          "range": [
+            8779.0,
+            10145.86
+          ],
+          "points": 408,
+          "processed": true,
+          "processing_error": null,
+          "exafs": true,
+          "available_kmax": 17.45,
+          "reference_id": "oeiC-RLKhoDgB9GwWTDFnbyP",
+          "background_standard_id": null,
+          "derived": null,
+          "warnings": []
+        },
+        {
+          "id": "tzydEMn04JYv8XEN8Q6FVPJp",
+          "label": "Cu₂O · room temperature",
+          "data_type": "mu",
+          "file": "Cu2O_standard.0001",
+          "is_normalized": false,
+          "is_difference": false,
+          "marked": true,
+          "frozen": false,
+          "element": "Cu",
+          "edge": "K",
+          "edge_origin": "inferred",
+          "e0": 8980.8172851,
+          "edge_step": 1.6110820757135036,
+          "energy_shift": 0.0,
+          "axis": "energy",
+          "range": [
+            8774.46257909,
+            9827.42270576
+          ],
+          "points": 445,
+          "processed": true,
+          "processing_error": null,
+          "exafs": true,
+          "available_kmax": 14.9,
+          "reference_id": null,
+          "background_standard_id": null,
+          "derived": null,
+          "warnings": []
+        },
+        {
+          "id": "oeiC-RLKhoDgB9GwWTDFnbyP",
+          "label": "Cu foil · shared reference",
+          "data_type": "mu",
+          "file": "cu_rt01.xmu",
+          "is_normalized": false,
+          "is_difference": false,
+          "marked": false,
+          "frozen": false,
+          "element": "Cu",
+          "edge": "K",
+          "edge_origin": "inferred",
+          "e0": 8980.5,
+          "edge_step": 2.7293789518274982,
+          "energy_shift": 0.0,
+          "axis": "energy",
+          "range": [
+            8779.0,
+            10145.86
+          ],
+          "points": 408,
+          "processed": true,
+          "processing_error": null,
+          "exafs": true,
+          "available_kmax": 17.45,
+          "reference_id": null,
+          "background_standard_id": null,
+          "derived": null,
+          "warnings": []
+        }
+      ],
+      "same_data": [
+        [
+          "Cu foil · 300 K",
+          "Cu foil · shared reference"
+        ]
+      ],
+      "analyses": [],
+      "last_operation": {
+        "action": "example",
+        "skipped_group_ids": [],
+        "artemis_example": "<29.4 KB omitted (keys group_id, attachment_id, example); read the project without a view for it>"
+      },
+      "can_undo": true,
+      "can_redo": false,
+      "journal_chars": 0
+    },
+    "parameters": {
+      "id": "JE8r7xRAxyB72FqU5uQx4Wku",
+      "version": 1,
+      "groups": [
+        {
+          "id": "eoGI209EkeQBKbZk8UarFaG0",
+          "label": "Cu foil · 10 K",
+          "data_type": "mu",
+          "requested": {
+            "e0": null,
+            "step": null,
+            "pre1": null,
+            "pre2": null,
+            "norm1": null,
+            "norm2": null,
+            "nnorm": null,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1,
+            "bkg_kmin": 0,
+            "bkg_kmax": null,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0,
+            "clamp_hi": 1,
+            "kmin": 3,
+            "kmax": null,
+            "kweight": 2.0,
+            "dk": 1,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": null,
+            "forward_with_phase": false,
+            "rmin": 1,
+            "rmax": 3,
+            "dr": 0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": null,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0,
+            "nfft": 2048,
+            "kstep": 0.05
+          },
+          "effective": {
+            "e0": 8977.58,
+            "step": 2.2987522766566624,
+            "pre1": -180.0,
+            "pre2": -90.0,
+            "norm1": 25.0,
+            "norm2": 2384.8899999999994,
+            "nnorm": 2,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": 25.019159051203296,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 24.0,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": 25.0,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "data_type": "mu",
+            "is_normalized": false,
+            "edge_step": 2.2987522766566624,
+            "exafs": true,
+            "fnorm_edge_step": null,
+            "fnorm_scale": null,
+            "background_standard": false,
+            "background_standard_kmin": null,
+            "background_standard_kmax": null,
+            "background_standard_points": null,
+            "available_kmax": 25.0,
+            "background_covariance_available": true,
+            "rstep": 0.030679615757712823,
+            "background_standard_id": null,
+            "element": "Cu",
+            "edge": "K"
+          },
+          "processing_error": null
+        },
+        {
+          "id": "NsJEmtRujAEy_8vouDRfou9p",
+          "label": "Cu foil · 50 K",
+          "data_type": "mu",
+          "requested": {
+            "e0": null,
+            "step": null,
+            "pre1": null,
+            "pre2": null,
+            "norm1": null,
+            "norm2": null,
+            "nnorm": null,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1,
+            "bkg_kmin": 0,
+            "bkg_kmax": null,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0,
+            "clamp_hi": 1,
+            "kmin": 3,
+            "kmax": null,
+            "kweight": 2.0,
+            "dk": 1,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": null,
+            "forward_with_phase": false,
+            "rmin": 1,
+            "rmax": 3,
+            "dr": 0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": null,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0,
+            "nfft": 2048,
+            "kstep": 0.05
+          },
+          "effective": {
+            "e0": 8977.58,
+            "step": 2.28956276054216,
+            "pre1": -185.0,
+            "pre2": -92.5,
+            "norm1": 25.0,
+            "norm2": 2384.960000000001,
+            "nnorm": 2,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": 25.01952622291409,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 24.0,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": 25.0,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "data_type": "mu",
+            "is_normalized": false,
+            "edge_step": 2.28956276054216,
+            "exafs": true,
+            "fnorm_edge_step": null,
+            "fnorm_scale": null,
+            "background_standard": false,
+            "background_standard_kmin": null,
+            "background_standard_kmax": null,
+            "background_standard_points": null,
+            "available_kmax": 25.0,
+            "background_covariance_available": true,
+            "rstep": 0.030679615757712823,
+            "background_standard_id": null,
+            "element": "Cu",
+            "edge": "K"
+          },
+          "processing_error": null
+        },
+        {
+          "id": "QschYC1v6PHjgmNcGztCQEXp",
+          "label": "Cu foil · 300 K",
+          "data_type": "mu",
+          "requested": {
+            "e0": null,
+            "step": null,
+            "pre1": null,
+            "pre2": null,
+            "norm1": null,
+            "norm2": null,
+            "nnorm": null,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1,
+            "bkg_kmin": 0,
+            "bkg_kmax": null,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0,
+            "clamp_hi": 1,
+            "kmin": 3,
+            "kmax": null,
+            "kweight": 2.0,
+            "dk": 1,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": null,
+            "forward_with_phase": false,
+            "rmin": 1,
+            "rmax": 3,
+            "dr": 0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": null,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0,
+            "nfft": 2048,
+            "kstep": 0.05
+          },
+          "effective": {
+            "e0": 8980.5,
+            "step": 2.7293789518274982,
+            "pre1": -190.0,
+            "pre2": -95.0,
+            "norm1": 25.0,
+            "norm2": 1165.0,
+            "nnorm": 2,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": 17.489145277903592,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 16.45,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": 17.45,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "data_type": "mu",
+            "is_normalized": false,
+            "edge_step": 2.7293789518274982,
+            "exafs": true,
+            "fnorm_edge_step": null,
+            "fnorm_scale": null,
+            "background_standard": false,
+            "background_standard_kmin": null,
+            "background_standard_kmax": null,
+            "background_standard_points": null,
+            "available_kmax": 17.45,
+            "background_covariance_available": true,
+            "rstep": 0.030679615757712823,
+            "background_standard_id": null,
+            "element": "Cu",
+            "edge": "K"
+          },
+          "processing_error": null
+        },
+        {
+          "id": "tzydEMn04JYv8XEN8Q6FVPJp",
+          "label": "Cu₂O · room temperature",
+          "data_type": "mu",
+          "requested": {
+            "e0": null,
+            "step": null,
+            "pre1": null,
+            "pre2": null,
+            "norm1": null,
+            "norm2": null,
+            "nnorm": null,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1,
+            "bkg_kmin": 0,
+            "bkg_kmax": null,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0,
+            "clamp_hi": 1,
+            "kmin": 3,
+            "kmax": null,
+            "kweight": 2.0,
+            "dk": 1,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": null,
+            "forward_with_phase": false,
+            "rmin": 1,
+            "rmax": 3,
+            "dr": 0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": null,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0,
+            "nfft": 2048,
+            "kstep": 0.05
+          },
+          "effective": {
+            "e0": 8980.8172851,
+            "step": 1.6110820757135036,
+            "pre1": -200.0,
+            "pre2": -100.0,
+            "norm1": 25.0,
+            "norm2": 845.0,
+            "nnorm": 2,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": 14.90661566153382,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 13.9,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": 14.9,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "data_type": "mu",
+            "is_normalized": false,
+            "edge_step": 1.6110820757135036,
+            "exafs": true,
+            "fnorm_edge_step": null,
+            "fnorm_scale": null,
+            "background_standard": false,
+            "background_standard_kmin": null,
+            "background_standard_kmax": null,
+            "background_standard_points": null,
+            "available_kmax": 14.9,
+            "background_covariance_available": true,
+            "rstep": 0.030679615757712823,
+            "background_standard_id": null,
+            "element": "Cu",
+            "edge": "K"
+          },
+          "processing_error": null
+        },
+        {
+          "id": "oeiC-RLKhoDgB9GwWTDFnbyP",
+          "label": "Cu foil · shared reference",
+          "data_type": "mu",
+          "requested": {
+            "e0": null,
+            "step": null,
+            "pre1": null,
+            "pre2": null,
+            "norm1": null,
+            "norm2": null,
+            "nnorm": null,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1,
+            "bkg_kmin": 0,
+            "bkg_kmax": null,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0,
+            "clamp_hi": 1,
+            "kmin": 3,
+            "kmax": null,
+            "kweight": 2.0,
+            "dk": 1,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": null,
+            "forward_with_phase": false,
+            "rmin": 1,
+            "rmax": 3,
+            "dr": 0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": null,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0,
+            "nfft": 2048,
+            "kstep": 0.05
+          },
+          "effective": {
+            "e0": 8980.5,
+            "step": 2.7293789518274982,
+            "pre1": -190.0,
+            "pre2": -95.0,
+            "norm1": 25.0,
+            "norm2": 1165.0,
+            "nnorm": 2,
+            "nvict": 0,
+            "flatten": true,
+            "fnorm": false,
+            "rbkg": 1.0,
+            "bkg_kmin": 0.0,
+            "bkg_kmax": 17.489145277903592,
+            "bkg_kweight": 2.0,
+            "bkg_dk": 1.0,
+            "bkg_window": "hanning",
+            "nknots": 0,
+            "nclamp": 5,
+            "clamp_lo": 0.0,
+            "clamp_hi": 1.0,
+            "kmin": 3.0,
+            "kmax": 16.45,
+            "kweight": 2.0,
+            "dk": 1.0,
+            "dk2": null,
+            "window": "hanning",
+            "rmax_out": 10.0,
+            "forward_with_phase": false,
+            "rmin": 1.0,
+            "rmax": 3.0,
+            "dr": 0.0,
+            "dr2": null,
+            "rwindow": "hanning",
+            "qmax_out": 17.45,
+            "reverse_nfft": null,
+            "reverse_kstep": null,
+            "reverse_with_phase": false,
+            "energy_shift": 0.0,
+            "nfft": 2048,
+            "kstep": 0.05,
+            "data_type": "mu",
+            "is_normalized": false,
+            "edge_step": 2.7293789518274982,
+            "exafs": true,
+            "fnorm_edge_step": null,
+            "fnorm_scale": null,
+            "background_standard": false,
+            "background_standard_kmin": null,
+            "background_standard_kmax": null,
+            "background_standard_points": null,
+            "available_kmax": 17.45,
+            "background_covariance_available": true,
+            "rstep": 0.030679615757712823,
+            "background_standard_id": null,
+            "element": "Cu",
+            "edge": "K"
+          },
+          "processing_error": null
+        }
+      ]
+    }
+  },
+  "fit_validation": "passed"
+}

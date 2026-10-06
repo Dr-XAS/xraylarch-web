@@ -1,0 +1,23 @@
+{
+  "status": "pass",
+  "expected": "reject both changed distance and doubled uncertainty",
+  "alterations": [
+    {
+      "field": "paths[0].r",
+      "before": 2.549,
+      "after": 2.55
+    },
+    {
+      "field": "parameters[0].stderr",
+      "before": 0.0235002,
+      "after": 0.0470004
+    }
+  ],
+  "source": "docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T5/events.jsonl",
+  "source_sha256": "15f1489eb31ccff3529f36c1ade15be7838083d1268e95ab5c0b798ce68b5633",
+  "altered_sha256": "906835b2c99a46e753284b643c4bde6edbe4781d517e366a1a452a6d861df49d",
+  "fit_validation": "failed",
+  "divergences": [
+    "seq 25: parameters[0].stderr: 0.0470004 -> 0.0235002; paths[0].r: 2.55 -> 2.549"
+  ]
+}

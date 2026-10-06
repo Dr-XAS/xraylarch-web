@@ -355,6 +355,11 @@ records five task pairs, and the
 [native-fix verification](agent-runs/2026-10-05-native-fixes/README.md) records the
 alignment and Fourier corrections it prompted. These compare configured systems,
 including their libraries and instructions; they do not isolate interface design.
+The [three-repeat comparison](agent-runs/2026-10-05-repeated-comparison/README.md)
+retains 30 attempts and separate state, scientific and answer checks. Combined
+passes were 14/15 native and 13/15 app. The
+[HTTP replay verification](agent-runs/2026-10-05-artemis-replay/README.md) checks
+the retained fits and final projects without new model calls.
 
 The [October 5 baseline](agent-runs/2026-10-05/README.md) retains all ten arms'
 transcripts, final snapshots and API evidence. All state checks and replay comparisons

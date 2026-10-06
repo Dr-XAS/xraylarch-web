@@ -1,0 +1,97 @@
+{
+  "originals": [],
+  "alignments": [],
+  "merges": [],
+  "transforms": [],
+  "fits": [],
+  "measurements": [
+    {
+      "seq": 5,
+      "tool": null
+    },
+    {
+      "seq": 6,
+      "tool": "http_request"
+    },
+    {
+      "seq": 7,
+      "tool": null
+    },
+    {
+      "seq": 8,
+      "tool": "http_request"
+    },
+    {
+      "seq": 17,
+      "tool": null
+    },
+    {
+      "seq": 18,
+      "tool": "http_request"
+    },
+    {
+      "seq": 19,
+      "tool": null
+    },
+    {
+      "seq": 20,
+      "tool": "http_request"
+    },
+    {
+      "seq": 21,
+      "tool": null
+    },
+    {
+      "seq": 22,
+      "tool": "http_request"
+    },
+    {
+      "seq": 23,
+      "tool": null
+    },
+    {
+      "seq": 24,
+      "tool": "http_request"
+    },
+    {
+      "seq": 27,
+      "tool": null
+    },
+    {
+      "seq": 28,
+      "tool": "http_request"
+    },
+    {
+      "seq": 31,
+      "tool": null
+    },
+    {
+      "seq": 32,
+      "tool": "http_request"
+    },
+    {
+      "seq": 35,
+      "tool": null
+    },
+    {
+      "seq": 36,
+      "tool": "http_request"
+    },
+    {
+      "seq": 39,
+      "tool": null
+    },
+    {
+      "seq": 40,
+      "tool": "http_request"
+    },
+    {
+      "seq": 43,
+      "tool": null
+    },
+    {
+      "seq": 44,
+      "tool": "http_request"
+    }
+  ]
+}

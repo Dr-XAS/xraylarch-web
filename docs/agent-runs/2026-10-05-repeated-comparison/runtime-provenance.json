@@ -1,0 +1,96 @@
+{
+  "python": "3.12.13 | packaged by Anaconda, Inc. | (main, Mar 19 2026, 20:20:58) [GCC 14.3.0]",
+  "interpreter": "/tmp/drxas-native-app-20261005-01a10dd4/app-env/bin/python",
+  "app_imported_larch": {
+    "version": "2026.3.1.post321+g7f82058f3",
+    "file": "/tmp/drxas-repeated-20261005-01a10eb2/app/larch/__init__.py"
+  },
+  "numpy": {
+    "version": "2.4.6",
+    "file": "/home/beams/HUANG.JEFFREY/miniconda3/envs/drxas-deploy/lib/python3.12/site-packages/numpy/__init__.py"
+  },
+  "scipy": {
+    "version": "1.16.1",
+    "file": "/home/beams/HUANG.JEFFREY/miniconda3/envs/drxas-deploy/lib/python3.12/site-packages/scipy/__init__.py"
+  },
+  "packages": {
+    "openai": "2.7.1",
+    "openai-agents": "0.4.2",
+    "xraylarch": "2026.2.2",
+    "larixite": "2026.1.0"
+  },
+  "source_archives_sha256": {
+    "drxas-repeated-native-20261005.tar.gz": "25dfb19cf01891a944e7e9fdfeecc82b2c60776afcab1dd9b7a91134e41ca30d",
+    "drxas-repeated-app-20261005.tar.gz": "c382741f1b4670e25553fea82c394d8167d872cdb3fafd7eb82086403759d673"
+  },
+  "app_generated_version": "2026.3.1.post321+g7f82058f3",
+  "version_provenance": "git describe --tags --long 7f82058f312d2e7f48df64a0f38dfdcfc0c7cbe7 => 2026.3.1-321-g7f82058f3; setuptools_scm post-release scheme writes larch/_version.py",
+  "setup_failures": [
+    {
+      "path": "runs/repeat-1/T1/app-T1-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-1/T2/app-T2-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-1/T3/app-T3-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-1/T4/app-T4-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-1/T5/app-T5-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-2/T1/app-T1-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-2/T2/app-T2-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-2/T3/app-T3-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-2/T4/app-T4-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-2/T5/app-T5-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    },
+    {
+      "path": "runs/repeat-3/T1/app-T1-setup-failure",
+      "error_type": "ModuleNotFoundError",
+      "missing_module": "larch._version",
+      "model_started": false
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+{"time": 1791248980.050498, "method": "GET", "path": "/api/athena/projects/cQlKmvfGzi1bShTR3dxOviFX", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791248981.5668273, "method": "GET", "path": "/api/athena/projects/cQlKmvfGzi1bShTR3dxOviFX/compare", "query": "groups=fvUYVnjkJVh6e1B-6RnXr28C%2CYZJ72rrMQXDWX5eQQQNA3HMM%2Cqv9v5JLvDWLWUOUE0GfYsASg&view=summary", "status": 200, "bytes": 2215}

@@ -1,0 +1,413 @@
+{
+  "originals": {
+    "Cu foil · 10 K": "xas1--eval-comparison-368e7f4454f5--copper-0--40631daa3e889631b3149804626b96c6",
+    "Cu foil · 50 K": "xas1--eval-comparison-368e7f4454f5--copper-1--6bdcc6cd5f0deb4baf61eab35ac53ffe",
+    "Cu foil · 300 K": "xas1--eval-comparison-368e7f4454f5--copper-2--ef6667f89e264cd1f8bd5942e65bfa58",
+    "Cu₂O · room temperature": "xas1--eval-comparison-368e7f4454f5--copper-3--f866df71b53170676dff54960becf325",
+    "Cu foil · shared reference": "xas1--eval-comparison-368e7f4454f5--copper-4--4588ac6504916c1727ce191b820de9d7"
+  },
+  "artifacts": {
+    "xas1--eval-comparison-368e7f4454f5--copper-0--40631daa3e889631b3149804626b96c6": {
+      "e0": 8977.58,
+      "edge_step": 2.2987522766566553,
+      "n_points": 612,
+      "energy_min": 8786.204,
+      "energy_max": 11362.47,
+      "available_kmax": 25.0,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.58,
+          "step": 2.2987522766566553,
+          "make_flat": true,
+          "pre1": -180.0,
+          "pre2": -90.0,
+          "norm1": 25.0,
+          "norm2": 2384.8899999999994,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 25.019159051203296,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "68c7c0cdd5d76faf251580750351a0da7049b901d997fa08601db2058c50aa70"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-1--6bdcc6cd5f0deb4baf61eab35ac53ffe": {
+      "e0": 8977.58,
+      "edge_step": 2.2895627605421636,
+      "n_points": 620,
+      "energy_min": 8782.347,
+      "energy_max": 11362.54,
+      "available_kmax": 25.0,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.58,
+          "step": 2.2895627605421636,
+          "make_flat": true,
+          "pre1": -185.0,
+          "pre2": -92.5,
+          "norm1": 25.0,
+          "norm2": 2384.960000000001,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 25.01952622291409,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "b2033f6485a7a43b32c839a4d89760b067c31896846206d187a39d7e81a243c8"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-2--ef6667f89e264cd1f8bd5942e65bfa58": {
+      "e0": 8980.5,
+      "edge_step": 2.729378951827502,
+      "n_points": 408,
+      "energy_min": 8779.0,
+      "energy_max": 10145.86,
+      "available_kmax": 17.45,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8980.5,
+          "step": 2.729378951827502,
+          "make_flat": true,
+          "pre1": -190.0,
+          "pre2": -95.0,
+          "norm1": 25.0,
+          "norm2": 1165.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 17.489145277903592,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "68989cc4dd3eeab7e53db414a2612951781b2d6ba08e60fb740fd001c1eff2b5"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-3--f866df71b53170676dff54960becf325": {
+      "e0": 8980.8172851,
+      "edge_step": 1.611082075713506,
+      "n_points": 445,
+      "energy_min": 8774.46257909,
+      "energy_max": 9827.42270576,
+      "available_kmax": 14.9,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8980.8172851,
+          "step": 1.611082075713506,
+          "make_flat": true,
+          "pre1": -200.0,
+          "pre2": -100.0,
+          "norm1": 25.0,
+          "norm2": 845.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 14.90661566153382,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "32ad4b39d8446ccfbbb10dde3c541996bff2075397613ed0d654c5ceb41e29e7"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-4--4588ac6504916c1727ce191b820de9d7": {
+      "e0": 8980.5,
+      "edge_step": 2.729378951827502,
+      "n_points": 408,
+      "energy_min": 8779.0,
+      "energy_max": 10145.86,
+      "available_kmax": 17.45,
+      "alignment": null,
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8980.5,
+          "step": 2.729378951827502,
+          "make_flat": true,
+          "pre1": -190.0,
+          "pre2": -95.0,
+          "norm1": 25.0,
+          "norm2": 1165.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 17.489145277903592,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "1f5a7f0fdb41fd0b18fd486cf04694e154f477c1c4315f78e1bf3a87da5c2eaf"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-1_aligned--d167216117dfaa6903d8245bf2a57399": {
+      "e0": 8977.572544725175,
+      "edge_step": 2.2895627605421636,
+      "n_points": 620,
+      "energy_min": 8782.339544725175,
+      "energy_max": 11362.532544725176,
+      "available_kmax": 25.0,
+      "alignment": {
+        "source_ref": "xas1--eval-comparison-368e7f4454f5--copper-1--6bdcc6cd5f0deb4baf61eab35ac53ffe",
+        "reference_ref": "xas1--eval-comparison-368e7f4454f5--copper-0--40631daa3e889631b3149804626b96c6",
+        "energy_shift_ev": -0.00745527482409207,
+        "match_window_ev": [
+          8957.58,
+          8997.58
+        ]
+      },
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.572544725175,
+          "step": 2.2895627605421636,
+          "make_flat": true,
+          "pre1": -185.0,
+          "pre2": -92.5,
+          "norm1": 25.0,
+          "norm2": 2384.960000000001,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 25.01952622291409,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "4e2241c50214667dd14623d2d842d32b610c6991756031d872fa9ac9715a38d6"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-2_aligned--b4bfc2a421b36139f2736d3f1aa1bd56": {
+      "e0": 8977.522716238727,
+      "edge_step": 2.729378951827502,
+      "n_points": 408,
+      "energy_min": 8776.022716238727,
+      "energy_max": 10142.882716238728,
+      "available_kmax": 17.45,
+      "alignment": {
+        "source_ref": "xas1--eval-comparison-368e7f4454f5--copper-2--ef6667f89e264cd1f8bd5942e65bfa58",
+        "reference_ref": "xas1--eval-comparison-368e7f4454f5--copper-0--40631daa3e889631b3149804626b96c6",
+        "energy_shift_ev": -2.9772837612725316,
+        "match_window_ev": [
+          8957.58,
+          8997.58
+        ]
+      },
+      "merge": null,
+      "ft": {
+        "kmin": 3.0,
+        "kmax": 24.0,
+        "kweight": 2.0,
+        "dk": 1.0,
+        "dk2": 1.0,
+        "window": "hanning",
+        "rmax_out": 10.0,
+        "nfft": 2048,
+        "kstep": 0.05,
+        "with_phase": false
+      },
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.522716238727,
+          "step": 2.729378951827502,
+          "make_flat": true,
+          "pre1": -190.0,
+          "pre2": -95.0,
+          "norm1": 25.0,
+          "norm2": 1165.0,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 17.489145277903592,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "057b553fb1e14c83ee69b0a5968d52c67c4ee9cc57fde833b2cad23064858b88"
+    },
+    "xas1--eval-comparison-368e7f4454f5--copper-0_merged--a9a9c092e535134257a798c86a40aca1": {
+      "e0": 8977.58,
+      "edge_step": 2.2987522766566553,
+      "n_points": 460,
+      "energy_min": 8786.204,
+      "energy_max": 10134.32,
+      "available_kmax": 17.400000000000002,
+      "alignment": null,
+      "merge": {
+        "method": "larch_merge_groups",
+        "source_refs": [
+          "xas1--eval-comparison-368e7f4454f5--copper-0--40631daa3e889631b3149804626b96c6",
+          "xas1--eval-comparison-368e7f4454f5--copper-1_aligned--d167216117dfaa6903d8245bf2a57399",
+          "xas1--eval-comparison-368e7f4454f5--copper-2_aligned--b4bfc2a421b36139f2736d3f1aa1bd56"
+        ],
+        "n_spectra": 3,
+        "kind": "cubic",
+        "trim": true,
+        "mean_yerr": 0.8959852176420884,
+        "energy_min": 8786.204,
+        "energy_max": 10134.32
+      },
+      "ft": null,
+      "processing": {
+        "pre_edge": {
+          "e0": 8977.58,
+          "step": 2.2987522766566553,
+          "make_flat": true,
+          "pre1": -180.0,
+          "pre2": -90.0,
+          "norm1": 25.0,
+          "norm2": 2384.8899999999994,
+          "nnorm": 2,
+          "nvict": 0
+        },
+        "autobk": {
+          "rbkg": 1.0,
+          "kmin": 0.0,
+          "kmax": 25.019159051203296,
+          "kweight": 2.0,
+          "dk": 1.0,
+          "nknots": 0,
+          "nclamp": 5,
+          "clamp_lo": 0.0,
+          "clamp_hi": 1.0,
+          "win": "hanning"
+        }
+      },
+      "payload_sha256": "b667b883476f876cd1b14feb24897e028b9588f4583e4056f0736ae50abd4ef9"
+    }
+  }
+}

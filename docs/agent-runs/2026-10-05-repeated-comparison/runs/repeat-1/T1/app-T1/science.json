@@ -1,0 +1,25 @@
+{
+  "originals": [],
+  "alignments": [],
+  "merges": [],
+  "transforms": [],
+  "fits": [],
+  "measurements": [
+    {
+      "seq": 3,
+      "tool": null
+    },
+    {
+      "seq": 4,
+      "tool": "http_request"
+    },
+    {
+      "seq": 7,
+      "tool": null
+    },
+    {
+      "seq": 8,
+      "tool": "http_request"
+    }
+  ]
+}

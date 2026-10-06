@@ -1,0 +1,9 @@
+{
+  "checks": {
+    "originals_unchanged": true,
+    "no_new_spectrum_artifacts": true,
+    "no_failed_tools": true
+  },
+  "state_passed": true,
+  "answer_grading": "pending; state checks do not grade final prose"
+}

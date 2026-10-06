@@ -1,0 +1,11 @@
+{
+  "ok": false,
+  "fits": 0,
+  "feff_jobs": 0,
+  "commands": 0,
+  "steps": [],
+  "fit_validation": "not_run",
+  "divergences": [
+    "ValueError: missing or unmatched HTTP tool result"
+  ]
+}

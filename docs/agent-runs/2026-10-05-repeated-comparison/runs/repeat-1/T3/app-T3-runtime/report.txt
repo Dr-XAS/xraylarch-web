@@ -1,0 +1,5 @@
+T3 PASS
+  ok   10 K effective kmax below 24  (kmax 18.0)
+  ok   and within available_kmax  (available 25.0)
+  transcript: 1 commands, 0 previews, 0 rejected
+  meter: 7 requests (6 GET, 1 POST), 26,620 response bytes, ~6,655 tokens, status {'200': 7}

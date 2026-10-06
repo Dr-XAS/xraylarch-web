@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "measurements_match_atol": 1e-14,
+  "measurements_match": true,
+  "groups": 5,
+  "model_calls": 0,
+  "app_version_metadata_sha256": "ec637cad73a6e7cd8608981a4ff30f321917e3a19d7dc723385410a42dd29682"
+}

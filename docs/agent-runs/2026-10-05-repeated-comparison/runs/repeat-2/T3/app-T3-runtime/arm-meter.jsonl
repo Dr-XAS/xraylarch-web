@@ -1,0 +1,7 @@
+{"time": 1791249074.005971, "method": "GET", "path": "/api/athena/capabilities", "query": "view=summary", "status": 200, "bytes": 7531}
+{"time": 1791249074.0063014, "method": "GET", "path": "/api/athena/projects/RTnNH_c_1c6lSPU1565Z0YkC", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791249076.0677857, "method": "GET", "path": "/api/athena/capabilities/parameters", "query": "view=summary", "status": 200, "bytes": 2687}
+{"time": 1791249076.0679843, "method": "GET", "path": "/api/athena/projects/RTnNH_c_1c6lSPU1565Z0YkC", "query": "view=summary", "status": 200, "bytes": 3131}
+{"time": 1791249076.0670614, "method": "GET", "path": "/api/athena/projects/RTnNH_c_1c6lSPU1565Z0YkC/groups/hzusU4f9adyjbW9_9BLxk9e1/digest", "query": "view=summary", "status": 200, "bytes": 3480}
+{"time": 1791249079.488879, "method": "POST", "path": "/api/athena/projects/RTnNH_c_1c6lSPU1565Z0YkC/command", "query": "view=summary", "status": 200, "bytes": 3166}
+{"time": 1791249081.752605, "method": "GET", "path": "/api/athena/projects/RTnNH_c_1c6lSPU1565Z0YkC/groups/hzusU4f9adyjbW9_9BLxk9e1/digest", "query": "view=summary", "status": 200, "bytes": 3494}
