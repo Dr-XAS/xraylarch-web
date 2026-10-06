@@ -6,7 +6,7 @@ import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS, type CifVector } from "@/lib/cif-viewer"
 import { clearCifHover, createCifRenderer } from "@/lib/cif-renderer"
-import { cifAtomStyle, CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS } from "@/lib/cif-viewer-style"
+import { cifAtomStyle, cifElementColor, CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS } from "@/lib/cif-viewer-style"
 import { firstShellAtoms, isShellAtom } from "@/lib/first-shell"
 import { useFirstShell, type FirstShellState } from "@/lib/use-first-shell"
 import { FirstShellSummary } from "../first-shell-summary"
@@ -21,6 +21,8 @@ import { ClusterCoordination } from "./cluster-coordination"
 import styles from "./cif-viewer.module.css"
 
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z })
+const CENTER_RADIUS = 0.5
+const FIRST_SHELL_RADIUS = 0.42
 
 function CellRepeatInput({ axis, value, onChange }: { axis: string; value: number; onChange: (value: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null)
@@ -95,6 +97,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     return absorber ? { ...baseGeometry, atoms: [absorber, ...shellAtoms], truncated: false, warnings: [] } : baseGeometry
   }, [baseGeometry, mode, shell, shellAtoms, radial, radialAtoms, shellVisibility, radialKey])
   const elements = useMemo(() => [...new Set(geometry.atoms.map(atom => atom.element))].sort(), [geometry])
+  const centerAtom = geometry.atoms.find(atom => atom.isAbsorber)
   const visibleCount = geometry.atoms.filter(atom => !hidden.includes(atom.element)).length
   const coordinationUnavailable = mode !== "cluster" ? "Switch to Local cluster to calculate coordination numbers."
     : geometry.truncated ? "Reduce the display radius to calculate coordination numbers for a complete cluster."
@@ -174,19 +177,24 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
           for (const neighbor of atom.bonds ?? []) addBond(atom.index ?? -1, neighbor)
         }
       }
+      // Keep the selected site's element color in every view. Role highlights
+      // must not make a Cu center look like S in the element legend.
+      geometry.atoms.forEach((atom, index) => {
+        if (atom.isAbsorber && !hidden.includes(atom.element)) {
+          instance.addStyle({ index }, { sphere: { color: cifElementColor(elements.indexOf(atom.element)), radius: CENTER_RADIUS } })
+        }
+      })
       if (mode === "radial" && radial) {
         geometry.atoms.forEach((atom, index) => {
           if (hidden.includes(atom.element)) return
           const member = radialAtoms.find(neighbor => isShellAtom(atom, [neighbor]))
-          if (atom.isAbsorber) instance.addStyle({ index }, { sphere: { color: "#f59e0b", radius: 0.45 } })
-          else if (member) instance.addStyle({ index }, { sphere: { color: shellColor(member.shellIndex), radius: CIF_SPHERE_RADIUS } })
+          if (!atom.isAbsorber && member) instance.addStyle({ index }, { sphere: { color: shellColor(member.shellIndex), radius: CIF_SPHERE_RADIUS } })
         })
       } else if (shell && (highlightShell || mode === "shell")) {
         geometry.atoms.forEach((atom, index) => {
           if (hidden.includes(atom.element)) return
-          if (atom.isAbsorber) instance.addStyle({ index }, { sphere: { color: "#f59e0b", radius: 0.45 } })
-          else if (isShellAtom(atom, shellAtoms)) {
-            instance.addStyle({ index }, { sphere: { color: "#06b6d4", radius: CIF_SPHERE_RADIUS } })
+          if (!atom.isAbsorber && isShellAtom(atom, shellAtoms)) {
+            instance.addStyle({ index }, { sphere: { color: cifElementColor(elements.indexOf(atom.element)), radius: FIRST_SHELL_RADIUS } })
             if (bonds && mode === "shell") addBond(geometry.atoms.findIndex(candidate => candidate.isAbsorber), index, "#06b6d4")
           }
         })
@@ -220,7 +228,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
       onClick={() => setCoordinationPanel(previous => previous === "open" ? "closed" : "open")}>Coordination numbers</button>
     {resetButton}
   </div>
-  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. Amber marks the absorber; cyan marks CrystalNN neighbors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
+  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. The largest sphere marks the center; larger neighboring spheres mark CrystalNN first-shell atoms, keeping their element colors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
   const content = <>
     {structureControls}
     <div className={styles.canvas}>
@@ -232,6 +240,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
         <StructureDisplayLegend bonds={bonds} onBondsChange={setBonds}
           unitCell={{ checked: cell || mode === "cell", disabled: mode === "cell", onChange: setCell }} />
       </div>}
+      {ready && !error && centerAtom && <span className={styles.centerLabel}>Center: {centerAtom.element} · site {centerAtom.siteIndex}{hidden.includes(centerAtom.element) ? " (hidden)" : ""}</span>}
       {!geometry.atoms.length ? <p className={styles.overlay}>{mode === "radial" && radialState.loading ? "Calculating periodic radial shells…" : "A 3D preview is unavailable for this CIF."}</p>
         : error ? <div className={styles.overlay} role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>Retry 3D viewer</button></div>
         : !ready ? <p className={styles.overlay} role="status">Loading 3D structure…</p> : null}
@@ -240,7 +249,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
       <div className={styles.controls}>
         <label>View<select aria-label="CIF view mode" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="cluster">Local cluster</option><option value="cell">Unit cell</option><option value="shell" disabled={!shell}>CrystalNN first shell</option><option value="radial" disabled={!radial}>Radial shells</option></select></label>
         <label>Center site<select aria-label="CIF center site" value={center} onChange={event => { const site = Number(event.target.value); setCenter({ key: centerKey, site }); onSiteChange?.(site) }}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
-        {shell && mode !== "radial" && <label><input type="checkbox" aria-label="Highlight CrystalNN first shell" checked={highlightShell || mode === "shell"} disabled={mode === "shell"} onChange={event => setHighlightShell(event.target.checked)} />First shell</label>}
+        {shell && mode !== "radial" && <label><input type="checkbox" aria-label="Highlight CrystalNN first shell" checked={highlightShell || mode === "shell"} disabled={mode === "shell"} onChange={event => setHighlightShell(event.target.checked)} />First shell<SectionHelp label="Highlight first shell">Enlarge neighbors assigned by CrystalNN while keeping their element colors. The first-shell view always shows them; hiding or highlighting atoms does not change shell membership.</SectionHelp></label>}
       </div>
       <LocalStructureControls radius={radius} min={CIF_VIEWER_MIN_RADIUS} max={CIF_VIEWER_MAX_RADIUS} onRadiusChange={setRadius}
         radiusAriaLabel="CIF display radius" bonds={bonds} onBondsChange={setBonds}
