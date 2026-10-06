@@ -607,10 +607,7 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
     : fastRequest ? "" : "Finish the model before comparing backends."
   return <section className={styles.editor} aria-label="Artemis EXAFS fitting setup">
     <header className={styles.intro}><h3><FitCurvesIcon size={20} aria-hidden="true" />EXAFS fitting</h3></header>
-    <div className={styles.actions}>
-      {error && <p className={styles.error} role="alert">{error}</p>}
-      <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
-    </div>
+    {error && <p className={styles.error} role="alert">{error}</p>}
     {projectId && group && <ArtemisFastFitComparison key={`${shownArchive?.id ?? "local"}:${draft.revision}`}
       projectId={projectId} groupId={group.id} request={fastRequest} reference={currentResult}
       blocked={fastBlocked} disabled={disabled} />}
@@ -624,14 +621,6 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
       <p className={styles.help} aria-live="polite">{actions.status === "saving" ? "Saving model…" : actions.status === "pending" ? "Model changes waiting to save…" : "Model could not be saved."}</p>
       {actions.status === "failed" && <><p className={styles.error} role="alert">{actions.error}</p><button type="button" disabled={disabled} onClick={() => void actions.retry().catch(() => {})}>Retry saving model</button></>}
     </div>}
-    {!!persisted?.history.length && <FittingSection title="Saved fit history" icon={History} summary={`${persisted.history.length}/10`} disabled={disabled}
-      help="Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.">
-        <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
-          {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
-        </select></label>
-        <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
-          <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
-    </FittingSection>}
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} spectrumEdge={group ? currentEdgeIdentity(group) : null} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={(paths, replace) => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
@@ -754,6 +743,9 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         <label data-transform-field="window">k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
       </div>
       <div className={styles.weights} role="group" aria-label="Fit k-weight" data-transform-field="kweight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
+      <div className={styles.toolbar}>
+        <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
+      </div>
     </FittingSection>
     {transformMenu && <AthenaContextMenu label="Fit range & transform actions" anchor={transformMenu.anchor} returnFocus={transformMenu.trigger} onClose={() => setTransformMenu(null)}
       items={[
@@ -762,5 +754,13 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         { id: "transform", label: "Apply fit range & transform to marked groups", separatorBefore: !!transformMenu.field,
           disabled: disabled || !projectId || !group || !groups?.some(item => item.marked && item.id !== group.id), onSelect: () => applyTransform() },
       ]} />}
+    {!!persisted?.history.length && <FittingSection title="Saved fit history" icon={History} summary={`${persisted.history.length}/10`} disabled={disabled}
+      help="Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.">
+        <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
+          {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
+        </select></label>
+        <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
+          <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
+    </FittingSection>}
   </section>
 }

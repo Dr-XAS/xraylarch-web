@@ -1,8 +1,5 @@
 .editor { flex: 1 1 0px; display: flex; flex-direction: column; height: 0; box-sizing: border-box; min-width: 0; padding: 12px; min-height: 400px; overflow-y: auto; scrollbar-gutter: stable; font-size: var(--text-body); color: var(--ath-ink, #24362c); }
 .editor > * { flex-shrink: 0; }
-.actions { position: sticky; top: 0; z-index: 1; margin: 0 -12px 12px; padding: 8px 12px; background: var(--ath-surface, #fff); border-bottom: 1px solid var(--ath-line, #dce5dc); box-shadow: 0 6px 12px hsl(150 10% 25% / .035); }
-.actions .help { margin-bottom: 0; }
-.actions .error { margin-top: 0; max-height: 96px; overflow-y: auto; }
 .editor h3 { display: flex; align-items: center; gap: 6px; margin: 0; font-size: var(--text-section); font-weight: 500; line-height: var(--leading-heading); }
 .intro h3 svg { flex: 0 0 20px; }
 .intro { padding: 0 0 8px; }
@@ -91,4 +88,4 @@
 .report { padding: 12px; background: var(--ath-canvas, #f5f8f5); max-height: 500px; overflow: auto; font-size: var(--text-label); line-height: var(--leading-body); }
 .warnings { margin: 0 0 15px; padding-left: 18px; color: var(--ath-warning-ink, #815713); font-size: var(--text-body); line-height: var(--leading-body); }
 @media(max-width:620px) { .statistics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media(max-width:950px) { .editor { flex: none; height: auto; min-height: 0; overflow-y: visible; scrollbar-gutter: auto; } .actions { position: static; box-shadow: none; } }
+@media(max-width:950px) { .editor { flex: none; height: auto; min-height: 0; overflow-y: visible; scrollbar-gutter: auto; } }
