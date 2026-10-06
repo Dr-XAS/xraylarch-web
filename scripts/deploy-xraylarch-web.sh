@@ -648,18 +648,28 @@ sibling_profile() {
   esac
 }
 
+dev_sibling_down() {
+  printf 'WARNING: %s; Dr.XAS dev is not required, continuing\n' "$*" >&2
+}
+
 assert_sibling_services_healthy() {
   local profile port code
   profile=$(sibling_profile) || return 1
   case "$profile" in
     drxas)
+      # Only Dr.XAS production (3000, 8000) gates XrayLarch. The dev pair (3001, 8001)
+      # and the dev bot backends (8002, 8003) restart on every Dr.XAS new-features
+      # deploy, so an outage there is reported without failing activation or health.
       http_200 "http://127.0.0.1:3000/" || return 1
-      http_200 "http://127.0.0.1:3001/" || return 1
+      http_200 "http://127.0.0.1:3001/" || dev_sibling_down "Dr.XAS dev frontend on 3001 is unhealthy"
       http_200 "http://127.0.0.1:8000/docs" || return 1
-      http_200 "http://127.0.0.1:8001/docs" || return 1
+      http_200 "http://127.0.0.1:8001/docs" || dev_sibling_down "Dr.XAS dev backend on 8001 is unhealthy"
       for port in 8002 8003; do
-        code=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/") || return 1
-        [[ "$code" == "404" ]] || { fail "expected existing Dr.XAS sibling on ${port} to return 404, received $code"; return 1; }
+        if ! code=$(curl --silent --show-error --max-time 10 --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${port}/"); then
+          dev_sibling_down "Dr.XAS dev bot backend on ${port} did not answer"
+        elif [[ "$code" != "404" ]]; then
+          dev_sibling_down "expected Dr.XAS dev bot backend on ${port} to return 404, received $code"
+        fi
       done
       ;;
     goldendale)
