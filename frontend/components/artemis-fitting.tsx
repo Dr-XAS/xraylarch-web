@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type MouseEvent, type KeyboardEvent } from "react"
 import { ChevronRight, History, Plus, RefreshCw, SlidersHorizontal, Trash2, Upload, type LucideIcon } from "lucide-react"
 import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -29,12 +29,19 @@ import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-
 import { FitRangeIcon } from "./athena-parameter-icons"
 import { ParameterSectionHeading } from "./parameter-section-heading"
 import { SectionHelp } from "./section-help"
+import { AthenaContextMenu } from "./athena-context-menu"
 import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
 
 interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; result: { revision: number; data: ArtemisFitResult } | null }
+type TransformField = keyof TransformDraft
+const transformLabels: Record<TransformField, string> = {
+  fitspace: "Fit space", kmin: "k min (Å⁻¹)", kmax: "k max (Å⁻¹)", rmin: "R min (Å)", rmax: "R max (Å)",
+  dk: "k taper dk (Å⁻¹)", dr: "R taper dr (Å)", window: "k window", kweight: "Fit k-weight",
+}
+type ContextEvent = MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>
 export type ArtemisModelActions = {
   flush: () => Promise<void>
   importModel: () => void
@@ -81,6 +88,11 @@ function newDraft(): Draft {
   return { revision: 0, paths: [], parameters: defaultParameters.map(parameterDraft),
     transform: transformDraft({ fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 }) }
 }
+function draftForGroup(group: AthenaGroup | undefined, initial: SavedDraft | undefined): Draft {
+  if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
+  if (!group?.artemis && initial?.persisted && initial.base && artemisModelKey(initial.draft) === artemisModelKey(initial.base)) return newDraft()
+  return initial?.draft ?? group?.artemis?.model ?? newDraft()
+}
 function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
   return { ...path, id: nextId(), label: path.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" }
 }
@@ -94,6 +106,16 @@ function exampleDraft(example: ArtemisExample, revision = 0): Draft {
 function numberValue(value: string, label: string) {
   if (!value.trim() || !Number.isFinite(Number(value))) throw new Error(`${label} must be a finite number.`)
   return Number(value)
+}
+function transformFromDraft(t: TransformDraft): ArtemisTransform {
+  const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
+    kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
+    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
+  if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
+  if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
+  if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
+  if (!transform.kweight.length) throw new Error("Select at least one fit k-weight.")
+  return transform
 }
 /** Read the editor's text fields as numbers. Only the rules a model must obey to
  *  be evaluated at all live here; the extra rules a fit needs are in requestFromDraft. */
@@ -112,14 +134,7 @@ function modelFromDraft(draft: Draft): ArtemisPreviewRequest {
     if (parameter.kind === "def" && !parameter.expression.trim()) throw new Error(`${name}: enter an expression for this Def parameter.`)
     return { name, kind: parameter.kind, value, min, max, expression: parameter.kind === "def" ? parameter.expression.trim() : "" }
   })
-  const t = draft.transform
-  const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
-    kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
-    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
-  if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
-  if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
-  if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
-  if (!transform.kweight.length) throw new Error("Select at least one fit k-weight.")
+  const transform = transformFromDraft(draft.transform)
   return { parameters, transform, paths: draft.paths.map(path => ({ id: path.id, label: path.label,
     filename: path.filename, content: path.content, enabled: path.enabled, s02: path.s02, e0: path.e0, deltar: path.deltar, sigma2: path.sigma2 })) }
 }
@@ -150,12 +165,16 @@ function importRequest(text: string): ArtemisFitRequest {
 }
 
 /** Native disclosures keep form and CIF-dialog state mounted while folded. */
-function FittingSection({ title, icon, summary, help, disabled, children }: {
+function FittingSection({ title, icon, summary, help, disabled, children, contextMenu, menuOpen }: {
   title: string; icon: LucideIcon; summary?: string; help?: ReactNode; disabled?: boolean; children: ReactNode
+  contextMenu?: (event: ContextEvent) => void; menuOpen?: boolean
 }) {
   const [open, setOpen] = useState(true)
-  return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <ParameterSectionHeading icon={icon} detail={summary}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}</ParameterSectionHeading>
+  return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)} onContextMenu={contextMenu}
+    onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) contextMenu?.(event) }}>
+    <ParameterSectionHeading icon={icon} detail={summary}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}
+      {contextMenu && <button type="button" className={styles.contextTrigger} aria-label={`${title} actions`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled} onClick={contextMenu}>⋯</button>}
+    </ParameterSectionHeading>
     <fieldset className={styles.sectionBody} aria-label={`${title} controls`} disabled={disabled}>{children}</fieldset>
   </details>
 }
@@ -255,8 +274,34 @@ export function ArtemisFittingPanel(props: PanelProps) {
       if (group && !group.artemis && saved.draft.paths.length && !saved.persisted) saver.update(props.projectId, groupId, saved.draft, undefined, true)
     }
   }, [props.projectId, props.groups, props.onProjectChange, setup, saver])
+  function copyTransform(transform: TransformDraft, field?: TransformField) {
+    if (props.pending || mutationPending.current || mutationCount.current) throw new Error("Wait for the current fit or project operation to finish before copying settings.")
+    if (!props.projectId || !props.group) return 0
+    const projectId = props.projectId
+    // Prepare every target before changing any drafts, so invalid ranges cannot
+    // leave only part of the marked set updated. Parameter drafts may be unfinished.
+    const updates = (props.groups ?? []).filter(group => group.marked && group.id !== props.group!.id).map(group => {
+      const cacheKey = `${projectId}:${group.id}`
+      const cached = cache.current.get(cacheKey)
+      const original = draftForGroup(group, cached)
+      const nextTransform = field ? { ...original.transform, [field]: transform[field] } : { ...transform }
+      nextTransform.kweight = nextTransform.kweight.slice()
+      try { transformFromDraft(nextTransform) } catch (error) { throw new Error(`${group.label}: ${errorText(error)}`) }
+      const draft = { ...original, transform: nextTransform, revision: original.revision + 1 }
+      return { group, cacheKey, original, draft, cached }
+    }).filter(({ original, draft }) => artemisModelKey(original) !== artemisModelKey(draft))
+    for (const { group, cacheKey, original, draft, cached } of updates) {
+      cache.current.set(cacheKey, { ...cached, draft, base: group.artemis?.model ?? cached?.base ?? original,
+        persisted: !!group.artemis, result: cached?.result ?? null })
+      if (props.onProjectChange) saver.update(projectId, group.id, draft, group.artemis?.model, true)
+      props.onDirtyChange?.(group.id, true)
+    }
+    refresh(value => value + 1)
+    return updates.length
+  }
   return <FittingEditor key={key} {...props} onProjectChange={props.onProjectChange ? acceptProject : undefined}
     initial={cache.current.get(key)} actions={actions} onEditorActions={registerEditorActions} onMutationPending={pause} prepareMutation={prepareMutation}
+    onCopyTransform={copyTransform}
     preserveDraft={!!props.projectId && !!props.group && saver.hasChanges(props.projectId, props.group.id)}
     onSave={(saved, dirty) => {
       cache.current.set(key, saved)
@@ -264,17 +309,14 @@ export function ArtemisFittingPanel(props: PanelProps) {
     }} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft }: PanelProps & {
+function FittingEditor({ projectId, version, group, groups, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft, onCopyTransform }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft, dirty: boolean) => void
   actions: ArtemisModelActions; onEditorActions: (actions: EditorActions) => void
   onMutationPending: (busy: boolean) => void; prepareMutation: () => Promise<ModelMutation>
   preserveDraft: boolean
+  onCopyTransform: (transform: TransformDraft, field?: TransformField) => number
 }) {
-  const [draft, setDraft] = useState<Draft>(() => {
-    if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
-    if (!group?.artemis && initial?.persisted && initial.base && artemisModelKey(initial.draft) === artemisModelKey(initial.base)) return newDraft()
-    return initial?.draft ?? group?.artemis?.model ?? newDraft()
-  })
+  const [draft, setDraft] = useState<Draft>(() => draftForGroup(group, initial))
   const base = useRef(group?.artemis?.model ?? (initial?.persisted ? draft : initial?.base ?? draft))
   const persisted = group?.artemis
   const previousSaved = useRef(persisted?.model)
@@ -285,6 +327,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const [busy, setBusy] = useState<"fit" | "upload" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [transformMenu, setTransformMenu] = useState<{ field?: TransformField; anchor: { x: number; y: number }; trigger: HTMLElement } | null>(null)
   const pathDetailsId = useId()
   const [expandedPathIds, setExpandedPathIds] = useState<Set<string>>(() => new Set())
   const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
@@ -359,6 +402,27 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     setError("")
     setNotice("")
     setDraft(previous => ({ ...change(previous), revision: previous.revision + 1 }))
+  }
+  function openTransformMenu(event: ContextEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (busy || pending) return
+    const target = event.target as HTMLElement
+    const field = target.closest<HTMLElement>("[data-transform-field]")?.dataset.transformField as TransformField | undefined
+    const trigger = target.closest<HTMLElement>("input, select, button, summary") ?? event.currentTarget.querySelector<HTMLElement>("summary") ?? event.currentTarget
+    const rect = trigger.getBoundingClientRect()
+    setTransformMenu({ field, trigger, anchor: "clientX" in event && (event.clientX || event.clientY)
+      ? { x: event.clientX, y: event.clientY } : { x: rect.left, y: rect.bottom } })
+  }
+  function applyTransform(field?: TransformField) {
+    if (busy || pending) return
+    setError("")
+    setNotice("")
+    try {
+      const count = onCopyTransform(draft.transform, field)
+      setNotice(count ? `Applied ${field ? transformLabels[field] : "fit range & transform"} to ${count} marked group${count === 1 ? "" : "s"}.`
+        : "Marked groups already have these settings.")
+    } catch (error) { setError(errorText(error)) }
   }
   function editParameter(id: string, field: keyof ParameterDraft, value: string) {
     edit(previous => ({ ...previous, parameters: previous.parameters.map(parameter => parameter.id === id ? { ...parameter, [field]: value } : parameter) }))
@@ -679,15 +743,23 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     </FittingSection>
 
     <FittingSection title="Fit range & transform" icon={FitRangeIcon} summary={draft.transform.fitspace === "r" ? "R space" : "k space"} disabled={disabled}
+      contextMenu={openTransformMenu} menuOpen={!!transformMenu}
       help={<>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</>}>
-      <div className={styles.choice} role="group" aria-label="Fit space">{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
+      <div className={styles.choice} role="group" aria-label="Fit space" data-transform-field="fitspace">{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
       <div className={styles.grid}>
         {([
           ["kmin", "k min (Å⁻¹)"], ["kmax", "k max (Å⁻¹)"], ["rmin", "R min (Å)"], ["rmax", "R max (Å)"], ["dk", "k taper dk (Å⁻¹)"],
-        ] as const).map(([field, label]) => <label key={field}>{label}<input aria-label={label} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
-        <label>k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
+        ] as const).map(([field, label]) => <label key={field} data-transform-field={field}>{label}<input aria-label={label} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
+        <label data-transform-field="window">k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
       </div>
-      <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
+      <div className={styles.weights} role="group" aria-label="Fit k-weight" data-transform-field="kweight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
     </FittingSection>
+    {transformMenu && <AthenaContextMenu label="Fit range & transform actions" anchor={transformMenu.anchor} returnFocus={transformMenu.trigger} onClose={() => setTransformMenu(null)}
+      items={[
+        ...(transformMenu.field ? [{ id: "field", label: `Apply ${transformLabels[transformMenu.field]} to marked groups`,
+          disabled: disabled || !projectId || !group || !groups?.some(item => item.marked && item.id !== group.id), onSelect: () => applyTransform(transformMenu.field) }] : []),
+        { id: "transform", label: "Apply fit range & transform to marked groups", separatorBefore: !!transformMenu.field,
+          disabled: disabled || !projectId || !group || !groups?.some(item => item.marked && item.id !== group.id), onSelect: () => applyTransform() },
+      ]} />}
   </section>
 }

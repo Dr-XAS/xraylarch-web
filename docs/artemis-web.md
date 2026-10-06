@@ -45,6 +45,17 @@ ranges, then choose **Run EXAFS fit**; loading an example never runs a fit autom
 Fitting drafts automatically save with their spectrum in the local project.
 Wait for **Saved** before reloading; a failed save offers **Retry saving model**.
 
+Right-click **Fit range & transform**, or use its **⋯** button, and choose
+**Apply fit range & transform to marked groups** to copy the current group's
+fit space, k and R ranges, tapers, window, and fit k-weights. Right-click an
+individual field to copy only that parameter. The same menus are available
+with **Shift+F10** while a control or heading has focus.
+The marked groups keep their own FEFF paths, fit parameters, and saved fit
+history; groups without a model get an empty model with the copied settings.
+Copies save automatically, and the current group and unmarked groups are
+unchanged. An invalid resulting range prevents the entire copy. Copying model
+settings does not run a fit; saved fits indicate when their model differs.
+
 The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
 and up to four legs. The first four files in FEFF order are:
 
