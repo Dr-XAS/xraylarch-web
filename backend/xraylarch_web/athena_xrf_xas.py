@@ -20,6 +20,7 @@ from __future__ import annotations
 import io
 import math
 import re
+from collections import OrderedDict
 
 import numpy as np
 from lmfit import Parameters, minimize
@@ -34,6 +35,7 @@ MAX_SCAN_POINTS = 4000
 MAX_DETECTORS = 64
 MAX_CHANNELS = 8192
 MAX_ELEMENTS = 24
+MAX_CALIBRATION_POINTS = 32
 
 # The three limits above bound each dimension on its own; their product does
 # not fit in memory, and a compressed HDF5 file small enough to upload can
@@ -121,7 +123,7 @@ class XrfXasOptions(BaseModel):
     # the edge step. See docs/athena-xrf-xas-reference.md.
     scatter_beta: float = Field(default=0.5, gt=0.0, le=20.0)
 
-    calibration_points: int = Field(default=6, ge=2, le=32)
+    calibration_points: int = Field(default=6, ge=2, le=MAX_CALIBRATION_POINTS)
     point_stride: int = Field(default=1, ge=1, le=64)
     include_window_sum: bool = Field(default=False, strict=True)
     background: str = Field(default='smooth', pattern=r'^(smooth|none)$')
@@ -761,6 +763,16 @@ def detected(model, energy_kev, column):
     return np.nan_to_num(column, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+class _Values:
+    """Parameter values in the form XRF_Model.calc_spectrum reads them."""
+
+    def __init__(self, values):
+        self.values = values
+
+    def valuesdict(self):
+        return self.values
+
+
 def element_columns(model, energy_kev, split_kbeta=()):
     """Unit-amplitude columns, optionally separating a target's K-beta.
 
@@ -780,9 +792,13 @@ def element_columns(model, energy_kev, split_kbeta=()):
     """
     from larch.math.lineshapes import hypermet
 
-    # Fills model.atten, the escape scale, and Larch's own comps.
-    model.calc_spectrum(energy_kev)
+    # Larch's calc_spectrum fills model.atten and the escape scale. It would
+    # also draw every line a second time into per-element components that
+    # nothing here reads; it skips an element whose amplitude it is not
+    # given, so it is given the values without the element amplitudes.
     pars = model.params.valuesdict()
+    model.calc_spectrum(energy_kev, params=_Values(
+        {name: value for name, value in pars.items() if not name.startswith('amp_')}))
     peaks = {}
     for elem in model.elements:
         for name, line in elem.lines.items():
@@ -818,6 +834,92 @@ def scatter_column(model, energy_kev, center_kev, *, sigmax, step, tail, beta, d
                       step=step, tail=tail, beta=beta,
                       gamma=model.params['peak_gamma'].value)
     return detected(model, energy_kev, column)
+
+
+# ------------------------------------------- exact reuse inside calibration
+#
+# The calibration evaluates the basis thousands of times, and a finite-
+# difference Jacobian moves one parameter at a time, so most of what one
+# evaluation computes is identical to what an earlier one computed. What is
+# reused below is looked up by the bit pattern of every input it depends on,
+# so a reused array is the array a fresh evaluation would have produced; no
+# value is interpolated or approximated.
+
+
+def exact_key(*parts):
+    """A dictionary key equal only for bit-identical floating-point inputs."""
+    return tuple(np.ascontiguousarray(part, dtype=float).tobytes() for part in parts)
+
+
+class ExactMemo:
+    """The few most recent results, keyed by `exact_key`."""
+
+    def __init__(self, size):
+        self.size = size
+        self.entries = OrderedDict()
+
+    def get(self, key, compute):
+        if key in self.entries:
+            self.entries.move_to_end(key)
+            return self.entries[key]
+        value = compute()
+        self.entries[key] = value
+        if len(self.entries) > self.size:
+            self.entries.popitem(last=False)
+        return value
+
+
+def readonly(array):
+    """A cached array, protected from in-place changes by whoever reuses it."""
+    if array is not None:
+        array.setflags(write=False)
+    return array
+
+
+def escape_constants(material):
+    """What Larch's XRF_Model.calc_escape_scale reads from xraydb that does not
+    depend on the channel energies: the detector material's K-alpha energy,
+    its attenuation there and its K edge. Larch looks them up again on every
+    call; they belong to the material, so they are looked up once."""
+    from xraydb import material_mu, xray_edge, xray_line
+
+    escape_energy_ev = xray_line(material, 'Ka').energy
+    edge = xray_edge(material, 'K')
+    return dict(escape_energy_ev=escape_energy_ev,
+                mu_emit=material_mu(material, escape_energy_ev),
+                fyield=edge.fyield, edge_ev=edge.energy)
+
+
+def detector_response(detector, energy_kev, escape):
+    """The detector's total attenuation and escape scale on a channel axis.
+
+    These are the arrays Larch's XRF_Material.calc_mu and
+    XRF_Model.calc_escape_scale compute, by the same xraydb calls in the same
+    arithmetic order. Both of Larch's functions evaluate the same
+    material_mu(material, 1000 * energy) total attenuation; here it is
+    evaluated once and used for both. The photoabsorption-only attenuation
+    calc_mu also computes is not: nothing on the extraction's path reads it.
+    `escape` is `escape_constants(...)`, or None when the model has no escape.
+    """
+    from xraydb import material_mu
+
+    mu_total = material_mu(detector.material, 1000 * energy_kev,
+                           density=detector.density, kind='total')
+    scale = None
+    if escape is not None:
+        mu_input = (mu_total if detector.density is None
+                    else material_mu(detector.material, 1000 * energy_kev))
+        scale = escape['fyield'] * np.exp(-escape['mu_emit'] / (2 * mu_input))
+        scale[np.where(energy_kev < 0.001 * escape['edge_ev'])] = 0.0
+    return readonly(mu_total), readonly(scale)
+
+
+def scatter_block(model, energy_kev, centers_kev, **shape):
+    """One scatter column per point, `scatter_column` at each centre."""
+    if len(centers_kev) == 0:
+        return np.zeros((0, energy_kev.size))
+    return np.vstack([scatter_column(model, energy_kev, float(center), **shape)
+                      for center in centers_kev])
 
 
 # --------------------------------------------------------------- the solve
@@ -1234,6 +1336,13 @@ class Fitter:
         opened = {target, *options.open_gates}
         self.reference_kev = reference_energy(edges, opened, low, high)
 
+        # Exact reuse during calibration; see ExactMemo. A three-point
+        # Jacobian visits each axis or scatter shape at most a few times
+        # in close succession, so a few entries catch every repeat.
+        self._responses = ExactMemo(8)
+        self._scatter = ExactMemo(8)
+        self._continuum = ExactMemo(4)
+
         # The column set is fixed here, once, from the starting calibration:
         # the fitted calibration moves the window by a channel or so, and the
         # basis may not change shape underneath the solve when it does.
@@ -1279,7 +1388,11 @@ class Fitter:
                 det_noise=values['det_noise'], peak_step=values['peak_step'],
                 peak_tail=values['peak_tail'], escape_amp=self.options.escape_amp)
             self._intrinsic_variance = self._model.efano
-            self._model_energy = None
+            self._escape = None
+            if self._model.use_escape:
+                self._escape = escape_constants(self._model.detector.material)
+                self._model.escape_energy = 0.001 * self._escape['escape_energy_ev']
+            self._response_key = None
         model = self._model
         for name in ('det_noise', 'peak_step', 'peak_tail'):
             model.params[name].value = values[name]
@@ -1288,10 +1401,15 @@ class Fitter:
         model.efano = values.get('det_variance_slope', self._intrinsic_variance)
         # Atomic line data are fixed throughout calibration. Detector attenuation
         # and escape, in contrast, must follow every changed channel-energy axis.
-        if not np.array_equal(energy, self._model_energy):
-            model.detector.mu_total = model.detector.mu_photo = None
-            model.escape_scale = None
-            self._model_energy = energy.copy()
+        # They depend on nothing else, so a Jacobian that returns to an axis
+        # it has already visited reuses what that axis gave.
+        energy_key = exact_key(energy)
+        if energy_key != self._response_key:
+            mu_total, escape_scale = self._responses.get(
+                energy_key, lambda: detector_response(model.detector, energy, self._escape))
+            model.detector.mu_total, model.detector.mu_photo = mu_total, None
+            model.escape_scale = escape_scale
+            self._response_key = energy_key
         self._columns = element_columns(model, energy, split_kbeta={self.target})
         self._column_key = column_key
         return energy, model, self._columns
@@ -1306,18 +1424,28 @@ class Fitter:
             basis[:, position, :] = np.where(live[:, None],
                                              columns.get(key, empty)[None, :], 0.0)
         elastic, compton = len(self.keys), len(self.keys) + 1
-        for point, energy_in in enumerate(incident):
-            basis[point, elastic, :] = scatter_column(
-                model, energy, float(energy_in), sigmax=values['elastic_sigmax'],
-                step=values['elastic_step'], tail=values['elastic_tail'],
-                beta=self.options.scatter_beta, det_noise=values['det_noise'])
-            basis[point, compton, :] = scatter_column(
-                model, energy, compton_center(float(energy_in), values['compton_angle']),
-                sigmax=values['compton_sigmax'], step=values['compton_step'],
-                tail=values['compton_tail'], beta=self.options.scatter_beta,
-                det_noise=values['det_noise'])
+        compton_centers = np.array([compton_center(float(energy_in), values['compton_angle'])
+                                    for energy_in in incident])
+        for position, prefix, centers in ((elastic, 'elastic', incident),
+                                          (compton, 'compton', compton_centers)):
+            shape = dict(sigmax=values[f'{prefix}_sigmax'], step=values[f'{prefix}_step'],
+                         tail=values[f'{prefix}_tail'], beta=self.options.scatter_beta,
+                         det_noise=values['det_noise'])
+            compute = lambda: scatter_block(model, energy, centers, **shape)  # noqa: E731
+            if len(indices) > MAX_CALIBRATION_POINTS:
+                # A full-scan batch: built once, too large to keep.
+                basis[:, position, :] = compute()
+                continue
+            # Besides its own shape, a scatter column depends on the axis
+            # (through the detector response too), the Fano slope and the
+            # Voigt gamma the model now holds -- nothing else.
+            key = exact_key(energy, centers, [
+                shape['sigmax'], shape['step'], shape['tail'], shape['beta'],
+                shape['det_noise'], model.efano, model.params['peak_gamma'].value])
+            basis[:, position, :] = self._scatter.get(key, lambda: readonly(compute()))
         if self.background_terms:
-            continuum = background_columns(model, energy, self.background_terms)
+            continuum = self._continuum.get(exact_key(energy), lambda: readonly(
+                background_columns(model, energy, self.background_terms)))
             basis[:, -self.background_terms:, :] = continuum[None, :, :]
         return energy, basis
 

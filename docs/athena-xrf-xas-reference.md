@@ -741,6 +741,16 @@ cached and uncached results use the same estimator and units. No fit is
 reused across a software restart, and no measured arrays are persisted by
 this cache.
 
+Within one calibration, a finite-difference Jacobian moves one shape
+parameter at a time, so most of each basis evaluation repeats an earlier one.
+The Larch engine reuses the detector's xraydb attenuation and escape scale per
+channel-energy axis, the scatter columns per scatter shape, and the continuum
+columns per axis. Each is keyed by the exact bit pattern of every input it
+depends on. The detector material's escape-line constants are looked up once.
+Larch's own per-element components, which the engine does not read, are no
+longer drawn a second time. The reused arrays are the ones a fresh evaluation
+returns, bit for bit, so fitted parameters and yields do not change.
+
 ### Automatic windows and the preview point
 
 Left empty, the fit window runs from 1.2 keV below the target's strongest line
