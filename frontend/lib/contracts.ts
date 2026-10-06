@@ -26,6 +26,8 @@ export interface ErrorEnvelope {
 export interface InspectionResponse {
   upload_id: string
   display_name: string
+  // Set when an HDF5 table also holds detector spectra: the XRF panel that reads them.
+  detector_file?: { opens: "xrf_xas" | "xrf_view" }
   row_count: number
   columns: ColumnInfo[]
   warnings: string[]

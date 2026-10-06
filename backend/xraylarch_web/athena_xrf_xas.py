@@ -102,8 +102,12 @@ class XrfXasOptions(BaseModel):
 
     detector_material: str = Field(default='Ge', pattern=r'^(Ge|Si)$')
     detector_thickness: float = Field(default=1.0, gt=0, le=10)
-    cal_offset: float = Field(default=0.0, ge=-0.5, le=0.5)
-    cal_slope: float = Field(default=0.010, gt=1e-4, le=0.1)
+    # The detector's starting energy calibration, E = offset + slope * channel
+    # in keV. Left empty, it is read from the scan file (the beamline's own
+    # line windows, the elastic peak), which is what places the automatic
+    # windows; a value entered here is used as given.
+    cal_offset: float | None = Field(default=None, ge=-0.5, le=0.5)
+    cal_slope: float | None = Field(default=None, gt=1e-4, le=0.1)
     compton_angle: float = Field(default=110.0, ge=30.0, le=180.0)
     # The decay length of the scatter peaks' low-energy tail, in units of their
     # own width: the tail falls as exp((E - centre) / (scatter_beta * sigma)).
@@ -659,15 +663,27 @@ def target_line(target, low_ev, high_ev):
     return edge, 1000.0 * edge_kev, line_kev
 
 
+def with_default_calibration(options):
+    """The options with an empty starting calibration set to the fixed default."""
+    from .xrf_calibration import DEFAULT_OFFSET_KEV, DEFAULT_SLOPE_KEV
+
+    update = {key: value for key, value in (('cal_offset', DEFAULT_OFFSET_KEV), ('cal_slope', DEFAULT_SLOPE_KEV))
+              if getattr(options, key) is None}
+    return options.model_copy(update=update) if update else options
+
+
 def resolve_windows(scan: dict, options: XrfXasOptions):
     """Fill in whichever of the fit window, the comparison window and the
     preview point were left automatic, through the calibration in the request.
 
     Returns the completed options and a record of what was derived. The
     calibration is the request's starting one: if it is wrong, so are these
-    windows, and the fit says so by finding no target line inside them.
+    windows. The web routes fill an empty calibration from the scan file before
+    this runs; anything still empty here takes the old fixed default.
     """
     from larch.xrf.xrf_model import FanoFactors
+
+    options = with_default_calibration(options)
 
     if options.detector not in scan['detectors']:
         raise ScientificError(f'The scan has no usable detector named {options.detector}. '
@@ -1234,6 +1250,7 @@ def calibration_indices(points, count):
 
 
 def initial_parameters(options):
+    options = with_default_calibration(options)
     from larch.xrf.xrf_model import FanoFactors
 
     values = dict(cal_offset=options.cal_offset, cal_slope=options.cal_slope,
@@ -1641,6 +1658,9 @@ def make_fitter(channels, incident_kev, options):
     PyTorch, which costs a second of start-up, and a server whose users only
     ever ask for the Larch engine should never pay it.
     """
+    # Every fitter starts from a calibration: an empty one takes the fixed default
+    # here too, for callers that build a fitter without the routes or `extract`.
+    options = with_default_calibration(options)
     if options.engine == 'mapstorch':
         from .athena_xrf_mapstorch import MapsTorchFitter
         return MapsTorchFitter(channels, incident_kev, options.target,
@@ -1707,6 +1727,7 @@ def extract(scan: dict, counts: np.ndarray, options: XrfXasOptions,
         raise ScientificError('The detector array and the energy array disagree in length.')
     if options.channel_range is None:
         raise ScientificError('Resolve the automatic fit window before reading the counts.')
+    options = with_default_calibration(options)
     if options.roi_range is None or options.preview_point is None:
         options, derived = resolve_windows(scan, options)
         automatic = sorted({*(windows or {}).get('automatic', []), *derived['automatic']})

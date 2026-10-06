@@ -79,10 +79,11 @@ class XrfViewOptions(BaseModel):
     # like `channel_range`, so that neither depends on the calibration below.
     roi_range: list[int] = Field(default=[0, MAX_CHANNELS], min_length=2, max_length=2)
 
-    # Channel -> keV, for the spectrum's abscissa only. Nothing here is fitted,
-    # so these are the beamline's numbers, not a result.
-    cal_offset: float = Field(default=0.0, ge=-0.5, le=0.5)
-    cal_slope: float = Field(default=0.010, gt=1e-4, le=0.1)
+    # Channel -> keV, for the spectrum's abscissa only. Nothing here is fitted.
+    # Left empty, it is read from the file (its line windows, its elastic
+    # peak) by the route before the frame is drawn.
+    cal_offset: float | None = Field(default=None, ge=-0.5, le=0.5)
+    cal_slope: float | None = Field(default=None, gt=1e-4, le=0.1)
 
     # Which 1-D array the trace runs against. None means the point index.
     axis: str | None = Field(default=None, min_length=1, max_length=120)
@@ -322,7 +323,10 @@ def frame(cube: dict, window: np.ndarray, options: XrfViewOptions) -> dict:
     start = max(0, stop - options.average)
     block = window[start:stop, elements, :].mean(axis=0)
     spectra, centres = _rebinned(block, lo, options.rebin)
-    energy_kev = options.cal_offset + options.cal_slope * centres
+    from .xrf_calibration import DEFAULT_OFFSET_KEV, DEFAULT_SLOPE_KEV
+    offset = DEFAULT_OFFSET_KEV if options.cal_offset is None else options.cal_offset
+    slope = DEFAULT_SLOPE_KEV if options.cal_slope is None else options.cal_slope
+    energy_kev = offset + slope * centres
 
     roi_lo, roi_hi = options.roi_range
     inside = slice(max(roi_lo - lo, 0), max(min(roi_hi, hi) - lo, 0))
@@ -345,6 +349,7 @@ def frame(cube: dict, window: np.ndarray, options: XrfViewOptions) -> dict:
         elements=[int(index) for index in elements],
         channel_lo=int(lo), rebin=int(options.rebin),
         energy_kev=energy_kev.tolist(),
+        calibration=dict(cal_offset=float(offset), cal_slope=float(slope)),
         spectra=[row.tolist() for row in spectra],
         total=spectra.sum(axis=0).tolist(),
         # Counts in the window of interest at this point, per element: which

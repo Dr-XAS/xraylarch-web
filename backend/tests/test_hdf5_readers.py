@@ -233,7 +233,10 @@ def test_a_nan_in_one_hdf5_channel_does_not_refuse_the_other_channels(tmp_path):
     assert any('Dropped 1 rows' in w for w in group['source']['warnings'])
 
 
-def test_a_detector_only_hdf5_file_says_what_it_holds_instead_of_nul_bytes(tmp_path):
+def test_a_detector_only_hdf5_file_is_sent_to_the_xrf_panels_instead_of_refused(tmp_path):
+    """A file of detector spectra is not a table, and Import spectra used to
+    refuse it; it now names the XRF panel that reads it. Without an energy
+    scan (these positions are zero and unnamed) that is the raw viewer."""
     path = tmp_path / 'sample_Cu_EXAFS.0017.hdf5'
     with h5py.File(path, 'w') as handle:
         for n in range(1, 4):
@@ -241,6 +244,7 @@ def test_a_detector_only_hdf5_file_says_what_it_holds_instead_of_nul_bytes(tmp_p
         handle['1D Scan/X Positions'] = np.zeros((1, 50, 2))
     store = AthenaStore(Settings(data_root=tmp_path / 'store'))
     project = store.create()
-    from xraylarch_web.errors import WebInputError
-    with pytest.raises(WebInputError, match="holds detector spectra.*'sample_Cu_EXAFS.0017'.*XRF panels"):
-        store.inspect(project['id'], path.read_bytes(), path.name)
+    answer = store.inspect(project['id'], path.read_bytes(), path.name)
+    assert answer['kind'] == 'xrf_detector_file'
+    assert answer['opens'] == 'xrf_view'
+    assert answer['display_name'] == 'sample_Cu_EXAFS.0017.hdf5'

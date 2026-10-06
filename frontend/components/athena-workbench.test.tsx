@@ -6506,3 +6506,149 @@ describe("Instruction visibility", () => {
     expect(api.mock.calls.length).toBe(callsBefore)
   })
 })
+
+describe('detector-spectrum files met by Import spectra', () => {
+  const scanInspection = { kind: 'xrf_scan', upload_id: 'scan-upload', display_name: 'scan.0029.hdf5', points: 3,
+    energy_min: 5839, energy_max: 6629, detectors: [{ name: 'MCA', elements: 2, channels: 1024, unusable_elements: [] }],
+    channels: ['I0'], usable_i0: ['I0'], suggested_i0: 'I0', engines: ['larch'],
+    starting_calibration: { MCA: { cal_offset: -0.05, cal_slope: 0.03, source: 'lines_and_elastic', found_for: 2, of: 2 } } }
+  const xrfInspects = () => api.mock.calls.filter(([path]) => String(path).endsWith('/xrf-xas/inspect'))
+
+  // Catches the old dead end: the importer refused the file and the user had
+  // to know that its spectra belong in another panel, and choose it again there.
+  it('opens a detector HDF5 in Fluorescence XAS from XRF fit with the same file already loaded', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const file = new File(['hdf'], 'scan.0029.hdf5')
+    api.mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_xas', display_name: 'scan.0029.hdf5' })
+      .mockResolvedValueOnce(scanInspection)
+    fireEvent.change(screen.getByLabelText('Choose data files'), { target: { files: [file] } })
+    const panel = await screen.findByRole('dialog', { name: 'Fluorescence XAS from XRF fit' })
+    await waitFor(() => expect(xrfInspects()).toHaveLength(1))
+    expect((xrfInspects()[0][1] as FormData).get('file')).toBe(file)
+    expect(screen.queryByRole('dialog', { name: 'Import spectra' })).toBeNull()
+    expect(within(panel).getByLabelText('Opened from Import spectra')).toHaveTextContent('scan.0029.hdf5')
+    // The calibration the server read from the file is shown, not a fixed guess.
+    expect(await within(panel).findByLabelText('Energy calibration')).toHaveTextContent('-0.050 keV + 30.00 eV per channel')
+  })
+
+  // Catches a batch that loses its tables, or the detector file, at the hand-over.
+  it('keeps importing the tables of a batch and lists the detector file with its own button', async () => {
+    await openSaved()
+    const table = inspectionFixture('table.dat')
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const detector = new File(['hdf'], 'scan.0029.hdf5'), text = new File(['x'], 'table.dat')
+    api.mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_xas', display_name: 'scan.0029.hdf5' })
+      .mockResolvedValueOnce(table)
+    fireEvent.change(screen.getByLabelText('Choose data files'), { target: { files: [detector, text] } })
+    const dialog = screen.getByRole('dialog', { name: 'Import spectra' })
+    const listed = await within(dialog).findByLabelText('Detector spectrum files in this batch')
+    expect(listed).toHaveTextContent('scan.0029.hdf5 holds detector spectra')
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => String(path).endsWith('/inspect') && !String(path).includes('xrf'))).toHaveLength(2))
+    api.mockResolvedValueOnce(scanInspection)
+    fireEvent.click(within(listed).getByRole('button', { name: 'Open in Fluorescence XAS from XRF fit' }))
+    await screen.findByRole('dialog', { name: 'Fluorescence XAS from XRF fit' })
+    await waitFor(() => expect(xrfInspects()).toHaveLength(1))
+    expect((xrfInspects()[0][1] as FormData).get('file')).toBe(detector)
+  })
+
+  // Catches a file whose columns import here but whose spectra the importer
+  // never mentions: the reader must learn they exist and reach them in one step.
+  it('offers the detector spectra of a table file in the XRF panel while its columns import here', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import spectra' })
+    const file = new File(['hdf'], 'both.0007.hdf5')
+    api.mockResolvedValueOnce({ ...inspectionFixture('both.0007.hdf5'), detector_file: { opens: 'xrf_xas' } })
+    fireEvent.change(within(dialog).getByLabelText('Choose data files'), { target: { files: [file] } })
+    await within(dialog).findByRole('combobox', { name: 'Measurement' })
+    const offer = within(dialog).getByLabelText('Detector spectra in this file')
+    expect(offer).toHaveTextContent('both.0007.hdf5 also holds detector spectra')
+    api.mockResolvedValueOnce(scanInspection)
+    fireEvent.click(within(offer).getByRole('button', { name: 'Open in Fluorescence XAS from XRF fit' }))
+    await screen.findByRole('dialog', { name: 'Fluorescence XAS from XRF fit' })
+    await waitFor(() => expect(xrfInspects()).toHaveLength(1))
+    expect((xrfInspects()[0][1] as FormData).get('file')).toBe(file)
+  })
+
+  // Catches a batch that forgets its detector files on a trip through the
+  // project panel: the rest of the batch came back as if newly chosen.
+  it('keeps the detector files of a batch listed after its project file is opened', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import spectra' })
+    const detector = new File(['hdf'], 'scan.0029.hdf5'), saved = new File(['PRJ'], 'saved.prj'), table = new File(['x'], 'table.dat')
+    api.mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_xas', display_name: 'scan.0029.hdf5' })
+      .mockResolvedValueOnce({ kind: 'project', preview: { groups: [] } })
+    fireEvent.change(within(dialog).getByLabelText('Choose data files'), { target: { files: [detector, saved, table] } })
+    await screen.findByTestId('project-import-panel')
+    const panel = projectImport.mock.calls.at(-1)![0]
+    expect(panel.initialFiles).toEqual([saved, table])
+    api.mockResolvedValueOnce(inspectionFixture('table.dat'))
+    act(() => panel.onRemainingFiles!([table]))
+    const back = await screen.findByRole('dialog', { name: 'Import spectra' })
+    await within(back).findByRole('combobox', { name: 'Measurement' })
+    expect(within(back).getByLabelText('Detector spectrum files in this batch')).toHaveTextContent('scan.0029.hdf5 holds detector spectra')
+  })
+
+  // Catches the single-file shortcut firing for the last file of a batch and
+  // dropping the detector files set aside before it.
+  it('lists both detector files when the second comes back alone from the project panel', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import spectra' })
+    const first = new File(['hdf'], 'first.0001.hdf5'), saved = new File(['PRJ'], 'saved.prj'), second = new File(['hdf'], 'second.0002.hdf5')
+    api.mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_xas', display_name: 'first.0001.hdf5' })
+      .mockResolvedValueOnce({ kind: 'project', preview: { groups: [] } })
+    fireEvent.change(within(dialog).getByLabelText('Choose data files'), { target: { files: [first, saved, second] } })
+    await screen.findByTestId('project-import-panel')
+    api.mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_xas', display_name: 'second.0002.hdf5' })
+    act(() => projectImport.mock.calls.at(-1)![0].onRemainingFiles!([second]))
+    const back = await screen.findByRole('dialog', { name: 'Import spectra' })
+    const listed = await within(back).findByLabelText('Detector spectrum files in this batch')
+    await waitFor(() => expect(listed).toHaveTextContent('second.0002.hdf5 holds detector spectra'))
+    expect(listed).toHaveTextContent('first.0001.hdf5 holds detector spectra')
+    expect(screen.queryByRole('dialog', { name: 'Fluorescence XAS from XRF fit' })).toBeNull()
+  })
+
+  // Catches the window closing on the detector files when a batch ends with a project.
+  it('reopens the import window on the waiting detector files when the project panel finishes', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import spectra' })
+    api.mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_view', display_name: 'map.h5' })
+      .mockResolvedValueOnce({ kind: 'project', preview: { groups: [] } })
+    fireEvent.change(within(dialog).getByLabelText('Choose data files'), { target: { files: [new File(['hdf'], 'map.h5'), new File(['PRJ'], 'saved.prj')] } })
+    await screen.findByTestId('project-import-panel')
+    act(() => projectImport.mock.calls.at(-1)![0].onComplete())
+    const back = await screen.findByRole('dialog', { name: 'Import spectra' })
+    expect(within(back).getByLabelText('Detector spectrum files in this batch')).toHaveTextContent('map.h5 holds detector spectra')
+  })
+
+  // Catches the batch loop losing its place when a detector file is set aside:
+  // the table after it was imported, then inspected and imported a second time.
+  it('imports each table of a shared-parameter batch once around a detector file and keeps the file listed', async () => {
+    const p = await openSaved()
+    const first = inspectionFixture('first.dat'), last = inspectionFixture('last.dat')
+    api.mockResolvedValueOnce(first)
+    fireEvent.click(screen.getByRole('button', { name: 'Import data' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Import spectra' })
+    const chosen = [new File(['x'], 'first.dat'), new File(['hdf'], 'scan.0029.hdf5'), new File(['x'], 'last.dat')]
+    fireEvent.change(within(dialog).getByLabelText('Choose data files'), { target: { files: chosen } })
+    await within(dialog).findByRole('combobox', { name: 'Measurement' })
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Yes, use the same parameters' }))
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Import 3 files' })).toBeEnabled())
+    const afterFirst = importedProject(p, 'first.dat')
+    api.mockResolvedValueOnce(afterFirst)
+      .mockResolvedValueOnce({ kind: 'xrf_detector_file', opens: 'xrf_xas', display_name: 'scan.0029.hdf5' })
+      .mockResolvedValueOnce(last)
+      .mockResolvedValueOnce(importedProject(afterFirst, 'last.dat'))
+    submitImport(dialog)
+    const listed = await within(dialog).findByLabelText('Detector spectrum files in this batch')
+    await waitFor(() => expect(screen.getByText(/Imported 2 files · 1 detector file for the XRF panels/)).toBeInTheDocument())
+    expect(importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)).toEqual([first.upload_id, last.upload_id])
+    expect(api.mock.calls.filter(([path]) => String(path).endsWith('/inspect'))).toHaveLength(3)
+    expect(listed).toHaveTextContent('scan.0029.hdf5 holds detector spectra')
+    expect(screen.getByRole('dialog', { name: 'Import spectra' })).toBe(dialog)
+  })
+})

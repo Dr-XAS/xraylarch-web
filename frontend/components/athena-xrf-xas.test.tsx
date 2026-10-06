@@ -438,3 +438,51 @@ it('shows what the engine that made the fit does not model',async()=>{
   expect(panel.getByRole('note')).toHaveTextContent(note)
   expect(panel.getByText(/scan points over 4 detector elements/)).toHaveTextContent('MapsTorch')
 })
+
+// Catches a request that pins the calibration to a fixed guess: the server can
+// read the file's own calibration only if the panel leaves it empty.
+it('leaves the calibration empty by default, so the server reads the file\'s own',async()=>{
+  await setup();await click('Fit preview')
+  const body=requests('/preview').at(-1)![1]
+  expect(body.cal_offset).toBeNull()
+  expect(body.cal_slope).toBeNull()
+  fireEvent.change(screen.getByLabelText('Energy per channel (keV)'),{target:{value:'0.0296'}});await tick()
+  await click('Fit preview')
+  expect(requests('/preview').at(-1)![1].cal_slope).toBe(0.0296)
+  expect(requests('/preview').at(-1)![1].cal_offset).toBeNull()
+})
+
+// Catches a calibration that is silently assumed: the reader must see where it
+// came from, and be told plainly when the file gave none.
+it('says where the energy calibration came from, and warns when the file gave none',async()=>{
+  api.mockImplementation((url:string)=>url.endsWith('/inspect')
+    ? Promise.resolve({...inspection,starting_calibration:{mca:{cal_offset:-0.05,cal_slope:0.03,source:'lines_and_elastic',found_for:4,of:4}}})
+    : handler(url))
+  await setup()
+  expect(screen.getByLabelText('Energy calibration')).toHaveTextContent(
+    "-0.050 keV + 30.00 eV per channel, read from fluorescence lines of known energy and the scatter peak (4 of 4 elements)")
+  cleanup()
+  api.mockImplementation((url:string)=>url.endsWith('/inspect')
+    ? Promise.resolve({...inspection,starting_calibration:{mca:{cal_offset:0,cal_slope:0.01,source:'default',
+        reason:'no line peaked in a beamline window and no elastic peak could be followed across the scan'}}})
+    : handler(url))
+  await setup()
+  expect(screen.getByLabelText('Energy calibration')).toHaveClass('ath-warning')
+  expect(screen.getByLabelText('Energy calibration')).toHaveTextContent(
+    'no calibration could be read from this file (no line peaked in a beamline window and no elastic peak could be followed across the scan)')
+  cleanup()
+  // One scatter peak and no line: it may be Compton, and the reader is told how far off that would put lines.
+  api.mockImplementation((url:string)=>url.endsWith('/inspect')
+    ? Promise.resolve({...inspection,starting_calibration:{mca:{cal_offset:0.02,cal_slope:0.01,source:'elastic_peak',caution:'one scatter peak',found_for:1,of:1}}})
+    : handler(url))
+  await setup()
+  expect(screen.getByLabelText('Energy calibration')).toHaveClass('ath-warning')
+  expect(screen.getByLabelText('Energy calibration')).toHaveTextContent(/if that peak is Compton rather than elastic, lines sit up to \d+ channels low/)
+})
+
+// Catches the silent disabled button: the reason has to sit next to it.
+it('says why Fit preview cannot run, next to the button',async()=>{
+  render(<Harness/>);await tick();await upload()
+  expect(screen.getByRole('button',{name:'Fit preview'})).toBeDisabled()
+  expect(screen.getByLabelText('Why the fit cannot run')).toHaveTextContent('Name the target element by its symbol')
+})

@@ -335,6 +335,11 @@ function E0Dialog({ project, active, busy, error, clearError, selectGroup, close
 }
 
 type ImportFile = File | { name: string; inspection: InspectionResponse }
+type DetectorPanel = "xrf_xas" | "xrf_view"
+// What the importer answers for an HDF5 file of detector spectra: not a table,
+// but a file one of the XRF panels reads.
+type DetectorFileInspection = { kind: "xrf_detector_file"; opens: DetectorPanel; display_name: string }
+type DetectorFileMet = { detector: { file: File; opens: DetectorPanel } }
 type SharedImport = { inspection: InspectionResponse; mapping: ColumnMapping }
 function isProjectCandidate(file: ImportFile): file is File { return !('inspection' in file) && isAthenaProjectFile(file) }
 
@@ -462,6 +467,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [reuseMapping, setReuseMapping] = useState<boolean | null>(null)
   const [batchImportNotice, setBatchImportNotice] = useState('')
   const [batchLeftOut, setBatchLeftOut] = useState<{ files: ImportFile[]; left: { name: string; reason: string }[] } | null>(null)
+  // Detector-spectrum files met by Import spectra: each belongs in an XRF
+  // panel, which opens with the file already loaded.
+  const [detectorHandoff, setDetectorHandoff] = useState<{ file: File; opens: DetectorPanel } | null>(null)
+  const [detectorFiles, setDetectorFiles] = useState<{ file: File; opens: DetectorPanel }[]>([])
   const [batchProgress, setBatchProgress] = useState<ImportProgress | null>(null)
   const [reviewedUploadId, setReviewedUploadId] = useState<string | null>(null)
   const [mappingState, setMapping] = useState<ColumnMapping>({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
@@ -1433,7 +1442,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }
   function optionText(key: string, label: string) { return <label className="ath-field"><span>{label}{toolOptionHelp[key] && <SectionHelp label={label}>{toolOptionHelp[key]}</SectionHelp>}</span><input value={String(options[key] ?? "")} onChange={e => setOptions(o => ({ ...o, [key]: e.target.value }))} /></label> }
   function selectParameter(key: "window" | "rwindow" | "bkg_window", label: string) { return <ParameterHelp label={label} help={parameterHelp[key]}>{(descriptionId, helpIcon) => <label className="ath-field" htmlFor={`ath-select-${key}`}><ContextLabel label={label} open={event => showContext(event, { kind: "field", field: key })}><span className="ath-field-title">{label}{helpIcon}</span></ContextLabel><select aria-describedby={descriptionId} id={`ath-select-${key}`} disabled={active?.frozen} aria-label={label} value={parameters?.[key]} onChange={e => changeParameter(key, e.target.value)}>{windows.map(w => <option key={w}>{w}</option>)}</select></label>}</ParameterHelp> }
-  async function inspectFile(file: ImportFile, reuseFrom?: SharedImport, pending = files, resetReference = true) {
+  async function inspectFile(file: ImportFile, reuseFrom?: SharedImport, pending = files, resetReference = true): Promise<InspectionResponse | DetectorFileMet | undefined> {
     const p = projectRef.current
     if (!p) return
     // A failed inspection must not leave an already accepted upload available to import again.
@@ -1443,13 +1452,15 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     setBatchImportNotice('')
     inspectionReuseRef.current = reuseFrom
     inspectionResetReferenceRef.current = resetReference
-    let inspect: InspectionResponse | ScanInspectionResponse | ArchiveInspection | { kind: 'project'; preview: ProjectPreview }
+    let inspect: InspectionResponse | ScanInspectionResponse | ArchiveInspection | DetectorFileInspection | { kind: 'project'; preview: ProjectPreview }
     if ('inspection' in file) {
       inspect = await athenaApi<InspectionResponse>(`/projects/${p.id}/uploads/${file.inspection.upload_id}/inspection`)
     } else {
       const form = new FormData(); form.append("file", file)
-      inspect = await athenaApi<InspectionResponse | ScanInspectionResponse | ArchiveInspection | { kind: 'project'; preview: ProjectPreview }>(`/projects/${p.id}/inspect`, form)
+      inspect = await athenaApi<InspectionResponse | ScanInspectionResponse | ArchiveInspection | DetectorFileInspection | { kind: 'project'; preview: ProjectPreview }>(`/projects/${p.id}/inspect`, form)
     }
+    // Detector spectra are read in an XRF panel; inspectQueue sets the file aside.
+    if ('kind' in inspect && inspect.kind === 'xrf_detector_file' && file instanceof File) return { detector: { file, opens: inspect.opens } }
     if ('kind' in inspect && inspect.kind === 'archive_list') {
       setArchiveSelection(inspect)
       return
@@ -1479,6 +1490,24 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     }
     return inspect
   }
+  // Inspects the head of the queue, setting detector-spectrum files aside in
+  // a list with their own buttons, until a file that imports here is reached.
+  // The queue returned starts at that file, so callers advance from it.
+  async function inspectQueue(queue: ImportFile[], reuseFrom?: SharedImport, resetReference = true) {
+    let rest = queue
+    const setAside: DetectorFileMet['detector'][] = []
+    while (rest.length) {
+      const result = await namingFile(rest[0].name, inspectFile(rest[0], reuseFrom, rest, resetReference))
+      if (!result || !('detector' in result)) return { inspected: result, queue: rest, setAside }
+      setAside.push(result.detector)
+      setDetectorFiles(list => [...list, result.detector])
+      rest = rest.slice(1); setFiles(rest)
+    }
+    return { inspected: undefined, queue: rest, setAside }
+  }
+  function openDetectorFile(file: File, opens: DetectorPanel) {
+    setDetectorHandoff({ file, opens }); setError(""); setModal(opens)
+  }
   // In a batch of dozens of scans, a refusal must say which scan it was.
   async function namingFile<T>(name: string, work: Promise<T>): Promise<T> {
     try { return await work } catch (e) {
@@ -1486,11 +1515,14 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       throw e
     }
   }
-  async function queueFiles(selection: ImportFile[], includeAll = false) {
+  // `continuing` is the rest of a batch coming back (from the project panel, a
+  // ZIP or a skip): the detector files it set aside stay listed.
+  async function queueFiles(selection: ImportFile[], includeAll = false, continuing = false) {
     if (!canOpen("import") || !selection.length || parameterActionBlocked()) return
     const excluded = includeAll ? new Map<number, string>() : batchExclusions(selection.map(file => file.name))
     const incoming = selection.filter((_, index) => !excluded.has(index))
     setBatchLeftOut(excluded.size ? { files: selection, left: [...excluded].map(([index, reason]) => ({ name: selection[index].name, reason })) } : null)
+    if (!continuing) setDetectorFiles([])
     setReuseMapping(null)
     setBatchImportNotice('')
     inspectionReuseRef.current = undefined
@@ -1511,7 +1543,12 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     setMapping(m => ({ ...m, is_reference: false, preprocessing: { ...(m.preprocessing ?? defaultPreprocessing), mark: false },
       ...(m.rebin ? { rebin: { ...m.rebin, enabled: false } } : {}) }))
     setModal("import"); setFiles(incoming)
-    await task("Inspecting " + incoming[0].name, async () => { await namingFile(incoming[0].name, inspectFile(incoming[0], undefined, incoming)) })
+    await task("Inspecting " + incoming[0].name, async () => {
+      const { setAside } = await inspectQueue(incoming)
+      // A detector file chosen on its own opens where it is read, already loaded.
+      // The rest of a batch keeps the files it set aside listed together.
+      if (!continuing && incoming.length === 1 && setAside.length === 1) { setDetectorFiles([]); openDetectorFile(setAside[0].file, setAside[0].opens) }
+    })
   }
   async function importUpload(projectId: string, body: { upload_id: string } & Record<string, unknown>) {
     const keys = importKeys.current
@@ -1529,6 +1566,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const sharedImport = { inspection, mapping }
     let remainingProjects: File[] | null = null
     let pendingCount = files.length
+    let setAsideCount = 0
     const completed = await task(reuseMapping && files.length > 1 ? `Importing ${files.length} files` : "Importing spectrum", async () => {
       const initial = projectRef.current!
       let current = initial
@@ -1553,7 +1591,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
             return
           }
           progress(remaining[0].name, 'inspecting')
-          const inspected = await namingFile(remaining[0].name, inspectFile(remaining[0], sharedImport, remaining))
+          const walked = await inspectQueue(remaining, sharedImport)
+          remaining = walked.queue; pendingCount = remaining.length; setAsideCount += walked.setAside.length
+          const inspected = walked.inspected
           const shared = inspected && reuseMapping ? reuseColumnMapping(inspection, inspected, mapping) : null
           if (!inspected || !shared || inspected.file_plugin?.review_required) return
           progress(inspected.display_name, 'importing')
@@ -1561,7 +1601,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           remaining = remaining.slice(1); setFiles(remaining)
           pendingCount = remaining.length
         }
-        setInspection(null); setModal(null)
+        // Detector files set aside wait in this window with their buttons.
+        setInspection(null)
+        if (!detectorFiles.length && !setAsideCount) setModal(null)
       } finally {
         // Requests use each accepted revision, but publish the accumulated groups
         // only when the batch finishes or pauses. This avoids redrawing all spectra
@@ -1575,12 +1617,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         setBatchProgress(null)
       }
     })
-    if (completed && pendingCount) {
-      const imported = files.length - pendingCount
-      setMessage(`Imported ${imported} ${imported === 1 ? 'file' : 'files'} · ${pendingCount} awaiting review`)
+    if (completed && (pendingCount || setAsideCount)) {
+      const imported = files.length - pendingCount - setAsideCount
+      const waiting = [pendingCount && `${pendingCount} awaiting review`, setAsideCount && `${setAsideCount} detector ${setAsideCount === 1 ? 'file' : 'files'} for the XRF panels`].filter(Boolean)
+      setMessage(`Imported ${imported} ${imported === 1 ? 'file' : 'files'} · ${waiting.join(' · ')}`)
     }
     // Start the other panel after releasing this task's busy state.
-    if (remainingProjects) await queueFiles(remainingProjects)
+    if (remainingProjects) await queueFiles(remainingProjects, false, true)
   }
   async function reviewScans(selected: InspectionResponse[]) {
     if (!selected.length || !scanSelection) return
@@ -1588,7 +1631,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const pending = [...expanded, ...files.slice(1)]
     setFiles(pending)
     setScanSelection(null)
-    await task('Reading selected scan columns', async () => { await inspectFile(expanded[0], inspectionReuseRef.current, pending) })
+    await task('Reading selected scan columns', async () => { await inspectQueue(pending, inspectionReuseRef.current) })
   }
   async function reviewArchive(selected: ArchiveInspection['members']) {
     if (!selected.length || !archiveSelection || !projectRef.current) return
@@ -1603,24 +1646,26 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       expanded.push(...files.slice(1))
       setFiles(expanded); setArchiveSelection(null)
       if (isProjectCandidate(expanded[0])) projectTail = expanded
-      else await inspectFile(expanded[0], inspectionReuseRef.current, expanded)
+      else await inspectQueue(expanded, inspectionReuseRef.current)
     })
-    if (projectTail) await queueFiles(projectTail)
+    if (projectTail) await queueFiles(projectTail, false, true)
   }
   async function skipImportFile() {
     const pending = files.slice(1)
     setFiles(pending); setInspection(null)
     if (!pending.length) { setError(''); return }
-    if (isProjectCandidate(pending[0])) await queueFiles(pending)
-    else await task('Inspecting ' + pending[0].name, async () => { await namingFile(pending[0].name, inspectFile(pending[0], inspectionReuseRef.current, pending)) })
+    if (isProjectCandidate(pending[0])) await queueFiles(pending, false, true)
+    else await task('Inspecting ' + pending[0].name, async () => { await inspectQueue(pending, inspectionReuseRef.current) })
   }
   function importPolicyNotice() {
     return <section className="ath-import-policy" aria-label="Import batch edge policy">
       <p>Next batch:<SectionHelp label="Import edge policy">Only subsequent raw-file imports use enforcement; χ(k) ignores it and project restores are unchanged. Choosing new files starts a new batch with the current policy.</SectionHelp> <strong>{edgePolicyDescription(edgePolicy)}</strong>. {edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</p>
       {!!files.length && <p>This batch: <strong>{edgePolicyDescription(batchEdgePolicy)}</strong><SectionHelp label="Current import batch">This snapshot covers every sample, including retries. Reference identity follows the Same element option; its E₀ is found independently.</SectionHelp></p>}
 
+      {detectorFiles.length > 0 && <div className="ath-hint" role="status" aria-label="Detector spectrum files in this batch">{detectorFiles.map(({ file, opens }) => <p key={file.name}>{file.name} holds detector spectra rather than a table of columns. <button type="button" disabled={!!busy} onClick={() => openDetectorFile(file, opens)}>{opens === "xrf_xas" ? "Open in Fluorescence XAS from XRF fit" : "Open in Raw XRF spectra and maps"}</button></p>)}</div>}
+      {inspection?.detector_file && files[0] instanceof File && <div className="ath-hint" role="status" aria-label="Detector spectra in this file"><p>{inspection.display_name} also holds detector spectra. Its columns import here; its spectra are fitted in the XRF panel. <button type="button" disabled={!!busy} onClick={() => openDetectorFile(files[0] as File, inspection.detector_file!.opens)}>{inspection.detector_file.opens === "xrf_xas" ? "Open in Fluorescence XAS from XRF fit" : "Open in Raw XRF spectra and maps"}</button></p></div>}
       {batchLeftOut && <div className="ath-warning" role="status" aria-label="Files left out of this batch"><p>Left out of this batch: {batchLeftOut.left.map(item => `${item.name} (${item.reason})`).join('; ')}.</p><button disabled={!!busy} onClick={() => { void queueFiles(batchLeftOut.files, true) }}>Include them</button></div>}
-      {!inspection && !scanSelection && !archiveSelection && !!files.length && <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => { void task("Inspecting " + files[0].name, async () => { await inspectFile(files[0], inspectionReuseRef.current, files, inspectionResetReferenceRef.current) }) }}>Retry file inspection</button><button disabled={!!busy} onClick={() => { void skipImportFile() }}>Skip this file</button></div>}
+      {!inspection && !scanSelection && !archiveSelection && !!files.length && <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => { void task("Inspecting " + files[0].name, async () => { await inspectQueue(files, inspectionReuseRef.current, inspectionResetReferenceRef.current) }) }}>Retry file inspection</button><button disabled={!!busy} onClick={() => { void skipImportFile() }}>Skip this file</button></div>}
     </section>
   }
   /** Rank the bundled standards for the current group, without changing it. */
@@ -2483,8 +2528,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     {modal === "merge" && project && <Modal title="Merge marked groups" wide close={() => { if (!busy) setModal(null) }}><AthenaMerge key={project.id} project={project} initialDraft={mergeDraft} initialArray={mergeInitialArray} rememberDraft={setMergeDraft} disabled={!!busy} setBusy={setBusy} saved={(next,id) => { accept(next); setActiveId(id); setMessage('Merged spectra saved') }} close={() => setModal(null)} /></Modal>}
     {modal === "align" && project && <Modal title="Align scans" wide close={() => { if (!busy) setModal(null) }}><AthenaAlignment key={`${project.id}:${activeId}`} project={project} activeId={activeId} selectGroup={setActiveId} initialDraft={alignmentDraft} rememberDraft={setAlignmentDraft} disabled={!!busy} setBusy={setBusy} saved={next => { accept(next); setMessage('Energy alignment saved') }} close={() => setModal(null)} /></Modal>}
     {modal === "dispersive" && project && <Modal title="Dispersive energy calibration" wide close={() => { if (!busy) setModal(null) }}><AthenaDispersive project={project} activeId={activeId} setBusy={setBusy} onSaved={next => { const added=next.groups.find(g=>!project.groups.some(old=>old.id===g.id)); accept(next); if(added)setActiveId(added.id) }} /></Modal>}
-    {modal === "xrf_xas" && project && <Modal title="Fluorescence XAS from XRF fit" wide close={() => { if (!busy) setModal(null) }}><AthenaXrfXas project={project} setBusy={setBusy} onSaved={next => { const added=next.groups.find(g=>!project.groups.some(old=>old.id===g.id)); accept(next); if(added)setActiveId(added.id) }} /></Modal>}
-    {modal === "xrf_view" && project && <Modal title="Raw XRF spectra and maps" wide close={() => { if (!busy) setModal(null) }}><AthenaXrfView project={project} setBusy={setBusy} /></Modal>}
+    {modal === "xrf_xas" && project && <Modal title="Fluorescence XAS from XRF fit" wide close={() => { if (!busy) { setModal(null); setDetectorHandoff(null) } }}><AthenaXrfXas key={detectorHandoff?.opens === "xrf_xas" ? detectorHandoff.file.name : "menu"} project={project} setBusy={setBusy} initialFile={detectorHandoff?.opens === "xrf_xas" ? detectorHandoff.file : undefined} onViewRaw={file => openDetectorFile(file, "xrf_view")} onSaved={next => { const added=next.groups.find(g=>!project.groups.some(old=>old.id===g.id)); accept(next); if(added)setActiveId(added.id) }} /></Modal>}
+    {modal === "xrf_view" && project && <Modal title="Raw XRF spectra and maps" wide close={() => { if (!busy) { setModal(null); setDetectorHandoff(null) } }}><AthenaXrfView key={detectorHandoff?.opens === "xrf_view" ? detectorHandoff.file.name : "menu"} project={project} setBusy={setBusy} initialFile={detectorHandoff?.opens === "xrf_view" ? detectorHandoff.file : undefined} /></Modal>}
     {modal === "beamline" && <Modal title="Beamline identification" close={() => setModal(null)}><div className="ath-modal-body"><AthenaBeamlinePreferences close={() => setModal(null)} /></div></Modal>}
     {modal === 'parameter_report' && project && <Modal title="Excel parameter report" wide close={() => { if (!busy) setModal(null) }}>
       <div className="ath-modal-body"><AthenaParameterReport key={`${project.id}:${reportScope}`} project={project} initialScope={reportScope}
@@ -2551,8 +2596,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         onBusyChange={pending => setBusy(pending ? 'Updating import columns' : '')} close={() => setModal(null)}
         onApplied={updated => { accept(updated); setActiveId(reimportGroupId); setAnalysisVisible(false); setArtemisResult(null); setModal(null); setMessage('Import columns updated · Undo is available') }} /></div>
     </Modal>}
-    {modal === "import" && <Modal title="Import spectra" wide={!batchProgress} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{batchProgress ? <><AthenaImportProgress {...batchProgress} />{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</> : <>{importPolicyNotice()}<div className="ath-modal-actions ath-import-toolbar" aria-label="File import tools"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection?.file_plugin && <SectionHelp label="File plugin preview">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</SectionHelp>}{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0], undefined, files, false) }) }}>Reinspect selected file</button>}</div>{archiveSelection ? <AthenaArchiveSelection key={archiveSelection.upload_id} archive={archiveSelection} projectId={project!.id} busy={!!busy} onContinue={selected => { void reviewArchive(selected) }} onCancel={() => { setArchiveSelection(null); setInspection(null); setFiles([]) }} /> : scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files<SectionHelp label="Import data files">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</SectionHelp></strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj, ZIP · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><AthenaSupportedFormats /></> : <AthenaColumnSelection key={inspection.upload_id} initialReaderReviewed={reviewedUploadId === inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} batchNotice={batchImportNotice} error={error || undefined} chooseAnother={() => { setInspection(null); setFiles([]) }} skipFile={() => { void skipImportFile() }} importCurrent={reviewed => { void importCurrent(reviewed) }} />}</>}{error && (batchProgress || archiveSelection || scanSelection || !inspection) && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
-    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport newProject={async () => { const created = await athenaApi<AthenaProject>("/projects", {}); accept(created); resetViewerLayout(); return created }} initialFiles={projectFiles} initialPreview={projectPreview} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={(p, wholeProject) => { accept(p); if (wholeProject) resetViewerLayout(); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setProjectPreview(null); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} canRestore={can("restore")} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi(`/projects/${p.id}`)); resetViewerLayout(); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "import" && <Modal title="Import spectra" wide={!batchProgress} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{batchProgress ? <><AthenaImportProgress {...batchProgress} />{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</> : <>{importPolicyNotice()}<div className="ath-modal-actions ath-import-toolbar" aria-label="File import tools"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection?.file_plugin && <SectionHelp label="File plugin preview">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</SectionHelp>}{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectQueue(files, undefined, false) }) }}>Reinspect selected file</button>}</div>{archiveSelection ? <AthenaArchiveSelection key={archiveSelection.upload_id} archive={archiveSelection} projectId={project!.id} busy={!!busy} onContinue={selected => { void reviewArchive(selected) }} onCancel={() => { setArchiveSelection(null); setInspection(null); setFiles([]) }} /> : scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files<SectionHelp label="Import data files">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</SectionHelp></strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj, ZIP · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><AthenaSupportedFormats /></> : <AthenaColumnSelection key={inspection.upload_id} initialReaderReviewed={reviewedUploadId === inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} batchNotice={batchImportNotice} error={error || undefined} chooseAnother={() => { setInspection(null); setFiles([]) }} skipFile={() => { void skipImportFile() }} importCurrent={reviewed => { void importCurrent(reviewed) }} />}</>}{error && (batchProgress || archiveSelection || scanSelection || !inspection) && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport newProject={async () => { const created = await athenaApi<AthenaProject>("/projects", {}); accept(created); resetViewerLayout(); return created }} initialFiles={projectFiles} initialPreview={projectPreview} onRemainingFiles={incoming => { void queueFiles(incoming, false, true) }} getProject={() => projectRef.current} onImported={(p, wholeProject) => { accept(p); if (wholeProject) resetViewerLayout(); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setProjectPreview(null); setModal(detectorFiles.length ? "import" : null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} canRestore={can("restore")} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi(`/projects/${p.id}`)); resetViewerLayout(); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name<SectionHelp label="Project name">Name stored with the whole project and displayed above the group list. Individual group names are kept.</SectionHelp></span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions<SectionHelp label="Notes, observations, and analysis decisions">Project-wide notes saved with the journal. Record sample conditions, analysis choices, and the reasons for them.</SectionHelp></span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
     {modal && modal !== "difference" && modal !== "rebin" && modal !== "dispersive" && modal !== "xrf_xas" && modal !== "xrf_view" && modal !== 'multi_electron' && modal !== 'self_absorption' && modal !== 'smooth' && modal !== 'convolve' && modal !== 'deglitch' && modal !== 'truncate' && modal !== 'calibrate' && modal !== 'align' && modal !== 'merge' && toolTitles[modal] && <Modal title={toolTitles[modal]} help={toolHelp[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
       {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes<SectionHelp label="Notes">Notes saved with this group. Use the project journal for observations that apply to the whole project.</SectionHelp></span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><h3><ContextLabel label="Plot parameters" open={event => showContext(event, { kind: "section", section: "plot" })}>Plot parameters</ContextLabel></h3><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}{optionNumber("importance", "Importance")}</div><div className="ath-fields"><ContextLabel label="Element" open={event => showContext(event, { kind: "field", field: "element" })}>Element: {String(active?.result?.effective.element ?? "Unknown")}</ContextLabel><ContextLabel label="Edge" open={event => showContext(event, { kind: "field", field: "edge" })}>Edge: {String(active?.result?.effective.edge ?? "Unknown")}</ContextLabel></div><label className="ath-field"><span>Reference group<SectionHelp label="Reference group">Several spectra can share this reference. Changing it adopts the reference’s energy shift.</SectionHelp></span><select aria-label="Reference group" value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><AthenaBeamlineMetadata value={active?.source?.beamline_metadata} /><AthenaBeamlineMetadata value={active?.source?.xdi_metadata} /><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>
