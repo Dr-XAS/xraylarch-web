@@ -8,8 +8,9 @@
 | Owner and rollback authority | Jeffrey Huang |
 | Repository | `https://github.com/Dr-XAS/xraylarch-web.git` |
 | Authorized branch | `master` |
+| Deploy host | `drxas.xray.aps.anl.gov` (since 2026-09-16; see below) |
 | Public route | Dr.XAS ingress at `/advanced-xas/app` |
-| Frontend listener | `127.0.0.1:3004` |
+| Frontend listener | `127.0.0.1:3006` |
 | Backend listener | `127.0.0.1:8006` |
 | Candidate frontend listener | `127.0.0.1:13004` |
 | Candidate backend listener | `127.0.0.1:18006` |
@@ -27,6 +28,23 @@
 | Watcher log | `/tmp/xraylarch-web-watch.log` |
 
 V1 is a trusted-network, single-user application. It has no authentication.
+
+## Deploy host, and the other instance
+
+This deployment moved from Goldendale to **drxas** on 2026-09-16. Goldendale's
+watcher, boot, and liveness cron entries were commented out that day and its
+watcher screen is gone. Do not restore them: a second watcher on the same
+`origin/master` is a second deploy authority, and Goldendale's `goldendale`
+sibling profile cannot pass health there anyway now that the Dr.XAS dev pair on
+`3001`/`8001` has moved off that host.
+
+drxas also runs a **separate, unrelated** public instance of this application at
+`/local/apps/xraylarch-web-public`, on `0.0.0.0:3004` with its backend on
+loopback `8007`, under screens `app-xraylarch-web-public-{web,api,watch}`. It is
+host-only, is not governed by this manifest, and shares no release, data root,
+screen, lock, or configuration with the deployment described here. It took over
+port `3004`, which is why this deployment's frontend is on `3006`. When
+something is reported "down", establish which of the two is meant first.
 
 ## Release contract
 
@@ -103,7 +121,7 @@ A failed installation or application import blocks the candidate build before
 activation. A retry of a completed release revalidates its identity and backend
 import before staging; incomplete or invalid releases are never overwritten.
 
-The active release stays on loopback-only `127.0.0.1:3004` and
+The active release stays on loopback-only `127.0.0.1:3006` and
 `127.0.0.1:8006`; neither listener is directly exposed. Dr.XAS ingress owns the
 public `/advanced-xas/app` route. Before any cutover, the
 deployer runs the target release in the two candidate screens on private
@@ -162,7 +180,7 @@ backend/.venv/bin/python -m uvicorn xraylarch_web.main:app --host 127.0.0.1 --po
 
 The frontend is built with `NEXT_PUBLIC_APP_BASE_PATH=/advanced-xas/app` and
 runs from the release `frontend/` directory using the release-local
-`next start -H 127.0.0.1 -p 3004`, with both backend URL variables set to
+`next start -H 127.0.0.1 -p 3006`, with both backend URL variables set to
 `http://127.0.0.1:8006`. The backend receives the immutable release SHA as
 `XRAYLARCH_GIT_REVISION`. New builds also contain the immutable regular file
 `.xraylarch-integration-contract` with the single value `2`. Its presence selects
@@ -193,7 +211,7 @@ An active release is healthy only when all of the following hold:
 - `state/last-successful` is a regular, non-symlink file whose SHA and
   canonical release path match the requested active release;
 - exactly one final screen session exists for each name; listeners are exactly
-  `127.0.0.1:3004` and `127.0.0.1:8006`; each listener PID is a recorded
+  `127.0.0.1:3006` and `127.0.0.1:8006`; each listener PID is a recorded
   descendant of its screen PID and still matches the launch-time executable,
   command line, owners, release marker, and active release `frontend/` or
   `backend/` working directory; and
@@ -234,13 +252,16 @@ data roots and mutates no host state, so it is safe to run on a deploy host,
 but it is a pre-deploy gate and not a substitute for `check-xraylarch-web.sh`.
 
 The default sibling-service profile is `drxas` and validates the established
-Dr.XAS production, development, and bot endpoints listed above. Goldendale is
-an approved alternate host profile because its production pair is intentionally
-absent while the dev pair remains active. On Goldendale, set
-`XRAYLARCH_WEB_SIBLING_PROFILE=goldendale` for deploy, health, and checker
-commands; that profile validates only the existing `3001` frontend and `8001`
-backend. It changes no XrayLarch listener, release, data, or process-identity
-contract.
+Dr.XAS production, development, and bot endpoints listed above. It is the
+profile this deployment runs under.
+
+`goldendale` remains an implemented alternate profile — `ensure-watcher.sh`
+still accepts `drxas|goldendale` — but no deployment currently uses it. It
+validates only a `3001` frontend and `8001` backend, for a host whose
+production pair is intentionally absent while its dev pair remains active.
+Selecting it means setting `XRAYLARCH_WEB_SIBLING_PROFILE=goldendale` for
+deploy, health, and checker commands. Either profile changes no XrayLarch listener, release, data, or
+process-identity contract.
 
 ## Deployment watcher
 
@@ -248,16 +269,33 @@ The approved watcher is installed as
 `/local/apps/xraylarch-web/ops/start-watcher.sh` and runs in the detached GNU
 `screen` session `xraylarch-web-watch`. The idempotent bootstrap helper is
 installed as `/local/apps/xraylarch-web/ops/ensure-watcher.sh`; it recreates
-only a missing exact watcher screen and never stops a collision. On Goldendale,
-the helper is registered in the existing persistence paths with the explicit
+only a missing exact watcher screen and never stops a collision. On drxas the
+helper is registered in the existing persistence paths with the explicit
 profile and conda-containing PATH:
 
 ```cron
-@reboot /usr/bin/env PATH="$HOME/miniconda3/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" XRAYLARCH_WEB_SIBLING_PROFILE=goldendale /local/apps/xraylarch-web/ops/ensure-watcher.sh >> /tmp/xraylarch-web-watchdog.log 2>&1
+@reboot /usr/bin/env PATH="$HOME/miniconda3/bin:/usr/local/bin:/usr/bin:/usr/sbin:/bin:/sbin" XRAYLARCH_WEB_SIBLING_PROFILE=drxas /local/apps/xraylarch-web/ops/ensure-watcher.sh >> /tmp/xraylarch-web-ensure.log 2>&1
+3-59/5 * * * * /local/drxas-ops/gate-f/xraylarch-web-liveness.sh >> /local/drxas-ops/gate-f/logs/xraylarch-web-liveness.log 2>&1
 ```
 
-The existing five-minute watcher-liveness job invokes the same helper after its
-other scoped watcher checks. The watcher polls
+The `3-59/5` job is crash supervision rather than a watcher bootstrap. It probes
+the two final listeners and, only when one is down and no deploy holds the lock,
+stops both halves plus the watcher, runs `recover`, and then re-runs
+`ensure-watcher.sh`. A 15-minute cooldown stops a broken release being
+restart-looped. The `@reboot` entry is what guarantees the watcher after a boot.
+
+> **Known defect, unowned by this manifest.** That script still probes
+> `127.0.0.1:3004` for the frontend, the port this deployment used before the
+> move to `3006`. On 2026-09-17 that produced a false positive and it tore down a
+> healthy pair; its recover then failed and left the pair needing manual
+> attention. Since the public instance took `3004` the failure mode has inverted
+> and is quieter: a dead frontend on `3006` is now masked by the public instance
+> answering on `3004`, so the pair is no longer supervised at all. The two port
+> literals in `/local/drxas-ops/gate-f/xraylarch-web-liveness.sh` need to become
+> `3006`. That file is in the Dr.XAS ops tree, which the scope section below
+> places outside this authorization.
+
+The watcher polls
 `origin/master` every 60 seconds, resolves the branch to an
 exact full SHA, health-checks the canonical active SHA, invokes `recover` when
 health fails, and only then invokes `deploy` for a new SHA. The deployer remains
@@ -281,7 +319,7 @@ The read-only status command is
 ## Explicitly out of scope
 
 This authorization covers only the xraylarch-web watcher and its existing
-port-3004/8006 deployment. No firewall, reverse proxy, database, Dr.XAS shared
+port-3006/8006 deployment. No firewall, reverse proxy, database, Dr.XAS shared
 data root, provider secret, global process restart, or change to Dr.XAS or
 xray-sample-db services is authorized. Do not add unrelated cron jobs, boot
 entries, or service changes. A push of the exact branch revision and every
