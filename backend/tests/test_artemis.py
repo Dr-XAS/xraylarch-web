@@ -271,6 +271,22 @@ def test_fit_transform_and_example_default_to_all_weights(model):
     assert model["transform"]["kweight"] == [0, 1, 2, 3]
 
 
+@pytest.mark.parametrize("ranges", [
+    dict(kmin=3.1, kmax=4.1), dict(kmin=12.9, kmax=13.9),
+    dict(rmin=1.1, rmax=1.2), dict(rmin=2.7, rmax=2.8),
+])
+def test_decimal_windows_at_the_minimum_width_are_accepted(ranges):
+    """XAS-QA-005: 4.1 - 3.1 and 1.2 - 1.1 fall a few ulps below 1 and 0.1."""
+    transform = FitTransform(**ranges)
+    assert {key: getattr(transform, key) for key in ranges} == ranges
+
+
+@pytest.mark.parametrize("ranges", [dict(kmin=3.1, kmax=4.09), dict(rmin=1.1, rmax=1.19)])
+def test_windows_narrower_than_the_minimum_are_still_rejected(ranges):
+    with pytest.raises(ValidationError, match="at least 1 inverse angstrom"):
+        FitTransform(**ranges)
+
+
 @pytest.mark.parametrize("value", [[True], [2, 2], [-1], [4], []])
 def test_weights_are_bounded_unique_real_integers(value):
     with pytest.raises(ValidationError):

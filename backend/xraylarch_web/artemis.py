@@ -134,7 +134,11 @@ class FitTransform(StrictModel):
 
     @model_validator(mode="after")
     def ordered_ranges(self):
-        if self.kmax - self.kmin < 1 or self.rmax - self.rmin < 0.1:
+        # Decimal endpoints lose a few ulps on subtraction (4.1 - 3.1 < 1), as
+        # in Athena's FT window check. Accept the minimum width itself.
+        def narrower(width, minimum):
+            return width < minimum and not np.isclose(width, minimum, rtol=1e-12, atol=1e-12)
+        if narrower(self.kmax - self.kmin, 1) or narrower(self.rmax - self.rmin, 0.1):
             raise ValueError("Use a k interval of at least 1 inverse angstrom and an R interval of at least 0.1 angstrom.")
         if any(weight not in range(4) for weight in self.kweight) or len(set(self.kweight)) != len(self.kweight):
             raise ValueError("Select unique integer k weights between zero and three.")

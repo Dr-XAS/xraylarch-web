@@ -1,6 +1,7 @@
 """Native context commands and read-only scientific diagnostics over HTTP."""
 from copy import deepcopy
 import gzip
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -353,6 +354,45 @@ def test_report_skips_unavailable_arrays_without_invented_noise(workspace):
     assert len(data['results']) == 1 and data['results'][0]['group_id'] == p['groups'][1]['id']
     assert len(data['skipped']) == 1 and data['skipped'][0]['reason']
     assert store.load(p['id']) == p
+
+
+def single_group_workspace(tmp_path, energy, mu):
+    settings = Settings(data_root=tmp_path)
+    store = AthenaStore(settings)
+    old = store.create()
+    project = deepcopy(old)
+    project['groups'].append(store.make_group('Scan', energy, mu))
+    return store, store.save(project, old, 'One spectrum'), TestClient(create_app(settings))
+
+
+def test_applicable_kmax_suggestion_is_accepted_by_the_parameters_command(tmp_path):
+    energy, mu = np.loadtxt(Path(__file__).parents[2] / 'examples/xafsdata/cu_10k.xmu', usecols=(0, 1)).T
+    _, p, client = single_group_workspace(tmp_path, energy, mu)
+    with client:
+        result = accepted(report(client, p, 'measurement_uncertainty'))['results'][0]
+        assert result['recommended_kmax_applicable'] is True and result['warnings'] == []
+        accepted(command(client, p, 'parameters', kmax=result['recommended_kmax']))
+
+
+@pytest.mark.parametrize('source, problem', [('short copper', 'saved kmin'), ('noiseless', 'last measured k')])
+def test_inapplicable_kmax_suggestion_explains_why_the_command_would_refuse_it(tmp_path, xas_arrays, source, problem):
+    # XAS-QA-008. A copper scan ending 25 eV past E0 runs with automatic kmin
+    # reduced below the saved kmin of 3, so Larch's suggestion falls below that
+    # kmin. On noiseless data the signal never drops below the noise and the
+    # suggestion runs past the measured k.
+    if source == 'noiseless':
+        energy, mu = xas_arrays
+    else:
+        energy, mu = np.loadtxt(Path(__file__).parents[2] / 'examples/xafsdata/cu_10k.xmu', usecols=(0, 1)).T
+        energy, mu = energy[energy <= 8979 + 25], mu[energy <= 8979 + 25]
+    store, p, client = single_group_workspace(tmp_path, energy, mu)
+    with client:
+        result = accepted(report(client, p, 'measurement_uncertainty'))['results'][0]
+        assert result['recommended_kmax_applicable'] is False
+        assert problem in result['warnings'][0]
+        refused = command(client, p, 'parameters', kmax=result['recommended_kmax'])
+        assert refused.status_code == 400
+        assert store.load(p['id']) == p
 
 
 def test_r123_recomputes_three_transforms_without_changing_saved_arrays(workspace):
