@@ -13,7 +13,8 @@ class ColumnInfo(BaseModel):
     numeric: bool
     unit: str | None = None
     role_hint: str | None = None
-    preview: tuple[float, ...] = Field(default_factory=tuple, max_length=5)
+    # None stands for a non-finite value, which JSON cannot carry.
+    preview: tuple[float | None, ...] = Field(default_factory=tuple, max_length=5)
 
 
 class FieldIssue(BaseModel):

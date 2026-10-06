@@ -7,7 +7,7 @@
 .heading p { margin: 2px 0 0; color: var(--ath-muted); font-size: var(--text-label); overflow-wrap: anywhere; }
 .status { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ath-line); border-radius: 999px; padding: 3px 8px; font-size: var(--text-caption); font-weight: 500; background: var(--ath-surface-muted); }
 .status[data-converged=false] { color: var(--ath-error-ink, #9c3425); border-color: var(--ath-error-line, #efc5ba); background: var(--ath-error-bg, #fff1ec); }
-.metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
 .metrics > div { padding: 10px 12px; border: 1px solid var(--ath-line); border-radius: 7px; background: var(--ath-surface-muted); min-width: 0; }
 .metrics > .primaryMetric { background: var(--ath-primary-soft); border-color: var(--ath-primary-line); }
 .metrics > [data-review=true] { background: var(--ath-warning-bg, #fff9eb); border-color: var(--ath-warning-line, #e8d3a4); }

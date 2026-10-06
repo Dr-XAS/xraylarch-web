@@ -233,6 +233,19 @@ settings can be saved, loaded and exchanged; the **SLRIBL4** reader uses the
 saved calibration for pixel/stripe files. See the [dispersive contract](docs/athena-dispersive-reference.md)
 for the official Cu/Pd examples and remaining native-equivalence work.
 
+**Process → Fluorescence XAS from XRF fit** builds a fluorescence spectrum by
+fitting the whole multi-channel detector spectrum at every point of an energy
+scan, instead of summing a fixed channel window. The elastic and Compton
+scatter peaks move as the monochromator scans, so a fixed window records their
+sweep as absorption structure; fitting separates them from the stationary
+fluorescence lines. Upload the scan file, name the target element and the other
+elements present, and the panel shows the detector spectrum with its fitted
+components, the extraction against the plain window sum, a pre-edge null test
+and the agreement between detector elements, then exports both curves as Athena
+groups. See the [XRF-to-XAS contract](docs/athena-xrf-xas-reference.md) for the
+model, the three solve stages and what the quality indicators do and do not
+cover.
+
 See [Athena research and tutorials](docs/athena-research.md),
 [implementation and validation](docs/athena-verification.md), and the
 [remaining full-parity work](docs/athena-parity.md). This branch is under active
@@ -413,8 +426,11 @@ Open [http://localhost:3004](http://localhost:3004). The frontend proxies API
 requests to `http://127.0.0.1:8006` unless `BACKEND_URL` supplies another local
 backend address.
 
-Uploads accept up to 256 source columns by default, including multi-element
-detector scans. `XRAYLARCH_MAX_COLUMNS` overrides this limit for the backend.
+Uploads accept up to 256 scalar source columns by default.
+`XRAYLARCH_MAX_COLUMNS` overrides this limit for the backend.
+HDF5 detector arrays have a separate 256 MB decoded budget and detector files
+allow 2,048 datasets; the 50 MB file upload limit still applies. See
+[HDF5 safety limits](docs/beamline-readers.md#hdf5-upload-safety-and-limits).
 LabVIEW scans with a numbered column list retain those labels in source order.
 
 ### Check before sharing a local build

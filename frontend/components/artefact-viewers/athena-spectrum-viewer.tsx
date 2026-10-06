@@ -48,6 +48,8 @@ interface Props {
   active?: AthenaGroup
   analysis: Analysis | null
   analysisVisible: boolean
+  // The series-LCF target drawn in the fit view.
+  seriesTarget?: { id: string; label: string }
   savedKWeight: number | null
   canChangeKWeight: boolean
   draftE0: number | null
@@ -61,14 +63,16 @@ interface Props {
 
 /** Shared panel for independent current-spectrum and marked-spectrum views. */
 export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, analysis,
-  analysisVisible: showingAnalysis, savedKWeight, canChangeKWeight, draftE0, pickPrompt,
+  analysisVisible: showingAnalysis, seriesTarget, savedKWeight, canChangeKWeight, draftE0, pickPrompt,
   onChangeSpace, onSpecialPlot, onOptionsMenuOpen, onPickX, onExport }: Props) {
   const { space, kWeight: viewerKWeight, setKWeight, energyMode, setEnergyMode, component, setComponent, plotScope,
     background, setBackground, preEdge, setPreEdge, postEdge, setPostEdge,
-    showWindow, setShowWindow, showLegend, setShowLegend, showGrid, setShowGrid,
+    showWindow, setShowWindow, showGrid, setShowGrid,
     showDataPoints, setShowDataPoints, plotColors, setPlotColors, offset, setOffset,
     previousStackOffset, range, setRange, rangeRelativeToE0, setRangeRelativeToE0 } = state
   const selectedGroups = weightedPlot.groups
+  const showLegend = showingAnalysis ? state.showAnalysisLegend : state.showLegend
+  const setShowLegend = showingAnalysis ? state.setShowAnalysisLegend : state.setShowLegend
   const detectorOnly = viewer === "single" ? active?.data_type === "detector" : selectedGroups.length > 0 && selectedGroups.every(group => group.data_type === "detector")
   const plotEnergyMode = detectorOnly ? "mu" : energyMode
   const overlayArrays = viewer === "single" && space === "E" && plotEnergyMode === "mu" && !showingAnalysis && active &&
@@ -89,7 +93,7 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
           <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background</label>
           <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line</label>
           <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line</label>
-        </> : <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}
+        </> : !showingAnalysis && <>{space !== "k" && <select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select>}<label className="ath-check"><input type="checkbox" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window</label></>}
         {space === "E" && plotScope === "current" && plotEnergyMode !== "mu" && <SectionHelp label="Pre-edge and post-edge lines">For pre-/post-edge lines, choose μ(E) · raw.</SectionHelp>}
         <AthenaColorLegend storageKey={viewer === "single" ? "athena.plot-colors.single" : "athena.plot-colors"} value={plotColors} onChange={setPlotColors} disabled={showingAnalysis} />
         </div>
@@ -97,10 +101,10 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
         {space === "E" && <div className="ath-energy-plot-options" role="radiogroup" aria-label="Energy plot">
           {(detectorOnly ? [{ value: "mu", label: "Detector signal" }] : energyPlotOptions).map(option => <label className={`ath-energy-plot-option${plotEnergyMode === option.value ? " selected" : ""}${detectorOnly ? " disabled" : ""}`} key={option.value}><input type="radio" name={`ath-energy-plot-${viewer}`} value={option.value} checked={plotEnergyMode === option.value} disabled={detectorOnly} onChange={() => setEnergyMode(option.value)} /><span>{option.label}</span></label>)}
         </div>}
-        {plotScope === "current" && <div className="ath-plot-current-spectrum"><div className="ath-plot-current-spectrum-name" title={active?.label}><span>Current spectrum</span><strong>{active?.label ?? "None selected"}</strong></div></div>}
+        {plotScope === "current" && <div className="ath-plot-current-spectrum"><div className="ath-plot-current-spectrum-name" title={active?.label}><span>{showingAnalysis && seriesTarget ? "Fitted target" : "Current spectrum"}</span><strong>{(showingAnalysis && seriesTarget?.label) || (active?.label ?? "None selected")}</strong></div></div>}
         {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
           : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
-          : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={onOptionsMenuOpen} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={showingAnalysis} range={range} picking={!!onPickX} onPickX={onPickX} />}
+          : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={onOptionsMenuOpen} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={showingAnalysis} seriesTarget={seriesTarget?.id} range={range} picking={!!onPickX} onPickX={onPickX} />}
         <ViewerDisplayControls label="Spectrum plot display options">
           <ViewerControlGroup label="Spectrum display" className="ath-plot-display-controls">
             <ViewerToggle label="Offset plot" checked={offset !== 0} disabled={plotScope === "current"}
@@ -117,7 +121,7 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
             </ViewerControlField>
             <ViewerToggle label="Show legend" checked={showLegend} onChange={setShowLegend} />
           </ViewerControlGroup>
-          <span className="ath-plot-summary">{showingAnalysis ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && " · R is not phase corrected"}</span>
+          <span className="ath-plot-summary">{showingAnalysis ? "Analysis result" : `${selectedGroups.length} ${selectedGroups.length === 1 ? "spectrum" : "spectra"}`}{space === "R" && !showingAnalysis && " · R is not phase corrected"}</span>
           <ViewerControlGroup label="Spectrum plot range" align="end">{space === "E" && <ViewerToggle label="Relative to E₀" title={draftE0 === null ? "E₀ is unavailable for the current spectrum" : `Use the current spectrum’s E₀ (${draftE0} eV) as zero`} checked={relativeRange} disabled={showingAnalysis || draftE0 === null} onChange={setRangeRelativeToE0} />}<ViewerControlField label="Range"><PlotRangeInput label="Plot minimum" value={showingAnalysis ? null : displayedRange[0]} automatic={displayedAutomaticRange[0]} disabled={showingAnalysis || automaticRange[0] === null} onChange={value => setRange([absoluteRangeValue(value), range[1]])} /></ViewerControlField><span>to</span><PlotRangeInput label="Plot maximum" value={showingAnalysis ? null : displayedRange[1]} automatic={displayedAutomaticRange[1]} disabled={showingAnalysis || automaticRange[1] === null} onChange={value => setRange([range[0], absoluteRangeValue(value)])} />{onExport && <button title="Export current group data" onClick={onExport}><Download size={14} />CSV</button>}</ViewerControlGroup>
         </ViewerDisplayControls>
       </ResizablePlotCard></ViewerPanel>

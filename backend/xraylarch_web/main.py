@@ -110,6 +110,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from .athena import AthenaStore, build_athena_router
 
     athena_store = AthenaStore(active_settings)
+    app.add_event_handler('shutdown', athena_store.xrf_runtime.close)
     integration_service = None
     if active_settings.integration_api_enabled:
         from .integration_routes import build_integration_router

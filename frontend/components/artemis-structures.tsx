@@ -33,8 +33,9 @@ interface Props {
   onRadialContextChange?: (selection: RadialShellContext | null) => void
   disabled?: boolean
   availableSlots: number
-  existingPaths?: Pick<ArtemisInspectedPath, "filename" | "content">[]
-  onAddPaths: (paths: ArtemisGeneratedPath[]) => string | null
+  existingPaths?: (Pick<ArtemisInspectedPath, "filename" | "content"> & { enabled?: boolean })[]
+  // replace: the selected paths become the whole model instead of joining it.
+  onAddPaths: (paths: ArtemisGeneratedPath[], replace?: boolean) => string | null
 }
 const errorText = (error: unknown) => error instanceof Error ? error.message : "The structure request failed. Please try again."
 const numberText = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "—" : Number(value.toPrecision(5)).toString()
@@ -116,11 +117,11 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const mutationPending = attachPending || removingId !== null
   const controlsDisabled = disabled || mutationPending
   const addedIds = existingPaths === undefined ? added : job?.paths.filter(path => existingPaths.some(existing => existing.filename === path.filename && existing.content === path.content)).map(path => path.id) ?? []
-  useEffect(() => {
-    if (!existingPaths) return
-    const included = new Set(job?.paths.filter(path => existingPaths.some(existing => existing.filename === path.filename && existing.content === path.content)).map(path => path.id) ?? [])
-    setSelected(previous => { const remaining = previous.filter(id => !included.has(id)); return remaining.length === previous.length ? previous : remaining })
-  }, [existingPaths, job])
+  // Replace swaps the whole model, so its selection may fill the model and may
+  // keep a generated path already in it; Add only fills the open slots.
+  const canReplace = !!existingPaths?.length
+  const selectionLimit = canReplace ? availableSlots + existingPaths!.length : availableSlots
+  const newSelected = selected.filter(id => !addedIds.includes(id))
 
   function openDialog(mode: "structure" | "feff" = "structure") {
     setDialogMode(mode)
@@ -417,22 +418,31 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     return () => { abort.abort(); if (timer) clearTimeout(timer) }
   }, [job?.id, job?.status, contextKey, pollRevision])
 
-  function addPaths() {
+  function addPaths(replace = false) {
     if (!job || job.status !== "complete" || controlsDisabled || !selected.length) return
-    if (selected.length > availableSlots) { setError(`This model has room for ${availableSlots} more path${availableSlots === 1 ? "" : "s"}. Select fewer paths or remove existing ones.`); return }
+    if (!replace && newSelected.length > availableSlots) { setError(`This model has room for ${availableSlots} more path${availableSlots === 1 ? "" : "s"}. Select fewer paths or remove existing ones.`); return }
     const viewerCluster = parseFeffCluster(job.provenance?.feff_input)
-    const paths = job.paths.filter(path => selected.includes(path.id) && !addedIds.includes(path.id)).map(path => {
+    const paths = job.paths.filter(path => selected.includes(path.id) && (replace || !addedIds.includes(path.id))).map(path => {
       const suffix = ` · ${structureLabel(job.provenance.structure)} · ${job.request.absorber} site ${job.request.site_index} · ${path.filename}`
       const mineral = job.provenance.structure.mineral || job.provenance.structure.formula || "Structure"
       return { filename: path.filename, content: path.content, metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata, label: mineral.slice(0, Math.max(0, 120 - suffix.length)) + suffix }
     })
-    const error = callback.current(paths)
+    const error = replace ? callback.current(paths, true) : callback.current(paths)
     if (error) { setError(error); return }
-    setAdded(previous => [...previous, ...selected])
+    setAdded(previous => replace ? [...selected] : [...previous, ...selected])
     setSelected([])
     setError("")
-    setNotice(`Added ${paths.length} generated path${paths.length === 1 ? "" : "s"} to the current fit model. Review the path expressions before fitting.`)
+    const count = `${paths.length} generated path${paths.length === 1 ? "" : "s"}`
+    // Adding joins the model: a path already there (an uploaded feff*.dat of
+    // the same shell, say) is still included and fitted alongside.
+    const others = replace ? [] : otherIncluded.map(path => path.filename)
+    setNotice(replace ? `Replaced the fit model's paths with ${count}. Review the path expressions before fitting.`
+      : others.length ? `Added ${count}. The model's earlier path${others.length === 1 ? "" : "s"} ${others.join(", ")} ${others.length === 1 ? "is" : "are"} still included and will be fitted with ${paths.length === 1 ? "it" : "them"}; untick ${others.length === 1 ? "it" : "them"} under FEFF paths to fit the generated path${paths.length === 1 ? "" : "s"} alone.`
+      : `Added ${count} to the current fit model. Review the path expressions before fitting.`)
   }
+  // Included paths in the model that did not come from this calculation.
+  const otherIncluded = (existingPaths ?? []).filter(existing => existing.enabled !== false
+    && !job?.paths.some(path => path.filename === existing.filename && path.content === existing.content))
 
   const sites = structure?.sites.filter(item => item.element === absorber) ?? []
   const shellPaths = job?.status === "complete" && structure && shellState.shell && job.provenance.cif === structure.cif && job.request.site_index === shellState.shell.site_index
@@ -468,7 +478,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       <header className={styles.dialogHeader}><div><h3 id={titleId}>{dialogMode === "feff" ? "FEFF paths" : "Crystal structures"}<SectionHelp label={dialogMode === "feff" ? "FEFF path generation" : "Crystal structures"}>{dialogMode === "feff" ? "Choose an attached CIF and absorber site, calculate paths, then add selected paths to the model. Closing this window keeps your calculation progress." : "Search and attach CIF structures to your project. Generate scattering paths from the FEFF paths section."}</SectionHelp></h3></div><button type="button" aria-label={dialogMode === "feff" ? "Close FEFF paths" : "Close CIF search"} disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
       {dialogMode === "feff" && attachmentId && (structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
         {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || !edge || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Run FEFF calculation"}</button>}
-        {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !selected.length || selected.length > availableSlots} onClick={addPaths}>Add selected paths ({selected.length})</button>}
+        {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !newSelected.length || newSelected.length > availableSlots} onClick={() => addPaths()}>Add selected paths ({newSelected.length})</button>}
+        {job?.status === "complete" && canReplace && <button type="button" disabled={controlsDisabled || !selected.length} onClick={() => addPaths(true)}>Replace the model’s {existingPaths.length} path{existingPaths.length === 1 ? "" : "s"} with selected ({selected.length})</button>}
       </div>}
       <div className={`${styles.content} ${dialogMode === "feff" ? styles.feffContent : ""}`}>
       {dialogMode === "structure" && <div className={styles.searchColumn}>
@@ -536,21 +547,23 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
         {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`${job.provenance.structure.provider === "materials_project" ? "" : "amcsd-"}${job.provenance.structure.id}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
-          <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"}{job.truncated ? ` of ${job.total_paths}` : ""} · {availableSlots} open slot{availableSlots === 1 ? "" : "s"}<SectionHelp label="Generated FEFF paths">Select the paths to add. {job.truncated && "Increase Maximum paths to include more. "}Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</SectionHelp></p>
-          <button type="button" disabled={controlsDisabled || !shellPaths.some(id => !addedIds.includes(id))} onClick={() => {
-            const eligible = shellPaths.filter(id => !addedIds.includes(id))
-            if (eligible.length > availableSlots) { setError(`The first shell needs ${eligible.length} path slots; only ${availableSlots} are available.`); return }
+          <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"}{job.truncated ? ` of ${job.total_paths}` : ""} · {availableSlots} open slot{availableSlots === 1 ? "" : "s"}{canReplace ? ` · a replacement can hold up to ${selectionLimit}` : ""}<SectionHelp label="Generated FEFF paths">Select the paths to add. {job.truncated && "Increase Maximum paths to include more. "}Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</SectionHelp></p>
+          <button type="button" disabled={controlsDisabled || !shellPaths.some(id => canReplace || !addedIds.includes(id))} onClick={() => {
+            // With a model to replace, the shell may include paths already in
+            // it and may fill Replace's capacity; Add only fills open slots.
+            const eligible = canReplace ? shellPaths : shellPaths.filter(id => !addedIds.includes(id))
+            if (eligible.length > selectionLimit) { setError(`The first shell needs ${eligible.length} path slots; only ${selectionLimit} are available.`); return }
             setSelected(eligible); setError("")
           }}>Select first-shell paths</button>
-          <RadialPathGroups paths={job.paths} structure={structure} analysis={jobRadial} selectedIds={selected} blockedIds={addedIds} disabled={controlsDisabled}
+          <RadialPathGroups paths={job.paths} structure={structure} analysis={jobRadial} selectedIds={selected} blockedIds={canReplace ? [] : addedIds} disabled={controlsDisabled}
             onSelection={(ids, include) => {
               const next = include ? [...new Set([...selected, ...ids])] : selected.filter(id => !ids.includes(id))
-              if (next.length > availableSlots) { setError(`These groups need ${next.length} path slots; only ${availableSlots} are available.`); return }
+              if (next.length > selectionLimit) { setError(`These groups need ${next.length} path slots; only ${selectionLimit} are available.`); return }
               setSelected(next); setError("")
             }} renderPath={(path, shell) => {
               const member = structure && jobRadial ? radialPathNeighbor(path.metadata, structure, jobRadial) : undefined
               return <div className={styles.paths}><label>
-                <input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={controlsDisabled || addedIds.includes(path.id) || (!selected.includes(path.id) && selected.length >= availableSlots)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} />
+                <input type="checkbox" aria-label={`Select generated ${path.filename}`} checked={selected.includes(path.id)} disabled={controlsDisabled || (addedIds.includes(path.id) && !canReplace) || (!selected.includes(path.id) && selected.length >= selectionLimit)} onChange={event => setSelected(previous => event.target.checked ? [...previous, path.id] : previous.filter(id => id !== path.id))} />
                 <span>
                   <span className={styles.pathIdentity}>
                     <strong>{path.filename}{addedIds.includes(path.id) ? " · added" : ""}{shellPaths.includes(path.id) ? " · First shell" : ""}</strong>
@@ -561,6 +574,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
                 </span>
               </label></div>
             }} />
+          {canReplace && newSelected.length < selected.length && <p className={styles.help}>Selected paths marked added are already in the model: Add skips them; Replace keeps them with their current expressions.</p>}
+          {!!otherIncluded.length && <p className={styles.help}>The model already includes {otherIncluded.map(path => path.filename).join(", ")}. Adding keeps {otherIncluded.length === 1 ? "it" : "them"} in the fit; Replace fits only the selected generated paths.</p>}
         </>}
       </div>}
       {error && <div className={styles.error} role="alert">{error}{job?.status === "running" && <button type="button" onClick={() => { setError(""); setPollRevision(previous => previous + 1) }}>Check status</button>}</div>}

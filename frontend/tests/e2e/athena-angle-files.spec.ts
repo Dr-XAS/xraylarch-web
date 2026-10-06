@@ -131,7 +131,7 @@ for (const { name, reader } of samples) {
     expect(result.groups).toHaveLength(2)
     expect(result.groups[1].source).toEqual(group.source)
     expect(result.groups[1].result.arrays).toEqual(group.result.arrays)
-    await page.reload(); await expect(page.getByRole('heading', { name: 'Data groups 2', exact: true })).toBeVisible()
+    await page.reload(); await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
     if (name === 'pfbl12c') {
       // The native converter accepts a missing D with 2D=1. Show that fallback
       // explicitly and verify its preview without accepting the altered data.
@@ -145,7 +145,7 @@ for (const { name, reader } of samples) {
       await dialog.getByLabel('File conversion').scrollIntoViewIfNeeded()
       await dialog.screenshot({ path: info.outputPath('pf-default-spacing.png') })
       await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click()
-      await expect(page.getByRole('heading', { name: 'Data groups 2', exact: true })).toBeVisible()
+      await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
     }
     expect(errors).toEqual([])
   })

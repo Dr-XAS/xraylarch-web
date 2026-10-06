@@ -10,13 +10,13 @@ const anyMethod: ReadonlySet<string> = new Set(["GET", "POST", "PUT", "PATCH", "
 const athenaRoutes: readonly [string, RegExp][] = [
   ["GET", /^api\/athena\/projects\/[^/]+\/groups\/[^/]+\/columns$/],
   ["POST", /^api\/athena\/projects\/[^/]+\/groups\/[^/]+\/reimport$/],
-  ["GET", /^api\/athena\/(?:edges|projects)$/], ["POST", /^api\/athena\/projects$/],
+  ["GET", /^api\/athena\/(?:edges|formats|projects)$/], ["POST", /^api\/athena\/projects$/],
   ["GET", /^api\/athena\/capabilities(?:\/[a-z0-9_]+)?$/],
   ["GET", /^api\/athena\/preferences\/(?:rebin|smoothing|plugins|beamline|dispersive|merge)(?:\/[^/]+\/configuration|\/export|\/file)?$/],
   ["PUT", /^api\/athena\/preferences\/(?:rebin|smoothing|plugins|beamline|dispersive|merge)(?:\/[^/]+\/configuration)?$/],
   ["POST", /^api\/athena\/preferences\/(?:plugins\/import|dispersive\/import)$/],
   ["GET", /^api\/athena\/projects\/[^/]+(?:\/uploads\/[^/]+\/(?:inspection|file)|\/archives\/[^/]+\/members\/[^/]+|\/preview-project\/[^/]+\/(?:file|groups\/.+)|\/export|\/transcript|\/compare|\/groups\/.+\/(?:source-text|digest|xdi|export))?$/],
-  ["POST", /^api\/athena\/projects\/[^/]+\/(?:inspect|import|preview-columns|command|context-report|context-plot|analyze|difference\/preview|rebin\/preview|mee\/preview|point-edit\/preview|merge\/preview|plots\/(?:special|shortcut)|alignment\/preview|calibration\/(?:preview|zero)|convolve\/preview|smooth\/preview|restore|preview-project|restore-upload|parameter-report(?:\/preview)?|export-data(?:\/preview)?|dispersive\/(?:inspect|make|[^/]+)|groups\/[^/]+\/(?:xdi\/validate|merge\/plot|wavelet|plot-transform))$/],
+  ["POST", /^api\/athena\/projects\/[^/]+\/(?:inspect|import|preview-columns|command|context-report|context-plot|analyze|difference\/preview|rebin\/preview|mee\/preview|point-edit\/preview|merge\/preview|plots\/(?:special|shortcut)|alignment\/preview|calibration\/(?:preview|zero)|convolve\/preview|smooth\/preview|restore|preview-project|restore-upload|parameter-report(?:\/preview)?|export-data(?:\/preview)?|dispersive\/(?:inspect|make|[^/]+)|xrf-xas\/(?:inspect|make|preview)|xrf-view\/(?:inspect|frame)|self-absorption\/preview|groups\/[^/]+\/(?:xdi\/validate|merge\/plot|wavelet|plot-transform))$/],
 ]
 
 function allowedMethods(path: string[]): ReadonlySet<string> | null {

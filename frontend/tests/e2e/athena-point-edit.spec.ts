@@ -150,7 +150,7 @@ test('mobile ZT20 preview, conflict recovery and frozen marked truncation',async
   expect((await(await other.request.get(path)).json()).groups[0].mu).toHaveLength(586)
   await dialog.getByRole('button',{name:'Close point editing',exact:true}).click();await page.reload()
   await page.getByRole('button',{name:'Group',exact:true}).click();await page.getByRole('button',{name:'Duplicate current group',exact:true}).click()
-  await expect(page.getByRole('heading',{name:'Data groups 2',exact:true})).toBeVisible()
+  await expect(page.getByRole('heading',{ name: /^Data groups 2\b/ })).toBeVisible()
   await page.getByRole('button',{name:'Freeze group',exact:true}).click()
   await expect(page.getByRole('button',{name:'Unfreeze group',exact:true})).toBeVisible()
   const marking=page.waitForResponse(r=>r.url().endsWith('/command')&&r.request().postDataJSON().options?.marked===true)

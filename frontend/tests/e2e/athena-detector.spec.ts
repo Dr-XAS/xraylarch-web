@@ -19,6 +19,8 @@ test('native detector probe previews measured counts, changes processing setting
   const y = record.y.map(Number)
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message))
   await page.goto('/')
+  // A click before the workspace exists was dropped and the file input never appeared.
+  await expect(page.locator('.ath-project-name')).toHaveText('Untitled project')
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await expect(page.getByLabel('Open project file', { exact: true })).toBeEnabled()
   await page.getByLabel('Open project file', { exact: true }).setInputFiles(path)

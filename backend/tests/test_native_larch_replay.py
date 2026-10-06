@@ -30,11 +30,14 @@ def exact_smoothing_weights(window, order):
     return np.array([float(sum(c * x ** i for i, c in enumerate(coefficients))) for x in xs])
 
 
-@pytest.mark.parametrize('window,order,budget', [(9, 2, 2e-15), (31, 4, 3e-14)])
+@pytest.mark.parametrize('window,order,budget', [(9, 2, 2e-15), (31, 4, 1e-12)])
 def test_native_impulse_matches_exact_rational_coefficients(window, order, budget):
-    # At (31,4), the raw Vandermonde condition number is 35946 and measured
-    # OpenBLAS coefficient error is 2.09e-14. This separate mathematical test
-    # has a 3e-14 absolute coefficient budget, not a relaxed spectrum golden.
+    # At (31,4), the raw Vandermonde condition number is 35946, so a backward-
+    # stable least-squares solve may miss the exact weights by up to about
+    # cond * eps * max|w| = 9.1e-13. Measured: 2.09e-14 on x86 OpenBLAS,
+    # 4.56e-14 on an aarch64 host. The old 3e-14 budget was the x86
+    # figure, not a bound; 1e-12 is the bound, and a wrong formula misses by
+    # orders of magnitude more. (At (9,2) the bound is 7.7e-16.)
     signal = np.zeros(3 * window)
     signal[len(signal) // 2] = 1.
     actual = replay_smoothing(f'h.xmu = savitzky_golay(g.xmu, {window}, {order})', signal)

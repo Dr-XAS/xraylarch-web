@@ -11,7 +11,7 @@ from scipy.special import voigt_profile
 from xraydb import material_mu, xray_edge, xray_line
 
 import xraylarch_web.athena_operations as operations
-from xraylarch_web.athena_operations import fit_peaks, log_ratio, transform_spectrum
+from xraylarch_web.athena_operations import fit_peaks, fit_peaks_series, log_ratio, transform_spectrum
 
 
 def gaussian(x, center, sigma, area):
@@ -181,6 +181,187 @@ def test_self_absorption_recovers_known_thick_sample_fluorescence():
                                 {"formula": "CuO", "element": "Cu", "e0": e0})
     np.testing.assert_allclose(result["mu"], true_mu, atol=1e-13)
     assert np.max(fluorescence) < np.max(true_mu)
+
+
+def booth_slab_fluorescence(x, true_mu, thickness_um, formula="CuO", element="Cu",
+                            density=6.31, angle_in=45.0, angle_out=45.0):
+    """Fluorescence a uniform slab of this thickness would emit, normalized.
+
+    The forward model of Booth and Bridges, Physica Scripta T115, 202 (2005),
+    written out independently of the inversion under test.
+    """
+    e0, line_energy = xray_edge(element, "K").energy, xray_line(element, "Ka").energy
+    mu_f, mu_b, mu_above = material_mu(formula, [line_energy, e0 - 10, e0 + 10], density=density)
+    g_in, g_out = 1 / np.sin(np.deg2rad(angle_in)), 1 / np.sin(np.deg2rad(angle_out))
+    thickness_cm = thickness_um * 1e-4
+
+    def detected(n):
+        sigma = (mu_b + (mu_above - mu_b) * n) * g_in + mu_f * g_out
+        return n / sigma * (1 - np.exp(-sigma * thickness_cm))
+
+    return detected(true_mu) / detected(1.0)
+
+
+def square_edge(x, e0):
+    """Unit edge step with a white line, as a known normalized absorption."""
+    true_mu = (x >= e0).astype(float)
+    near_edge = (x >= e0) & (x < e0 + 60)
+    true_mu[near_edge] += 0.4 * np.exp(-0.5 * ((x[near_edge] - e0 - 10) / 3) ** 2)
+    return true_mu
+
+
+@pytest.mark.parametrize("thickness_um", [0.5, 5.0, 40.0])
+def test_booth_recovers_the_true_edge_from_a_simulated_finite_slab(thickness_um):
+    """A thickness FLUO cannot describe is still inverted to the true edge."""
+    x = np.linspace(8750, 9350, 1201)
+    e0 = xray_edge("Cu", "K").energy
+    true_mu = square_edge(x, e0)
+    measured = booth_slab_fluorescence(x, true_mu, thickness_um)
+    options = {"formula": "CuO", "element": "Cu", "e0": e0,
+               "thickness": thickness_um, "density": 6.31}
+    booth = transform_spectrum("self_absorption", x, measured, dict(options, algorithm="booth"))
+    np.testing.assert_allclose(booth["details"]["normalized_mu"], true_mu, atol=1e-9)
+    json.dumps(booth, allow_nan=False)
+
+
+@pytest.mark.parametrize("thickness_um", [0.5, 5.0, 40.0])
+def test_booth_recovers_the_true_edge_through_a_detector_background(thickness_um):
+    """The same slab on top of a background, which is how it arrives.
+
+    The inversion works on the normalized signal, so the corrected raw spectrum
+    has to be rebuilt from what it recovered. Scaling the raw signal instead,
+    as the thick-sample correction does, scales the background along with the
+    fluorescence, and renormalizing that returns a different spectrum.
+    """
+    x = np.linspace(8750, 9350, 1201)
+    e0 = xray_edge("Cu", "K").energy
+    true_mu = square_edge(x, e0)
+    emitted = booth_slab_fluorescence(x, true_mu, thickness_um)
+    # A sloping offset and a gain: the raw fluorescence channel before anyone
+    # normalizes it. Neither is part of the absorption and neither may be
+    # corrected, but both move where the correction lands if they are.
+    raw = 0.35 + 2.1e-4 * (x - x[0]) + 3.7 * emitted
+    booth = transform_spectrum("self_absorption", x, raw, {
+        "formula": "CuO", "element": "Cu", "e0": e0, "algorithm": "booth",
+        "thickness": thickness_um, "density": 6.31})
+    np.testing.assert_allclose(booth["details"]["normalized_mu"], true_mu, atol=1e-8)
+
+
+def test_fluo_overshoots_a_thin_slab_by_less_the_thicker_it_gets():
+    """What the finite-thickness model buys, as a function of the thickness.
+
+    FLUO treats every sample as infinitely thick, so it attributes all of the
+    damping to self-absorption and over-corrects. The error it makes is the
+    reason to reach for Booth, and it must fall away as the slab thickens.
+    """
+    x = np.linspace(8750, 9350, 1201)
+    e0 = xray_edge("Cu", "K").energy
+    true_mu = square_edge(x, e0)
+    errors = []
+    for thickness_um in (0.5, 5.0, 40.0):
+        measured = booth_slab_fluorescence(x, true_mu, thickness_um)
+        fluo = transform_spectrum("self_absorption", x, measured,
+                                  {"formula": "CuO", "element": "Cu", "e0": e0})
+        corrected = np.array(fluo["details"]["normalized_mu"])
+        assert np.max(corrected) > np.max(true_mu)
+        errors.append(np.max(np.abs(corrected - true_mu)))
+    assert errors[0] > errors[1] > errors[2]
+    assert errors[0] > 0.1 and errors[2] < 0.01
+
+
+def test_booth_reduces_to_fluo_when_thick_and_to_no_correction_when_thin(xas_arrays):
+    """The two limits of the slab model, against the code each one reduces to."""
+    x, y = xas_arrays
+    options = {"formula": "CuO", "element": "Cu", "density": 6.31}
+    fluo = transform_spectrum("self_absorption", x, y, options)
+    measured = fluo["details"]["measured_mu"]
+    thick = transform_spectrum("self_absorption", x, y,
+                               dict(options, algorithm="booth", thickness=1e4))
+    # The thick limit of the slab model is the FLUO formula itself, so compare
+    # against that formula rather than against Larch's corrected spectrum.
+    # Both are renormalized after correcting, which rescales them by their own
+    # corrected edge step, so the agreement is affine: the shape must match to
+    # round-off and the rescaling must be the per-cent-level one that
+    # renormalizing a corrected spectrum produces, not an arbitrary fit.
+    alpha, m = fluo["details"]["alpha"], np.array(measured)
+    thick_limit = alpha * m / (alpha + 1 - m)
+    recovered = np.array(thick["details"]["normalized_mu"])
+    scale, offset = np.polyfit(recovered, thick_limit, 1)
+    np.testing.assert_allclose(scale * recovered + offset, thick_limit, atol=1e-7)
+    assert scale == pytest.approx(1, abs=0.01) and offset == pytest.approx(0, abs=0.01)
+    np.testing.assert_allclose(recovered, fluo["details"]["normalized_mu"],
+                               rtol=0.01, atol=1e-3)
+    assert min(thick["details"]["sampled_fraction"]) > 0.999999
+    previous = None
+    for thickness in (1e-4, 1e-2, 1.0):
+        thin = transform_spectrum("self_absorption", x, y,
+                                  dict(options, algorithm="booth", thickness=thickness))
+        residual = np.max(np.abs(np.array(thin["details"]["normalized_mu"]) - measured))
+        assert residual < 2e-5 * thickness / 1e-4, thickness
+        # The correction vanishes linearly in the thickness, as the expansion says.
+        assert previous is None or residual > 10 * previous
+        previous = residual
+
+
+def test_information_depth_shrinks_across_the_edge_and_bounds_the_sampled_fraction(xas_arrays):
+    x, y = xas_arrays
+    options = {"formula": "CuO", "element": "Cu", "density": 6.31}
+    fluo = transform_spectrum("self_absorption", x, y, options)
+    depth = np.array(fluo["details"]["information_depth_um"])
+    assert "sampled_fraction" not in fluo["details"]
+    below, above = x < 8900, x > 9100
+    assert depth[below].min() > depth[above].max() > 0
+    fractions = []
+    for thickness in (1.0, 10.0, 100.0):
+        result = transform_spectrum("self_absorption", x, y, dict(options, thickness=thickness))
+        sampled = np.array(result["details"]["sampled_fraction"])
+        assert np.all((sampled > 0) & (sampled <= 1))
+        fractions.append(sampled.min())
+    assert fractions[0] < fractions[1] < fractions[2]
+    # A slab much thinner than the attenuation length emits in proportion to it.
+    assert fractions[0] == pytest.approx(1.0 / depth.max(), rel=0.1)
+
+
+def test_booth_refuses_missing_geometry_and_a_signal_this_slab_cannot_emit(xas_arrays):
+    x, y = xas_arrays
+    options = {"formula": "CuO", "element": "Cu"}
+    for incomplete in ({"thickness": 10.0}, {"density": 6.31}, {}):
+        with pytest.raises(ValueError, match="thickness in micrometres and the density"):
+            transform_spectrum("self_absorption", x, y, dict(options, algorithm="booth", **incomplete))
+    for bad, message in (({"density": 0.0005}, "0.001–30"), ({"density": 31}, "0.001–30"),
+                         ({"thickness": 1e7, "density": 6.31}, "0.0001–1000000"),
+                         ({"algorithm": "troger", "density": 6.31}, "one of: fluo, booth")):
+        with pytest.raises(ValueError, match=message):
+            transform_spectrum("self_absorption", x, y, dict(options, **bad))
+    saturated = y.copy()
+    saturated[np.argmin(np.abs(x - 8985))] = 100
+    slab = dict(options, algorithm="booth", density=6.31)
+    with pytest.raises(ValueError, match="ceiling for this thickness"):
+        transform_spectrum("self_absorption", x, saturated, dict(slab, thickness=10.0))
+
+
+def test_the_ceiling_belongs_to_the_thickness_and_a_thinner_slab_clears_it(xas_arrays):
+    """A refusal says this slab cannot emit that, not that no sample could.
+
+    The plateau of F is 1/(1 - exp(-S(1) d)) times the thick-sample ceiling, so
+    it rises without bound as the slab thins. Reading the refusal as a verdict
+    on the measurement, rather than on the assumed thickness, is the mistake
+    this guards against.
+    """
+    x, y = xas_arrays
+    options = {"formula": "CuO", "element": "Cu", "algorithm": "booth", "density": 6.31}
+    strong = y.copy()
+    scale = 3.0 + np.zeros_like(x)
+    peak = (x > 8980) & (x < 9000)
+    strong[peak] = y.min() + scale[peak] * (y[peak] - y.min())
+    with pytest.raises(ValueError, match="ceiling for this thickness"):
+        transform_spectrum("self_absorption", x, strong, dict(options, thickness=1e3))
+    thin = transform_spectrum("self_absorption", x, strong, dict(options, thickness=0.05))
+    assert np.isfinite(thin["details"]["normalized_mu"]).all()
+    # And the thick-sample correction refuses it too, for the same reason.
+    with pytest.raises(ValueError, match="singular or nonphysical"):
+        transform_spectrum("self_absorption", x, strong,
+                           {"formula": "CuO", "element": "Cu"})
 
 
 @pytest.mark.parametrize("overrides, message", [
@@ -424,6 +605,160 @@ def test_fit_underdetermined_model_is_rejected():
             {"center": -0.3, "sigma": 0.2, "amplitude": 1},
             {"center": 0.3, "sigma": 0.2, "amplitude": 1},
         ]})
+
+
+def test_a_step_background_keeps_a_pre_edge_area_the_straight_baseline_bends_away():
+    """A pre-edge peak on a rising arctangent edge; the true area is 0.25.
+
+    With only a line under it, the fit tilts the line into the onset and takes
+    about a third of the area with it, many standard errors from the truth. The
+    arctangent step follows the onset, and the area comes back within errors.
+    """
+    x = np.arange(6530, 6548.01, 0.2)
+    edge = 0.5 + np.arctan((x - 6550) / 2.0) / np.pi
+    y = gaussian(x, 6540.5, 1.2, 0.25) + edge + np.random.default_rng(5).normal(0, 0.002, x.size)
+    opts = {"xmin": 6533, "xmax": 6546, "peaks": [{"center": 6540, "sigma": 1.0, "amplitude": 0.1}]}
+    line = fit_peaks(x, y, opts)["parameters"]["peak_1_amplitude"]
+    assert abs(line["value"] - 0.25) > 5 * line["stderr"]
+    # Held at the edge's E0 and width, as Athena does, only the step height is fitted.
+    held = fit_peaks(x, y, {**opts, "background": {"step": {"form": "arctan", "center": 6550, "sigma": 2}}})
+    area = held["parameters"]["peak_1_amplitude"]
+    assert abs(area["value"] - 0.25) < 3 * area["stderr"]
+    assert not held["parameters"]["step_center"]["vary"]
+    assert "arctan step" in held["details"]["background"]
+    assert "step" in held["components"]
+    # Freed, the centre and width are found from a start 4 eV off.
+    freed = fit_peaks(x, y, {**opts, "background": {"step": {"form": "arctan", "center": 6546, "vary": True}}})
+    area = freed["parameters"]["peak_1_amplitude"]
+    assert abs(area["value"] - 0.25) < 3 * area["stderr"]
+
+
+@pytest.mark.parametrize("step,message", [
+    ({"form": "logistic"}, "step form"),
+    ({"center": 7000}, "within one window width"),
+    ({"amplitude": -1}, "nonnegative"),
+])
+def test_a_step_background_refuses_a_form_or_start_it_cannot_honour(step, message):
+    x = np.arange(6530, 6548.01, 0.2)
+    with pytest.raises(ValueError, match=message):
+        fit_peaks(x, gaussian(x, 6540, 1, 0.2), {"xmin": 6533, "xmax": 6546, "background": {"step": step},
+                                                 "peaks": [{"center": 6540, "sigma": 1.0, "amplitude": 0.1}]})
+
+
+@pytest.fixture
+def pre_edge_series():
+    """Three spectra with one pre-edge peak: one centre and width, three areas."""
+    center, sigma, areas = 5469.0, 0.8, (1.0, 2.5, 0.4)
+    rng = np.random.default_rng(7)
+    x = np.linspace(5460, 5480, 201)
+    spectra = [(x, 0.2 + 0.01 * index * x + gaussian(x, center, sigma, area)
+                + rng.normal(0, 0.002, x.size))
+               for index, area in enumerate(areas)]
+    return spectra, center, sigma, areas
+
+
+@pytest.fixture
+def series_guess():
+    return {"peaks": [{"center": 5468.0, "sigma": 1.2, "amplitude": 1.0}]}
+
+
+def test_series_fit_recovers_one_shared_peak_and_each_spectrum_area(pre_edge_series, series_guess):
+    spectra, center, sigma, areas = pre_edge_series
+    result = fit_peaks_series(spectra, series_guess)
+    assert result["shared"] == ["peak_1_center", "peak_1_sigma"]
+    # Two shared peak parameters plus an amplitude and two background terms each.
+    assert result["details"]["nvarys"] == 2 + 3 * 3
+    reported = [report["parameters"] for report in result["spectra"]]
+    for parameters, area, slope in zip(reported, areas, (0.0, 0.01, 0.02)):
+        assert parameters["peak_1_amplitude"]["value"] == pytest.approx(area, abs=0.01)
+        assert parameters["background_slope"]["value"] == pytest.approx(slope, abs=0.001)
+        assert parameters["peak_1_center"]["value"] == pytest.approx(center, abs=0.01)
+        assert parameters["peak_1_sigma"]["value"] == pytest.approx(sigma, abs=0.01)
+        assert parameters["peak_1_amplitude"]["stderr"] > 0
+    # Sharing means one number, not three that happen to be close.
+    assert len({parameters["peak_1_center"]["value"] for parameters in reported}) == 1
+    # lmfit propagates the error onto each constrained copy, so these agree to
+    # rounding rather than bit for bit.
+    for parameters in reported[1:]:
+        assert parameters["peak_1_center"]["stderr"] == pytest.approx(reported[0]["peak_1_center"]["stderr"], rel=1e-6)
+    assert len({parameters["peak_1_amplitude"]["value"] for parameters in reported}) == 3
+    assert result["redchi"] == pytest.approx(0.002**2, rel=0.2)
+    for report, (x, y) in zip(result["spectra"], spectra):
+        np.testing.assert_allclose(np.sum(list(report["components"].values()), axis=0), report["fit"], atol=1e-12)
+        np.testing.assert_allclose(report["residual"], y - np.array(report["fit"]), atol=1e-12)
+    json.dumps(result, allow_nan=False)
+
+
+def test_series_fit_constrains_the_shared_centre_better_than_separate_fits(pre_edge_series, series_guess):
+    """Catches a 'series' fit that is really three independent fits side by side."""
+    spectra, _, _, _ = pre_edge_series
+    together = fit_peaks_series(spectra, series_guess)
+    shared_error = together["spectra"][0]["parameters"]["peak_1_center"]["stderr"]
+    separate = [fit_peaks(x, y, series_guess)["parameters"]["peak_1_center"]["stderr"] for x, y in spectra]
+    assert shared_error < min(separate)
+    # The weakest spectrum gains the most: its area is the smallest of the three.
+    assert shared_error < max(separate) / 3
+
+
+def test_series_fit_says_when_the_spectra_do_not_share_a_centre(series_guess):
+    """The real Mn series moved its pre-edge 0.9 eV on heating and the shared fit called it a success.
+
+    Here two spectra sit at 5468.6 eV and two at 5469.4 eV. Fitted one at a time
+    they disagree by many errors, so the series must say the data do not support
+    a shared centre; a series whose spectra truly share one must not be flagged.
+    """
+    rng = np.random.default_rng(11)
+    x = np.linspace(5460, 5480, 201)
+    shifted = [(x, 0.2 + gaussian(x, centre, 0.8, 1.0) + rng.normal(0, 0.002, x.size))
+               for centre in (5468.6, 5468.6, 5469.4, 5469.4)]
+    result = fit_peaks_series(shifted, series_guess)
+    centre = next(entry for entry in result["consistency"] if entry["parameter"] == "peak_1_center")
+    assert centre["consistent"] is False and centre["probability"] < 1e-6
+    assert any("disagree on peak 1's centre" in warning for warning in result["warnings"])
+    assert [row["parameters"]["peak_1_center"]["value"] for row in result["independent"]] == pytest.approx(
+        [5468.6, 5468.6, 5469.4, 5469.4], abs=0.01)
+    same = [(x, 0.2 + gaussian(x, 5469.0, 0.8, area) + rng.normal(0, 0.002, x.size)) for area in (1.0, 2.0, 1.5)]
+    agreed = fit_peaks_series(same, series_guess)
+    assert all(entry["consistent"] for entry in agreed["consistency"])
+    assert agreed["warnings"] == []
+
+
+def test_series_fit_can_share_the_width_alone(pre_edge_series, series_guess):
+    spectra, _, sigma, _ = pre_edge_series
+    result = fit_peaks_series(spectra, {**series_guess, "share": {"center": False}})
+    assert result["shared"] == ["peak_1_sigma"]
+    centers = [report["parameters"]["peak_1_center"]["value"] for report in result["spectra"]]
+    widths = {report["parameters"]["peak_1_sigma"]["value"] for report in result["spectra"]}
+    assert len(set(centers)) == 3
+    assert len(widths) == 1
+    assert widths.pop() == pytest.approx(sigma, abs=0.01)
+    assert result["details"]["nvarys"] == 1 + 3 * 4
+
+
+def test_series_fit_spectra_may_sit_on_different_grids(series_guess):
+    """Catches an implementation that stacks the spectra instead of concatenating residuals."""
+    dense = np.linspace(5460, 5480, 401)
+    sparse = np.linspace(5462, 5478, 97)
+    spectra = [(grid, 0.2 + gaussian(grid, 5469.0, 0.8, area))
+               for grid, area in ((dense, 1.0), (sparse, 2.0))]
+    result = fit_peaks_series(spectra, series_guess)
+    assert [len(report["x"]) for report in result["spectra"]] == [dense.size, sparse.size]
+    for report, area in zip(result["spectra"], (1.0, 2.0)):
+        assert report["parameters"]["peak_1_amplitude"]["value"] == pytest.approx(area, rel=1e-5)
+
+
+@pytest.mark.parametrize("spectra_count,overrides,message", [
+    (1, {}, "2–40 spectra"),
+    (3, {"share": {"center": False, "sigma": False}}, "must share"),
+    (3, {"share": {"amplitude": True}}, "Unsupported options"),
+    (3, {"peaks": []}, "peaks must contain"),
+    (3, {"xmin": 5470, "xmax": 5465}, "xmin < xmax"),
+    (3, {"max_nfev": 1}, "did not converge"),
+])
+def test_series_fit_refusals(pre_edge_series, series_guess, spectra_count, overrides, message):
+    spectra, _, _, _ = pre_edge_series
+    with pytest.raises(ValueError, match=message):
+        fit_peaks_series(spectra[:spectra_count], {**series_guess, **overrides})
 
 
 def test_log_ratio_recovers_exact_complex_amplitude_and_unwrapped_phase():

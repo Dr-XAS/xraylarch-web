@@ -208,7 +208,7 @@ def capabilities() -> dict:
                 "group's own kmax is. FEFF's paths stop at k 20, and Larch refuses a kmax past "
                 "the data's.",
                 "GET /api/artemis/examples/cuprite is a complete body for the Cu2O group, "
-                "paths included.",
+                "paths included; merge path_parameters[i] into paths[i].",
             ],
         },
         "feff_job": {

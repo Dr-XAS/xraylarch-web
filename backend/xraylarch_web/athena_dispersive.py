@@ -223,8 +223,14 @@ def parse_pixels(data,filename,max_bytes,max_points,max_columns):
         # by numeric acquisition times; it is not an observation with NaN x.
         if all(v.strip() and np.isfinite(float(v)) for v in fields[1:]):
             lines[0]=','.join(['pixel']+[f'signal_{i}' for i in range(1,len(fields))])
-    return parse_upload(('\n'.join(lines)+'\n').encode(),'pixel'+suffix,
+    parsed=parse_upload(('\n'.join(lines)+'\n').encode(),'pixel'+suffix,
         max_bytes=max_bytes+len(lines)+1000,max_points=max_points,max_columns=max_columns)
+    # A pixel table is all calibration input: unlike a beamline scan with
+    # spare detector channels, none of its columns may hold a non-finite value.
+    if any(not np.isfinite(values).all() for values in parsed.arrays.values()):
+        raise WebInputError('upload_nonfinite','The pixel upload contains non-finite values.',('file',),
+                            'Remove non-finite rows and upload the data again.')
+    return parsed
 
 
 def slribl4(data,max_points,max_columns,calibration):

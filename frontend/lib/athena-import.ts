@@ -154,11 +154,23 @@ export function setDualMode(mapping: ColumnMapping, inspection: InspectionRespon
   } : {}), additional_fluorescence: additional }
 }
 
+/** The reference channel a recognized beamline file carries, as mapping fields. */
+export function suggestedReference(inspection: InspectionResponse): Pick<ColumnMapping, 'reference_numerator' | 'reference_denominator' | 'reference_log'> | null {
+  const reference = inspection.beamline_reader?.reference
+  return reference ? { reference_numerator: reference.numerator, reference_denominator: reference.denominator ?? '', reference_log: reference.log } : null
+}
+
 export function initialColumnMapping(inspection: InspectionResponse, previous: ColumnMapping, remembered = true, resetReference = true): ColumnMapping {
   const cols = inspection.columns, suggested = inspection.athena_suggestion
   const { additional_fluorescence: _fluorescence, is_normalized: _normalized, exafs: _exafs, ...singlePrevious } = previous
+  // A reference channel the reader recognized (a foil behind It) is imported
+  // by default; it used to be cleared, so every file needed it picked by hand.
+  // Only a reference whose edge the reader saw in the data is imported by
+  // default; one it could not check (no stated E0) is offered as a button.
+  const reference = suggested && suggested.data_type !== 'chi' && inspection.beamline_reader?.reference?.default === true
+    ? suggestedReference(inspection) : null
   const mapping: ColumnMapping = suggested ? { ...singlePrevious, ...suggested, denominator: suggested.denominator ?? "", reference_numerator: "",
-    reference_denominator: "", invert: false, signal_multiplier: 1, individual_channels: false }
+    reference_denominator: "", ...reference, invert: false, signal_multiplier: 1, individual_channels: false }
     : { ...singlePrevious, ...(previous.is_normalized === undefined ? {} : { is_normalized: previous.is_normalized }),
       energy_column: cols.find(c => c.role_hint === "energy")?.column_id ?? cols[0]?.column_id ?? "",
       numerator: [cols.find(c => c.role_hint === "mu")?.column_id ?? cols[1]?.column_id ?? ""],
@@ -171,18 +183,76 @@ export function initialColumnMapping(inspection: InspectionResponse, previous: C
   return selected.data_type === 'chi' ? changeInputType(selected, 'chi') : selected
 }
 
-// A shared batch uses the column positions the user selected, even when files
-// label those columns differently. Resolve IDs for each upload independently.
+function mappingColumnIds(mapping: ColumnMapping): string[] {
+  const fluorescence = mapping.additional_fluorescence
+  return [mapping.energy_column, ...mapping.numerator, ...denominatorColumns(mapping),
+    mapping.reference_numerator, mapping.reference_denominator,
+    ...(fluorescence ? [...fluorescence.numerator, ...denominatorColumns(fluorescence)] : [])]
+    .filter(id => id && id !== '1')
+}
+
+/** Why a shared batch must stop and ask before importing this file, or null.
+ *
+ * A batch reuses column positions. That is only the same measurement when the
+ * file has the same layout: a renamed, moved or missing selected column, a
+ * different column count, or energy units the file states differently, can
+ * each turn a plausible-looking spectrum into the wrong ratio. */
+export function reuseProblem(source: InspectionResponse, target: InspectionResponse, mapping: ColumnMapping): string | null {
+  for (const id of mappingColumnIds(mapping)) {
+    const original = source.columns.find(c => c.column_id === id)
+    if (!original) return 'a selected column is not in the first file.'
+    const now = target.columns.find(c => c.index === original.index)
+    if (!now || !now.numeric) return `selected column ${original.index + 1} (${original.name}) is missing in this file.`
+    if (now.name !== original.name) return `selected column ${original.index + 1} was “${original.name}” and is “${now.name}” here.`
+  }
+  if (source.columns.length !== target.columns.length) return `the file has ${target.columns.length} columns, the first had ${source.columns.length}.`
+  const renamed = target.columns.find((c, i) => c.name !== source.columns[i]?.name)
+  if (renamed) return `column ${renamed.index + 1} is “${renamed.name}” here, “${source.columns[renamed.index].name}” in the first file.`
+  const energy = source.columns.find(c => c.column_id === mapping.energy_column)
+  const units = energy && target.column_units?.[target.columns[energy.index]?.column_id]
+  if (mapping.data_type !== 'chi' && units && units !== mapping.units) return `this file’s energy reads as ${units}; the batch uses ${mapping.units}.`
+  // A first file that asked sample-or-foil carries the user's answer to the
+  // batch; after a clear first file, a scan that cannot tell must ask too.
+  const evidence = (inspection: InspectionResponse) => beamEvidence(inspection)
+  if (evidence(target) === 'ask' && evidence(source) !== 'ask') return 'this scan’s I0/It edge is marginal beside an It/Iref edge, so it may be a foil rather than a sample; say which it measured.'
+  // A choice made on a scan with the same evidence covers this one (the user
+  // saw it and decided); a scan whose edges say otherwise asks again.
+  if (mapping.mode === 'transmission' && evidence(target) !== evidence(source)) {
+    if (evidence(target) === null || evidence(source) === null) return 'beamline measurement evidence is missing from one of these files; confirm which channels this file measured before continuing the batch.'
+    const contrast = target.beamline_reader?.measurement?.contrast ?? {}
+    const times = (key: string) => typeof contrast[key] === 'number' ? ` (${(contrast[key] as number).toFixed(0)} times its noise)` : ''
+    const foil = foilColumns(target)
+    const at = (inspection: InspectionResponse, ids: string[]) => ids.map(id => inspection.columns.find(c => c.column_id === id)?.index)
+    const usesFoil = !!foil && String(at(source, [...mapping.numerator, ...denominatorColumns(mapping)])) === String(at(target, foil))
+    if (evidence(target) === 'sample' && usesFoil) return `this scan shows a clear I0/It sample edge${times('transmission')}, but the batch imports It/Iref as a foil scan; say which it measured.`
+    if (evidence(target) === 'foil' && !usesFoil) return `this scan’s I0/It shows no edge and It/Iref does${times('reference')}, as when a foil is scanned, but the batch imports it as a sample; say which it measured.`
+  }
+  return null
+}
+
+/** What a scan's own edges say it measured in transmission: a clear sample
+ * edge in I0/It, only a foil's edge in It/Iref, or too little to tell. */
+function beamEvidence(inspection: InspectionResponse): 'sample' | 'foil' | 'ask' | null {
+  const measurement = inspection.beamline_reader?.measurement
+  if (inspection.plugin_suggestions || measurement?.mode !== 'transmission') return null
+  return measurement.ambiguous ? 'ask' : measurement.foil_spectrum ? 'foil' : 'sample'
+}
+
+// The It/Iref columns a scan offers as a foil spectrum, if it has a reference edge.
+function foilColumns(inspection: InspectionResponse): string[] | null {
+  const reader = inspection.beamline_reader
+  const foil = reader?.suggestions?.foil ?? (reader?.measurement?.foil_spectrum ? reader.suggestions?.transmission : undefined)
+  if (foil) return [...foil.numerator, ...(foil.denominator ? [foil.denominator] : [])]
+  return reader?.reference ? [reader.reference.numerator, ...(reader.reference.denominator ? [reader.reference.denominator] : [])] : null
+}
+
+// A shared batch reuses the column positions the user selected only for a file
+// with the same layout; reuseProblem says why any other file pauses the batch.
 export function reuseColumnMapping(source: InspectionResponse, target: InspectionResponse, mapping: ColumnMapping): ColumnMapping | null {
+  if (reuseProblem(source, target, mapping)) return null
   const column = (id: string): string | undefined => {
     const original = source.columns.find(c => c.column_id === id)
-    if (!original) return undefined
-    // Renamed headers are common across scans; a known label moving to another
-    // position is evidence of a different layout and needs an explicit review.
-    const named = target.columns.filter(c => c.name === original.name)
-    if (source.columns.filter(c => c.name === original.name).length === 1
-      && named.length === 1 && named[0].index !== original.index) return undefined
-    return target.columns.find(c => c.index === original.index && c.numeric)?.column_id
+    return original && target.columns.find(c => c.index === original.index && c.numeric)?.column_id
   }
   const reference = (id: string) => !id || id === '1' ? id : column(id)
   const energy_column = column(mapping.energy_column)
@@ -204,6 +274,63 @@ export function reuseColumnMapping(source: InspectionResponse, target: Inspectio
     ...(additional_fluorescence ? { additional_fluorescence } : {}),
     denominator: Array.isArray(mapping.denominator) ? denominator as string[] : denominator[0] ?? '',
     reference_numerator, reference_denominator }
+}
+
+/** Files a multi-file selection leaves out of a scan batch, with the reason.
+ *
+ * Selecting a beamline folder brings along what is not a scan: LabVIEW's
+ * '.last' counter, sequence logs, alignment scans, and the per-scan detector
+ * HDF5 beside each text scan. Each would stop a shared batch; they are listed
+ * for the user, who can still include them. */
+export function batchExclusions(names: string[]): Map<number, string> {
+  const left = new Map<number, string>()
+  if (names.length < 2) return left
+  // A detector file is 'series.0007.hdf5' beside text scans 'series.0003' ...;
+  // its own text scan may be missing (an aborted first scan).
+  const series = (name: string) => name.toLowerCase().replace(/\.(hdf5|h5)$/, '').replace(/\.\d+$/, '')
+  const textSeries = new Set(names.filter(name => !/\.(hdf5|h5)$/i.test(name)).map(series))
+  names.forEach((name, index) => {
+    const lower = name.toLowerCase()
+    if (lower.endsWith('.last')) left.set(index, "the scan counter LabVIEW writes, not a scan")
+    else if (/^sequence log|\.log$/.test(lower)) left.set(index, "an acquisition log")
+    else if (/(^|[^a-z])align(ment)?([^a-z]|$)/.test(lower)) left.set(index, "an alignment scan")
+    else if (/\.(hdf5|h5)$/.test(lower) && textSeries.has(series(name))) left.set(index, "the detector spectra of a scan in this series; its text file holds the scan")
+  })
+  return left.size === names.length ? new Map() : left
+}
+
+// The server's project limits (athena.py save and _exchange_budget).
+export const MAX_PROJECT_GROUPS = 100
+export const MAX_PROJECT_VALUES = 2_000_000
+
+function retainedValues(group: AthenaGroup): number {
+  const arrays = (key: string) => Object.values((group.source[key] ?? {}) as Record<string, unknown[]>)
+    .reduce((total, values) => total + (Array.isArray(values) ? values.length : 0), 0)
+  return group.energy.length * 2 + arrays('column_arrays') + arrays('raw_arrays')
+}
+
+/** Say before a batch starts whether it will outgrow the project.
+ *
+ * The server refuses the import that crosses either limit, so a 58-group
+ * series stopped part-way at file 51 of a 60-file selection. Counting first
+ * lets the user split the series or open a new project instead. */
+export function batchCapacityWarning(mapping: ColumnMapping, inspection: InspectionResponse, groups: AthenaGroup[], files: number): string | null {
+  if (files < 2) return null
+  const samples = (mapping.individual_channels && mapping.numerator.length > 1 ? mapping.numerator.length : 1)
+    + (mapping.additional_fluorescence ? 1 : 0)
+  const referenced = !!(mapping.reference_numerator || mapping.reference_denominator)
+  const perFile = samples * (referenced ? 2 : 1)
+  const rows = inspection.row_count, finite = inspection.columns.filter(c => c.preview.every(v => v !== null)).length
+  const valuesPerFile = samples * rows * (finite + 4) + (referenced ? samples * rows * 7 : 0)
+  const groupsAfter = groups.length + files * perFile
+  const valuesAfter = groups.reduce((total, g) => total + retainedValues(g), 0) + files * valuesPerFile
+  const fit = Math.max(0, Math.min(Math.floor((MAX_PROJECT_GROUPS - groups.length) / perFile),
+    Math.floor((MAX_PROJECT_VALUES - (valuesAfter - files * valuesPerFile)) / valuesPerFile)))
+  if (groupsAfter <= MAX_PROJECT_GROUPS && valuesAfter <= MAX_PROJECT_VALUES) return null
+  const reason = groupsAfter > MAX_PROJECT_GROUPS
+    ? `${groupsAfter} groups (${perFile} per file${referenced ? ', counting each reference' : ''}); a project holds at most ${MAX_PROJECT_GROUPS}`
+    : `about ${(valuesAfter / 1e6).toFixed(1)} million stored values; a project holds at most 2 million`
+  return `This batch would bring the project to ${reason}. Only the first ${fit} of these ${files} files fit: import the series into its own new project, or choose fewer files.`
 }
 
 export function lastImportedSample(groups: AthenaGroup[]): AthenaGroup | undefined {

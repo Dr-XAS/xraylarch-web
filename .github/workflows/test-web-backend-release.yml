@@ -12,7 +12,23 @@ permissions:
 jobs:
   release-backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Every test runs under a hard per-test limit, so one slow or stuck test
+          # fails by name instead of the whole job being cancelled. The XRF
+          # extraction tests run full detector calibrations and get their own job.
+          - suite: main
+            select: not xrf_slow
+            per_test_seconds: 120
+            minutes: 25
+          - suite: xrf
+            select: xrf_slow
+            per_test_seconds: 180
+            minutes: 40
+    name: release-backend (${{ matrix.suite }})
+    timeout-minutes: ${{ matrix.minutes }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,6 +45,9 @@ jobs:
           python-version: '3.12'
       - name: Build the release backend and verify dependencies in a clean environment
         shell: bash
+        env:
+          SELECT: ${{ matrix.select }}
+          PER_TEST_SECONDS: ${{ matrix.per_test_seconds }}
         run: |
           set -Eeuo pipefail
           python -m venv "$GITHUB_WORKSPACE/backend/.venv"
@@ -42,6 +61,10 @@ jobs:
           mkdir -p "$DATA_ROOT" "$CLEAN_HOME" "$CANDIDATE_DATA/runtime/pycache"
           install_release_backend "$GITHUB_WORKSPACE"
           verify_release_backend "$GITHUB_WORKSPACE"
+          # The per-test limit is a test-runner plugin only, added after the
+          # release environment has been verified, so it never reaches a release.
+          "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pip install --quiet pytest-timeout==2.3.1
           cd "$GITHUB_WORKSPACE/backend"
           run_clean "$GITHUB_WORKSPACE/backend/.venv/bin/python" -m pytest -p no:cacheprovider -q \
+            -m "$SELECT" --timeout="$PER_TEST_SECONDS" --durations=25 \
             --basetemp "$RUNNER_TEMP/xraylarch-full-backend-tests" tests

@@ -7,6 +7,8 @@ import { buildFeffPathGeometry } from "@/lib/feff-path-geometry"
 
 const { createViewer } = vi.hoisted(() => ({ createViewer: vi.fn() }))
 vi.mock("3dmol", () => ({ createViewer, Vector2: class { constructor(public x: number, public y: number) {} } }))
+// The contribution plot has its own suite; keep Plotly out of the scene tests.
+vi.mock("next/dynamic", () => ({ default: () => () => <div data-testid="contribution-plot" /> }))
 const site = (x: number, y = 0, ipot = 1) => ({ atom: "Cu", x, y, z: 0, ipot })
 const paths: FeffPathSummary[] = [
   { id: "cu1", filename: "feff0001.dat", label: "Cu first shell", enabled: true,

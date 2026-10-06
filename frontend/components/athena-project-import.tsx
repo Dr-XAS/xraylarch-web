@@ -36,13 +36,15 @@ interface Props {
   initialFiles?: File[]
   initialPreview?: ProjectPreview | null
   onRemainingFiles?: (files: File[]) => void
+  // Creates and opens an empty project, so a series can open on its own.
+  newProject?: () => Promise<AthenaProject>
 }
 
 const modeLabels: Record<PreviewMode, string> = {
   mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", chi: "χ(k)",
 }
 
-export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, canRestore = true, initialFiles, initialPreview, onRemainingFiles }: Props) {
+export function AthenaProjectImport({ getProject, onImported, onComplete, onBusyChange, disabled = false, canRestore = true, initialFiles, initialPreview, onRemainingFiles, newProject }: Props) {
   const athenaApi = useAthenaApi()
   const [files, setFiles] = useState<File[]>([])
   const [preview, setPreview] = useState<ProjectPreview | null>(null)
@@ -61,6 +63,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
   const [selectionNote, setSelectionNote] = useState("")
   const [configurationOpen, setConfigurationOpen] = useState(false)
   const [configurationPending, setConfigurationPending] = useState(false)
+  const [separate, setSeparate] = useState(false)
   const anchor = useRef<number | null>(null)
   const initialChoice = useRef<File[] | undefined>(undefined)
   const active = preview?.groups.find(group => group.id === activeId)
@@ -109,6 +112,12 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
       let current = preview
       let pending = files
       let selection = selected
+      if (separate && newProject) {
+        // The staged upload belongs to the project it was previewed in.
+        await newProject()
+        current = await inspect(files[0])
+        setSeparate(false)
+      }
       while (pending.length) {
         const destination = project()
         const imported = await athenaApi<AthenaProject>(`/projects/${destination.id}/restore-upload`, {
@@ -245,6 +254,11 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
       </div>
       {!!compatibilityNotes.length && <details><summary>{compatibilityNotes.length} compatibility notes · original settings retained</summary>{compatibilityNotes.map((warning, index) => <p className="ath-warning" key={index}>{warning}</p>)}</details>}
       {selectionNote && <p role="status">{selectionNote}</p>}
+      {!!getProject()?.groups.length && <div aria-label="Destination project">
+        <p className="ath-warning">{separate ? 'These groups open in a new, empty project.'
+          : `These groups are added to the open project “${getProject()!.name || 'Untitled project'}”, which already holds ${getProject()!.groups.length} groups.`}</p>
+        {newProject && <label className="ath-check"><input type="checkbox" checked={separate} disabled={locked} onChange={event => setSeparate(event.target.checked)} />Open in a new project instead</label>}
+      </div>}
       <p className="ath-hint">{!selected.length ? "No groups selected: Import all will import the entire project." : `${selected.length} of ${preview.groups.length} groups selected.`} <SectionHelp label="Project import scope">{all ? "Journal and supported analysis state are included. Compatibility notes identify settings retained only as metadata. Remaining project files will be imported in full." : "A subset imports data and recipes; saved analysis state is not restored. The next project will open for selection."}</SectionHelp></p>
     </>}
     {error && <div className="ath-error" role="alert">{error}</div>}

@@ -63,8 +63,9 @@ async function review(page: Page, panel: Locator, shareParameters = true) {
   await expect(dialog.getByLabel('Energy column')).toHaveValue('column_0016')
   await expect(dialog.getByLabel('Energy units')).toHaveValue('keV')
   await dialog.getByRole('button', { name: 'Flip numerator and denominator', exact: true }).click()
-  await expect(dialog.getByLabel('Numerator Ion2', { exact: true })).toBeChecked()
-  await expect(dialog.getByLabel('Denominator Ion1', { exact: true })).toBeChecked()
+  // The file's #L line says Ion1/Ion2; Larch's SPEC reader lowercases labels.
+  await expect(dialog.getByLabel('Numerator ion2', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('Denominator ion1', { exact: true })).toBeChecked()
   return dialog
 }
 
@@ -92,9 +93,12 @@ test('SPEC scan selection, actual column previews, both scans and PRJ roundtrip'
   await expectSignal(importedPlot, 0, true)
   // The original fixed native energy column is constant in this sample.
   // Preview must show the selected constant axis, then restore ZapEnergy.
+  // Rows at one repeated energy are averaged, so a constant axis previews as
+  // that one energy rather than as 455 copies of it.
   await dialog.getByLabel('Energy column').selectOption('column_0013')
-  await expect.poll(async () => (await curve(importedPlot)).x)
-    .toEqual(references.scans[0].columns.map(row => row[12] * 1000))
+  const constant = [...new Set(references.scans[0].columns.map(row => row[12] * 1000))]
+  expect(constant).toHaveLength(1)
+  await expect.poll(async () => [...new Set((await curve(importedPlot)).x)]).toEqual(constant)
   await dialog.getByLabel('Energy column').selectOption('column_0016')
   await expectSignal(importedPlot, 0, true)
   await importedPlot.scrollIntoViewIfNeeded()
@@ -160,8 +164,8 @@ test('SPEC second-scan inspection retry preserves the first scan and continues i
   expect(imports).toEqual([collection.scans[0].upload_id])
   await dialog.getByRole('button', { name: 'Retry file inspection', exact: true }).click()
   await expect(dialog.getByRole('button', { name: 'Import spectrum', exact: true })).toBeEnabled()
-  await expect(dialog.getByLabel('Numerator Ion2', { exact: true })).toBeChecked()
-  await expect(dialog.getByLabel('Denominator Ion1', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('Numerator ion2', { exact: true })).toBeChecked()
+  await expect(dialog.getByLabel('Denominator ion1', { exact: true })).toBeChecked()
   await expectSignal(dialog.getByLabel('Imported signal preview plot', { exact: true }), 1, true)
   await dialog.getByRole('button', { name: 'Import spectrum', exact: true }).click()
   const projectPanel = page.getByRole('dialog', { name: 'Open a project', exact: true })

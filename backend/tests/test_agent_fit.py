@@ -26,8 +26,8 @@ def run(http):
 
 def fit(http, run, label=CUPRITE, view="summary", **changes):
     example = http.get("/api/artemis/examples/cuprite").json()
-    paths = [{"id": f"p{index}", "filename": path["filename"], "content": path["content"]}
-             for index, path in enumerate(example["paths"], start=1)]
+    paths = [{"id": f"p{index}", "filename": path["filename"], "content": path["content"], **fields}
+             for index, (path, fields) in enumerate(zip(example["paths"], example["path_parameters"]), start=1)]
     parameters = [row | changes.get(row["name"], {}) for row in example["parameters"]]
     version = http.get(f"/api/athena/projects/{run['project_id']}", params={"view": "summary"}).json()["version"]
     return http.post(f"/api/artemis/projects/{run['project_id']}/groups/{run['groups'][label]}/fit",
@@ -51,10 +51,12 @@ def test_the_summary_is_the_fitted_values_without_the_curves(http, run):
 
 
 def test_a_parameter_pinned_at_its_bound_says_so(http, run):
-    reply = fit(http, run, sig2={"value": 0.003, "max": 0.004}).json()
-    sig2 = next(row for row in reply["parameters"] if row["name"] == "sig2")
+    reply = fit(http, run, sig2_cu={"value": 0.003, "max": 0.004}).json()
+    sig2 = next(row for row in reply["parameters"] if row["name"] == "sig2_cu")
     assert sig2["at_bound"] == "max"
-    assert all("at_bound" not in row for row in reply["parameters"] if row["name"] != "sig2")
+    # Squeezing the Cu-Cu disorder can push the Cu-O one onto its own bound;
+    # the shared amplitude and energy shift stay free.
+    assert all("at_bound" not in row for row in reply["parameters"] if row["name"] in ("amp", "del_e0"))
 
 
 def test_the_full_reply_is_left_as_the_browser_has_it(http, run):
@@ -118,10 +120,11 @@ def test_a_fit_that_does_not_describe_the_data_says_so(http, run, cli):
     cli("do", "parameters", FOILS[0], "-o", "kmax=18")
     good = json.loads(cli("--json", "fit", FOILS[0], "--structure", "11145"))
     assert good["statistics"]["r_factor"] < 0.01 and good["concerns"] == []
-    # The bundled Cu2O setup is a starting point, not a finished fit.
-    assert any(concern.startswith("R-factor 0.1") for concern in fit(http, run).json()["concerns"])
-    pinned = fit(http, run, sig2={"value": 0.003, "max": 0.004}).json()
-    assert any("sig2 stopped at its max bound" in concern for concern in pinned["concerns"])
+    # The Cu2O setup with its Cu-Cu distance held 0.1 A off leaves the data unexplained.
+    misplaced = fit(http, run, del_r_cu={"kind": "set", "value": 0.1}).json()
+    assert any(concern.startswith("R-factor 0.1") for concern in misplaced["concerns"])
+    pinned = fit(http, run, sig2_cu={"value": 0.003, "max": 0.004}).json()
+    assert any("sig2_cu stopped at its max bound" in concern for concern in pinned["concerns"])
 
 
 def test_the_cli_takes_the_k_range_the_group_was_given(cli):

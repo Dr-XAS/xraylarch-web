@@ -52,6 +52,23 @@
 .empty, .note { color: var(--ath-muted); line-height: var(--leading-body); }
 .empty { margin: 15px 0 2px; }
 .note { font-size: var(--text-caption); margin: 8px 0 0; }
+.contributions { margin-top: 12px; border-top: 1px solid var(--ath-line); padding-top: 10px; }
+.contributionsHeading { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.contributionsToggle { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-label); cursor: pointer; }
+.choice { display: inline-flex; gap: 0; border: 1px solid var(--ath-line); border-radius: 5px; overflow: hidden; }
+.choice button { border: 0; border-left: 1px solid var(--ath-line); background: var(--ath-surface); color: var(--ath-primary); padding: 5px 9px; font: inherit; font-size: var(--text-caption); cursor: pointer; }
+.choice button:first-child { border-left: 0; }
+.choice button[aria-pressed=true] { background: color-mix(in srgb, var(--ath-primary) 8%, var(--ath-surface)); color: var(--ath-ink); font-weight: 600; }
+.contributionPlot { height: 330px; margin-top: 10px; }
+.filters { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
+.filters label { display: inline-flex; flex-direction: column; gap: 4px; color: var(--ath-muted); font-size: var(--text-caption); }
+.filters input { width: 90px; }
+.filters button { border: 1px solid var(--ath-line); border-radius: 5px; background: var(--ath-surface); color: var(--ath-primary); padding: 5px 9px; font: inherit; font-size: var(--text-caption); cursor: pointer; }
+.optionHint { color: var(--ath-muted); font-size: var(--text-caption); }
+.contributions th button { display: inline-flex; align-items: center; gap: 4px; border: 0; background: transparent; color: inherit; font: inherit; font-weight: 500; padding: 0; cursor: pointer; }
+.contributions tbody th { font-weight: 500; }
+.contributions tbody th i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+.contributions tbody th small { display: block; margin-left: 14px; color: var(--ath-muted); font-size: var(--text-caption); }
 @container (max-width: 650px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 450px) {
   .content { padding: 12px; }

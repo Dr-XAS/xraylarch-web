@@ -1,0 +1,20 @@
+.panel { margin: 10px 0 0; padding: 10px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 5px; background: var(--ath-canvas, #f5f8f5); }
+.panel h4 { margin: 0 0 6px; font-size: var(--text-body); font-weight: 600; line-height: var(--leading-heading); color: var(--ath-ink, #24362c); }
+.panel p { margin: 6px 0 0; color: var(--ath-muted, #647669); font-size: var(--text-caption); line-height: var(--leading-body); overflow-wrap: anywhere; }
+.panel button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); cursor: pointer; font: inherit; font-size: var(--text-body); line-height: var(--leading-control); }
+.panel button:disabled { opacity: .5; cursor: default; }
+.panel button:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+.scroll { margin: 10px 0 0; overflow-x: auto; }
+.engines { width: 100%; border-collapse: collapse; font-size: var(--text-body); line-height: var(--leading-body); }
+.engines caption { margin: 0 0 4px; text-align: left; color: var(--ath-muted, #647669); font-size: var(--text-caption); }
+.engines caption { caption-side: top; overflow-wrap: anywhere; }
+.engines th, .engines td { padding: 3px 4px; border-bottom: 1px solid var(--ath-line, #dce5dc); text-align: left; vertical-align: top; white-space: nowrap; }
+.engines thead th { font-weight: 600; color: var(--ath-ink, #24362c); }
+.engines tbody th { font-weight: 400; color: var(--ath-muted, #647669); white-space: normal; }
+.engines td { font-variant-numeric: tabular-nums; color: var(--ath-ink, #24362c); }
+.engines td.bad { white-space: normal; }
+.hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.bad { color: var(--ath-error-ink, #9c3425) !important; }
+.panel p.caution { color: var(--ath-error-ink, #9c3425); }
+.warnings { margin: 6px 0 0; padding-left: 18px; color: var(--ath-muted, #647669); font-size: var(--text-caption); line-height: var(--leading-body); }
+.error { margin: 8px 0 0; padding: 8px; border-radius: 5px; color: var(--ath-error-ink, #9c3425); background: var(--ath-error-bg, #fff1ec); font-size: var(--text-body); line-height: var(--leading-body); overflow-wrap: anywhere; }

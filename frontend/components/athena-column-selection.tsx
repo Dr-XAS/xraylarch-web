@@ -4,23 +4,29 @@ import { SectionHelp } from "./section-help"
 import { useState, type Dispatch, type SetStateAction, type ReactNode } from "react"
 import type { InspectionResponse } from "@/lib/contracts"
 import { energyProcessingSettings, type AthenaGroup } from "@/lib/athena"
-import { numeratorRange, denominatorColumns, columnExpression, columnProblem, changeInputType, changeImportProcessing, flipSignalColumns, initialColumnMapping, setDualMode, defaultPreprocessing, type ColumnMapping } from "@/lib/athena-import"
+import { numeratorRange, denominatorColumns, columnExpression, columnProblem, changeInputType, changeImportProcessing, flipSignalColumns, initialColumnMapping, setDualMode, defaultPreprocessing, suggestedReference, batchCapacityWarning, type ColumnMapping } from "@/lib/athena-import"
 import { AthenaImportPreview } from "./athena-import-preview"
 import { AthenaDownloadButton } from "./athena-download-button"
 import { AthenaImportPreprocessing } from "./athena-import-preprocessing"
 import { AthenaImportRebin } from "./athena-import-rebin"
 import { AthenaReaderPreview } from "./athena-reader-preview"
 import { AthenaBeamlineMetadata } from './athena-beamline-metadata'
+import { AthenaDetectedBeamline } from './athena-supported-formats'
 import styles from "./athena-column-selection.module.css"
 
 export function AthenaColumnSelection({ projectId, version, inspection, mapping, setMapping, busy, remaining, reuseMapping, groups = [],
-  setReuseMapping, chooseAnother, importCurrent, rebinDefaults, batchNotice, initialReaderReviewed = false, replacement = false }: {
+  setReuseMapping, chooseAnother, skipFile, importCurrent, rebinDefaults, batchNotice, error, initialReaderReviewed = false, replacement = false }: {
   projectId: string; version: number; inspection: InspectionResponse; mapping: ColumnMapping
   setMapping: Dispatch<SetStateAction<ColumnMapping>>; busy: boolean; remaining: number
   groups?: AthenaGroup[]
   rebinDefaults?: ReactNode
   reuseMapping: boolean | null; setReuseMapping: (value: boolean) => void; chooseAnother: () => void; importCurrent: (readerReviewed: boolean) => void
+  // Leaves this file out and moves to the next one, keeping the rest of the queue.
+  skipFile?: () => void
   batchNotice?: string
+  // Why the last import was refused; shown beside the Import button, which
+  // stays in view while the column controls scroll.
+  error?: string
   initialReaderReviewed?: boolean
   replacement?: boolean
 }) {
@@ -37,14 +43,47 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
   }
   const denominator = denominatorColumns(mapping)
   const problem = columnProblem(mapping)
+  const capacity = batchCapacityWarning(mapping, inspection, groups, remaining)
   const hasReference = !!(mapping.reference_numerator || mapping.reference_denominator)
   const dualMode = !!mapping.additional_fluorescence
   const inputFormat = mapping.data_type === 'chi' || mapping.data_type === 'xmudat' ? mapping.data_type : 'mu'
   const processing = energyProcessingSettings(mapping)
+  // A Demeter plugin's suggestion wins for its formats; otherwise the beamline
+  // registry's, which also says which measurement shows the edge.
+  const readerSuggestions = inspection.plugin_suggestions ?? inspection.beamline_reader?.suggestions
+  const measurement = inspection.plugin_suggestions ? undefined : inspection.beamline_reader?.measurement
+  const beamlineReference = suggestedReference(inspection)
+  const columnName = (id: string) => inspection.columns.find(c => c.column_id === id)?.name ?? "1"
+  const referenceName = beamlineReference ? `${columnName(beamlineReference.reference_numerator)}/${columnName(beamlineReference.reference_denominator)}` : ''
+  const contrastNote = (mode: string) => {
+    // When It/Iref is offered as the spectrum, its own contrast is the one behind the offer.
+    const key = mode === 'transmission' && measurement?.foil_spectrum ? 'reference' : mode
+    const value = measurement?.contrast[key]
+    return value === undefined ? undefined : value === null ? 'No edge window in this scan'
+      : `${key === 'reference' ? `${referenceName || 'It/Iref'} edge step` : 'Edge step'} ${value.toFixed(0)} times the pre-edge noise at ${measurement!.edge_energy.toFixed(0)} eV`
+  }
+  // A marginal I0/It edge beside a reference edge: the data cannot say which
+  // was scanned, so nothing is imported until the user says.
+  const foilSuggestion = measurement?.ambiguous ? inspection.beamline_reader?.suggestions?.foil : undefined
+  const [beamChoice, setBeamChoice] = useState<'sample' | 'foil' | null>(null)
+  // Each choice names its own channel's contrast, not one shared tooltip.
+  const edgeTimes = (key: 'transmission' | 'reference', channel: string) => {
+    const value = measurement?.contrast[key]
+    return typeof value === 'number' ? ` · ${channel} edge step ${value.toFixed(0)} times its noise` : ''
+  }
+  function chooseBeam(choice: 'sample' | 'foil') {
+    const suggestion = choice === 'foil' ? foilSuggestion : readerSuggestions?.transmission
+    if (!suggestion) return
+    setBeamChoice(choice)
+    setMapping(m => ({ ...m, energy_column: suggestion.energy_column, units: suggestion.units, numerator: suggestion.numerator,
+      denominator: suggestion.denominator ?? '', mode: suggestion.mode, individual_channels: false,
+      ...(choice === 'foil' ? { reference_numerator: '', reference_denominator: '' } : beamlineReference ?? {}) }))
+  }
   return <>
     <div className={styles.importHeader}>
       <p className={styles.fileSummary}><strong>{inspection.display_name}</strong><span className="ath-chip">{inspection.row_count} points{remaining > 1 ? ` · ${remaining} files remaining` : ""}</span></p>
-      <div className={`ath-modal-actions ${styles.importActions}`} role="group" aria-label={replacement ? "Column change actions" : "Import actions"}><button type="button" disabled={busy} onClick={chooseAnother}>{replacement ? "Cancel" : "Choose another file"}</button><button type="button" className="ath-primary" disabled={busy || !!problem || (remaining > 1 && reuseMapping === null) || (!!inspection.file_plugin?.review_required && !reviewed)} onClick={() => importCurrent(reviewed)}>{replacement ? busy ? "Applying…" : "Apply column changes" : busy ? "Importing…" : remaining > 1 && reuseMapping ? `Import ${remaining} files` : dualMode ? "Import both modes" : "Import spectrum"}</button></div>
+      <div className={`ath-modal-actions ${styles.importActions}`} role="group" aria-label={replacement ? "Column change actions" : "Import actions"}><button type="button" disabled={busy} onClick={chooseAnother}>{replacement ? "Cancel" : "Choose another file"}</button>{!replacement && skipFile && remaining > 1 && <button type="button" disabled={busy} onClick={skipFile}>Skip this file</button>}<button type="button" className="ath-primary" disabled={busy || !!problem || (remaining > 1 && reuseMapping === null) || (!!inspection.file_plugin?.review_required && !reviewed) || (!!foilSuggestion && !beamChoice)} onClick={() => importCurrent(reviewed)}>{replacement ? busy ? "Applying…" : "Apply column changes" : busy ? "Importing…" : remaining > 1 && reuseMapping ? `Import ${remaining} files` : dualMode ? "Import both modes" : "Import spectrum"}</button></div>
+      {error && <p className={`ath-error ${styles.headerError}`} role="alert">{error}</p>}
     </div>
     {remaining > 1 && <fieldset className={styles.batchChoice} disabled={busy}>
       <legend>Use the same import parameters for all files? <SectionHelp label="Batch import parameters">Set up this file once to import the remaining files automatically using the same column positions, units, and preprocessing settings. Missing columns or required reader reviews will pause the batch.</SectionHelp></legend>
@@ -54,6 +93,8 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
       </div>
     </fieldset>}
     {batchNotice && <p className="ath-warning" role="status">{batchNotice}</p>}
+    {!replacement && capacity && <p className="ath-warning" role="status">{capacity}</p>}
+    <AthenaDetectedBeamline reader={inspection.beamline_reader} columns={inspection.columns} />
     {inspection.file_plugin && <section aria-label="File conversion"><strong>{inspection.file_plugin.description}</strong> <SectionHelp label="File conversion">{inspection.file_plugin.summary}</SectionHelp></section>}
     <div className={styles.layout}>
       <div className={styles.controls}>
@@ -86,20 +127,33 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
             <label className="ath-check"><input type="checkbox" checked={processing.exafs} onChange={e => setMapping(m => changeImportProcessing(m, { exafs: e.target.checked }))} />Enable EXAFS processing</label>
           </div>}
           {!replacement && <label className="ath-check"><input type="checkbox" checked={mapping.is_reference ?? false} onChange={e => setMapping(m => ({ ...m, is_reference: e.target.checked }))} />This is reference</label>}
-          {inspection.plugin_suggestions && mapping.data_type !== 'chi' && <div aria-label="Reader column suggestions">
+          {readerSuggestions && mapping.data_type !== 'chi' && <div aria-label="Reader column suggestions">
             <strong>Reader columns</strong> <SectionHelp label="Reader column suggestions">Apply this reader’s suggested detector columns, then check the preview.</SectionHelp>
+            {measurement?.notes.map(note => <p key={note} className="ath-hint">{note}</p>)}
+            {foilSuggestion && <fieldset className={styles.batchChoice}>
+              <legend>What did this scan measure? Choose before importing.</legend>
+              <div className={styles.batchOptions}>
+                <label className="ath-check"><input type="radio" name="sample-or-foil" checked={beamChoice === 'sample'} onChange={() => chooseBeam('sample')} />A sample: I0/It, with {referenceName || 'It/Iref'} as its reference{edgeTimes('transmission', 'I0/It')}</label>
+                <label className="ath-check"><input type="radio" name="sample-or-foil" checked={beamChoice === 'foil'} onChange={() => chooseBeam('foil')} />A foil scan: {columnName(foilSuggestion.numerator[0])}/{columnName(foilSuggestion.denominator ?? '')} as the spectrum, no reference{edgeTimes('reference', `${columnName(foilSuggestion.numerator[0])}/${columnName(foilSuggestion.denominator ?? '')}`)}</label>
+              </div>
+            </fieldset>}
             {(['transmission', 'fluorescence'] as const).map(mode => {
-              const suggestion = inspection.plugin_suggestions?.[mode]
-              return suggestion && <button key={mode} type="button" onClick={() => setMapping(m => ({ ...m,
+              const suggestion = readerSuggestions[mode]
+              return suggestion && <button key={mode} type="button" aria-pressed={!dualMode && mapping.mode === mode && sameColumns(mapping, suggestion)}
+                title={contrastNote(mode)} onClick={() => setMapping(m => ({ ...m,
                 energy_column: suggestion.energy_column, units: suggestion.units,
                 ...(m.additional_fluorescence && mode === 'fluorescence'
                   ? { additional_fluorescence: { ...m.additional_fluorescence, numerator: suggestion.numerator,
                     denominator: suggestion.denominator ?? '', individual_channels: false } }
                   : { numerator: suggestion.numerator, denominator: suggestion.denominator ?? '', mode: suggestion.mode,
                     individual_channels: false }),
-              }))}>Use {mode} columns</button>
+              }))}>Use {mode} columns{measurement?.mode === mode ? ' (edge found here)' : ''}</button>
             })}
+            {beamlineReference && <button type="button" aria-pressed={hasReference} onClick={() => setMapping(m => hasReference
+              ? { ...m, reference_numerator: '', reference_denominator: '' } : { ...m, ...beamlineReference })}>
+              {hasReference ? 'Import without the reference' : `Import the ${referenceName} reference`}</button>}
           </div>}
+          {hasReference && <p className="ath-formula">Reference = {(mapping.reference_log ?? true) ? "ln(|" : ""}{columnName(mapping.reference_numerator)} / {columnName(mapping.reference_denominator)}{(mapping.reference_log ?? true) ? "|)" : ""}</p>}
           {mapping.data_type !== "chi" && inspection.column_units && !inspection.column_units[mapping.energy_column] && <p className="ath-warning">Energy units could not be inferred. Choose eV or keV and inspect the plotted range.</p>}
           {dualMode && <h3 className={styles.modeTitle}>Transmission</h3>}
           <div className={styles.range}>
@@ -113,7 +167,7 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
             : `${dualMode ? 'Choose the incident intensity (I₀) as numerator and transmitted intensity (It) as denominator.' : 'Unselected numerator or denominator uses 1.'} Multiple checked columns are added together. Flip swaps all numerator and denominator selections; the constant scales the imported signal.`}</SectionHelp></th><th>Denominator</th><th>Column</th><th>First values</th></tr></thead><tbody>{inspection.columns.map(c => <tr key={c.column_id}>
             <td><input type="checkbox" aria-label={`Numerator ${c.name}`} checked={mapping.numerator.includes(c.column_id)} onChange={e => setMapping(m => ({ ...m, numerator: e.target.checked ? [...m.numerator, c.column_id] : m.numerator.filter(v => v !== c.column_id) }))} /></td>
             <td><input type="checkbox" aria-label={`Denominator ${c.name}`} disabled={mapping.data_type === "chi"} checked={mapping.mode !== "mu" && denominator.includes(c.column_id)} onChange={e => setMapping(m => ({ ...m, mode: m.mode === "mu" ? "fluorescence" : m.mode, denominator: e.target.checked ? [...(m.mode === "mu" ? [] : denominatorColumns(m)), c.column_id] : denominatorColumns(m).filter(id => id !== c.column_id) }))} /></td>
-            <td>{c.index + 1}. {c.name}</td><td>{c.preview.slice(0, 3).map(v => v.toPrecision(5)).join(", ")}</td>
+            <td>{c.index + 1}. {c.name}</td><td>{c.preview.slice(0, 3).map(v => v === null ? "NaN" : v.toPrecision(5)).join(", ")}</td>
           </tr>)}</tbody></table></div>
           <p className="ath-formula">{columnExpression(mapping, inspection.columns)}</p>
           <div className="ath-fields">
@@ -135,7 +189,7 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
             <label className="ath-check"><input type="checkbox" disabled={!hasReference} checked={mapping.reference_same_element ?? true} onChange={e => setMapping(m => ({ ...m, reference_same_element: e.target.checked }))} />Same element <SectionHelp label="Reference element">Use the sample’s element and edge. If the reference E₀ differs by more than 25 eV, use that element’s tabulated edge. With this option off, the reference finds its own edge independently of sample edge enforcement.</SectionHelp></label>
             {hasReference && <p className="ath-formula">Reference = {(mapping.reference_log ?? true) ? "ln(|" : ""}{inspection.columns.find(c => c.column_id === mapping.reference_numerator)?.name ?? "1"} / {inspection.columns.find(c => c.column_id === mapping.reference_denominator)?.name ?? "1"}{(mapping.reference_log ?? true) ? "|)" : ""}</p>}
             </>}
-            <label className="ath-check"><input type="checkbox" checked={mapping.sort} onChange={e => setMapping(m => ({ ...m, sort: e.target.checked }))} />Sort ascending by energy (duplicate energies still require repair)</label>
+            <label className="ath-check"><input type="checkbox" checked={mapping.sort} onChange={e => setMapping(m => ({ ...m, sort: e.target.checked }))} />Sort ascending by energy (rows at a repeated energy are averaged)</label>
           </details>
         </fieldset>
         {inspection.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
@@ -152,6 +206,10 @@ export function AthenaColumnSelection({ projectId, version, inspection, mapping,
       </div>
     </div>
   </>
+}
+
+function sameColumns(mapping: ColumnMapping, suggestion: { numerator: string[]; denominator: string | null }) {
+  return mapping.numerator.join() === suggestion.numerator.join() && denominatorColumns(mapping).join() === (suggestion.denominator ?? '')
 }
 
 function FluorescenceColumns({ inspection, mapping, setMapping }: {

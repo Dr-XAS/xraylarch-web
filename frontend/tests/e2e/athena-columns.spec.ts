@@ -166,7 +166,7 @@ test('official MRCAT quick scan compares original and rebinned data and imports 
   await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
 })
 
-test('batch choice shares parameters across renamed columns, resets, and permits individual review', async ({ page }, info) => {
+test('batch choice pauses on renamed columns and names the change, resets, and permits individual review', async ({ page }, info) => {
   test.setTimeout(90000)
   const errors: string[] = []; page.on('pageerror', error => errors.push(error.message))
   const renamed = Buffer.from(content.toString().replace('energy i0 it detA detB ref zero', 'axis monitor transmitted channelA channelB reference empty'))
@@ -204,8 +204,21 @@ test('batch choice shares parameters across renamed columns, resets, and permits
   page.on('response', response => { if (response.url().endsWith('/import')) imports.push(response.json()) })
   await same.check()
   await panel.getByRole('button', { name: 'Import 2 files', exact: true }).click()
-  // Completing both requests without another click catches a renamed header
-  // incorrectly reopening the import dialog instead of reusing the positions.
+  // Renamed headers may be other detectors at the same positions: the batch
+  // pauses on the second file and says which selected column changed.
+  await expect(panel.getByText(/^Batch import paused: selected column 1 was “energy” and is “axis” here\./)).toBeVisible()
+  expect(imports).toHaveLength(1)
+  if (await panel.getByRole('button', { name: 'Use suggested columns', exact: true }).count()) {
+    await panel.getByRole('button', { name: 'Use suggested columns', exact: true }).click()
+  }
+  await panel.getByRole('combobox', { name: 'Energy units', exact: true }).selectOption('keV')
+  await panel.getByRole('combobox', { name: 'Measurement', exact: true }).selectOption('transmission')
+  await panel.getByRole('button', { name: 'Clear numerator', exact: true }).click()
+  await panel.getByLabel('Numerator monitor', { exact: true }).check()
+  await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
+  await panel.getByLabel('Denominator transmitted', { exact: true }).check()
+  await panel.getByRole('spinbutton', { name: 'Multiplicative constant', exact: true }).fill('1.5')
+  await panel.getByRole('button', { name: 'Import spectrum', exact: true }).click()
   await expect(panel).not.toBeVisible()
   expect(imports).toHaveLength(2)
   const shared = await imports[1]
@@ -250,12 +263,12 @@ test('imports transmission and fluorescence together across a shared real-Cu bat
   test.setTimeout(90000)
   const errors: string[] = []
   page.on('pageerror', error => errors.push(error.message))
-  const renamed = Buffer.from(content.toString().replace('energy i0 it detA detB ref zero', 'axis monitor transmitted channelA channelB reference empty'))
   await page.goto('/')
   await page.getByRole('button', { name: 'Import data', exact: true }).click()
+  // Both files share one layout: a renamed layout pauses the batch (above).
   await page.getByLabel('Choose data files', { exact: true }).setInputFiles([
     { name: 'dual-first.dat', mimeType: 'text/plain', buffer: content },
-    { name: 'dual-renamed.dat', mimeType: 'text/plain', buffer: renamed },
+    { name: 'dual-second.dat', mimeType: 'text/plain', buffer: content },
   ])
   const panel = page.getByRole('dialog', { name: 'Import spectra', exact: true })
   await expect(panel.getByRole('combobox', { name: 'Measurement', exact: true })).toBeVisible()
@@ -320,7 +333,7 @@ test('imports transmission and fluorescence together across a shared real-Cu bat
   const project = projects[1]
   expect(project.groups.map((group: { label: string }) => group.label)).toEqual([
     'dual-first.dat · Transmission', 'dual-first.dat · Fluorescence',
-    'dual-renamed.dat · Transmission', 'dual-renamed.dat · Fluorescence',
+    'dual-second.dat · Transmission', 'dual-second.dat · Fluorescence',
   ])
   for (const [index, group] of project.groups.entries()) {
     expect(group.source.mapping.mode).toBe(index % 2 ? 'fluorescence' : 'transmission')
@@ -462,6 +475,28 @@ test("Flip swaps numerator and denominator checks while scale affects preview an
   expect(g.source.mapping.invert).toBe(false)
   expect(g.multiplier).toBe(1)
   expect(g.processing_error).toBeNull()
+})
+
+test("a refused import says why beside the Import button, not below the dialog's fold", async ({ page }) => {
+  // A one-row LabVIEW '.last' file was refused with its reason 1400 px down
+  // an 800 px dialog; the visible preview only said to correct the selection.
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.goto("/")
+  await page.getByRole("button", { name: "Import data", exact: true }).click()
+  await page.getByLabel("Choose data files", { exact: true }).setInputFiles({ name: "short.dat", mimeType: "text/plain",
+    buffer: Buffer.from("# energy i0 it\n8900 10000 5000\n8950 10000 4000\n9000 10000 3000\n") })
+  const panel = page.getByRole("dialog", { name: "Import spectra", exact: true })
+  const importButton = panel.getByRole("button", { name: "Import spectrum", exact: true })
+  await importButton.click()
+  // The preview may repeat the reason further down; one copy must sit just
+  // under the Import button, inside the viewport.
+  const refusal = panel.getByRole("alert").filter({ hasText: "a spectrum needs at least 8" })
+  await expect(refusal.first()).toBeVisible()
+  await expect.poll(async () => {
+    const button = (await importButton.boundingBox())!
+    const boxes = await Promise.all((await refusal.all()).map(alert => alert.boundingBox()))
+    return boxes.some(box => !!box && box.y >= button.y + button.height - 1 && box.y - (button.y + button.height) < 60 && box.y + box.height <= 800)
+  }).toBe(true)
 })
 
 test("switching to chi clears absorption transforms and keeps raw k values", async ({ page }) => {

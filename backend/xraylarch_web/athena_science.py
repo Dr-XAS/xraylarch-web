@@ -10,12 +10,15 @@ This module implements core processing, not full desktop Athena parity.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from itertools import combinations
+from math import comb
 from typing import Annotated, Literal
 
 import numpy as np
 from larch import Group
-from larch.math import index_nearest, index_of
+from larch.math import index_nearest, index_of, remove_dups
 from larch.xafs import autobk, find_e0, pre_edge, xftf, xftr
+from larch.xafs.pre_edge import _finde0
 from larch.xafs.xafsutils import ETOK, TINY_ENERGY
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 from scipy.optimize import least_squares, minimize, nnls
@@ -24,6 +27,13 @@ MAX_POINTS = 100_000
 MAX_NFFT = 65_536
 MAX_SPECTRA = 100
 MAX_MATRIX_VALUES = 2_000_000
+MAX_LCF_COMBINATIONS = 2_000
+LCF_WEIGHT_FLOOR = 1e-9  # below this a nonnegative weight sits on its zero bound, not in the fit
+LCF_MAX_CONDITION = 1e8  # past this the standards are collinear and the errors are meaningless
+COLLINEAR_STANDARDS = ("The chosen standards are nearly linearly dependent over this range, so the weights "
+                       "are not separately determined and no uncertainties are reported. The weights "
+                       "themselves still describe the data; use fewer or more distinct standards to resolve them.")
+UNCERTAINTY_UNAVAILABLE = "The fit succeeded but produced no usable covariance, so the weights are shown without uncertainties."
 Window = Literal["hanning", "parzen", "welch", "gaussian", "sine", "kaiser"]
 Weight = Annotated[float, Field(ge=0, le=4)]
 ARRAY_NAMES = (
@@ -170,6 +180,12 @@ def _number(value, name):
     return result
 
 
+def _count(value, name):
+    if isinstance(value, bool) or not isinstance(value, (int, np.integer)):
+        raise ScientificError(f"{name} must be a whole number.")
+    return int(value)
+
+
 def _lists(values, name):
     a = np.asarray(values, dtype=float)
     if not np.isfinite(a).all():
@@ -183,10 +199,18 @@ def _edge(x, y, e0=None):
     if e0 is None:
         try:
             # This checkout's find_energy_step slices [0:-0] below 100
-            # points, producing NaN and an unreliable edge. For short scans
-            # use the measured interior maximum of dmu/dE instead.
-            if x.size < 100:
+            # points, producing NaN. Scans of 50-99 points skip it by giving
+            # Larch's own _finde0 an explicit step, the way find_e0 chooses one;
+            # a bare derivative maximum would make a one-point glitch the edge.
+            # Below 50 points (flagged at import as too short to normalize) the
+            # measured interior maximum of dmu/dE is kept.
+            if x.size < 50:
                 e0 = float(x[1 + np.argmax(np.gradient(y, x)[1:-1])])
+            elif x.size < 100:
+                step = float(np.clip(np.median(np.diff(x)), 0.01, 1.0))
+                rough = _finde0(x, y, estep=step, use_smooth=False)[0]
+                e0 = float(_finde0(x, y, estep=0.5 * (step + max(0.01, min(1.0, rough / 25000.))),
+                                   use_smooth=True)[0])
             else:
                 e0 = float(find_e0(x, y))
         except (ValueError, IndexError, TypeError) as exc:
@@ -501,8 +525,15 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
             x += p.energy_shift
             if x[0] <= 0 or x[-1] > 1e7:
                 raise ScientificError("Supply positive energies in eV no greater than 1e7 after energy_shift.")
-            if np.any(np.diff(x) < TINY_ENERGY):
-                raise ScientificError("Energy spacing is below Larch's 0.0005 eV limit; rebin close points before processing.")
+            close = int(np.sum(np.diff(x) < TINY_ENERGY))
+            if close:
+                # Larch's own pre_edge and find_e0 move such points apart with
+                # remove_dups before using them; do it here, where it is seen.
+                x = remove_dups(x, tiny=TINY_ENERGY)
+                if np.any(np.diff(x) < TINY_ENERGY * (1 - 1e-9)):
+                    raise ScientificError("Energy spacing is below Larch's 0.0005 eV limit; rebin close points before processing.")
+                warnings.append(f"{close} energies lay closer than Larch's 0.0005 eV limit to the point before them; "
+                                "they were moved up to 0.0005 eV apart, as Larch's remove_dups does.")
             group.energy, group.mu = x, y
             e0 = _edge(x, y, p.e0)
             if is_normalized or data_type in ("norm", "xmudat"):
@@ -882,6 +913,117 @@ def merge_spectra(spectra: list[tuple], weights=None) -> tuple[np.ndarray, np.nd
     return result["x"], result["y"], result["stddev"]
 
 
+def _combination_rank(design, sum_to_one):
+    """Columns are independent, counting the sum-to-one row as one more equation."""
+    stacked = np.vstack((design, np.ones(design.shape[1]))) if sum_to_one else design
+    return np.linalg.matrix_rank(stacked) == design.shape[1]
+
+
+def _solve_combination(a, b, sum_to_one, nonnegative):
+    """Least-squares weights for one component set under the chosen constraints."""
+    count = a.shape[1]
+    if sum_to_one and nonnegative:
+        result = minimize(lambda w: 0.5 * np.sum((a @ w - b) ** 2),
+                          np.full(count, 1 / count),
+                          jac=lambda w: a.T @ (a @ w - b), method="SLSQP",
+                          bounds=[(0, 1)] * count,
+                          constraints=[{"type": "eq", "fun": lambda w: np.sum(w) - 1,
+                                        "jac": lambda w: np.ones_like(w)}],
+                          options={"ftol": 1e-13, "maxiter": 2000})
+        if not result.success:
+            raise ScientificError(f"Constrained combination fit failed ({result.message}); inspect the standards.")
+        weights = np.maximum(result.x, 0)
+        return weights / weights.sum()
+    if nonnegative:
+        return nnls(a, b, maxiter=100 * count)[0]
+    if sum_to_one:
+        if count == 1:
+            return np.ones(1)
+        first = np.linalg.lstsq(a[:, :-1] - a[:, -1, None], b - a[:, -1], rcond=None)[0]
+        return np.r_[first, 1 - first.sum()]
+    return np.linalg.lstsq(a, b, rcond=None)[0]
+
+
+def _weight_uncertainties(a, residual, weights, sum_to_one, nonnegative):
+    """Nominal least-squares standard errors on the fitted weights.
+
+    The fit is unweighted, so the residual variance s**2 = RSS/(N - p) supplies
+    the scale and cov = s**2 (D^T D)^-1 for the p free parameters. sum_to_one
+    eliminates one weight (w_last = 1 - sum of the rest), which makes D the
+    column differences and gives the eliminated weight var = 1^T cov 1.
+    Weights that the nonnegativity constraint holds at zero are not free
+    parameters; they are treated as fixed and their standard error is None.
+
+    The covariance is formed from an SVD of the design rather than by inverting
+    the Gram matrix, which squares the condition number. Near-collinear
+    standards are ordinary in LCF, and the inverse then returns finite errors
+    that mean nothing; past LCF_MAX_CONDITION the errors are withheld and a
+    warning is returned instead.
+
+    Returns (stderr list, degrees of freedom or None, residual variance or None,
+    warning or None).
+    """
+    points = a.shape[0]
+    free = [i for i, w in enumerate(weights) if w > LCF_WEIGHT_FLOOR] if nonnegative else list(range(len(weights)))
+    stderr: list[float | None] = [None] * len(weights)
+    if not free:
+        return stderr, None, None, None
+    varying = len(free) - 1 if sum_to_one else len(free)
+    dof = points - varying
+    if dof <= 0:
+        return stderr, None, None, None
+    variance = float(residual @ residual) / dof
+    if varying == 0:  # sum_to_one with a single surviving component: w = 1 exactly
+        stderr[free[0]] = 0.0
+        return stderr, dof, variance, None
+    if sum_to_one:
+        design = a[:, free[:-1]] - a[:, [free[-1]]]
+    else:
+        design = a[:, free]
+    try:
+        singular = np.linalg.svd(design, compute_uv=False)
+    except np.linalg.LinAlgError:
+        return stderr, dof, variance, UNCERTAINTY_UNAVAILABLE
+    if not singular.size or not np.isfinite(singular).all() or singular[0] <= 0:
+        return stderr, dof, variance, UNCERTAINTY_UNAVAILABLE
+    condition = float(singular[0] / singular[-1]) if singular[-1] > 0 else np.inf
+    if condition > LCF_MAX_CONDITION:
+        return stderr, dof, variance, COLLINEAR_STANDARDS
+    # cov = s**2 (D^T D)^-1 = s**2 V diag(1/sigma**2) V^T, formed from the SVD so
+    # the condition number is not squared on the way to the inverse.
+    inverse = np.linalg.pinv(design)
+    covariance = variance * (inverse @ inverse.T)
+    diagonal = np.diag(covariance)
+    if not np.isfinite(diagonal).all() or np.any(diagonal < 0):
+        return stderr, dof, variance, UNCERTAINTY_UNAVAILABLE
+    for index, value in zip(free, np.sqrt(diagonal)):
+        stderr[index] = float(value)
+    if sum_to_one:
+        eliminated = float(covariance.sum())
+        stderr[free[-1]] = float(np.sqrt(eliminated)) if eliminated >= 0 else None
+    return stderr, dof, variance, None
+
+
+def _combination_report(grid, observed, design, a, b, factor, weights, sum_to_one, nonnegative):
+    """Assemble the arrays, R-factor and uncertainties for one solved fit."""
+    fit = design @ weights
+    residual = observed - fit
+    scaled_residual = residual / factor
+    denominator = float(b @ b)
+    numerator = float(scaled_residual @ scaled_residual)
+    if denominator == 0 and numerator > 1e-24:
+        raise ScientificError("R-factor is undefined for a zero target with a nonzero fit; select a nonzero target.")
+    stderr, dof, variance, warning = _weight_uncertainties(a, scaled_residual, weights, sum_to_one, nonnegative)
+    return dict(x=_lists(grid, "x"), observed=_lists(observed, "observed"), fit=_lists(fit, "fit"),
+                residual=_lists(residual, "residual"), weights=_lists(weights, "weights"),
+                weight_stderr=stderr, weight_stderr_warning=warning,
+                rfactor=numerator / denominator if denominator else 0.0,
+                chisqr=float(residual @ residual),
+                reduced_chisqr=float(variance * factor ** 2) if variance is not None else None,
+                degrees_of_freedom=dof,
+                sum_to_one=bool(sum_to_one), nonnegative=bool(nonnegative))
+
+
 def linear_combination(target_x, target_y, components: list[tuple], xmin, xmax,
                        sum_to_one=True, nonnegative=True) -> dict:
     """Unweighted linear least squares, with independently selectable constraints.
@@ -889,6 +1031,13 @@ def linear_combination(target_x, target_y, components: list[tuple], xmin, xmax,
     Component order is preserved in weights. residual = observed - fit;
     rfactor = sum(residual**2)/sum(observed**2). No shifts, offsets or
     normalization are fitted. The target grid is restricted to xmin/xmax.
+
+    weight_stderr holds nominal least-squares standard errors, with weights the
+    nonnegativity constraint holds at zero treated as fixed rather than fitted
+    (their entry is None, and they do not cost a degree of freedom). They assume
+    independent residuals; interpolated XANES residuals are serially correlated,
+    so treat them as a lower bound on the real uncertainty, as desktop Athena
+    does. weight_stderr_warning explains an absent set of errors.
     """
     target = _pair(target_x, target_y, name="Target")
     pairs = _spectra(components)
@@ -897,42 +1046,98 @@ def linear_combination(target_x, target_y, components: list[tuple], xmin, xmax,
     design = _matrix(pairs, grid).T
     if grid.size < len(pairs):
         raise ScientificError("There are fewer fit points than components; widen the fit range.")
-    rank_design = np.vstack((design, np.ones(len(pairs)))) if sum_to_one else design
-    if np.linalg.matrix_rank(rank_design) < len(pairs):
+    if not _combination_rank(design, sum_to_one):
         raise ScientificError("Components are linearly dependent; remove duplicate or indistinguishable standards.")
     factor = max(float(np.max(np.abs(design))), float(np.max(np.abs(observed))), 1e-100)
     a, b = design / factor, observed / factor
-    if sum_to_one and nonnegative:
-        result = minimize(lambda w: 0.5 * np.sum((a @ w - b) ** 2),
-                          np.full(len(pairs), 1 / len(pairs)),
-                          jac=lambda w: a.T @ (a @ w - b), method="SLSQP",
-                          bounds=[(0, 1)] * len(pairs),
-                          constraints=[{"type": "eq", "fun": lambda w: np.sum(w) - 1,
-                                        "jac": lambda w: np.ones_like(w)}],
-                          options={"ftol": 1e-13, "maxiter": 2000})
-        if not result.success:
-            raise ScientificError(f"Constrained combination fit failed ({result.message}); inspect the standards.")
-        weights = np.maximum(result.x, 0)
-        weights /= weights.sum()
-    elif nonnegative:
-        weights, _ = nnls(a, b, maxiter=100 * len(pairs))
-    elif sum_to_one:
-        if len(pairs) == 1:
-            weights = np.ones(1)
-        else:
-            first = np.linalg.lstsq(a[:, :-1] - a[:, -1, None], b - a[:, -1], rcond=None)[0]
-            weights = np.r_[first, 1 - first.sum()]
-    else:
-        weights = np.linalg.lstsq(a, b, rcond=None)[0]
-    fit = design @ weights
-    residual = observed - fit
-    denominator = float(b @ b)
-    numerator = float((residual / factor) @ (residual / factor))
-    if denominator == 0 and numerator > 1e-24:
-        raise ScientificError("R-factor is undefined for a zero target with a nonzero fit; select a nonzero target.")
-    return dict(x=_lists(grid, "x"), observed=_lists(observed, "observed"), fit=_lists(fit, "fit"),
-                residual=_lists(residual, "residual"), weights=_lists(weights, "weights"),
-                rfactor=numerator / denominator if denominator else 0.0,
+    weights = _solve_combination(a, b, sum_to_one, nonnegative)
+    return _combination_report(grid, observed, design, a, b, factor, weights, sum_to_one, nonnegative)
+
+
+def combination_search(target_x, target_y, components: list[tuple], xmin, xmax,
+                       sum_to_one=True, nonnegative=True,
+                       min_components=1, max_components=4, top=10) -> dict:
+    """Fit every subset of the reference pool in a size range and rank by R-factor.
+
+    This is Athena's "fit all combinations": the same unweighted least squares
+    as linear_combination, repeated over each choice of min_components to
+    max_components references, ranked by R-factor and then by subset size so a
+    simpler fit wins a tie. Subsets whose references are linearly dependent are
+    counted in `skipped` rather than failing the whole search. Subsets that
+    reduce to the same fit because nonnegativity zeroed a reference are listed
+    once. `best` is the full fit (arrays included) of the top-ranked subset;
+    `combinations` holds the ranked summaries, truncated to `top`.
+
+    R-factor always improves with more references, so compare reduced_chisqr
+    across sizes before preferring a larger combination.
+    """
+    target = _pair(target_x, target_y, name="Target")
+    pairs = _spectra(components, minimum=2)
+    low, high = _count(min_components, "min_components"), _count(max_components, "max_components")
+    wanted = _count(top, "top")
+    if low < 1 or high < low:
+        raise ScientificError("Require 1 <= min_components <= max_components.")
+    if wanted < 1:
+        raise ScientificError("top must be at least 1.")
+    if high > len(pairs):
+        raise ScientificError(f"max_components ({high}) exceeds the {len(pairs)} references supplied.")
+    total = sum(comb(len(pairs), size) for size in range(low, high + 1))
+    if total > MAX_LCF_COMBINATIONS:
+        raise ScientificError(f"{total} combinations exceeds the {MAX_LCF_COMBINATIONS} limit; "
+                              "narrow the component-count range or the reference pool.")
+    grid = _fit_grid([target, *pairs], xmin, xmax)
+    observed = np.interp(grid, *target)
+    full = _matrix(pairs, grid).T
+    if grid.size < high:
+        raise ScientificError("There are fewer fit points than components; widen the fit range.")
+    factor = max(float(np.max(np.abs(full))), float(np.max(np.abs(observed))), 1e-100)
+    scaled, b = full / factor, observed / factor
+    ranked, skipped = [], 0
+    for size in range(low, high + 1):
+        for subset in combinations(range(len(pairs)), size):
+            columns = list(subset)
+            a = scaled[:, columns]
+            if not _combination_rank(a, sum_to_one):
+                skipped += 1
+                continue
+            try:
+                weights = _solve_combination(a, b, sum_to_one, nonnegative)
+            except ScientificError:
+                skipped += 1
+                continue
+            residual = b - a @ weights
+            rss = float(residual @ residual)
+            stderr, dof, _, warning = _weight_uncertainties(a, residual, weights, sum_to_one, nonnegative)
+            ranked.append(dict(indices=columns, weights=_lists(weights, "weights"), weight_stderr=stderr,
+                               weight_stderr_warning=warning,
+                               rfactor=rss / float(b @ b) if float(b @ b) else 0.0,
+                               chisqr=rss * factor ** 2,
+                               reduced_chisqr=rss * factor ** 2 / dof if dof else None,
+                               degrees_of_freedom=dof))
+    if not ranked:
+        raise ScientificError("No combination could be fitted; the references are linearly dependent.")
+    # A reference the nonnegativity constraint drove to zero is not in the fit,
+    # so a larger subset containing it is the same fit as the smaller one. Their
+    # R-factors differ only by solver noise, which would defeat a tie-break on
+    # size, so group by the surviving set and keep the shortest listing. Only a
+    # constrained fit pins weights at zero: unconstrained weights are signed, a
+    # negative one is a real term of a different model, and nothing is merged.
+    if nonnegative:
+        shortest: dict[frozenset, dict] = {}
+        for entry in ranked:
+            surviving = frozenset(i for i, w in zip(entry["indices"], entry["weights"]) if w > LCF_WEIGHT_FLOOR)
+            incumbent = shortest.get(surviving)
+            if incumbent is None or len(entry["indices"]) < len(incumbent["indices"]):
+                shortest[surviving] = entry
+        ranked = list(shortest.values())
+    ranked = sorted(ranked, key=lambda entry: (entry["rfactor"], len(entry["indices"])))
+    winner = ranked[0]
+    columns = winner["indices"]
+    best = _combination_report(grid, observed, full[:, columns], scaled[:, columns], b, factor,
+                               np.asarray(winner["weights"]), sum_to_one, nonnegative)
+    best["indices"] = columns
+    return dict(combinations=ranked[:wanted], best=best, tried=total - skipped, skipped=skipped,
+                min_components=low, max_components=high,
                 sum_to_one=bool(sum_to_one), nonnegative=bool(nonnegative))
 
 

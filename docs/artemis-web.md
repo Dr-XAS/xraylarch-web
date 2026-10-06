@@ -364,8 +364,11 @@ the R bounds do not filter that residual, although Larch still uses them in its
 independent-point estimate. R space is the usual choice for isolating a shell.
 Select ranges justified by the measured signal and the structural model.
 
-The supported k weights are 0, 1, 2, and 3. New models and the Cu₂O example
-select all four by default; imported models retain their saved selections.
+The supported k weights are 0, 1, 2, and 3. New models select all four by
+default; imported models retain their saved selections. The Cu₂O example
+uses weight 2 only and separate Cu-O distance and disorder parameters.
+Its improvement over the older example changes both the model and the
+k-weighting, not just the shell parameters.
 They emphasize different parts of the same data and do not multiply
 the number of independent observations. Fit weights belong to the fit model;
 Athena's display weight remains a plotting choice. Fourier windows offered are
@@ -398,6 +401,58 @@ Noise is estimated by Larch from the high-R region, 15–30 Å. The existing Ath
 processed arrays do not retain `delta_chi`, so this iteration does not propagate
 that background uncertainty into the fit. There is no user-specified noise
 input yet. Reported error bars do not include systematic model errors.
+
+That estimate, ε(k), is reported with the fit as **Noise ε(k)**. It is the only
+scale against which the fit's χ² means anything: the residual Larch minimizes is
+the data-minus-model transform divided by ε, so χ² and reduced χ² scale with
+1/ε(k)². AIC and BIC do not: they are built from `N_ind · log(χ²/N_ind)`, so
+rescaling χ² by a constant shifts them by an additive constant rather than
+scaling them. Two χ² values obtained with different ε(k) are therefore not on
+one scale; and putting them on one scale is not the same as making them
+comparable, since two fits on different data, grids or k weights also weight
+their points differently. The fitted values, their uncertainties and the R-factor do not
+depend on ε at all, because `propagate_uncertainties` rescales every standard
+error by `sqrt(redchi · nfree / (N_ind - N_vary))` afterwards; that invariance
+holds for a common rescaling of the whole objective, not for a change in the
+relative weight of one point against another. When several k weights are fitted
+together, the reported ε(k) is the one belonging to the weight the curves are
+drawn at.
+
+Supplying ε(k) by hand, as some published reference fits do, does **not** give
+the same χ² as letting Larch estimate it. Larch converts between ε(k) and the
+ε(R) its residual divides by with two different factors:
+[`estimate_noise`](../larch/xafs/feffit.py) uses
+`scale = sqrt(2·pi·w / (kstep·(kmax^w - kmin^w)))`, while
+[`set_epsilon_k`](../larch/xafs/feffit.py) uses
+`scale = 2·sqrt(pi·w / (kstep·(kmax^w - kmin^w)))`. Those differ by exactly √2,
+so handing Larch back the very ε(k) it just estimated divides ε(R) by √2: the
+R-space residual grows by √2 at fixed parameters, and χ² doubles.
+
+Which branch is self-consistent can be settled for one case and not for the
+general one. `xftf_fast` normalizes its transform by `kstep/sqrt(pi)`. For a
+**rectangular** window, carrying white noise of variance σ² through that
+transform gives a per-component variance that `estimate_noise`'s conversion
+reproduces exactly, while `set_epsilon_k` predicts half of it — so there
+`estimate_noise` is the consistent branch and `set_epsilon_k` is not. For a
+**tapered** window this does not follow: the transformed noise depends on the
+window's squared, k-weighted values, whereas `estimate_noise` divides the
+high-R root-mean-square by the window's *mean* value (`kwin_ave`). That
+correction is an approximation of unquantified accuracy, so no claim is made
+here that the estimated ε(k) is the physical noise under a Hanning window. What
+is claimed is only the round trip above, which is exact and in which the window
+correction cancels.
+
+Two further caveats. The √2 statement is for a single k weight: given an
+iterable matching the weight count, `set_epsilon_k` keeps only its first
+element, so several separately estimated noise values do not survive the round
+trip channel by channel. And matching a scalar root-mean-square would not by
+itself make χ² a χ²-distributed statistic, because neighbouring R bins of the
+transformed residual are correlated.
+
+The web app takes the `estimate_noise` branch, so a feffit χ² obtained with a
+hand-supplied ε(k) is twice as large for the same fit. This is an upstream
+inconsistency, not a choice made here; if Larch reconciles the two, the factor
+in `test_artemis_benchmarks.py` goes away.
 
 ## Results and state
 
@@ -580,6 +635,33 @@ The original fitting implementation was also checked separately:
   validation tests cannot load the bundled x86_64 library on this arm64 host.
   The full suite therefore remains non-green for these existing issues.
 
+## Benchmarks against reference feffit fits on public spectra
+
+`backend/tests/test_artemis_benchmarks.py` refits twelve reference EXAFS models
+through the app's own request model and compares every number with the plain
+Larch feffit result recorded for them. They are reference fits made with plain
+Larch `feffit` on public spectra from the PFXAFS and XASDB databases, not
+published fits, and they start from processed χ(k): they show the browser runs
+Larch's fit, not that import, normalization or the models themselves are right. The models are two per spectrum — a
+first-shell fit and a first-plus-second-shell fit with independent σ² — over six
+measured spectra: CoO, α-Fe₂O₃, NiO and ZnO at their respective K edges, and a
+Ge foil at 77 K in two separate scans. The measured χ(k), the FEFF85L path files
+and the reference fits are vendored under
+`backend/tests/fixtures/exafs-benchmarks/` (about 220 kB) so the suite needs no
+external checkout; `backend/tests/reference/exafs_benchmark_native_reference.py`
+rebuilds them from the unpublished checkout the reference fits came from, and the suite checks the
+sha256 of every input it was recorded against.
+
+Each case asserts the fitted values, the uncertainties, the R-factor, the
+independent-point count, the data length and the exact optimizer step count.
+Measured agreement is below 3 × 10⁻⁸ relative on every fitted value and
+uncertainty and below 10⁻¹³ on the R-factor; the committed tolerances are looser
+(10⁻⁶ relative, 10⁻⁹ absolute) so a different BLAS or CPU does not fail the
+suite while a change moving a fitted number in the sixth digit still does. The
+goodness-of-fit comparison first puts both fits on the same noise scale, undoing
+the ε(k) difference and the factor-of-2 Larch convention described under *Fit
+ranges, weights, and interpretation*. The whole suite runs in about 3.5 s.
+
 ## Scope beyond this iteration
 
 Future work includes arbitrary external CIF/Atoms input, disordered structures
@@ -669,6 +751,48 @@ and displays the available path atoms. It never reconstructs neighbors from
 degeneracy. Model reimport reinspects `.dat` files, losing optional FEFF input
 context but still allowing context from a matching attached CIF. Invalid geometry
 or unavailable WebGL is reported; header values remain accessible.
+
+### Path contributions, sorting, and filtering
+
+Below the 3D scene, **Show χ(k) and χ(R) contributions** draws what each path
+contributes to the model *before any fit is run*. The curves come from the
+current editor state — the FEFF files, the path expressions, the GDS parameter
+values, and the Fourier-transform settings — evaluated by Larch's `feffpath`
+and the same `feffit_transform` the fit uses. No measured spectrum enters, and
+nothing is refined: a Guess parameter contributes its starting value. This is the
+usual way to decide which paths are worth including before paying for a fit.
+
+Each enabled path gets one trace in its legend color, plus a **Sum of shown
+paths** trace. In k space the curves are weighted by the first selected fit
+k weight, as elsewhere in the app; in R space you can switch between magnitude,
+real, and imaginary parts. The shaded band marks the fit range (k range in k
+space, R range in R space). Magnitudes do not add: the complex path
+contributions are summed first and the magnitude is taken afterwards, so
+destructive interference can make the sum smaller than a single path.
+R is not phase corrected, so peaks fall roughly 0.2–0.5 Å below the true
+interatomic distance.
+
+The table lists every path — included or not — with its FEFF header values
+(legs, `Reff`, degeneracy) and, once the curves exist, three measures of size:
+
+| Column | Meaning |
+| --- | --- |
+| Peak \|χ(R)\| | The tallest point of that path's own χ(R) magnitude |
+| R at peak | Where that peak sits, in Å, not phase corrected |
+| Area in R window | \|χ(R)\| integrated over the fit R range: the part the fit actually sees |
+
+Click a column heading to sort by it; click again to reverse. **Path** restores
+the model's own order. Paths whose curves have not been computed keep their
+header values and sort to the end rather than being treated as zero.
+
+The filters narrow the table, the plot, and the in-canvas legend together, so
+the three never disagree. **Legs** separates single scattering (two legs) from
+multiple scattering (three or more). **R_eff at most** drops distant paths.
+**Peak |χ(R)| at least** drops paths below a fraction of the largest path in
+the model and needs the contributions to have been computed first; a path whose
+amplitude is unknown is never hidden. Filtering is a display choice: it does
+not change which paths are included in the fit. Use the EXAFS fitting tab's
+inclusion toggles for that.
 
 ### CrystalNN first coordination shell
 
@@ -771,3 +895,161 @@ flagged as potentially incomplete. Hydrogen is included with a warning because
 FEFF generation currently omits it. Distances are structural ranges, not automatic
 Fourier-transform fit windows or evidence that split shells are experimentally
 resolvable.
+
+## Differentiable fast-fit backend
+
+A second fit backend minimizes the same objective with an exact Jacobian
+obtained by automatic differentiation, instead of the finite-difference
+derivatives Larch's `feffit` passes to MINPACK. It is offered as an option
+beside the reference backend, never in place of it.
+
+### What it shares with the reference fit
+
+Both backends enter through one function, `fit_inputs` in
+`backend/xraylarch_web/artemis.py`, which validates the request and builds the
+Larch objects. They therefore fit the same χ(k) over the same k range with the
+same k-weights, the same Hanning windows, the same path files and the same
+ε(k) noise scale, and they draw their curves through the same code. A
+difference between the two is a difference in the optimizer, not in how the
+request was read. The HTTP response has the same shape from either route, so a
+client can switch backends without special-casing anything.
+
+### How close the two forward models are
+
+The differentiable path equation is a separate implementation of the EXAFS
+sum, so the first thing to establish is that it computes the same function.
+After the fast fit converges, the backend evaluates Larch's own residual at the
+fitted parameters and reports the largest absolute difference from its own as
+`metadata.engine_parity`. Across the twelve benchmark models this is 2 × 10⁻¹³
+to 9 × 10⁻¹³ — agreement at the level of floating-point rounding. The suite
+fails above 10⁻⁸. This check matters because a wrong physical constant or a wrong
+window would otherwise hide inside a refit: the optimizer simply absorbs it
+into the parameters, and the fit still looks converged.
+
+One real discrepancy was found this way and is corrected in the facade. The two
+codes disagree in the eighth digit on the constant converting photoelectron
+wavenumber to energy — Larch computes it from CODATA through SciPy, while the
+differentiable engine carries an older hard-coded literal. The facade scales
+E₀ by the ratio of the two on the way in, which is exact, local, and leaves the
+gradient intact. Without it the worst relative χ(k) difference over 18 paths is
+7.8 × 10⁻⁸; with it, 3.3 × 10⁻¹³.
+
+### Why the fitted parameters are not bit-identical
+
+The backends produce practically equivalent fits. Across all twelve
+benchmark models the largest difference in any fitted value is **0.0014 of that
+value's standard error**, and the largest difference in any uncertainty is
+0.33 % relative. Nothing here changes a reported bond length or coordination
+number at any digit a user reads.
+
+The two final objectives are not identical. Scored with Larch's own residual —
+taking the two converged parameter sets and evaluating both through
+`FeffitDataSet._residual`, so that nothing but the proposed parameter values
+comes from the new code — the differentiable backend's objective is the smaller
+one, by 10⁻¹² to 10⁻⁷ relative, in all twelve cases. **These differences are
+within the optimizer stopping tolerances, and their cause has not been
+isolated.** The two solvers differ in algorithm, scaling and termination test as
+well as in how they obtain derivatives, so a smaller final objective does not
+by itself show that the finite-difference search terminated early, and neither
+solution has been characterized as the more accurate stationary point. Settling
+that would mean recording each solver's termination reason, restarting both
+from tighter tolerances, and comparing a numerical against an automatic
+Jacobian inside one solver — none of which is done here.
+
+The fast backend also takes far fewer steps — 9 to 17 residual evaluations
+against Larch's 32 to 109 — though that comparison flatters it, since each of its
+steps also computes an exact Jacobian; the matched-phase timings below are the
+honest measure.
+
+`backend/tests/test_artemis_fast.py` therefore states its tolerances in
+standard errors rather than in digits: values must agree within 0.01 σ and
+uncertainties within 1 %. The χ² assertion is that the fast backend is no worse
+than the reference's by more than 10⁻⁶ relative — equivalence within the
+stopping tolerances, not strict improvement, which would be an assertion about
+where each solver happens to stop. The Larch-rescoring check above runs over all
+twelve benchmark cases and asserts the same slack. A tolerance in relative
+digits would be measuring the optimizer's stopping rule rather than the physics,
+and would have to be loosened every time either optimizer changed.
+
+### Speed, stated plainly
+
+Both engines report the same timing phases in `metadata.seconds`: `total` (the
+whole fit on the server, from reading the request to the finished curves),
+`fit` (the fit call: set-up, minimization, uncertainties and output arrays) and
+`optimizer` (the minimization loop alone; for `feffit` it is bracketed by
+lmfit's per-evaluation callback, which does not change the fit). The fast
+engine adds `compile` and `covariance`.
+
+Measured that way over the twelve benchmark models on the aarch64 development
+machine (3 October 2026, each model warmed once): the optimizer loop has a
+median of **23 ms for Larch against 33 ms for the fast engine**, and the
+per-model ratio runs from 0.3 to 1.9 — the fast loop is quicker on some models
+and slower on most. It makes far fewer residual evaluations (9 to 17 against
+Larch's 32 to 109), but each of its evaluations also computes an exact Jacobian.
+An earlier version of this section claimed the optimizer was "about 5× faster"
+(12 ms against 63 ms); that compared feffit's whole call with the fast engine's
+loop alone, and does not hold when the same phase is timed.
+
+End to end the fast engine is much slower on fits this size: compiling the
+residual and its Jacobian takes about 0.9 s (median), and because the facade
+builds a fresh closure for each request the compilation cache never hits, so
+the cost is paid on **every** fit — a median whole fit call of 0.91 s against
+37 ms. Making compilation amortize would mean hoisting the data and path arrays
+into traced arguments keyed by model structure; that is a real design change,
+not a tuning knob, and has not been done. Today the engine's value is the
+independent check it gives — the same answer from a different optimizer and a
+differently written forward model — not speed.
+
+### In the app
+
+Below the fit controls, **Fast fit backend** repeats the fit on screen with the
+differentiable engine and reports the difference. It is a comparison, not a
+second way to fit: the result is displayed and discarded, and saved fit history
+stays single-engine, so nothing in a project file depends on which engines a
+deployment has.
+
+The control is offered only while the model in the editor is still the model
+that produced the result on screen — not after an edit, and not for a saved fit
+whose processed data has since changed. Otherwise the button is disabled and
+says which of those is the reason. Comparing a new model's fast fit against an
+old reference would present a difference in models as a difference between
+backends, which is exactly the error the panel exists to rule out.
+
+What it shows: the two optimizer times, the fast backend's compilation time and
+its full round trip; the largest change in any fitted value, expressed in that
+value's own standard error; the direction and relative size of the χ² change;
+the residual-evaluation counts; and `engine_parity`, so a reader can see that
+the two forward models are the same function before reading anything into the
+parameters.
+
+### Availability
+
+The differentiable engine is an optional dependency, imported lazily.
+`GET /api/artemis/fast-fit/status` reports whether it is importable and why not
+if it is not. The web client asks it once per page and leaves the comparison
+panel out entirely when the engine is absent, as it is in a standard
+deployment; if the status cannot be read, a fit request to a server without
+the engine still comes back as `fast_engine_unavailable` with the same reason,
+which the panel shows. When the engine is absent the
+parity suite **skips** — which is not the same as passing, and a deployment
+that intends to offer this backend must run the suite with the engine
+installed.
+
+Installing it into the backend environment takes `jax` from PyPI and five
+packages from a research checkout that is not published:
+
+```
+pip install "jax[cpu]"
+pip install --no-deps <research-checkout>/packages/xascore \
+                      <research-checkout>/packages/xasdata \
+                      <research-checkout>/packages/xassupport \
+                      <research-checkout>/packages/xasforward \
+                      <research-checkout>/packages/diffexafs
+```
+
+`--no-deps` is deliberate: those packages declare the whole lab stack, and the
+fast backend needs only `xasforward.physics.exafs_paths` and what it imports,
+which since 29 September includes `diffexafs` (without it the import fails with
+`No module named 'diffexafs'`; checked 3 October in a fresh environment).
+None of this is in `backend/requirements.txt`, so a plain install of this
+repository does not offer the backend, and `tests/test_artemis_fast.py` skips.

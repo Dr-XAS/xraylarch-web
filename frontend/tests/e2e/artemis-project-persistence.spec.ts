@@ -119,6 +119,7 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   const changed = await changedResponse.json() as AthenaProject
   expect(cuprite(changed).artemis!.current_input_sha256).not.toBe(record.input_sha256)
   expect(cuprite(changed).artemis!.history[0]).toEqual({ ...record, imported: true })
+  // The explanation sits behind the help icon beside the label.
   await expect(viewer.getByText(/^Outdated input\b/)).toBeVisible()
   expect(fits).toHaveLength(1)
   expect(errors).toEqual([])

@@ -711,7 +711,11 @@ def _fit_body(client, args, absorber: str | None = None, group: dict | None = No
     sources, feff_kmax = {}, None
     if args.example:
         example = client.get(f"/examples/{args.example}", api="artemis")
-        paths = [{"filename": path["filename"], "content": path["content"]} for path in example["paths"]]
+        # Each path carries its own expressions: the example gives the first
+        # shell its own distance and disorder parameters.
+        expressions = example.get("path_parameters") or [{}] * len(example["paths"])
+        paths = [{"filename": path["filename"], "content": path["content"], **fields}
+                 for path, fields in zip(example["paths"], expressions)]
         parameters, transform = example["parameters"], dict(example["transform"])
         sources = {key: f"the {args.example} example" for key in transform}
     else:
@@ -1071,7 +1075,8 @@ def build_parser() -> argparse.ArgumentParser:
     fit = sub.add_parser("fit", help="fit FEFF paths to one group with Artemis; nothing is saved")
     fit.add_argument("group", help="group id, or part of its label")
     fit.add_argument("--example", choices=("cuprite",),
-                     help="start from a bundled setup: its paths, parameters and ranges")
+                     help="start from the bundled Cu2O setup: separate Cu-O parameters, "
+                          "kweight 2 (rather than all four weights), paths and ranges")
     fit.add_argument("--structure", type=int, metavar="AMCSD_ID",
                      help="run FEFF on a bundled AMCSD structure and fit its paths; "
                           "find ids with `larchctl structures copper`")

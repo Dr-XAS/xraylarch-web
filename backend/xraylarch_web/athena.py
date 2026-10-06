@@ -27,9 +27,9 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from larch import __version__ as larch_version
 
-from .athena_science import (AthenaParameters, process_spectrum, calibrate_shift,
+from .athena_science import (AthenaParameters, ScientificError, process_spectrum, calibrate_shift,
                              align_shift, merge_spectra, combine_spectra, linear_combination,
-                             principal_components)
+                             combination_search, principal_components)
 from .config import Settings
 from .athena_preprocessing import ImportPreprocessing
 from .athena_rebin import ImportRebin, PostRebin, RebinPlan, prepare_rebin, rebin_unavailable
@@ -38,6 +38,8 @@ from .athena_plugin_registry import PluginRegistry, registry_view, decode_regist
 from .athena_plugin_config import PluginConfigurations, ConfigurationRequest
 from .athena_smoothing_preferences import SmoothingPreferences, SGPreferenceRequest
 from .athena_dispersive import DispersiveRequest, DispersiveDefaults, PixelNormalization
+from .athena_xrf_view import XrfViewOptions
+from .athena_xrf_xas import XrfXasOptions
 from .athena_beamline_metadata import BeamlineDefaults
 from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
@@ -77,6 +79,8 @@ def fail(message: str, code: str = "athena_invalid"):
 
 
 _MAX_SAFE_ADDED_ORDER = (1 << 53) - 1
+# A series LCF fits each target on its own; the cap bounds one request's work.
+MAX_LCF_SERIES = 100
 _SNAPSHOT_FILE = re.compile(r"(?:undo|redo)-\d+\.json")
 _LOGGER = logging.getLogger(__name__)
 
@@ -206,6 +210,30 @@ def _foldered_group_order(groups, folders):
     return output
 
 
+def _scan_header(metadata, planned):
+    """What a beamline header says about the scan, kept with each group.
+
+    An operando series is read against its conditions, so the stated E0, the
+    scan configuration and, when a column logs it, the sample temperature over
+    the scan travel with the spectrum (a 20-BM LabVIEW file writes the
+    controller reading as its last column).
+    """
+    reader = metadata.get('beamline_reader') or {}
+    header = {key: copy.deepcopy(reader[key]) for key in ('scan_e0', 'scan_config') if reader.get(key) is not None}
+    from .beamline_roles import tokens
+    for column in metadata.get('columns', []):
+        words = tokens(column['name'])
+        if not any(word.startswith('tempe') for word in words) or column['column_id'] not in planned:
+            continue
+        values = np.asarray(planned[column['column_id']], dtype=float)
+        values = values[np.isfinite(values)]
+        if values.size:
+            header['temperature'] = {'column': column['name'], 'mean': float(values.mean()),
+                                     'min': float(values.min()), 'max': float(values.max())}
+        break
+    return header
+
+
 def _replayed_import(project, prior):
     """The response to an import retried under a key that already ran.
 
@@ -254,6 +282,10 @@ _EXCHANGE_MAX_VALUES = 2_000_000
 _EXCHANGE_MAX_METADATA_BYTES = 1_000_000
 _NATIVE_ARRAYS = ("i0", "signal", "stddev")
 _NATIVE_ALIASES = {"fft_kwindow": "fft_win", "bft_rwindow": "bft_win", "bkg_kwindow": "bkg_win"}
+# Project actions handled by athena_operations.transform_spectrum, which owns
+# the option names. Rebin and MEE have their own branches and are not here.
+_TRANSFORM_ACTIONS = ("smooth", "deglitch", "truncate", "convolve", "deconvolve",
+                      "self_absorption", "dispersive")
 
 
 def _project_json(text):
@@ -694,6 +726,21 @@ def _native_source(record, filename, kind, settings):
     return source
 
 
+def _step_at_e0(background, group):
+    """Place a peak fit's edge step at this group's own E0 when asked to.
+
+    When an edge moves across a series, a shared step centre need not match
+    each spectrum. ``step.center == "e0"`` means "each spectrum's own E0".
+    """
+    step = background.get("step") if isinstance(background, dict) else None
+    if not isinstance(step, dict) or step.get("center") != "e0":
+        return background
+    e0 = ((group.get("result") or {}).get("effective") or {}).get("e0")
+    if not isinstance(e0, (int, float)) or not np.isfinite(e0):
+        fail(f"{group['label']} has no E0 to place the edge step at; set the step centre in eV.")
+    return dict(background, step=dict(step, center=float(e0)))
+
+
 def _source_edge_identity(source):
     """Interpret valid identity metadata without enabling any import policy."""
     from .athena_e0 import atomic_edge
@@ -730,6 +777,32 @@ def _ensure_edge_identity(group):
     identity = _source_edge_identity(source)
     if identity and group.get("result"):
         effective.update(identity)
+
+
+SELF_ABSORPTION_NORMALIZATION = ("e0", "pre1", "pre2", "norm1", "norm2", "nnorm", "step", "nvict")
+
+
+def _with_source_normalization(group, options):
+    """Self-absorption options completed with the group's own effective
+    normalization. The inversion is nonlinear in the normalized signal, so
+    renormalizing with the operation's defaults -- tabulated E0, its own
+    ranges, a linear post-edge, a fitted edge step -- corrects a curve the
+    user never saw. An edge step the user fixed travels as that step; a
+    fitted one is refitted, on the same ranges, to the same value. What the
+    request names explicitly still wins."""
+    # A difference spectrum is refused later, on its edge step.
+    if group.get("is_normalized", group["data_type"] in ("norm", "xmudat")) and not _is_difference(group):
+        fail("Self-absorption correction starts from raw fluorescence mu, and this group is "
+             "already normalized; its raw signal and edge step are not known. Correct the group it came from.")
+    effective = (group.get("result") or {}).get("effective") or {}
+    parameters = group.get("parameters") or {}
+    inherited = {key: effective[key] for key in SELF_ABSORPTION_NORMALIZATION[:6]
+                 if effective.get(key) is not None}
+    if parameters.get("step") is not None and effective.get("edge_step") is not None:
+        inherited["step"] = effective["edge_step"]
+    if parameters.get("nvict"):
+        inherited["nvict"] = parameters["nvict"]
+    return {**inherited, **options}
 
 
 def _derived_source(parent, operation, **details):
@@ -973,6 +1046,8 @@ class AthenaStore:
         self.settings = settings
         self.storage = WorkspaceStorage(settings.data_root / "athena")
         self.transcript = Transcript(self.storage)
+        from .athena_xrf_runtime import XrfRuntime
+        self.xrf_runtime = XrfRuntime(settings.xrf_workers)
 
     def create(self) -> dict:
         ident = uid()
@@ -1365,8 +1440,11 @@ class AthenaStore:
             fail("A group needs 8–250,000 paired data points.")
         if not np.isfinite(x).all() or not np.isfinite(y).all():
             fail("Data contain non-finite values.")
-        if np.any(np.diff(x) <= 0):
-            fail("The horizontal axis must be strictly increasing. Use sorting at import if appropriate.")
+        steps = np.diff(x)
+        if np.any(steps <= 0):
+            fail(f"The horizontal axis must be strictly increasing; it repeats a value {int(np.sum(steps == 0))} times "
+                 f"and runs backwards {int(np.sum(steps < 0))} times. At import, sorting by energy orders the rows "
+                 "and averages rows at a repeated energy.")
         return x, y
 
     def make_group(self, label, energy, mu, *, parameters=None, data_type="mu", source=None,
@@ -1564,11 +1642,29 @@ class AthenaStore:
         project = self.load(ident)
         from .athena_file_plugins import prepare_file, PreparedCollection, PreparedProject, PreparedArchive
         from .parsing import _safe_display_name
-        prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
-                                max_points=self.settings.max_points, max_columns=self.settings.max_columns,
-                                enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
-                                read_configuration=self.plugin_configurations.read,
-                                read_dispersive=lambda: AthenaPreferences(self.settings).read_dispersive()['coefficients'])
+        # A saved Athena project holds processed groups, not columns, and the
+        # browser routes it here whenever its name does not end in .prj. It is
+        # recognized by its own header line so that a renamed project opens
+        # instead of failing in the column parser.
+        from .beamline_registry import athena_project
+        if athena_project(data) is not None:
+            name = _safe_display_name(filename)
+            return {'kind': 'project', 'preview': self.preview_project(ident, data, name)}
+        # An HDF5 upload is converted to a column table before the Demeter
+        # plugin chain sees it: none of those plugins reads HDF5, and the
+        # converted table reaches the column chooser and the import path that
+        # text files already use.
+        from .hdf5_readers import is_hdf5, prepare_hdf5, unreadable_hdf5_message
+        prepared = prepare_hdf5(data, settings=self.settings)
+        if prepared is None and is_hdf5(data):
+            raise WebInputError('upload_hdf5_unreadable', unreadable_hdf5_message(data, _safe_display_name(filename), settings=self.settings),
+                                ('file',), 'Import the scan from its text file; open detector spectra from the XRF panels.')
+        if prepared is None:
+            prepared = prepare_file(data, max_bytes=self.settings.max_upload_bytes,
+                                    max_points=self.settings.max_points, max_columns=self.settings.max_columns,
+                                    enabled=AthenaPreferences(self.settings).read_plugins()['enabled'],
+                                    read_configuration=self.plugin_configurations.read,
+                                    read_dispersive=lambda: AthenaPreferences(self.settings).read_dispersive()['coefficients'])
         display_name = _safe_display_name(filename)
         if isinstance(prepared, PreparedArchive):
             upload = uid()
@@ -1604,7 +1700,11 @@ class AthenaStore:
                 for name in written:
                     self.storage.path(ident, name).unlink(missing_ok=True)
                 raise
-            return {'kind': 'scan_list', 'display_name': display_name, 'file_plugin': prepared.metadata, 'scans': scans}
+            # Every scan of one file was written by one beamline, so the list
+            # names it once for the chooser the user sees before any scan.
+            reader = next((scan['beamline_reader'] for scan in scans if scan.get('beamline_reader')), None)
+            return {'kind': 'scan_list', 'display_name': display_name, 'file_plugin': prepared.metadata,
+                    'scans': scans, 'beamline_reader': reader}
         return self._inspect_table(ident, project, data, display_name, prepared)
 
     def _inspect_table(self, ident, project, data, display_name, prepared, *, parsed=None, upload=None,
@@ -1656,7 +1756,9 @@ class AthenaStore:
                 n, d = prepared.fluorescence
                 plugin_suggestions['fluorescence'] = dict(suggestion, numerator=[ids[n]], denominator=ids[d], mode='fluorescence')
             inspection['plugin_suggestions'] = plugin_suggestions
-            if prepared.suggestions is None:
+            # A Demeter converter writes eV in its first column; an HDF5 table
+            # carries the units its file declared (below), and no others.
+            if prepared.suggestions is None and not prepared.metadata.get('hdf5_layout'):
                 column_units[ids[0]] = 'eV'
             for index, units in (prepared.column_units or {}).items():
                 column_units[ids[index]] = units
@@ -1672,7 +1774,53 @@ class AthenaStore:
             inspection.update(source_upload_id=source_upload, source_display_name=source_name)
         else:
             self.storage.write_bytes(ident, f'upload-{upload}.source', data)
+        # Name the beamline that wrote the file, and -- when it is known and no
+        # Demeter plugin has already spoken for the columns -- let the registry
+        # name the detector channels. Athena's substring guesses import a diode
+        # or a scaler timer as I0 at several real beamlines.
+        from .beamline_registry import attribute_plugin, identify_beamline, read_roles
+        reader = attribute_plugin(identify_beamline(data, settings=self.settings),
+                                  prepared.metadata if prepared else None)
+        if reader is not None:
+            found = read_roles(reader, inspection['columns'], column_units, parsed.arrays)
+            reader.pop('overrides', None)
+            reader.pop('beamline_assumed', None)
+            reader.update(found)
+            declined = reader.pop('declined', [])  # for the choice below, not for display
+            # The HDF5 converter is this registry's own reader rather than a
+            # Demeter plugin, so its columns are the registry's to name; a
+            # Demeter plugin's suggestion still wins for the formats it handles.
+            own = prepared is None or bool(prepared.metadata.get('hdf5_layout'))
+            if own:
+                from .beamline_roles import preferred
+                # When the registry saw the monitor columns and could not say
+                # which was which, Athena's substring guess is not a fallback
+                # to keep: it is the guess the registry declined to make, and
+                # at these beamlines it picks a diode or a scaler timer. Offer
+                # the energy axis and leave the rest for the user to name.
+                # A file the registry has nothing to say about -- an exported
+                # norm or chi table, with no monitor column at all -- keeps
+                # Athena's suggestion, which is the only one on offer.
+                chosen = preferred(reader['suggestions'], (reader.get('measurement') or {}).get('mode'))
+                if chosen is None and declined:
+                    chosen = dict(
+                        suggestion, numerator=[], denominator='',
+                        units=found.get('energy_units', suggestion['units']),
+                        **({'energy_column': reader['roles']['energy']}
+                           if reader['roles'].get('energy') else {}))
+                if chosen is not None:
+                    suggestion = chosen
+                    column_units[suggestion['energy_column']] = suggestion['units']
+            inspection['beamline_reader'] = reader
         inspection.update(athena_suggestion=suggestion, column_units=column_units)
+        inspection['warnings'] = [*inspection['warnings'], *self._sanity_warnings(
+            display_name, parsed, suggestion, column_units, (reader or {}).get('scan_e0'))]
+        if prepared and prepared.metadata.get('hdf5_layout') and suggestion.get('data_type') != 'chi':
+            energy_index = next((c['index'] for c in inspection['columns'] if c['column_id'] == suggestion['energy_column']), None)
+            if energy_index not in (prepared.column_units or {}):
+                inspection['warnings'].append(
+                    f"The HDF5 file declares no units for its energy channel; {suggestion['units']} is assumed "
+                    'from its values. Check the energy units and the plotted range before importing.')
         snippet = data[:32_000].decode("utf-8-sig", errors="replace")
         inspection.update(source_preview="\n".join(snippet.splitlines()[:120]),
                           source_preview_truncated=len(data) > 32_000 or len(snippet.splitlines()) > 120)
@@ -1682,6 +1830,27 @@ class AthenaStore:
                               source_preview_format='hex', source_preview_truncated=len(data) > 512)
         self.storage.write_json(ident, f"upload-{upload}.json", inspection)
         return self._remembered_inspection(inspection | {'upload_id': upload}, project)
+
+    @staticmethod
+    def _sanity_warnings(display_name, parsed, suggestion, column_units, stated_e0):
+        """What a user must see before importing a scan that cannot be the one
+        they mean: too few points to normalize, or an energy axis that misses
+        the edge the file's name or header declares."""
+        from .beamline_registry import declared_edge_warnings, energy_span
+        warnings = []
+        rows = parsed.row_count
+        if rows < 8:
+            warnings.append(f'This file holds {rows} data row{"" if rows == 1 else "s"}; a spectrum needs at least 8, '
+                            'so it cannot be imported' + (" (a '.last' file is the scan counter LabVIEW writes, not a scan)."
+                                                          if display_name.lower().endswith('.last') else '.'))
+        elif rows < 50:
+            warnings.append(f'This scan has only {rows} points: too few to normalize an edge reliably. '
+                            'An alignment scan or an aborted one looks like this.')
+        if suggestion.get('data_type') != 'chi' and suggestion.get('energy_column') in parsed.arrays:
+            span = energy_span(suggestion['energy_column'], parsed.arrays,
+                               {**column_units, suggestion['energy_column']: suggestion.get('units')})
+            warnings.extend(declared_edge_warnings(display_name, span, stated_e0))
+        return warnings
 
     def _remembered_inspection(self, inspection, project):
         try:
@@ -1710,8 +1879,9 @@ class AthenaStore:
         choice=request.columns
         mapped=map_columns(arrays,ImportRequest(version=request.version,upload_id=request.upload_id,
             energy_column=choice.pixel_column,numerator=choice.numerator,denominator=choice.denominator,
-            mode='transmission' if choice.logarithm else 'fluorescence',invert=choice.invert,sort=choice.sort))
-        x=mapped['x'];y=mapped['samples'][0]['y'][mapped['order']]
+            mode='transmission' if choice.logarithm else 'fluorescence',invert=choice.invert,sort=choice.sort),
+            {c['column_id']:c['name'] for c in metadata['columns']})
+        x=mapped['x'];y=mapped['samples'][0]['y']
         if choice.reverse_signal:y=y[::-1]
         x,y=_pair(x,y,name='Pixel spectrum',minimum=8)
         if x[0]<0:fail('Pixel coordinates must be nonnegative.')
@@ -1720,7 +1890,7 @@ class AthenaStore:
             standard=self.group(p,request.standard_id)
             if standard['data_type'] in ('chi','detector') or _is_difference(standard):
                 fail('Choose a conventional absorption spectrum as the calibration standard.')
-        return p,x,y,standard,metadata,arrays,mapped['warnings'],mapped['order']
+        return p,x,y,standard,metadata,mapped['arrays'],mapped['warnings'],mapped['row_order']
 
     def dispersive(self,ident,request,action='preview'):
         from .athena_dispersive import normalize,guess,refine,apply
@@ -1759,13 +1929,12 @@ class AthenaStore:
             old,x,y,standard,metadata,arrays,warnings,order=self._dispersive_inputs(ident,request)
             if len(old['groups'])>=100:fail('A project can contain at most 100 groups.')
             converted=apply(x,y,request.coefficients)
-            if converted['details']['reversed']:
-                order=order[::-1]
+            step=-1 if converted['details']['reversed'] else 1
             source=dict(kind='dispersive',filename=metadata['display_name'],operation='dispersive',
                 calibration=request.coefficients.model_dump(),pixel_columns=request.columns.model_dump(),
                 standard_id=request.standard_id,standard_label=standard['label'] if standard else None,
-                column_arrays={k:np.asarray(v)[order].tolist() for k,v in arrays.items()},
-                column_order='group',row_order=order.tolist(),columns=metadata['columns'],
+                column_arrays={k:np.asarray(v)[::step].tolist() for k,v in arrays.items()},
+                column_order='group',**({'row_order':order[::step]} if order is not None else {}),columns=metadata['columns'],
                 source_sha256=hashlib.sha256(self.storage.path(ident,f'upload-{request.upload_id}.source').read_bytes()).hexdigest(),
                 warnings=list(metadata.get('warnings',[]))+warnings)
             for field in ('xdi_metadata', 'beamline_metadata'):
@@ -1783,6 +1952,137 @@ class AthenaStore:
             index=p['groups'].index(standard)+1 if standard is not None else len(p['groups'])
             p['groups'].insert(index,new)
             return self.save(p,old,'Dispersive calibration · '+metadata['display_name'])
+
+    def inspect_xrf_scan(self,ident,data,filename):
+        # Keep the original bytes for content-keyed reuse and changed recipes.
+        from .parsing import _safe_display_name
+        from .athena_xrf_xas import available_engines,scan_summary
+        from .xrf_hdf5 import read_scan
+        self.load(ident)
+        display_name=_safe_display_name(filename)
+        summary=scan_summary(read_scan(data,display_name,settings=self.settings))
+        upload=uid()
+        inspection=dict(kind='xrf_scan',upload_id=upload,display_name=display_name,**summary)
+        written=[f'upload-{upload}.source',f'upload-{upload}.json']
+        try:
+            self.storage.write_bytes(ident,written[0],data)
+            self.storage.write_json(ident,written[1],inspection)
+        except BaseException:
+            for name in written:
+                self.storage.path(ident,name).unlink(missing_ok=True)
+            raise
+        # Which fitting engines exist is a property of this server, not of the
+        # file, so it is answered here and not kept in the upload's record.
+        return dict(inspection,engines=available_engines())
+
+    def inspect_xrf_cube(self,ident,data,filename):
+        # Kept whole for the same reason as the scan above: every frame is
+        # read back out of the original counts.
+        from .parsing import _safe_display_name
+        from .athena_xrf_view import read_cube,cube_summary
+        self.load(ident)
+        display_name=_safe_display_name(filename)
+        summary=cube_summary(read_cube(data,display_name,settings=self.settings))
+        upload=uid()
+        inspection=dict(kind='xrf_cube',upload_id=upload,display_name=display_name,**summary)
+        written=[f'upload-{upload}.source',f'upload-{upload}.json']
+        try:
+            self.storage.write_bytes(ident,written[0],data)
+            self.storage.write_json(ident,written[1],inspection)
+        except BaseException:
+            for name in written:
+                self.storage.path(ident,name).unlink(missing_ok=True)
+            raise
+        return inspection
+
+    def xrf_view(self,ident,request):
+        from .athena_xrf_view import read_cube,load_window,frame
+        p=self.load(ident);self.check(p,request.version)
+        self.storage._validate_id(request.cube_id)
+        try:
+            metadata=self.storage.read_json(ident,f'upload-{request.cube_id}.json')
+            data=self.storage.path(ident,f'upload-{request.cube_id}.source').read_bytes()
+        except FileNotFoundError:
+            fail('This detector file is no longer available. Select the file again.')
+        # A fluorescence scan uploaded for the extraction is the same bytes and
+        # the same cube, so it can be looked at without uploading it twice.
+        if metadata.get('kind') not in ('xrf_cube','xrf_scan'):
+            fail('That upload is not a multi-channel detector file.')
+        cube=read_cube(data,metadata['display_name'],settings=self.settings)
+        window=load_window(data,request.detector,request.channel_range,
+                           allowed=cube['detectors'],settings=self.settings)
+        return dict(frame(cube,window,request),version=p['version'],
+                    cube_id=request.cube_id,display_name=metadata['display_name'])
+
+    def _xrf_xas_inputs(self,ident,request):
+        from .athena_xrf_xas import chosen_elements,resolve_windows
+        from .xrf_hdf5 import read_scan,load_counts
+        p=self.load(ident);self.check(p,request.version)
+        self.storage._validate_id(request.scan_id)
+        try:
+            metadata=self.storage.read_json(ident,f'upload-{request.scan_id}.json')
+            data=self.storage.path(ident,f'upload-{request.scan_id}.source').read_bytes()
+        except FileNotFoundError:
+            fail('This fluorescence scan is no longer available. Select the scan file again.')
+        if metadata.get('kind')!='xrf_scan':
+            fail('That upload is not a fluorescence scan file.')
+        scan=read_scan(data,metadata['display_name'],settings=self.settings)
+        # Automatic windows are resolved before anything is read, so the
+        # counts are read for the window the result will record.
+        request,windows=resolve_windows(scan,request)
+        counts=load_counts(data,request.detector,request.channel_range,allowed=scan['detectors'],settings=self.settings,
+                           elements=chosen_elements(scan,request),
+                           shifts={element:shift for element,shift in request.channel_shifts})
+        return p,metadata,scan,counts,hashlib.sha256(data).hexdigest(),request,windows
+
+    def xrf_xas(self,ident,request):
+        p,metadata,scan,counts,digest,resolved,windows=self._xrf_xas_inputs(ident,request)
+        result=self.xrf_runtime.extract(scan,counts,resolved,windows,digest)
+        return dict(result,version=p['version'],scan_id=request.scan_id,
+                    display_name=metadata['display_name'])
+
+    def _xrf_xas_source(self,metadata,result,digest,*,role):
+        return dict(kind='xrf_xas',filename=metadata['display_name'],operation='xrf_xas',
+            role=role,extraction=result['metadata'],quality=result['quality'],
+            detector_parameters=result['detector_parameters'],source_sha256=digest,
+            warnings=[] if role=='fit' else
+                ['A fixed channel window also collects the scatter peaks as they sweep through it. '
+                 'Compare it with the fitted extraction before choosing which one to analyse.'])
+
+    def make_xrf_xas(self,ident,request):
+        # The solve runs unlocked because it takes seconds to minutes. The
+        # project version is checked again under the lock, so a concurrent
+        # edit is rejected rather than silently overwritten. A saved group is
+        # every scan point whatever stride the preview used, here and not
+        # only in the browser.
+        request=request.model_copy(update=dict(point_stride=1))
+        _,metadata,scan,counts,digest,resolved,windows=self._xrf_xas_inputs(ident,request)
+        result=self.xrf_runtime.extract(scan,counts,resolved,windows,digest)
+        energy=result['energy_ev']
+        label=f"{metadata['display_name']} · {request.target} fluorescence"
+        params=dict(pre1=request.pre1,pre2=request.pre2,norm1=request.norm1,
+                    norm2=request.norm2,nnorm=request.nnorm)
+        if request.e0 is not None:
+            params['e0']=request.e0
+        made=[('fit',label,result['fit_over_i0'])]
+        if request.include_window_sum:
+            made.append(('roi',f"{label} · window sum",result['roi_over_i0']))
+        with self.storage.lock(ident):
+            old=self.load(ident);self.check(old,request.version)
+            if len(old['groups'])+len(made)>100:fail('A project can contain at most 100 groups.')
+            groups=[]
+            for role,name,mu in made:
+                source=_exchange_source(self._xrf_xas_source(metadata,result,digest,role=role),
+                                        len(energy),self.settings)
+                groups.append(self.make_group(name,energy,mu,source=source,parameters=params))
+            _exchange_budget([*old['groups'],*groups],self.settings)
+            from .athena_xdi_history import inherit_source
+            p=copy.deepcopy(old)
+            for group in groups:
+                group['source']['xdi_metadata']=inherit_source(group,'xrf_xas',{})
+                group['marked']=False
+                p['groups'].append(group)
+            return self.save(p,old,'Fluorescence XAS from XRF fit · '+metadata['display_name'])
 
     def inspected_columns(self, ident, upload_id):
         project = self.load(ident)
@@ -1846,7 +2146,10 @@ class AthenaStore:
                     original_filename=source.get('original_filename', source.get('filename', group['label'])),
                     raw_sha256=source.get('source_sha256'), parser_identity=source.get('parser_identity'),
                     parse_metadata=copy.deepcopy(source.get('parse_metadata', {})),
-                    columns=copy.deepcopy(source['columns']), warnings=[], issues=[])
+                    columns=[copy.deepcopy(c) for c in source['columns'] if c['column_id'] in arrays], warnings=[], issues=[])
+                if len(metadata['columns']) < len(source['columns']):
+                    metadata['warnings'].append('The original upload is not in this workspace, so only the columns this '
+                                                'group was imported from can be chosen. Import the file again for the others.')
                 for key in ('file_plugin', 'beamline_metadata', 'xdi_metadata'):
                     if source.get(key):
                         metadata[key] = copy.deepcopy(source[key])
@@ -2043,8 +2346,9 @@ class AthenaStore:
                                     recovery='Inspect the fit and corrected I0, then confirm the review for this file.')
             from .athena_columns import map_columns
             measurements = []
+            column_names = {c['column_id']: c['name'] for c in metadata['columns']}
             for mode_request in request.measurement_requests():
-                mapped = map_columns(arrays, mode_request)
+                mapped = map_columns(arrays, mode_request, column_names)
                 prepare_rebin(mapped, mode_request, standard)
                 measurements.append((mode_request, mapped))
             nnew = sum(len(mapped["samples"]) * (2 if mapped["reference"] is not None else 1)
@@ -2053,12 +2357,8 @@ class AthenaStore:
                 fail('Reimport must produce exactly one replacement spectrum.')
             if len(p["groups"]) + nnew - (1 if target is not None else 0) > 100:
                 fail("A project can contain at most 100 groups.")
-            def column(key):
-                if key not in arrays:
-                    fail("Choose columns from the inspected file.")
-                return np.asarray(arrays[key], dtype=float)
             for mode_request, mapped in measurements:
-                x, order = mapped["x"], mapped["order"]
+                x, planned = mapped["x"], mapped["arrays"]
                 shared_alignment = None
                 source_base = {"filename": metadata["display_name"], "mapping": mode_request.model_dump(exclude={"version", "edge_policy", "additional_fluorescence"}),
                           "original_filename": metadata.get("original_filename", metadata["display_name"]),
@@ -2066,25 +2366,28 @@ class AthenaStore:
                           "parser_identity": metadata.get("parser_identity", "xraylarch.parse_upload"),
                           "parse_metadata": copy.deepcopy(metadata.get("parse_metadata", {})),
                           "warnings": list(metadata.get("warnings", [])) + mapped["warnings"], "columns": metadata["columns"],
-                          "column_arrays": {key: np.asarray(values)[order].tolist() if mode_request.sort else np.asarray(values).tolist()
-                                            for key, values in arrays.items()},
+                          "column_arrays": {key: values.tolist() for key, values in planned.items() if np.isfinite(values).all()},
                           "column_order": "group", "raw_arrays": {}}
                 if metadata.get('file_plugin'):
                     source_base['file_plugin'] = copy.deepcopy(metadata['file_plugin'])
                 if metadata.get('beamline_metadata'):
                     source_base['beamline_metadata'] = copy.deepcopy(metadata['beamline_metadata'])
+                scan_header = _scan_header(metadata, planned)
+                if scan_header:
+                    source_base['scan_header'] = scan_header
                 if metadata.get('xdi_metadata'):
                     from .athena_xdi import identity as xdi_identity
                     source_base['xdi_metadata'] = copy.deepcopy(metadata['xdi_metadata'])
                     if xdi_identity(metadata['xdi_metadata']):
                         source_base['edge_identity'] = xdi_identity(metadata['xdi_metadata'])
-                # Preserve original units/column IDs. When sorting was requested,
-                # all retained columns follow the group row order; row_order maps
-                # those rows back to the uploaded table.
-                if mode_request.sort:
-                    source_base["row_order"] = order.tolist()
+                # Preserve original units/column IDs. Retained columns follow
+                # the group row order; row_order maps them back to the uploaded
+                # table while they are a permutation of it (no row dropped or
+                # averaged at import).
+                if mode_request.sort and mapped["row_order"] is not None:
+                    source_base["row_order"] = mapped["row_order"]
                 def aligned(values):
-                    return (values[order] if mode_request.sort else values).tolist()
+                    return np.asarray(values).tolist()
                 names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
                 for sample in mapped["samples"]:
                     source = copy.deepcopy(source_base)
@@ -2092,7 +2395,7 @@ class AthenaStore:
                     if mode_request.data_type == 'chi':
                         source['mapping'].update(mode='mu', denominator=None, signal_multiplier=1., invert=False)
                     numerator, denominator = sample["numerator"], mapped["denominator"]
-                    y = sample["y"][order]
+                    y = sample["y"]
                     if mapped["mode"] == "transmission":
                         source["raw_arrays"].update(i0=aligned(numerator), signal=aligned(mapped['scale'] * denominator))
                     elif mapped["mode"] == "fluorescence":
@@ -2100,11 +2403,11 @@ class AthenaStore:
                     else:
                         source["raw_arrays"]["signal"] = aligned(mapped['scale'] * numerator)
                         i0_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() == "i0"]
-                        if len(i0_columns) == 1:
-                            source["raw_arrays"]["i0"] = aligned(column(i0_columns[0]))
+                        if len(i0_columns) == 1 and np.isfinite(planned[i0_columns[0]]).all():
+                            source["raw_arrays"]["i0"] = aligned(planned[i0_columns[0]])
                     stddev_columns = [c["column_id"] for c in metadata["columns"] if c["name"].lower() in ("stddev", "mu_stddev")]
-                    if len(stddev_columns) == 1:
-                        source["raw_arrays"]["stddev"] = aligned(abs(mapped['scale']) * column(stddev_columns[0]))
+                    if len(stddev_columns) == 1 and np.isfinite(planned[stddev_columns[0]]).all():
+                        source["raw_arrays"]["stddev"] = aligned(abs(mapped['scale']) * planned[stddev_columns[0]])
                     source = _exchange_source(source, len(x), self.settings)
                     _exchange_budget([*(g for g in p['groups'] if target is None or g['id'] != target['id']),
                                       {"energy": x, "mu": y, "source": source}], self.settings)
@@ -2126,6 +2429,10 @@ class AthenaStore:
                     if mapped["reference"] is not None:
                         ref = mapped["reference"]
                         reference_source = copy.deepcopy(source)
+                        # The sample beside it already keeps the whole table;
+                        # the reference needs only the columns it uses.
+                        reference_source["column_arrays"] = {key: values for key, values in source["column_arrays"].items()
+                            if key in (mode_request.energy_column, mode_request.reference_numerator, mode_request.reference_denominator)}
                         reference_source["raw_arrays"] = ({"i0": aligned(ref["numerator"]), "signal": aligned(ref["denominator"])}
                             if mode_request.reference_log else {"i0": aligned(ref["denominator"]), "signal": aligned(ref["numerator"])})
                         reference_source["mapping"].update(numerator=[mode_request.reference_numerator] if mode_request.reference_numerator else [],
@@ -2134,7 +2441,7 @@ class AthenaStore:
                             preprocessing=ImportPreprocessing().model_dump() if mode_request.preprocessing is not None else None,
                             data_type=g["data_type"], mode="transmission" if mode_request.reference_log else "fluorescence",
                             is_normalized=g["is_normalized"], is_reference=True)
-                        reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'][order], sample.get('reference_rebin'))
+                        reference_source, ref_x, ref_y = self.rebinned_source(reference_source, x, ref['y'], sample.get('reference_rebin'))
                         reference = self.make_reference_group(g, ref_x, ref_y,
                             source=reference_source, same_element=mode_request.reference_same_element)
                         if sample.get('reference_rebin') is not None:
@@ -2208,30 +2515,31 @@ class AthenaStore:
         metadata = self.storage.read_json(ident, f"upload-{request.upload_id}.json")
         traces, rebin_results = [], []
         warnings = list(metadata.get("warnings", []))
+        column_names = {c['column_id']: c['name'] for c in metadata['columns']}
         for mode_request in request.measurement_requests():
-            mapped = map_columns(arrays, mode_request)
+            mapped = map_columns(arrays, mode_request, column_names)
             prepare_rebin(mapped, mode_request, standard)
-            x, order = mapped["x"], mapped["order"]
+            x = mapped["x"]
             if not np.isfinite(x).all():
                 fail("The selected horizontal axis contains non-finite values after unit conversion.")
             warnings.extend(mapped["warnings"])
             if mode_request.preprocessing is not None and mode_request.preprocessing.align:
                 warnings.append('This preview shows the selected columns on the original energy axis. Standard alignment is applied when importing.')
             if mode_request.rebin is None and np.any(np.diff(x) <= 0):
-                warnings.append("The horizontal axis is not strictly increasing. Choose the energy column or sort the rows; duplicate energies must be repaired before import.")
+                warnings.append("The horizontal axis runs backwards. Choose the energy column, or turn on sorting by energy (rows at a repeated energy are then averaged).")
             names = {c["column_id"]: f"{c['name']} (column {c['index'] + 1})" for c in metadata["columns"]}
-            mode_traces = [preview_trace(x, sample["y"][order], label=names.get(sample["columns"][0], 'Constant 1') if mode_request.individual_channels and sample["columns"] else "Sample",
+            mode_traces = [preview_trace(x, sample["y"], label=names.get(sample["columns"][0], 'Constant 1') if mode_request.individual_channels and sample["columns"] else "Sample",
                       role="sample", ident="sample:" + "+".join(sample["columns"])) for sample in mapped["samples"]]
             if mapped["reference"] is not None:
-                mode_traces.append(preview_trace(x, mapped["reference"]["y"][order], label="Reference", role="reference", ident="reference"))
+                mode_traces.append(preview_trace(x, mapped["reference"]["y"], label="Reference", role="reference", ident="reference"))
             mode_rebin_results = []
             if mode_request.rebin is not None:
                 for trace in mode_traces:
                     trace.update(stage='original', label=trace['label'] + ' · original')
                 for i, sample in enumerate(mapped['samples']):
                     label = names.get(sample['columns'][0], 'Constant 1') if mode_request.individual_channels and sample['columns'] else 'Sample'
-                    for key, y, role, title in [('rebin', sample['y'][order], 'sample', label),
-                        ('reference_rebin', mapped['reference']['y'][order] if mapped['reference'] else None, 'reference', 'Reference · ' + label)]:
+                    for key, y, role, title in [('rebin', sample['y'], 'sample', label),
+                        ('reference_rebin', mapped['reference']['y'] if mapped['reference'] else None, 'reference', 'Reference · ' + label)]:
                         plan = sample.get(key)
                         if plan is None:
                             continue
@@ -2854,6 +3162,56 @@ class AthenaStore:
         self.check(self.load(ident), request.version)
         return {'project_id': ident, 'version': project['version'], 'options': choice.model_dump(), 'results': results}
 
+    def preview_self_absorption(self, ident, request: Command):
+        """Correct the selected spectra without saving, for the panel to plot.
+
+        Returns the measured and corrected normalized spectra on the same
+        energy axis, and — whenever the density is known — the information
+        depth, so the operator can see how much of the sample the signal
+        actually came from before deciding the correction applies at all.
+        """
+        from .athena_operations import transform_options, transform_spectrum
+        project = self.load(ident)
+        self.check(project, request.version)
+        if request.action != 'self_absorption' or not request.group_ids or len(set(request.group_ids)) != len(request.group_ids):
+            fail('Choose the self-absorption correction and distinct source groups.')
+        options = {k: v for k, v in request.options.items() if k in transform_options('self_absorption')}
+        selected = {gid: self.group(project, gid) for gid in request.group_ids}
+        results = []
+        for group in project['groups']:
+            if group['id'] not in selected:
+                continue
+            if group['data_type'] == 'chi':
+                fail('This operation requires energy-valued data.')
+            if group['data_type'] == 'detector':
+                fail('This operation requires an absorption spectrum; correct the detector data type first.')
+            energy = np.asarray(group['energy']) + group['parameters']['energy_shift']
+            merged = _with_source_normalization(group, options)
+            transformed = transform_spectrum('self_absorption', energy, group['mu'], merged)
+            details = transformed['details']
+            length = details.get('attenuation_length_um')
+            # Only the slab correction records the thickness in its details;
+            # under FLUO an entered thickness still sets the reference yield.
+            thickness = details.get('thickness', merged.get('thickness'))
+            results.append({
+                'group_id': group['id'], 'label': group['label'],
+                'energy': transformed['energy'], 'measured': details['measured_mu'],
+                'corrected': details['normalized_mu'], 'details': details,
+                # The normalization the inversion actually used, shown beside
+                # the plot: the group's own unless the request overrode it.
+                'normalization': {key: details.get(key) for key in SELF_ABSORPTION_NORMALIZATION},
+                'information_depth_um': details.get('information_depth_um'),
+                'sampled_fraction': details.get('sampled_fraction'),
+                # Against the attenuation length at the edge step, which is what
+                # sets the reference yield the normalized measurement divides by.
+                # The shortest length in the scan does not decide that.
+                'attenuation_length_um': length,
+                'reference_sampled_fraction': details.get('reference_sampled_fraction'),
+                'thickness_over_attenuation_length': None if length is None or thickness is None else thickness / length,
+            })
+        self.check(self.load(ident), request.version)
+        return {'project_id': ident, 'version': project['version'], 'options': options, 'results': results}
+
     def preview_data_export(self, ident, request: DataExport):
         from .athena_export import prepare, preview
         project = self.load(ident)
@@ -3072,6 +3430,42 @@ class AthenaStore:
                         "group_id": cu2o["id"], "attachment_id": attachment["id"],
                         "example": artemis_example,
                     }
+            elif action == "add_references":
+                from .athena_reference_library import CITATION, COLLECTION, find, reference_spectrum
+                wanted = options.get("library_ids")
+                if (not isinstance(wanted, list) or not 1 <= len(wanted) <= 25
+                        or not all(isinstance(item, str) for item in wanted)):
+                    fail("Name between 1 and 25 bundled reference standards to add.")
+                already = {(g["source"].get("reference_library") or {}).get("id") for g in p["groups"]}
+                added = []
+                for reference_id in dict.fromkeys(wanted):
+                    entry = find(reference_id)
+                    if entry is None:
+                        fail(f"There is no bundled reference standard called '{reference_id}'.")
+                    if reference_id in already:
+                        continue  # Adding a standard twice would make the fit singular.
+                    prepared = reference_spectrum(entry)
+                    g = self.make_group(entry["name"], prepared["energy"], prepared["mu"],
+                                        parameters=prepared["parameters"], source={
+                        "filename": entry["file"],
+                        "citation": f"{COLLECTION}. {CITATION}",
+                        "warnings": prepared["warnings"],
+                        "reference_library": {key: entry.get(key) for key in
+                                              ("id", "group", "formula", "oxidation_state", "technique")},
+                        "edge_identity": {"element": entry["element"], "edge": entry["edge"], "origin": "library"}})
+                    p["groups"].append(g)
+                    added.append(g["id"])
+                if not added:
+                    fail("Every standard you named is already in this project.")
+                if len(p["groups"]) > 100:
+                    fail("A project can contain at most 100 groups.")
+                _exchange_budget(p["groups"], self.settings)
+                folder = next((f for f in p.setdefault("group_folders", []) if f["name"] == "Reference library"), None)
+                if folder is None:
+                    p["group_folders"].append({"id": uid(), "name": "Reference library", "group_ids": added})
+                else:
+                    folder["group_ids"] = [*folder["group_ids"], *added]
+                operation_details["added_group_ids"] = added
             elif action == "reorder":
                 ids = options.get("ids", [])
                 if len(ids) != len(p["groups"]) or set(ids) != {g["id"] for g in p["groups"]}:
@@ -3426,15 +3820,8 @@ class AthenaStore:
                                         project=p, is_difference=is_difference)
                     p["groups"].append(g)
                 else:
-                    from .athena_operations import transform_spectrum
-                    allowed_options = {
-                        "smooth": ("window", "order"), "deglitch": ("xmin", "xmax", "indices", "points"),
-                        "truncate": ("xmin", "xmax"),
-                        "convolve": ("form", "width"),
-                        "deconvolve": ("form", "esigma", "width", "eshift", "smooth", "sgwindow", "sgorder"),
-                        "self_absorption": ("formula", "element", "edge", "line", "angle_in", "angle_out", "e0", "pre1", "pre2", "norm1", "norm2", "nnorm"),
-                        "dispersive": ("offset", "linear", "quadratic"),
-                    }
+                    from .athena_operations import transform_options, transform_spectrum
+                    allowed_options = {name: transform_options(name) for name in _TRANSFORM_ACTIONS}
                     if action not in allowed_options:
                         fail("Unknown processing operation.")
                     operation_options = {k: v for k, v in options.items() if k in allowed_options[action]}
@@ -3455,9 +3842,14 @@ class AthenaStore:
                                     fail("Choose a deconvolution interval inside the measured energy range.")
                                 mask = (x >= lo) & (x <= hi)
                                 x, y = x[mask], np.asarray(y)[mask]
-                        transformed = transform_spectrum(action, x, y, operation_options)
                         if action == "self_absorption":
+                            # Per group: each corrects its own normalized curve.
+                            group_options = _with_source_normalization(g, operation_options)
+                            transformed = transform_spectrum(action, x, y, group_options)
                             transformed["mu"] = transformed["details"]["normalized_mu"]
+                        else:
+                            group_options = operation_options
+                            transformed = transform_spectrum(action, x, y, operation_options)
                         params = dict(g["parameters"], energy_shift=0)
                         dtype = "norm" if action in ("deconvolve", "self_absorption") else g["data_type"]
                         if action == "dispersive":
@@ -3465,7 +3857,7 @@ class AthenaStore:
                         if dtype != "mu":
                             params["fnorm"] = False
                         derived = self.make_group(g["label"] + " · " + action, transformed["energy"], transformed["mu"],
-                            parameters=params, data_type=dtype, source=_derived_source(g, action, options=operation_options, details=transformed["details"]),
+                            parameters=params, data_type=dtype, source=_derived_source(g, action, options=group_options, details=transformed["details"]),
                             background_standard_id=g.get("background_standard_id") if dtype in ("mu", "norm") else None,
                             project=p, is_difference=_is_difference(g),
                             is_normalized=g.get("is_normalized") if dtype == g["data_type"] else None)
@@ -3569,8 +3961,13 @@ class AthenaStore:
             result.setdefault("warnings", []).extend(window_warnings)
             result["labels"] = [g["label"] for g in groups]
             return self._persist_analysis(ident, {"kind": request.action, "project_version": p["version"], "group_ids": request.group_ids, "options": opts, "result": result})
-        allowed = {"lcf": ("array", "xmin", "xmax", "sum_to_one", "nonnegative"), "pca": ("array", "xmin", "xmax"),
-                   "peaks": ("array", "xmin", "xmax", "peaks", "background", "max_nfev")}.get(request.action)
+        allowed = {"lcf": ("array", "xmin", "xmax", "sum_to_one", "nonnegative"),
+                   "lcf_series": ("array", "xmin", "xmax", "sum_to_one", "nonnegative", "standards"),
+                   "lcf_search": ("array", "xmin", "xmax", "sum_to_one", "nonnegative", "min_components", "max_components", "top"),
+                   "lcf_suggest": ("array", "xmin", "xmax", "element", "edge", "top"),
+                   "pca": ("array", "xmin", "xmax"),
+                   "peaks": ("array", "xmin", "xmax", "peaks", "background", "max_nfev"),
+                   "peaks_series": ("array", "xmin", "xmax", "peaks", "background", "max_nfev", "share")}.get(request.action)
         if allowed is None:
             fail("Unknown analysis.")
         # The saved request sits beside the fit, so a dropped or truthy-string
@@ -3601,15 +3998,123 @@ class AthenaStore:
             result = linear_combination(*spectra[0], spectra[1:], xmin, xmax,
                                         **constraints)
             result["labels"] = [g["label"] for g in groups[1:]]
+        elif request.action == "lcf_series":
+            result = self._lcf_series(p, groups, spectra, o, spectrum, constraints)
+        elif request.action == "lcf_search":
+            if len(spectra) < 3:
+                fail("Select a target followed by at least two references.")
+            pool = len(spectra) - 1
+            result = combination_search(*spectra[0], spectra[1:], xmin, xmax,
+                         **constraints, min_components=int(o.get("min_components", 1)),
+                         max_components=int(o.get("max_components", min(4, pool))),
+                         top=int(o.get("top", 10)))
+            result["labels"] = [g["label"] for g in groups[1:]]
+        elif request.action == "lcf_suggest":
+            from .athena_reference_library import CITATION, catalogue, families, rank_references, reference_spectrum
+            field = o.get("array", "norm")
+            if len(spectra) != 1:
+                fail("Select exactly one group: the unknown to suggest standards for.")
+            if field in ("chi", "weighted_chi"):
+                fail("Suggestions compare XANES against energy; choose the mu, norm, flat or derivative array.")
+            identity = _source_edge_identity(groups[0]["source"]) or {}
+            element = o.get("element") or identity.get("element")
+            edge = o.get("edge") or identity.get("edge")
+            if not element or not edge:
+                fail("This group has no element and edge recorded, so no family of standards matches it. Set them on the group, or name them in the request.")
+            entries = catalogue(element, edge)
+            if not entries:
+                covered = ", ".join(f"{f['element']} {f['edge']}" for f in families())
+                fail(f"The bundled library has no {element} {edge}-edge standards. It covers {covered}.")
+            e0 = (groups[0]["result"]["effective"] or {}).get("e0")
+            if "xmin" not in o and "xmax" not in o and e0 is not None:
+                # Default to the XANES window desktop Athena uses for LCF, so an
+                # EXAFS-length unknown does not exclude every XANES-only standard.
+                xmin, xmax = max(xmin, float(e0) - 20.0), min(xmax, float(e0) + 80.0)
+            candidates, unusable = [], []
+            for entry in entries:
+                prepared = reference_spectrum(entry)
+                try:
+                    reference = self.make_group(entry["name"], prepared["energy"], prepared["mu"],
+                                                parameters=prepared["parameters"])
+                except (ValueError, WebInputError) as exc:
+                    unusable.append({"id": entry["id"], "name": entry["name"], "reason": str(exc)})
+                    continue
+                arrays = (reference["result"] or {}).get("arrays") or {}
+                if not arrays.get(field):
+                    unusable.append({"id": entry["id"], "name": entry["name"],
+                                     "reason": reference["processing_error"] or f"no {field} array after processing"})
+                    continue
+                candidates.append((entry, np.asarray(arrays["energy"]), np.asarray(arrays[field])))
+            result = rank_references(spectra[0], candidates, xmin, xmax, top=int(o.get("top", 10)))
+            result.update({"element": element, "edge": edge, "array": field, "unusable": unusable,
+                           "xmin": xmin, "xmax": xmax, "citation": CITATION,
+                           "labels": [groups[0]["label"]]})
         elif request.action == "pca":
             result = principal_components(spectra, xmin, xmax)
             result["labels"] = [g["label"] for g in groups]
         elif request.action == "peaks":
             from .athena_operations import fit_peaks
-            peak_options = {key: o[key] for key in ("peaks", "background", "max_nfev") if key in o}
+            peak_options = {key: o[key] for key in ("peaks", "max_nfev") if key in o}
+            if "background" in o:
+                peak_options["background"] = _step_at_e0(o["background"], groups[0])
             result = fit_peaks(*spectra[0], dict(peak_options, xmin=xmin, xmax=xmax))
+        elif request.action == "peaks_series":
+            from .athena_operations import fit_peaks_series
+            if len(spectra) < 2:
+                fail("Select at least two groups to fit a series with shared peaks.")
+            peak_options = {key: o[key] for key in ("peaks", "max_nfev", "share") if key in o}
+            if "background" in o:
+                peak_options["backgrounds"] = [_step_at_e0(o["background"], g) for g in groups]
+            result = fit_peaks_series(spectra, dict(peak_options, xmin=xmin, xmax=xmax))
+            result["labels"] = [g["label"] for g in groups]
         return self._persist_analysis(ident, {"kind": request.action, "project_version": p["version"], "group_ids": request.group_ids,
                 "options": o, "result": result})
+
+    def _lcf_series(self, p, targets, spectra, o, spectrum, constraints):
+        """Fit every target scan against one fixed set of standards, scan by scan.
+
+        This is the operando question: how the same standards' weights move
+        through a series. Each target is its own linear combination over the
+        same window with the same constraints, so its row is exactly the fit a
+        single-target LCF would give. A target that cannot be fitted (it does
+        not cover the window, say) keeps its row with the reason instead of
+        failing the series, and the window defaults to the overlap of every
+        target and standard so no scan is extrapolated.
+        """
+        standard_ids = o.get("standards")
+        if (not isinstance(standard_ids, list) or not all(isinstance(item, str) for item in standard_ids)
+                or len(set(standard_ids)) != len(standard_ids)):
+            fail("Name the standards for the series as a list of distinct group ids.")
+        if len(standard_ids) < 2:
+            fail("Choose at least two standards for a series LCF.")
+        if not 1 <= len(targets) <= MAX_LCF_SERIES:
+            fail(f"A series LCF fits 1 to {MAX_LCF_SERIES} target scans.")
+        overlap = sorted({g["id"] for g in targets} & set(standard_ids))
+        if overlap:
+            labels = ", ".join(self.group(p, gid)["label"] for gid in overlap)
+            fail(f"{labels} cannot be both a target and a standard; untick it in one of the two lists.")
+        standard_groups = [self.group(p, gid) for gid in standard_ids]
+        standards = [spectrum(g) for g in standard_groups]
+        everything = [*spectra, *standards]
+        xmin = float(o["xmin"]) if "xmin" in o else max(float(x.min()) for x, _ in everything)
+        xmax = float(o["xmax"]) if "xmax" in o else min(float(x.max()) for x, _ in everything)
+        sum_to_one, nonnegative = constraints["sum_to_one"], constraints["nonnegative"]
+        rows = []
+        for group, target in zip(targets, spectra):
+            row = {"group_id": group["id"], "label": group["label"]}
+            try:
+                row.update(linear_combination(*target, standards, xmin, xmax,
+                                              sum_to_one=sum_to_one, nonnegative=nonnegative))
+            except ScientificError as exc:
+                row["error"] = f"{group['label']}: {exc}"
+            rows.append(row)
+        if all("error" in row for row in rows):
+            fail(f"No target could be fitted. {rows[0]['error']}")
+        return {"targets": rows, "labels": [g["label"] for g in standard_groups],
+                "standard_ids": standard_ids, "xmin": xmin, "xmax": xmax,
+                "sum_to_one": sum_to_one, "nonnegative": nonnegative,
+                "details": {"method": "one unweighted linear combination per target, same standards, window and constraints",
+                            "uncertainties": "nominal least-squares errors per target; lower bounds conditional on the standards"}}
 
     def _persist_analysis(self, ident, result):
         """Save reproducible reports without changing the scientific source revision."""
@@ -4281,6 +4786,11 @@ def build_athena_router(
         ("POST", "/api/athena/projects/{ident}/inspect"): "upload",
         ("POST", "/api/athena/projects/{ident}/dispersive/inspect"): "upload",
         ("POST", "/api/athena/projects/{ident}/dispersive/make"): "import",
+        ("POST", "/api/athena/projects/{ident}/xrf-xas/inspect"): "upload",
+        ("POST", "/api/athena/projects/{ident}/xrf-xas/make"): "import",
+        ("POST", "/api/athena/projects/{ident}/xrf-xas/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/xrf-view/inspect"): "upload",
+        ("POST", "/api/athena/projects/{ident}/xrf-view/frame"): "preview",
         ("POST", "/api/athena/projects/{ident}/dispersive/{action}"): "preview",
         ("POST", "/api/athena/projects/{ident}/import"): "import",
         ("GET", "/api/athena/projects/{ident}/groups/{group_id}/columns"): "upload",
@@ -4300,6 +4810,7 @@ def build_athena_router(
         ("POST", "/api/athena/projects/{ident}/difference/preview"): "preview",
         ("POST", "/api/athena/projects/{ident}/rebin/preview"): "preview",
         ("POST", "/api/athena/projects/{ident}/mee/preview"): "preview",
+        ("POST", "/api/athena/projects/{ident}/self-absorption/preview"): "preview",
         ("POST", "/api/athena/projects/{ident}/point-edit/preview"): "preview",
         ("POST", "/api/athena/projects/{ident}/merge/preview"): "preview",
         ("POST", "/api/athena/projects/{ident}/groups/{group_id}/merge/plot"): "plot",
@@ -4551,6 +5062,16 @@ def build_athena_router(
             if store.load(summary["id"]).get("integration") is not True
         ]
 
+    @router.get("/formats")
+    def supported_formats():
+        """Every beamline and file format the readers recognize by themselves.
+
+        This is the answer to "will it open my data?", which is asked before
+        anyone has a file uploaded, so it depends on no project.
+        """
+        from .beamline_registry import reader_catalog
+        return reader_catalog()
+
     @router.get("/edges")
     def absorption_edges(element: str = Query(min_length=1, max_length=32)):
         from .athena_e0 import edge_catalog
@@ -4620,6 +5141,40 @@ def build_athena_router(
     @router.post('/projects/{ident}/dispersive/{action}')
     def dispersive(ident: str,action: Literal['columns','preview','guess','refine'],request: DispersiveRequest):
         return guarded(lambda: store.dispersive(ident,request,action))
+
+    @router.post('/projects/{ident}/xrf-xas/inspect')
+    def inspect_xrf_scan(ident: str,file: UploadFile=File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        authority = integration_draft(ident, capability, "upload")
+        data=_read_bounded_upload(file,settings.max_upload_bytes)
+        mutation = lambda: guarded(lambda: store.inspect_xrf_scan(ident,data,file.filename or 'scan.h5'))
+        return integrated_mutation(
+            ident, capability, "upload", authority, mutation, lock_workspace=True
+        )
+
+    @router.post('/projects/{ident}/xrf-xas/make')
+    def make_xrf_xas(ident: str,request: XrfXasOptions, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        authority = integration_draft(ident, capability, "import")
+        return integrated_mutation(
+            ident, capability, "import", authority,
+            lambda: guarded(lambda: store.make_xrf_xas(ident,request)),
+        )
+
+    @router.post('/projects/{ident}/xrf-xas/preview')
+    def xrf_xas(ident: str,request: XrfXasOptions):
+        return guarded(lambda: store.xrf_xas(ident,request))
+
+    @router.post('/projects/{ident}/xrf-view/inspect')
+    def inspect_xrf_cube(ident: str,file: UploadFile=File(...), capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+        authority = integration_draft(ident, capability, "upload")
+        data=_read_bounded_upload(file,settings.max_upload_bytes)
+        mutation = lambda: guarded(lambda: store.inspect_xrf_cube(ident,data,file.filename or 'detector.h5'))
+        return integrated_mutation(
+            ident, capability, "upload", authority, mutation, lock_workspace=True
+        )
+
+    @router.post('/projects/{ident}/xrf-view/frame')
+    def xrf_view(ident: str,request: XrfViewOptions):
+        return guarded(lambda: store.xrf_view(ident,request))
 
     @router.get('/preferences/dispersive')
     def dispersive_defaults():
@@ -4844,6 +5399,10 @@ def build_athena_router(
     @router.post('/projects/{ident}/mee/preview')
     def preview_mee(ident: str, request: Command, view: PreviewView = "full"):
         return previewed(ident, request, lambda: store.preview_mee(ident, request), view)
+
+    @router.post('/projects/{ident}/self-absorption/preview')
+    def preview_self_absorption(ident: str, request: Command):
+        return guarded(lambda: store.preview_self_absorption(ident, request))
 
     @router.post('/projects/{ident}/point-edit/preview')
     def preview_point_edit(ident: str, request: Command, view: PreviewView = "full"):

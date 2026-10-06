@@ -1,0 +1,8 @@
+.table { width: 100%; border-collapse: collapse; margin: 12px 0 0; font-size: var(--text-caption); }
+.table th, .table td { text-align: left; padding: 6px 10px 6px 0; border-bottom: 1px solid var(--ath-line); white-space: nowrap; }
+.table th { font-weight: 500; color: var(--ath-muted); }
+.table tbody tr:last-child td { border-bottom: none; }
+.table td:first-child, .table th:first-child { white-space: normal; min-width: 0; }
+.best td { color: var(--ath-primary); }
+.scroll { max-height: 230px; overflow: auto; }
+.note { color: var(--ath-muted); }

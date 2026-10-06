@@ -389,10 +389,10 @@ invalid XDI version in fist line''')
                     self.element = value
                 elif 'edge_en' in field:
                     self.edge_energy = value
-                elif 'mono' in family and 'dspacing' in field:
-                    self.d_spacing = float(value)
-                elif 'mono' in family and 'd_spacing' in field:
-                    self.d_spacing = float(value)
+                elif 'mono' in family and ('dspacing' in field or 'd_spacing' in field):
+                    # The value may carry a unit ("3.1356369 Ang"), as the
+                    # angle/energy conversion in _assign_arrays already assumes.
+                    self.d_spacing = float(value.split()[0])
                 elif 'scan' in family and 'start_time' in field:
                     self.start_time = value
                 elif 'scan' in family and 'end_time' in field:

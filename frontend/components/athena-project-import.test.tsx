@@ -319,3 +319,22 @@ it('disables stale project import after failed conversion and retries the same o
   expect(imports()).toHaveLength(1)
   expect(imports()[0][1]).toEqual({ version: 0, upload_id: 'retry', group_ids: ['a','b','c'] })
 })
+
+it('says a project opened into a non-empty one is merged, and can open it in a new project instead', async () => {
+  // Opening a saved series silently added its groups to the open project.
+  let current = { id: 'workspace', version: 3, name: 'Cr series', groups: [{ id: 'g' }], journal: '', updated: '',
+    history: [], undo: [], redo: [] } as unknown as AthenaProject
+  const created = { ...current, id: 'fresh', version: 0, name: 'Untitled project', groups: [] } as AthenaProject
+  const newProject = vi.fn(async () => { current = created; return created })
+  const imported = vi.fn((next: AthenaProject) => { current = next })
+  render(<AthenaProjectImport getProject={() => current} onImported={imported} onComplete={vi.fn()} onBusyChange={vi.fn()} newProject={newProject} />)
+  api.mockResolvedValueOnce(preview()); choose(); await ready()
+  expect(screen.getByText(/added to the open project “Cr series”, which already holds 1 groups/)).toBeVisible()
+  fireEvent.click(screen.getByLabelText('Open in a new project instead'))
+  api.mockResolvedValueOnce({ ...preview(), upload_id: 'upload-in-fresh' }).mockResolvedValueOnce({ ...created, version: 1 })
+  fireEvent.click(screen.getByRole('button', { name: 'Import all groups' }))
+  await waitFor(() => expect(imported).toHaveBeenCalledOnce())
+  expect(newProject).toHaveBeenCalledOnce()
+  expect(imports()[0][0]).toBe('/projects/fresh/restore-upload')
+  expect(imports()[0][1]).toMatchObject({ version: 0, upload_id: 'upload-in-fresh' })
+})

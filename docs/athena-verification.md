@@ -57,8 +57,10 @@ web JSON project for a portable copy.
 - Calibration, derivative alignment, sample/reference alignment, weighted
   merge/sum, signed differences, parameter-copy series, smoothing, deglitching,
   truncation, rebinning, convolution and bounded-interval deconvolution.
-- Thick-sample fluorescence self-absorption via Larch FLUO; dispersive polynomial
-  calibration; the arctangent approximation for multi-electron excitation.
+- Fluorescence self-absorption, both the thick-sample correction via Larch FLUO
+  and the Booth finite-thickness slab, with attenuation-length and
+  sampled-fraction curves; dispersive polynomial calibration; the arctangent approximation for
+  multi-electron excitation.
 - Constrained linear-combination fitting, SVD PCA, multiple Gaussian/Lorentzian/
   Voigt peak fitting, shell-filtered log-ratio/phase and effective cumulants.
 - Journal, provenance, native project exchange, local reopen, and downloadable

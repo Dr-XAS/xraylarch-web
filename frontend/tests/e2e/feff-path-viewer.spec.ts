@@ -88,7 +88,10 @@ Cu4 Cu 0.5 0.5 0 1
     await dialog.getByRole("button", { name: "Import all groups", exact: true }).click()
     const restoredResponse = await restored
     expect(restoredResponse.ok()).toBe(true)
-    expect((await restoredResponse.json()).artemis_structures).toHaveLength(1)
+    // Opening a project adds to the workspace, whose copper example already
+    // carries its own Cuprite CIF: the fixture CIF is one of the attachments.
+    const attached = (await restoredResponse.json()).artemis_structures as { amcsd_id: number }[]
+    expect(attached.filter(item => item.amcsd_id === 990001)).toHaveLength(1)
     await expect(dialog).toBeHidden()
   }
   await page.locator(".ath-group-select").filter({ hasText: "Cu foil · 10 K" }).last().click()
@@ -321,8 +324,8 @@ test("renders real single, triangular, collinear, and repeated FEFF trajectories
   await expect(panel.getByText("Double scattering · triangle", { exact: true })).toBeVisible()
   await expect(panel.getByLabel("Scattering sequence", { exact: true })).toHaveText("Cu A → Cu 1 → Cu 2 → Cu A")
   await openCoordinates(panel)
-  await expect(panel.getByRole("table").locator("tbody tr")).toHaveCount(4)
-  await expect(panel.getByRole("table").getByRole("cell", { name: "120.0", exact: true })).toHaveCount(2)
+  await expect(panel.getByRole("table", { name: /^Scattering path geometry/ }).locator("tbody tr")).toHaveCount(4)
+  await expect(panel.getByRole("table", { name: /^Scattering path geometry/ }).getByRole("cell", { name: "120.0", exact: true })).toHaveCount(2)
   const triangular = await sceneState(panel)
   triangular.arrows.forEach((arrow, index) => expectArrowCorridor([arrow], copperTriangle[index], copperTriangle[index + 1], 0))
   await panel.screenshot({ path: info.outputPath("feff-triangle-desktop.png") })
@@ -343,8 +346,8 @@ test("renders real single, triangular, collinear, and repeated FEFF trajectories
   await panel.getByRole("button", { name: "Leg 4", exact: true }).click()
   await expect(panel.getByText(/Leg 4: Cu 1 → Cu A/)).toContainText("return to absorber")
   await openCoordinates(panel)
-  await expect(panel.getByRole("table").locator("tbody tr")).toHaveCount(5)
-  await expect(panel.getByRole("table").getByRole("cell", { name: "Cu A", exact: true })).toHaveCount(3)
+  await expect(panel.getByRole("table", { name: /^Scattering path geometry/ }).locator("tbody tr")).toHaveCount(5)
+  await expect(panel.getByRole("table", { name: /^Scattering path geometry/ }).getByRole("cell", { name: "Cu A", exact: true })).toHaveCount(3)
   await panel.getByRole("button", { name: "All legs", exact: true }).click()
   await panel.screenshot({ path: info.outputPath("feff-repeated-path-desktop.png") })
   expect(scienceRequests).toEqual([])
@@ -361,7 +364,7 @@ test("keeps real FEFF paths selectable and the 3D scene usable on mobile without
   await panel.getByRole("button", { name: "Leg 3", exact: true }).click()
   await expect(panel.getByText(/Leg 3: Cu 2 → Cu A/)).toContainText("return to absorber")
   await openCoordinates(panel)
-  await expect(panel.getByRole("table")).toBeVisible()
+  await expect(panel.getByRole("table", { name: /^Scattering path geometry/ })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true)
   await panel.screenshot({ path: info.outputPath("feff-triangle-mobile.png") })
 })
@@ -371,6 +374,18 @@ test("shows a matching project CIF with the same elemental atom and bond styles,
   await page.setViewportSize({ width: 1600, height: 1100 })
   const panel = await loadPaths(page, true)
   const cifPanel = page.getByRole("region", { name: "CIF structure viewer", exact: true })
+  // The workspace also holds the copper example's Cuprite CIF, which the CIF
+  // viewer shows first; compare against the fixture CIF the paths match.
+  const viewed = page.getByLabel("Viewed CIF structure", { exact: true })
+  if (await viewed.count()) {
+    const fixture = await viewed.locator("option", { hasText: "Copper FEFF fixture" }).getAttribute("value")
+    await viewed.selectOption(fixture!)
+  }
+  // The CIF viewer highlights the CrystalNN first shell by default (amber
+  // absorber, cyan neighbours); the comparison is of element styles.
+  const highlight = cifPanel.getByLabel("Highlight CrystalNN first shell", { exact: true })
+  await expect(highlight).toBeVisible({ timeout: 60000 })
+  await highlight.uncheck()
   await expectScene(panel, 13, 2)
   await expect(panel.getByLabel("Local structure", { exact: true })).toBeChecked()
   await expect(panel.getByLabel("Bonds", { exact: true })).toBeChecked()

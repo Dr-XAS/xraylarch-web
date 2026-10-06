@@ -21,8 +21,10 @@ from larch.math.lineshapes import step as larch_step
 from larch.xafs import fluo_corr, rebin_xafs, xas_deconvolve
 from larch.xafs.pre_edge import preedge
 from larch.xafs.xafsutils import KTOE, TINY_ENERGY
-from lmfit.models import GaussianModel, LinearModel, LorentzianModel, VoigtModel
+from lmfit import Parameters, minimize
+from lmfit.models import GaussianModel, LinearModel, LorentzianModel, StepModel, VoigtModel
 from scipy.signal import fftconvolve, savgol_filter
+from scipy.stats import chi2
 from xraydb import chemparse, material_mu, xray_edge, xray_line
 
 MAX_POINTS = 100_000
@@ -31,6 +33,7 @@ MAX_WORK = 50_000_000
 MAX_PEAKS = 12
 MAX_FIT_POINTS = 20_000
 MAX_NFEV = 5_000
+MAX_SERIES = 40
 
 
 def _array(values, name, *, complex_values=False):
@@ -293,6 +296,67 @@ def _deconvolve(x, y, options):
     }
 
 
+def _booth_slab(measured, mu_b, jump, mu_f, g_in, g_out, thickness_cm):
+    """Invert the finite-thickness fluorescence yield for the true absorption.
+
+    Booth and Bridges, Physica Scripta T115, 202 (2005). A uniform slab of
+    thickness d emits, per unit incident intensity and up to a constant
+    detector solid angle,
+
+        F(n) = n / S(n) * (1 - exp(-S(n) d)),
+        S(n) = (mu_b + jump * n) * g_in + mu_f * g_out,
+
+    where n is the normalized absorption of the edge-jumping element, mu_b
+    the background attenuation just below the edge, jump the edge step in
+    attenuation, mu_f the attenuation at the fluorescence energy, and g_in,
+    g_out the inverse sines of the incidence and exit angles. A normalized
+    measurement is F(n)/F(1), and F is strictly increasing in n, so each
+    point inverts by bisection. Returns the recovered n and S(n).
+
+    The d -> infinity limit is FLUO; the d -> 0 limit leaves the data alone.
+    """
+    def sigma_of(n):
+        return (mu_b + jump * n) * g_in + mu_f * g_out
+
+    def detected(n):
+        sigma = sigma_of(n)
+        return n / sigma * (-np.expm1(-sigma * thickness_cm))
+
+    unit = float(detected(np.ones(1))[0])
+    # F rises to a finite plateau as n grows, because a more strongly
+    # absorbing sample emits from an ever thinner surface layer. Above that
+    # plateau the inversion has no root for *this* thickness; a thinner slab
+    # has a higher plateau, and as d -> 0 it rises without bound.
+    ceiling = 1.0 / (jump * g_in * unit)
+    if np.any(measured >= ceiling * (1 - 1e-9)):
+        raise ValueError(
+            f"Normalized signal reaches {float(np.max(measured)):.3f}, at or above the "
+            f"{ceiling:.3f} ceiling for this thickness, composition, geometry and "
+            "normalization, so the inversion has no solution. A thinner sample raises the "
+            "ceiling; check the thickness, the composition, the angles, and the "
+            "normalization ranges.")
+    # Bracket below zero so noisy pre-edge points are not clamped upward. This
+    # is a numerical extension, not a physicality test: stop just short of
+    # S(n) = 0, where the yield itself stops being defined.
+    lo = np.full(measured.shape, -0.95 * (mu_b * g_in + mu_f * g_out) / (jump * g_in))
+    hi = np.ones_like(measured)
+    for _ in range(200):
+        short = detected(hi) < measured * unit
+        if not short.any():
+            break
+        hi = np.where(short, hi * 2.0, hi)
+    if np.any(detected(lo) > measured * unit):
+        raise ValueError(
+            "Normalized signal falls further below zero than this inversion can "
+            "represent; check the pre-edge normalization range.")
+    for _ in range(100):
+        mid = 0.5 * (lo + hi)
+        low = detected(mid) < measured * unit
+        lo, hi = np.where(low, mid, lo), np.where(low, hi, mid)
+    n = 0.5 * (lo + hi)
+    return n, sigma_of(n)
+
+
 def _self_absorption(x, y, options):
     formula, element = options.get("formula"), options.get("element")
     if not isinstance(formula, str) or not 1 <= len(formula) <= 256:
@@ -318,6 +382,19 @@ def _self_absorption(x, y, options):
     angle_out = _number(options.get("angle_out", 45), "angle_out", positive=True)
     if not 0.1 <= angle_in <= 90 or not 0.1 <= angle_out <= 90:
         raise ValueError("angle_in and angle_out must be 0.1–90 degrees from the sample surface.")
+    algorithm = _choice(options.get("algorithm", "fluo"), "algorithm", ("fluo", "booth"))
+    density = options.get("density")
+    if density is not None:
+        density = _number(density, "density", positive=True)
+        if not 1e-3 <= density <= 30:
+            raise ValueError("density must be 0.001–30 g/cm^3.")
+    thickness = options.get("thickness")
+    if thickness is not None:
+        thickness = _number(thickness, "thickness", positive=True)
+        if not 1e-4 <= thickness <= 1e6:
+            raise ValueError("thickness must be 0.0001–1000000 micrometres.")
+    if algorithm == "booth" and (density is None or thickness is None):
+        raise ValueError("The Booth correction needs the sample thickness in micrometres and the density in g/cm^3.")
     e0 = _number(options.get("e0", edge_data.energy), "e0", positive=True)
     nnorm = _integer(options.get("nnorm", 1), "nnorm", 0, 3)
     preopts = {name: _number(options.get(name, default), name) for name, default in (
@@ -329,9 +406,16 @@ def _self_absorption(x, y, options):
     if ((x >= e0 + p1) & (x < e0 + p2)).sum() < 4 or ((x >= e0 + n1) & (x < e0 + n2)).sum() < 6:
         raise ValueError("Normalization ranges need >=4 pre-edge and >=6 post-edge samples.")
     preopts.update(e0=e0, nnorm=nnorm)
-    normalized = preedge(x, y, **preopts)
+    # A fixed edge step and the pre-edge energy exponent belong to the
+    # normalization the user approved; without them the 'measured' curve the
+    # inversion corrects is not the one in the main view.
+    step = options.get("step")
+    if step is not None:
+        step = _number(step, "step", positive=True)
+    nvict = _integer(options.get("nvict", 0), "nvict", 0, 10)
+    normalized = preedge(x, y, step=step, nvict=nvict, **preopts)
     ie0 = int(np.argmin(np.abs(x - e0)))
-    edge_step = normalized["post_edge"][ie0] - normalized["pre_edge"][ie0]
+    edge_step = step if step is not None else normalized["post_edge"][ie0] - normalized["pre_edge"][ie0]
     if edge_step <= 1e-12 * max(float(np.max(np.abs(y))), np.finfo(float).tiny):
         raise ValueError("Fluorescence data must have a positive, resolvable absorption edge step; check normalization ranges.")
     attenuation = material_mu(formula, np.array([line_data.energy, edge_data.energy - 10,
@@ -339,21 +423,83 @@ def _self_absorption(x, y, options):
     jump = attenuation[2] - attenuation[1]
     if not np.isfinite(attenuation).all() or jump <= 0:
         raise ValueError("Material has no positive attenuation jump at this edge; check composition and edge.")
-    alpha = (attenuation[0] * np.sin(np.deg2rad(angle_in)) / np.sin(np.deg2rad(angle_out)) + attenuation[1]) / jump
-    denominator = alpha + 1 - normalized["norm"]
-    if np.any(denominator <= 1e-8 * max(1, alpha)):
-        raise ValueError("FLUO correction is singular or nonphysical for these data; check composition, angles, and normalization.")
-    group = Group()
-    fluo_corr(x, y, formula, element, group=group, edge=edge, line=line,
-              anginp=angle_in, angout=angle_out, **preopts)
-    if not np.isfinite(group.norm_corr).all():
-        raise ValueError("Corrected fluorescence normalization is non-finite; review the normalization ranges.")
-    return x, group.mu_corr, {
-        "method": "larch.fluo_corr", "formula": formula, "element": element, "edge": edge,
-        "line": line, "angle_in": angle_in, "angle_out": angle_out, **preopts,
-        "alpha": float(alpha), "normalized_mu": group.norm_corr.tolist(),
-        "assumptions": "FLUO thick homogeneous flat sample approximation, known stoichiometry, angles measured from the surface in degrees; no finite-thickness correction. Intended for XANES, questionable for quantitative EXAFS. Input is raw fluorescence mu; returned mu is Larch mu_corr, with norm_corr in normalized_mu. XrayDB density=1 cancels in the attenuation ratio.",
+    g_in, g_out = 1 / np.sin(np.deg2rad(angle_in)), 1 / np.sin(np.deg2rad(angle_out))
+    alpha = (attenuation[0] * g_out / g_in + attenuation[1]) / jump
+    measured = normalized["norm"]
+    if density is not None:
+        # The same three attenuations in absolute units. Only the product of
+        # density and thickness enters, so either may carry the packing
+        # fraction of a homogeneous pellet. Partial surface coverage is a
+        # different geometry and is not equivalent to a thinner slab.
+        mu_f, mu_b, mu_jump = (attenuation * density)[0], (attenuation * density)[1], jump * density
+        thickness_cm = None if thickness is None else thickness * 1e-4
+    details = {
+        "algorithm": algorithm, "formula": formula, "element": element, "edge": edge,
+        "line": line, "angle_in": angle_in, "angle_out": angle_out, **preopts, "step": step, "nvict": nvict,
+        "alpha": float(alpha), "fluorescence_energy": float(line_data.energy),
+        "edge_energy": float(edge_data.energy), "measured_mu": measured.tolist(),
     }
+    if algorithm == "fluo":
+        denominator = alpha + 1 - measured
+        if np.any(denominator <= 1e-8 * max(1, alpha)):
+            raise ValueError("FLUO correction is singular or nonphysical for these data; check composition, angles, and normalization.")
+        if step is None and nvict == 0:
+            group = Group()
+            fluo_corr(x, y, formula, element, group=group, edge=edge, line=line,
+                      anginp=angle_in, angout=angle_out, **preopts)
+            mu_corrected, corrected = group.mu_corr, group.norm_corr
+            method = "larch.fluo_corr"
+        else:
+            # Larch's fluo_corr refits the edge step and drops nvict, so it
+            # would correct a differently normalized curve. Its formula, on
+            # the curve the user approved:
+            mu_corrected = y * alpha / denominator
+            corrected = preedge(x, mu_corrected, nvict=nvict, **preopts)["norm"]
+            method = "larch.fluo_corr formula, on the group's fixed-step normalization"
+        if not np.isfinite(corrected).all():
+            raise ValueError("Corrected fluorescence normalization is non-finite; review the normalization ranges.")
+        # The FLUO limit assumes every emitted photon comes from a slab deep
+        # enough to absorb the whole beam. alpha carries the correction; the
+        # recovered absorption is what sets the depth the signal came from.
+        true_norm = alpha * measured / denominator
+        details.update(
+            method=method,
+            assumptions="FLUO thick homogeneous flat sample approximation, known stoichiometry, angles measured from the surface in degrees; no finite-thickness correction. Intended for XANES, questionable for quantitative EXAFS. Input is raw fluorescence mu; returned mu is Larch mu_corr, with norm_corr in normalized_mu. XrayDB density=1 cancels in the attenuation ratio.",
+        )
+    else:
+        true_norm, _ = _booth_slab(measured, mu_b, mu_jump, mu_f, g_in, g_out, thickness_cm)
+        # The inversion recovers the normalized absorption, so rebuild the raw
+        # signal from it on the source group's pre-edge line and edge step.
+        # Scaling the raw signal instead, as FLUO does, would scale any
+        # additive background along with the fluorescence, and renormalizing
+        # that does not return the absorption the inversion recovered.
+        mu_corrected = normalized["pre_edge"] + edge_step * true_norm
+        corrected = preedge(x, mu_corrected, nvict=nvict, **preopts)["norm"]
+        if not np.isfinite(corrected).all():
+            raise ValueError("Corrected fluorescence normalization is non-finite; review the normalization ranges.")
+        details.update(
+            method="booth.finite_thickness_slab", thickness=thickness, density=density,
+            reference="Booth and Bridges, Physica Scripta T115, 202 (2005)",
+            equation="F(n) = n/S(n) * (1 - exp(-S(n) d)) with S(n) = (mu_b + jump*n)/sin(angle_in) + mu_f/sin(angle_out); measured = F(n)/F(1)",
+            assumptions="Uniform flat slab of the stated thickness, density and stoichiometry, uniformly illuminated, with angles measured from the surface in degrees. Attenuation is held at its tabulated values just below and above the edge and at the fluorescence line, as FLUO does, so energy dependence away from the edge is not modelled. No scattering, no detector dead time, no pinholes or grain structure, and no cylindrical or partially covering geometry. Input is raw fluorescence mu; the returned mu is rebuilt from the recovered normalized absorption on the source group's pre-edge line and edge step, so normalized_mu is that absorption renormalized on its own corrected edge step rather than a rescaled background.",
+        )
+    if density is not None:
+        # Total attenuation along the in and out paths, so 1/sigma is the
+        # attenuation length: 63% of the detected signal comes from shallower
+        # than that, in a slab thick enough for the rest to exist.
+        sigma = (mu_b + mu_jump * true_norm) * g_in + mu_f * g_out
+        details["information_depth_um"] = (1e4 / sigma).tolist()
+        # Whether the thick-sample correction applies is set by the reference
+        # yield F(1), not by the shortest length in the scan: the normalized
+        # measurement is F(n)/F(1), so it is sigma at n = 1 that decides how
+        # close the denominator is to its infinite-thickness value.
+        sigma_one = (mu_b + mu_jump) * g_in + mu_f * g_out
+        details["attenuation_length_um"] = float(1e4 / sigma_one)
+        if thickness is not None:
+            details["sampled_fraction"] = (-np.expm1(-sigma * thickness_cm)).tolist()
+            details["reference_sampled_fraction"] = float(-np.expm1(-sigma_one * thickness_cm))
+    details["normalized_mu"] = np.asarray(corrected).tolist()
+    return x, mu_corrected, details
 
 
 def _multi_electron(x, y, options):
@@ -403,10 +549,17 @@ _TRANSFORM_OPTIONS = {
     "rebin": ("e0", "pre1", "pre2", "pre_step", "xanes_step", "exafs1", "exafs2", "exafs_kstep", "method"),
     "convolve": ("form", "width"),
     "deconvolve": ("form", "width", "esigma", "eshift", "smooth", "sgwindow", "sgorder"),
-    "self_absorption": ("formula", "element", "edge", "line", "angle_in", "angle_out", "e0", "pre1", "pre2", "norm1", "norm2", "nnorm"),
+    "self_absorption": ("algorithm", "formula", "element", "edge", "line", "angle_in", "angle_out", "thickness", "density", "e0", "pre1", "pre2", "norm1", "norm2", "nnorm", "step", "nvict"),
     "dispersive": ("offset", "linear", "quadratic"),
     "multi_electron": ("method", "e0", "shift", "amplitude", "width", "edge_step"),
 }
+
+
+def transform_options(operation: str) -> tuple[str, ...]:
+    """Option names ``transform_spectrum`` accepts for one operation."""
+    if operation not in _TRANSFORM_OPTIONS:
+        raise ValueError(f"Unknown processing operation: {operation}.")
+    return _TRANSFORM_OPTIONS[operation]
 
 
 def transform_spectrum(operation: str, energy, mu, options: dict | None = None) -> dict:
@@ -432,8 +585,14 @@ def transform_spectrum(operation: str, energy, mu, options: dict | None = None) 
     * self_absorption: required formula and element (symbol), edge=K (also
       L1/L2/L3), line=Ka/Lb3/Lb1/La for the respective edge, angle_in/out=45
       degrees from the surface; e0=tabulated edge, pre1=first-e0, pre2=-30,
-      norm1=100, norm2=last-e0, nnorm=1 (0..3). FLUO's thick homogeneous
-      sample approximation; returns raw-scale mu_corr. See details for norm.
+      norm1=100, norm2=last-e0, nnorm=1 (0..3). algorithm=fluo is FLUO's
+      thick homogeneous sample approximation; algorithm=booth is the Booth
+      finite-thickness slab, which additionally requires thickness (um) and
+      density (g/cm**3). Both return raw-scale corrected mu, with the
+      renormalized spectrum in details. Supplying density adds the
+      attenuation length 1/S per energy and at the edge step, and thickness
+      adds the sampled fraction, to details under either algorithm; neither
+      changes the FLUO result.
     * dispersive: E(eV)=offset + linear*pixel + quadratic*pixel**2;
       offset=0 eV, linear=1 eV/pixel, quadratic=0 eV/pixel**2. The energy
       argument contains increasing pixel coordinates. Decreasing calibration
@@ -486,12 +645,133 @@ def transform_spectrum(operation: str, energy, mu, options: dict | None = None) 
     }}
 
 
+def _background_label(background) -> str:
+    step = (background or {}).get("step") if isinstance(background, Mapping) else None
+    if not step:
+        return "slope*x + intercept"
+    form = step.get("form", "arctan") if isinstance(step, Mapping) else "arctan"
+    return f"slope*x + intercept + {form} step (amplitude, center, sigma)"
+
+
+def _step_background(x, y, step, model, params, prefix, min_width, span):
+    """Add Athena's edge step -- an arctangent or error function -- under the peaks.
+
+    A pre-edge peak sits on the rising edge, and a straight line can only follow
+    that onset by bending the peak area into the baseline. The step has its own
+    centre, width and height. Its centre may lie up to one window width beyond
+    either end, because a pre-edge window usually stops below the edge it is
+    climbing toward; its height is nonnegative, since an absorption edge rises.
+    By default the centre and width are held where the user put them (the
+    edge's E0 and width) and only the height is fitted; ``vary=True`` frees
+    them, which on real pre-edge windows (Mn K, 10-18 eV wide) did not converge.
+    """
+    step = _options(step, ("form", "center", "sigma", "amplitude", "vary"))
+    form = _choice(step.get("form", "arctan"), "background step form", ("arctan", "erf"))
+    # Athena's habit: hold the step at the edge's E0 and width, and let only its
+    # height follow the data. Inside a narrow pre-edge window the free centre
+    # and width are rarely determined, and freeing them can stop the fit.
+    vary = step.get("vary", False)
+    if not isinstance(vary, bool):
+        raise ValueError("background step vary must be true or false.")
+    center = _number(step.get("center", float(x[-1])), "background step center")
+    sigma = _number(step.get("sigma", span / 4), "background step sigma", positive=True)
+    amplitude = _number(step.get("amplitude", max(float(np.ptp(y)) / 2, 1e-12)), "background step amplitude")
+    if not x[0] - span <= center <= x[-1] + span:
+        raise ValueError("The background step centre must lie within one window width of the fit range.")
+    if not min_width <= sigma <= span:
+        raise ValueError(f"The background step width must be between {min_width:g} and {span:g} in x units.")
+    if amplitude < 0:
+        raise ValueError("The background step height must be nonnegative; an absorption edge rises.")
+    name = f"{prefix}step_"
+    step_model = StepModel(form=form, prefix=name)
+    step_params = step_model.make_params(center=center, sigma=sigma, amplitude=amplitude)
+    step_params[name + "center"].set(min=float(x[0] - span), max=float(x[-1] + span), vary=vary)
+    step_params[name + "sigma"].set(min=min_width, max=span, vary=vary)
+    step_params[name + "amplitude"].set(min=0)
+    params.update(step_params)
+    return model + step_model, params
+
+
+def _peak_setup(x, y, peaks, background, prefix=""):
+    """One spectrum's linear background plus peaks, with bounded start values.
+
+    ``prefix`` namespaces every parameter so several spectra can be fitted in
+    one parameter set. Returns the model, its parameters and the peak kinds.
+    """
+    span = float(x[-1] - x[0])
+    min_width = max(float(np.min(np.diff(x))) / 10, span * 1e-9)
+    background = _options(background, ("slope", "intercept", "step"))
+    slope = _number(background.get("slope", (y[-1] - y[0]) / span), "background.slope")
+    intercept = _number(background.get("intercept", y[0] - slope * x[0]), "background.intercept")
+    model = LinearModel(prefix=f"{prefix}background_")
+    params = model.make_params(slope=slope, intercept=intercept)
+    if background.get("step") is not None:
+        model, params = _step_background(x, y, background["step"], model, params, prefix, min_width, span)
+    kinds = []
+    for index, peak in enumerate(peaks, start=1):
+        if not isinstance(peak, Mapping):
+            raise ValueError(f"peak {index} must be a dictionary.")
+        peak = _options(peak, ("center", "sigma", "amplitude", "kind", "gamma"))
+        kind = _choice(peak.get("kind", "gaussian"), "peak kind", ("gaussian", "lorentzian", "voigt"))
+        center = _number(peak.get("center"), f"peak {index} center")
+        sigma = _number(peak.get("sigma"), f"peak {index} sigma", positive=True)
+        amplitude = _number(peak.get("amplitude"), f"peak {index} amplitude", positive=True)
+        if not x[0] <= center <= x[-1]:
+            where = f"spectrum {prefix[1:-1]}" if prefix else "the spectrum"
+            raise ValueError(f"peak {index} center must be within the selected fit range: {center:g} lies outside "
+                             f"{x[0]:g}–{x[-1]:g}, the points {where} measured in the window.")
+        if not min_width <= sigma <= span:
+            raise ValueError(f"peak {index} sigma must be between {min_width:g} and {span:g} in x units.")
+        name = f"{prefix}peak_{index}_"
+        peak_model = {"gaussian": GaussianModel, "lorentzian": LorentzianModel, "voigt": VoigtModel}[kind](prefix=name)
+        peak_params = peak_model.make_params(center=center, sigma=sigma, amplitude=amplitude)
+        peak_params[name + "center"].set(min=float(x[0]), max=float(x[-1]))
+        peak_params[name + "sigma"].set(min=min_width, max=span)
+        peak_params[name + "amplitude"].set(min=0)
+        if "gamma" in peak:
+            if kind != "voigt":
+                raise ValueError("gamma is supported only for Voigt peaks.")
+            gamma = _number(peak["gamma"], f"peak {index} gamma", positive=True)
+            if not min_width <= gamma <= span:
+                raise ValueError(f"peak {index} gamma must be between {min_width:g} and {span:g}.")
+            peak_params[name + "gamma"].set(value=gamma, expr="", vary=True, min=min_width, max=span)
+        model += peak_model
+        params.update(peak_params)
+        kinds.append(kind)
+    return model, params, kinds
+
+
+def _peak_parameters(params, prefix=""):
+    """lmfit parameters as value/stderr/vary/min/max, with the prefix removed."""
+    reported = {}
+    for name, par in params.items():
+        if not name.startswith(prefix):
+            continue
+        if not np.isfinite(par.value):
+            raise ValueError(f"Peak fit produced a non-finite {name}; revise the model.")
+        reported[name[len(prefix):]] = {
+            "value": float(par.value),
+            "stderr": float(par.stderr) if par.stderr is not None and np.isfinite(par.stderr) else None,
+            "vary": bool(par.vary),
+            "min": float(par.min) if np.isfinite(par.min) else None,
+            "max": float(par.max) if np.isfinite(par.max) else None}
+    return reported
+
+
+def _peak_count(peaks):
+    if not isinstance(peaks, (list, tuple)) or not 1 <= len(peaks) <= MAX_PEAKS:
+        raise ValueError(f"peaks must contain 1–{MAX_PEAKS} peak dictionaries with center, sigma, amplitude, and kind.")
+    return len(peaks)
+
+
 def fit_peaks(x, y, options: dict | None = None) -> dict:
     """Unweighted lmfit peaks plus a linear background, in the units of x/y.
 
     Options: inclusive xmin/xmax (default full range), required peaks (1..12),
     max_nfev=2000 (1..5000), and optional background={slope, intercept} initial
-    guesses (default line through the fit-range endpoints). Each peak requires
+    guesses (default line through the fit-range endpoints), plus an optional
+    background.step={form: arctan|erf, center, sigma, amplitude} edge step under
+    the peaks (see _step_background). Each peak requires
     center, sigma, amplitude, with kind=gaussian|lorentzian|voigt (gaussian by
     default). amplitude is positive integrated area, NOT height. sigma is
     Gaussian standard deviation or Lorentzian HWHM in x units. Voigt uses a
@@ -514,47 +794,11 @@ def fit_peaks(x, y, options: dict | None = None) -> dict:
     _, _, mask = _range(x, opts, minimum=6)
     x, y = x[mask], y[mask]
     peaks = opts.get("peaks")
-    if not isinstance(peaks, (list, tuple)) or not 1 <= len(peaks) <= MAX_PEAKS:
-        raise ValueError(f"peaks must contain 1–{MAX_PEAKS} peak dictionaries with center, sigma, amplitude, and kind.")
+    count = _peak_count(peaks)
     nfev = _integer(opts.get("max_nfev", 2000), "max_nfev", 1, MAX_NFEV)
-    if x.size > MAX_FIT_POINTS or x.size * len(peaks) * nfev > 200_000_000:
+    if x.size > MAX_FIT_POINTS or x.size * count * nfev > 200_000_000:
         raise ValueError("Peak fitting exceeds the work limit; reduce the fit range, peaks, or max_nfev.")
-    span = float(x[-1] - x[0])
-    min_width = max(float(np.min(np.diff(x))) / 10, span * 1e-9)
-    background = _options(opts.get("background"), ("slope", "intercept"))
-    slope = _number(background.get("slope", (y[-1] - y[0]) / span), "background.slope")
-    intercept = _number(background.get("intercept", y[0] - slope * x[0]), "background.intercept")
-    model = LinearModel(prefix="background_")
-    params = model.make_params(slope=slope, intercept=intercept)
-    kinds = []
-    for index, peak in enumerate(peaks, start=1):
-        if not isinstance(peak, Mapping):
-            raise ValueError(f"peak {index} must be a dictionary.")
-        peak = _options(peak, ("center", "sigma", "amplitude", "kind", "gamma"))
-        kind = _choice(peak.get("kind", "gaussian"), "peak kind", ("gaussian", "lorentzian", "voigt"))
-        center = _number(peak.get("center"), f"peak {index} center")
-        sigma = _number(peak.get("sigma"), f"peak {index} sigma", positive=True)
-        amplitude = _number(peak.get("amplitude"), f"peak {index} amplitude", positive=True)
-        if not x[0] <= center <= x[-1]:
-            raise ValueError(f"peak {index} center must be within the selected fit range.")
-        if not min_width <= sigma <= span:
-            raise ValueError(f"peak {index} sigma must be between {min_width:g} and {span:g} in x units.")
-        prefix = f"peak_{index}_"
-        peak_model = {"gaussian": GaussianModel, "lorentzian": LorentzianModel, "voigt": VoigtModel}[kind](prefix=prefix)
-        peak_params = peak_model.make_params(center=center, sigma=sigma, amplitude=amplitude)
-        peak_params[prefix + "center"].set(min=float(x[0]), max=float(x[-1]))
-        peak_params[prefix + "sigma"].set(min=min_width, max=span)
-        peak_params[prefix + "amplitude"].set(min=0)
-        if "gamma" in peak:
-            if kind != "voigt":
-                raise ValueError("gamma is supported only for Voigt peaks.")
-            gamma = _number(peak["gamma"], f"peak {index} gamma", positive=True)
-            if not min_width <= gamma <= span:
-                raise ValueError(f"peak {index} gamma must be between {min_width:g} and {span:g}.")
-            peak_params[prefix + "gamma"].set(value=gamma, expr="", vary=True, min=min_width, max=span)
-        model += peak_model
-        params.update(peak_params)
-        kinds.append(kind)
+    model, params, kinds = _peak_setup(x, y, peaks, opts.get("background"))
     varying = sum(par.vary and par.expr is None for par in params.values())
     if x.size <= varying:
         raise ValueError(f"Fit range needs more than {varying} samples for the varying parameters.")
@@ -569,25 +813,185 @@ def fit_peaks(x, y, options: dict | None = None) -> dict:
     numeric_arrays = [result.best_fit, y - result.best_fit, *components.values()]
     if not all(np.isfinite(values).all() for values in numeric_arrays) or not np.isfinite(result.redchi):
         raise ValueError("Peak fit produced non-finite results; rescale data and review peak guesses.")
-    parameters = {}
-    for name, par in result.params.items():
-        if not np.isfinite(par.value):
-            raise ValueError(f"Peak fit produced a non-finite {name}; revise the model.")
-        parameters[name] = {"value": float(par.value),
-                            "stderr": float(par.stderr) if par.stderr is not None and np.isfinite(par.stderr) else None,
-                            "vary": bool(par.vary),
-                            "min": float(par.min) if np.isfinite(par.min) else None,
-                            "max": float(par.max) if np.isfinite(par.max) else None}
+    parameters = _peak_parameters(result.params)
     return {"x": x.tolist(), "observed": y.tolist(), "fit": result.best_fit.tolist(),
             "residual": (y - result.best_fit).tolist(), "components": components,
             "parameters": parameters, "redchi": float(result.redchi), "details": {
                 "method": "lmfit.leastsq", "peak_kinds": kinds, "nfev": int(result.nfev),
                 "nvarys": int(result.nvarys), "success": bool(result.success),
-                "amplitude_definition": "integrated area", "background": "slope*x + intercept",
+                "amplitude_definition": "integrated area", "background": _background_label(opts.get("background")),
                 "redchi_definition": "unweighted sum((observed-fit)**2)/(N-Nvary); squared y units",
                 "voigt_gamma": "tied to sigma unless gamma supplied; supplied gamma varies independently",
                 "uncertainties_available": bool(result.errorbars),
             }}
+
+
+def fit_peaks_series(spectra, options: dict | None = None) -> dict:
+    """Fit a series of spectra at once with peak positions and widths in common.
+
+    The scientific case is a pre-edge series measured on one beamline, where the
+    peak energies and widths are a property of the sites and only the areas
+    change from sample to sample. Fitting them together forces one centre and
+    one width per peak across the whole series, so the areas are compared on a
+    single peak model instead of on positions that wander sample by sample.
+
+    ``spectra`` is a sequence of (x, y) pairs with 2..MAX_SERIES members, each
+    on its own grid. Options are those of :func:`fit_peaks`, applied to every
+    spectrum, plus ``share={center: bool, sigma: bool}`` (both true by default;
+    at least one must be true). Peak start values are shared; the background and
+    the amplitudes start from and vary for each spectrum on its own.
+
+    The residuals of all spectra are concatenated and minimised unweighted in
+    one least-squares problem, so the standard errors on the shared centres and
+    widths draw on the whole series while each amplitude keeps its own. Shared
+    parameters appear with the same value and standard error in every spectrum's
+    parameter block, which is what ties them together.
+
+    Returns spectra (each with x, observed, fit, residual, components and
+    parameters named as in :func:`fit_peaks`), shared (the tied parameter names),
+    redchi over the whole series, and details.
+    """
+    opts = _options(options, ("xmin", "xmax", "peaks", "background", "backgrounds", "max_nfev", "share"))
+    if not isinstance(spectra, (list, tuple)) or not 2 <= len(spectra) <= MAX_SERIES:
+        raise ValueError(f"A series fit needs 2–{MAX_SERIES} spectra; fit a single spectrum with the peak fit.")
+    # One background per spectrum (an edge step at each spectrum's own E0), or
+    # the same one for all.
+    backgrounds = opts.get("backgrounds")
+    if backgrounds is None:
+        backgrounds = [opts.get("background")] * len(spectra)
+    elif not isinstance(backgrounds, (list, tuple)) or len(backgrounds) != len(spectra):
+        raise ValueError("backgrounds must give one background per spectrum.")
+    share = _options(opts.get("share"), ("center", "sigma"))
+    shared_names = [name for name in ("center", "sigma") if bool(share.get(name, True))]
+    if not shared_names:
+        raise ValueError("A series fit must share peak centres, widths, or both; otherwise fit each spectrum separately.")
+    count = _peak_count(opts.get("peaks"))
+    nfev = _integer(opts.get("max_nfev", 2000), "max_nfev", 1, MAX_NFEV)
+
+    cut, models, params, first_kinds = [], [], Parameters(), []
+    for position, spectrum in enumerate(spectra, start=1):
+        try:
+            x, y = _xy(*spectrum, names=("x", "y"))
+        except TypeError as exc:
+            raise ValueError("Each spectrum must be an (x, y) pair.") from exc
+        _, _, mask = _range(x, opts, minimum=6)
+        x, y = x[mask], y[mask]
+        model, own, kinds = _peak_setup(x, y, opts["peaks"], backgrounds[position - 1], prefix=f"s{position}_")
+        if position == 1:
+            first_kinds = kinds
+        else:
+            for index in range(1, count + 1):
+                for name in shared_names:
+                    own[f"s{position}_peak_{index}_{name}"].set(expr=f"s1_peak_{index}_{name}")
+        cut.append((x, y))
+        models.append(model)
+        params.update(own)
+    points = sum(x.size for x, _ in cut)
+    if points > MAX_FIT_POINTS or points * count * nfev > 200_000_000:
+        raise ValueError("Series peak fitting exceeds the work limit; reduce the fit range, spectra, peaks, or max_nfev.")
+    varying = sum(par.vary and par.expr is None for par in params.values())
+    if points <= varying:
+        raise ValueError(f"The series needs more than {varying} samples in total for the varying parameters.")
+
+    def residual(current):
+        return np.concatenate([model.eval(current, x=x) - y for model, (x, y) in zip(models, cut)])
+
+    # Checked first: when sharing is what stops the joint fit converging, the
+    # refusal should say that rather than only "improve the initial guesses".
+    independent, consistency = _sharing_check(spectra, opts, backgrounds, shared_names, count)
+    disagreement = " ".join(entry["warning"] for entry in consistency if entry.get("consistent") is False)
+    try:
+        with np.errstate(over="raise", invalid="raise", divide="raise"):
+            result = minimize(residual, params, method="leastsq", max_nfev=nfev, nan_policy="raise")
+    except (ValueError, TypeError, ArithmeticError, np.linalg.LinAlgError) as exc:
+        raise ValueError(f"Series peak fit failed; check initial peak values and fit range: {exc} {disagreement}".strip()) from exc
+    if not result.success or result.aborted:
+        raise ValueError(f"Series peak fit did not converge within max_nfev={nfev}; improve initial guesses or increase the limit. "
+                         f"{result.message} {disagreement}".strip())
+    if not np.isfinite(result.redchi):
+        raise ValueError("Series peak fit produced a non-finite reduced chi-square; rescale data and review peak guesses.")
+
+    reports = []
+    for position, (model, (x, y)) in enumerate(zip(models, cut), start=1):
+        prefix = f"s{position}_"
+        fit = model.eval(result.params, x=x)
+        components = {name[len(prefix):].rstrip("_"): values.tolist()
+                      for name, values in model.eval_components(params=result.params, x=x).items()}
+        if not all(np.isfinite(values).all() for values in [fit, y - fit, *map(np.asarray, components.values())]):
+            raise ValueError("Series peak fit produced non-finite results; rescale data and review peak guesses.")
+        reports.append({"x": x.tolist(), "observed": y.tolist(), "fit": fit.tolist(),
+                        "residual": (y - fit).tolist(), "components": components,
+                        "parameters": _peak_parameters(result.params, prefix),
+                        "redchi": float(np.sum((y - fit) ** 2) / x.size)})
+    warnings = [entry["warning"] for entry in consistency if entry.get("warning")]
+    return {"spectra": reports, "redchi": float(result.redchi),
+            "independent": independent, "consistency": consistency, "warnings": warnings,
+            "shared": [f"peak_{index}_{name}" for index in range(1, count + 1) for name in shared_names],
+            "details": {"method": "lmfit.leastsq", "peak_kinds": first_kinds, "nfev": int(result.nfev),
+                        "nvarys": int(result.nvarys), "success": bool(result.success),
+                        "series_size": len(cut), "points": int(points),
+                        "amplitude_definition": "integrated area", "background": _background_label(backgrounds[0]),
+                        "step_centers": [((b or {}).get("step") or {}).get("center") for b in backgrounds],
+                        "shared_across_series": shared_names,
+                        "redchi_definition": "unweighted sum over all spectra of (observed-fit)**2/(N-Nvary); squared y units",
+                        "spectrum_redchi_definition": "that spectrum's mean squared residual; a share of the misfit, not its own fit quality",
+                        "uncertainties_available": bool(result.errorbars)}}
+
+
+# Below this probability the one-at-a-time values are called inconsistent with
+# one shared value. The fits' errors are nominal lower bounds, so a p-value from
+# them overstates disagreement somewhat; 1% keeps the flag for clear cases.
+SHARING_P_THRESHOLD = 0.01
+
+
+def _sharing_check(spectra, opts, backgrounds, shared_names, count):
+    """Fit each spectrum alone and ask whether its shared quantities agree.
+
+    Sharing a centre or width is an assumption the joint fit cannot test: it
+    will report one value with a small error whether or not the spectra agree.
+    Fitting each spectrum on its own with the same window, peaks and background
+    gives one value per spectrum; the chi-square of those values about their
+    error-weighted mean, against n - 1 degrees of freedom, says whether one
+    shared value is consistent with them. Spectra whose own fit fails or has no
+    errors are left out and named.
+    """
+    single = {key: opts[key] for key in ("xmin", "xmax", "peaks", "max_nfev") if key in opts}
+    independent = []
+    for spectrum, background in zip(spectra, backgrounds):
+        try:
+            parameters = fit_peaks(*spectrum, dict(single, **({"background": background} if background else {})))["parameters"]
+            independent.append({"parameters": {f"peak_{index}_{name}": parameters[f"peak_{index}_{name}"]
+                                               for index in range(1, count + 1)
+                                               for name in ("center", "sigma", "fwhm", "amplitude")}})
+        except ValueError as exc:
+            independent.append({"error": str(exc)})
+    consistency = []
+    for index in range(1, count + 1):
+        for name in shared_names:
+            key = f"peak_{index}_{name}"
+            usable = [(row["parameters"][key]["value"], row["parameters"][key]["stderr"])
+                      for row in independent if "parameters" in row
+                      and row["parameters"][key]["stderr"] and row["parameters"][key]["stderr"] > 0]
+            label = {"center": "centre", "sigma": "width"}[name]
+            entry = {"parameter": key, "fitted_alone": len(usable), "of": len(spectra)}
+            if len(usable) < 2:
+                entry["warning"] = (f"Peak {index} {label}: fewer than two spectra could be fitted on their own with "
+                                    "errors, so sharing it cannot be checked against the data.")
+            else:
+                values, errors = (np.asarray(column, dtype=float) for column in zip(*usable))
+                weights = 1 / errors ** 2
+                mean = float(np.sum(weights * values) / np.sum(weights))
+                chi_square = float(np.sum(((values - mean) / errors) ** 2))
+                dof = len(usable) - 1
+                probability = float(chi2.sf(chi_square, dof))
+                entry.update(mean=mean, chi_square=chi_square, degrees_of_freedom=dof, probability=probability,
+                             consistent=probability >= SHARING_P_THRESHOLD)
+                if not entry["consistent"]:
+                    entry["warning"] = (f"Fitted one at a time, the spectra disagree on peak {index}'s {label} "
+                                        f"(χ² = {chi_square:.3g} for {dof} degrees of freedom, p = {probability:.2g}); "
+                                        f"the data do not support sharing it. Fit with it unshared, or split the series.")
+            consistency.append(entry)
+    return independent, consistency
 
 
 def _cumulant_polynomial_fit(k, observed, powers, factors, names):

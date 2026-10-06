@@ -32,13 +32,24 @@ def test_measured_mrcat_reads_every_observation_and_retains_source(suffix):
 
 @pytest.mark.parametrize('index', [0, 1000, 2005])
 @pytest.mark.parametrize('row,code', [('16999 broken 1 2 3', 'upload_malformed_rows'),
-    ('# not a footer', 'upload_malformed_rows'), ('1 2 3 4', 'upload_malformed_rows'),
-    ('16999 1 nan 2 3', 'upload_nonfinite')])
+    ('# not a footer', 'upload_malformed_rows'), ('1 2 3 4', 'upload_malformed_rows')])
 def test_mrcat_never_discards_damaged_observations_as_headers(index, row, code):
+    if index == 2005 and row == '1 2 3 4':
+        pytest.skip('an interrupted final row is dropped by name; see the test below')
     lines = list(LINES); lines[START + index] = row
     with pytest.raises(WebInputError) as err:
         parse_upload('\n'.join(lines).encode(), 'quick.101')
     assert err.value.code == code
+
+
+@pytest.mark.parametrize('index', [0, 1000, 2005])
+def test_mrcat_nonfinite_observation_is_kept_and_named_and_short_final_row_dropped(index):
+    lines = list(LINES); lines[START + index] = '16999 1 nan 2 3'
+    parsed = parse_upload('\n'.join(lines).encode(), 'quick.101')
+    assert parsed.row_count == 2006
+    assert any(f'(data rows {index + 1})' in w for w in parsed.warnings)
+    lines = list(LINES); lines[START + 2005] = '1 2 3 4'
+    assert any('incomplete' in w for w in parse_upload('\n'.join(lines).encode(), 'quick.101').warnings)
 
 
 @pytest.mark.parametrize('edit', ['version', 'separator', 'labels', 'hidden_row', 'empty'])

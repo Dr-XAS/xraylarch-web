@@ -65,3 +65,7 @@ frontend/test-results/
 .eggs/
 .coverage
 *code-workspace
+demo/data/
+
+# Real-data outputs, numbers and screenshots: never committed.
+demo/private/

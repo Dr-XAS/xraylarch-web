@@ -91,8 +91,8 @@ test('ESRF Cu: live pixel columns, fitted calibration, native settings, make, un
     if (space === 'E') await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('radio', { name: 'μ(E) · normalized', exact: true }).check()
     await signal(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`,{exact:true}),g.result.arrays[xkey],g.result.arrays[ykey])
   }
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 1',exact:true})).toBeVisible()
-  await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 2',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{ name: /^Data groups 1\b/ })).toBeVisible()
+  await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{ name: /^Data groups 2\b/ })).toBeVisible()
   const projectFile=page.waitForEvent('download');await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const projectPath=info.outputPath('calibrated.prj');await (await projectFile).saveAs(projectPath)
   await page.getByRole('button',{name:'Open project',exact:true}).click()

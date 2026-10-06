@@ -1,0 +1,19 @@
+.layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.3fr); align-items: start; gap: 16px; }
+.controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+.previews { min-width: 0; position: sticky; top: 0; align-self: start; max-height: calc(88vh - 118px); overflow-y: auto; }
+.plot { height: clamp(190px,27vh,280px); width: 100%; min-width: 0; background: var(--ath-surface); border: 1px solid var(--ath-line); border-radius: 6px; overflow: hidden; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
+.actions button { white-space: normal; }
+.gates { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+.display { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 10px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 4px 14px; align-items: start; }
+.pair > div { min-width: 0; }
+.pair h4 { font-size: var(--text-label); font-weight: 600; margin: 0 0 4px; }
+.quality p { margin: 4px 0; font-size: var(--text-label); overflow-wrap: anywhere; }
+.verdict { font-weight: 600; }
+.calibration { margin: 8px 0 0; font-size: var(--text-label); }
+.calibration ul { margin: 4px 0 0; padding-left: 18px; }
+.calibration li { margin: 3px 0; overflow-wrap: anywhere; }
+.controls h3, .previews h3 { font-size: var(--text-section); overflow-wrap: anywhere; line-height: var(--leading-heading); margin: 12px 0 8px; }
+.previews h3:first-child { margin-top: 0; }
+@media (max-width: 750px) { .layout { grid-template-columns: minmax(0,1fr); } .previews { position: static; max-height: none; overflow: visible; } .plot { height: 300px; } }

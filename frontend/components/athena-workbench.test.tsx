@@ -147,7 +147,6 @@ describe("integration mode", () => {
 
   it.each([
     ["deconvolve", /deconvolve data/i],
-    ["self_absorption", /fluorescence self-absorption/i],
   ])("uses the submitted %s command action as its capability", async (operation, label) => {
     api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
     render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", operation] }} />)
@@ -156,15 +155,18 @@ describe("integration mode", () => {
     expect(screen.getByRole("button", { name: label })).toBeEnabled()
   })
 
-  it("requires preview and mutation operations for preview-backed workflows", async () => {
+  it.each([
+    ["smooth", /smooth data/i],
+    ["self_absorption", /fluorescence self-absorption/i],
+  ])("requires preview and mutation operations for the preview-backed %s", async (operation, label) => {
     api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
-    const { rerender } = render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "smooth"] }} />)
+    const { rerender } = render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", operation] }} />)
     await waitForIntegratedProject()
     fireEvent.click(screen.getByRole("button", { name: "Process" }))
-    expect(screen.getByRole("button", { name: /smooth data/i })).toBeDisabled()
+    expect(screen.getByRole("button", { name: label })).toBeDisabled()
 
-    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "preview", "smooth"] }} />)
-    expect(screen.getByRole("button", { name: /smooth data/i })).toBeEnabled()
+    rerender(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "preview", operation] }} />)
+    expect(screen.getByRole("button", { name: label })).toBeEnabled()
   })
 
   it("offers only the granted action in the shared parameter dialog", async () => {
@@ -655,6 +657,19 @@ describe("AthenaWorkbench EXAFS fitting", () => {
     })
   })
 
+  it("starts a new project in the Processing inspector, not the EXAFS fitting tab left from the last one", async () => {
+    // After the EXAFS moment, the LCF and XRF moments opened with the fitting
+    // panel where their processing controls should be.
+    const project = await openSaved()
+    fireEvent.click(screen.getByRole("tab", { name: "EXAFS fitting" }))
+    api.mockResolvedValueOnce(projectFixture({ id: "fresh", name: "Fresh project", groups: [] }))
+    fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "File" }))
+    fireEvent.click(screen.getByRole("button", { name: "New project" }))
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Processing" })).toHaveAttribute("aria-selected", "true"))
+    expect(api).toHaveBeenCalledWith("/projects", {})
+    expect(project.id).not.toBe("fresh")
+  })
+
   it("adds a middle-panel workflow and follows the current spectrum without a project mutation", async () => {
     const project = await openSaved()
     const initialCalls = api.mock.calls.length
@@ -771,8 +786,8 @@ describe("AthenaWorkbench viewer selection", () => {
     const fitting = vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)![0]
     const metadata = { absorber: "Cu", edge: "K", reff: 2.56, degen: 12, nleg: 2, kmin: 0, kmax: 15,
       geometry: [{ atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 }] }
-    act(() => fitting.onPathsChange?.([], original.id, "foil"))
-    act(() => fitting.onPathsChange?.([{ id: "path", filename: "feff0001.dat", label: "Cu path", enabled: true, metadata }], original.id, "foil"))
+    act(() => fitting.onPathsChange?.([], null, original.id, "foil"))
+    act(() => fitting.onPathsChange?.([{ id: "path", filename: "feff0001.dat", label: "Cu path", enabled: true, metadata }], null, original.id, "foil"))
     act(() => vi.mocked(AthenaWavelet).mock.calls.at(-1)![0].onComplete?.(original.id, "foil"))
     fireEvent.change(screen.getByRole("combobox", { name: "Sort viewers" }), { target: { value: "process" } })
     expect(viewerOrder()).toEqual(["single", "multiple", "feff", "wavelet", "cif", "fit"])
@@ -3956,10 +3971,9 @@ describe("AthenaWorkbench batch import", () => {
     expect(within(screen.getByRole('button', { name: /^both-modes.dat · Fluorescence/ })).getByText('fluo')).toHaveAttribute('title', 'Fluorescence')
   })
 
-  it('reuses both modes across renamed columns with one request per file', async () => {
+  it('reuses both modes across a matching layout with one request per file', async () => {
     const project = await openSaved()
-    const inspections = [inspectionFixture('both-first.dat'), inspectionFixture('both-renamed.dat',
-      ['axis', 'transmitted', 'monitor', 'detector_a', 'detector_b', 'reference'])]
+    const inspections = [inspectionFixture('both-first.dat'), inspectionFixture('both-second.dat')]
     const { dialog } = await chooseImportFiles(inspections)
     chooseBothModesMapping(dialog)
     const first = importedBothModes(project, inspections[0].display_name)
@@ -4080,7 +4094,7 @@ describe("AthenaWorkbench batch import", () => {
     const second = importedProject(first, inspections[1].display_name)
     api.mockResolvedValueOnce(first).mockResolvedValueOnce(inspections[1]).mockRejectedValueOnce(new Error('Temporary import failure'))
     submitImport(dialog)
-    await within(dialog).findByText('Temporary import failure')
+    await within(dialog).findByText('quick-2.dat: Temporary import failure')
     expect(importCalls()).toHaveLength(2)
     expect(within(dialog).getByLabelText('Perform rebinning')).toBeChecked()
     expect(within(dialog).getByLabelText('Rebin smoothing width · points')).toHaveValue(4)
@@ -4095,37 +4109,55 @@ describe("AthenaWorkbench batch import", () => {
     expect(within(next.dialog).getByLabelText('Rebin smoothing width · points')).toHaveValue(4)
   })
 
-  it("imports all files once with shared detector and reference parameters despite renamed column labels", async () => {
+  it("pauses when a later file renames the selected detector columns, names the change, then continues the batch", async () => {
+    // Reusing positions across renamed labels silently imported other detectors.
     const project = await openSaved()
-    const inspections = [
-      inspectionFixture("scan-1.dat"),
-      inspectionFixture("scan-2.dat", ["Energy (eV)", "transmitted", "incident", "detector_a", "detector_b", "reference"]),
-      inspectionFixture("scan-3.dat", ["energy_axis", "transmission", "monitor", "channel_1", "channel_2", "foil"]),
-    ]
-    // Recommendations on later matching files must not override the
-    // mapping explicitly chosen for this batch (including its keV units).
-    for (const inspected of inspections.slice(1)) inspected.athena_suggestion = {
-      energy_column: "col_0", numerator: ["col_2"], denominator: "col_1", mode: "transmission", units: "eV", data_type: "mu",
-    }
-    const { dialog, files } = await chooseImportFiles(inspections)
+    const renamed = ["Energy (eV)", "transmitted", "incident", "detector_a", "detector_b", "reference"]
+    const inspections = [inspectionFixture("scan-1.dat"), inspectionFixture("scan-2.dat", renamed), inspectionFixture("scan-3.dat", renamed)]
+    const { dialog } = await chooseImportFiles(inspections)
     chooseFluorescenceMapping(dialog)
-    expect(within(dialog).getByRole("radio", { name: "Yes, use the same parameters" })).toBeChecked()
-    let accepted = project
-    const results = inspections.map(i => (accepted = importedProject(accepted, i.display_name)))
-    api.mockResolvedValueOnce(results[0]).mockResolvedValueOnce(inspections[1])
-      .mockResolvedValueOnce(results[1]).mockResolvedValueOnce(inspections[2]).mockResolvedValueOnce(results[2])
+    const afterFirst = importedProject(project, inspections[0].display_name)
+    api.mockResolvedValueOnce(afterFirst).mockResolvedValueOnce(inspections[1])
 
     submitImport(dialog)
 
+    await within(dialog).findByText("scan-2.dat")
+    expect(within(dialog).getByText(/^Batch import paused: selected column 1 was “Energy” and is “Energy \(eV\)” here\./)).toHaveAttribute("role", "status")
+    expect(importCalls()).toHaveLength(1)
+    // The reviewed columns of scan-2 become the batch's columns for scan-3.
+    const afterSecond = importedProject(afterFirst, "scan-2.dat")
+    const afterThird = importedProject(afterSecond, "scan-3.dat")
+    api.mockResolvedValueOnce(afterSecond).mockResolvedValueOnce(inspections[2]).mockResolvedValueOnce(afterThird)
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Import 2 files" })).toBeEnabled())
+    submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(importCalls()).toEqual(inspections.map((i, index) => [`/projects/${project.id}/import`, {
-      ...fluorescenceMapping, upload_id: i.upload_id, version: project.version + index,
-    }]))
-    const inspectionsSent = api.mock.calls.filter(([path]) => path.endsWith("/inspect"))
-    expect(inspectionsSent.map(([, body]) => (body as FormData).get("file"))).toEqual(files)
-    expect(plotProps().active).toEqual(results[2].groups.at(-1))
-    expect(plotProps().groups).toEqual(results[2].groups.filter(g => g.marked))
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    const uploads = importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)
+    expect(uploads).toEqual(inspections.map(i => i.upload_id))
+    const [, second, third] = importCalls().map(([, body]) => body as Record<string, unknown>)
+    expect(third).toEqual({ ...second, upload_id: inspections[2].upload_id, version: afterSecond.version })
+  })
+
+  it("skips a refused file in a shared batch, names it in the error, and keeps the rest of the queue", async () => {
+    const project = await openSaved()
+    const inspections = ["scan-1.dat", "scan-2.dat", "scan-3.dat"].map(name => inspectionFixture(name))
+    const { dialog } = await chooseImportFiles(inspections)
+    chooseFluorescenceMapping(dialog)
+    const afterFirst = importedProject(project, "scan-1.dat")
+    const afterThird = importedProject(afterFirst, "scan-3.dat")
+    api.mockResolvedValueOnce(afterFirst).mockResolvedValueOnce(inspections[1])
+      .mockRejectedValueOnce(new Error("The denominator contains zero detector counts."))
+    submitImport(dialog)
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("scan-2.dat: The denominator contains zero detector counts.")
+    api.mockResolvedValueOnce(inspections[2])
+    fireEvent.click(within(dialog).getByRole("button", { name: "Skip this file" }))
+    await within(dialog).findByText("scan-3.dat")
+    api.mockResolvedValueOnce(afterThird)
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: /^Import (spectrum|\d+ files)$/ })).toBeEnabled())
+    submitImport(dialog)
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
+    const uploads = importCalls().map(([, body]) => (body as { upload_id: string }).upload_id)
+    expect(uploads).toEqual(["upload-scan-1.dat", "upload-scan-2.dat", "upload-scan-3.dat"])
+    expect(plotProps().active).toEqual(afterThird.groups.at(-1))
   })
 
   it.each([
@@ -5677,6 +5709,23 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     expect(plotProps().active?.id).toBe('merged-0')
   })
 
+  it("shows an energy fit with its legend and without the Fourier view's Magnitude and Window controls", async () => {
+    // The LCF fit arrived as three unnamed curves (the single viewer's legend
+    // is off for spectra), under Magnitude/Window controls left from R space.
+    const project = await openSaved()
+    fireEvent.click(singleViewer().getByRole("tab", { name: /Fourier/ }))
+    expect(singleViewer().getByRole("combobox", { name: "Complex component" })).toBeVisible()
+    const dialog = await openTool("Analysis", /linear combination fitting/i)
+    api.mockResolvedValueOnce(fitResult(project))
+    fireEvent.click(within(dialog).getByRole("button", { name: /run analysis/i }))
+    await waitFor(() => expect(plotProps("current").analysisVisible).toBe(true))
+    expect(plotProps("current").showLegend).toBe(true)
+    expect(singleViewer().queryByRole("combobox", { name: "Complex component" })).not.toBeInTheDocument()
+    expect(singleViewer().queryByRole("checkbox", { name: "Window" })).not.toBeInTheDocument()
+    fireEvent.click(singleViewer().getByRole("checkbox", { name: "Show legend" }))
+    expect(plotProps("current").showLegend).toBe(false)
+  })
+
   it("sends the LCF target first and only the explicitly selected standards", async () => {
     const project = await openSaved()
     selectGroup("Sample scan") // The target is not first in the group list.
@@ -5714,15 +5763,17 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     const dialog = await openTool("Analysis", tool)
     const signal = (value: string) => fireEvent.change(within(dialog).getByRole("combobox", { name: /fit signal/i }), { target: { value } })
     const range = (unit: string) => ["minimum", "maximum"].map(end => within(dialog).getByRole("spinbutton", { name: `Range ${end} ${unit}` }))
-    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8959, 9059])
+    // Peak fitting's energy default is the pre-edge, E0 - 20 to E0.
+    const energy = String(tool).includes("peak") ? [8959, 8979] : [8959, 9059]
+    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual(energy)
     editNumber(/^Range minimum/, 8965, dialog)
     signal("dmude")
-    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8965, 9059])
+    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8965, energy[1]])
     signal("chi")
     expect(range("Å⁻¹").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([3, 11.5])
     expect(within(dialog).queryByRole("spinbutton", { name: /eV$/ })).toBeNull()
     signal("norm")
-    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8959, 9059])
+    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual(energy)
   })
 
   it("uses the PCA dialog selection independently of project marks", async () => {

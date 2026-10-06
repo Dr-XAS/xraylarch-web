@@ -6,11 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
 import type { ArtemisFeffJob, ArtemisFeffRequest, ArtemisGeneratedPath, ArtemisStructure, ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import type { AthenaProject } from "@/lib/athena"
+import type { FirstShell } from "@/lib/first-shell"
 import { ArtemisStructures } from "./artemis-structures"
 import { radialFixture } from "@/tests/fixtures/radial-shells"
 
 vi.mock("@/lib/artemis", () => ({ artemisApi: vi.fn() }))
-vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: () => {} }) }))
+const firstShell = vi.hoisted(() => ({ shell: null as FirstShell | null }))
+vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: firstShell.shell, loading: false, error: "", retry: () => {} }) }))
 const radialAnalysis = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
@@ -72,6 +74,7 @@ function deferred<T>() { let resolve!: (value: T) => void; const promise = new P
 
 beforeEach(() => {
   api.mockReset()
+  firstShell.shell = null
   radialAnalysis.mockReturnValue({ contextKey: "test", data: null, loading: false, error: "", retry: () => {}, settings: { radius: 6, tolerance: 0.05 }, setSettings: () => {} })
   savedAttachments = []
   savedVersion = 1
@@ -718,6 +721,74 @@ describe("ArtemisStructures", () => {
     expect(screen.getByText("FEFF input")).toBeVisible()
   })
 
+  it("says an uploaded path stays in the fit after adding generated ones, and offers to replace it", async () => {
+    // Adding generated feff0001.dat beside an uploaded feffcu01.dat of the
+    // same shell left both included, and the refit fitted the shell twice.
+    const onAddPaths = vi.fn<(paths: ArtemisGeneratedPath[], replace?: boolean) => string | null>(() => null)
+    const uploaded = [{ filename: "feffcu01.dat", content: "uploaded path", enabled: true }]
+    render(<Harness contextKey="p:cu" availableSlots={23} existingPaths={uploaded} onAddPaths={onAddPaths} />)
+    fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
+    await findAndSelect()
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    expect(screen.getByText(/already includes feffcu01\.dat/)).toBeVisible()
+    await click("Add selected paths (1)")
+    expect(screen.getByText(/feffcu01\.dat is still included/)).toBeVisible()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" }))
+    await click(/Replace the model’s 1 path with selected \(1\)/)
+    expect(onAddPaths).toHaveBeenLastCalledWith([expect.objectContaining({ filename: "feff0002.dat" })], true)
+    expect(screen.getByText(/Replaced the fit model's paths/)).toBeVisible()
+  })
+
+  it("lets a full model choose its replacement: Replace is not limited to Add's open slots", async () => {
+    // With 24 paths and no open slot, every generated checkbox was disabled.
+    const onAddPaths = vi.fn<(paths: ArtemisGeneratedPath[], replace?: boolean) => string | null>(() => null)
+    const existing = Array.from({ length: 24 }, (_, i) => ({ filename: `old-${i}.dat`, content: `old-${i}`, enabled: true }))
+    render(<Harness contextKey="p:cu" availableSlots={0} existingPaths={existing} onAddPaths={onAddPaths} />)
+    fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
+    await findAndSelect()
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeDisabled()
+    await click(/Replace the model’s 24 paths with selected \(1\)/)
+    expect(onAddPaths).toHaveBeenLastCalledWith([expect.objectContaining({ filename: "feff0001.dat" })], true)
+  })
+
+  it("lets a replacement keep a generated path already in the model, which Add skips", async () => {
+    // An added generated path was disabled, so Replace could only discard it.
+    const onAddPaths = vi.fn<(paths: ArtemisGeneratedPath[], replace?: boolean) => string | null>(() => null)
+    const existing = [job().paths[0], { filename: "uploaded.dat", content: "old", enabled: true }]
+    render(<Harness contextKey="p:cu" availableSlots={22} existingPaths={existing} onAddPaths={onAddPaths} />)
+    fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
+    await findAndSelect()
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    expect(screen.getByRole("button", { name: "Add selected paths (0)" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" }))
+    await click(/Replace the model’s 2 paths with selected \(2\)/)
+    expect(onAddPaths).toHaveBeenLastCalledWith([expect.objectContaining({ filename: "feff0001.dat" }), expect.objectContaining({ filename: "feff0002.dat" })], true)
+  })
+
+  it("lets the first-shell shortcut fill a replacement of a full model that already holds the shell path", async () => {
+    // The shortcut skipped paths already in the model and checked Add's open
+    // slots, so with a full model it stayed disabled although Replace could take it.
+    const onAddPaths = vi.fn<(paths: ArtemisGeneratedPath[], replace?: boolean) => string | null>(() => null)
+    firstShell.shell = { method: "CrystalNN", pymatgen_version: "test", cif: structure().cif, cif_sha256: "abc", absorber: "Cu", site_index: 3, coordination_number: 12, coordination_weight: 1, alternatives: [], warnings: [],
+      neighbors: [{ element: "Cu", structure_index: 3, image: [0, 0, 0], fractional_offset: [0.5, 0.5, 0], cartesian_offset: [2.55, 0, 0], distance: 2.55, weight: 1 }] }
+    const generated = job()
+    generated.paths[0].metadata.geometry = [{ atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 }, { atom: "Cu", x: 2.55, y: 0, z: 0, ipot: 1 }]
+    const existing = [generated.paths[0], ...Array.from({ length: 23 }, (_, i) => ({ filename: `old-${i}.dat`, content: `old-${i}`, enabled: true }))]
+    render(<Harness contextKey="p:cu" availableSlots={0} existingPaths={existing} onAddPaths={onAddPaths} />)
+    fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
+    await findAndSelect()
+    api.mockResolvedValueOnce(generated)
+    await generate()
+    await click("Select first-shell paths")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
+    await click(/Replace the model’s 24 paths with selected \(1\)/)
+    expect(onAddPaths).toHaveBeenLastCalledWith([expect.objectContaining({ filename: "feff0001.dat" })], true)
+  })
+
   it("keeps a FEFF calculation running while the popup is closed and restores its completed paths", async () => {
     setup()
     await findAndSelect()
@@ -825,7 +896,11 @@ describe("ArtemisStructures", () => {
     expect(paths[0].label).toHaveLength(120)
     expect(paths[0].label).toMatch(/AMCSD 0013088 · Cu site 3 · feff0001.dat$/)
     view.rerender(<Harness contextKey="p:cu" availableSlots={23} existingPaths={paths} onAddPaths={onAddPaths} />)
-    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeDisabled()
+    // Already in the model: Add cannot take it again (Replace may keep it).
+    expect(screen.getByText(/feff0001\.dat · added/)).toBeVisible()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    expect(screen.getByRole("button", { name: "Add selected paths (0)" })).toBeDisabled()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
     view.rerender(<Harness contextKey="p:cu" availableSlots={24} existingPaths={[]} onAddPaths={onAddPaths} />)
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeEnabled()
   })

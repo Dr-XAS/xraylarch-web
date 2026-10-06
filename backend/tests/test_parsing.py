@@ -1,3 +1,6 @@
+from pathlib import Path
+
+import numpy as np
 import pytest
 
 from xraylarch_web.errors import WebInputError
@@ -54,11 +57,25 @@ def test_parse_upload_rejects_missing_numeric_array():
     assert exc.value.code == "upload_no_numeric_data"
 
 
-def test_parse_upload_rejects_nonfinite_value():
-    with pytest.raises(WebInputError) as exc:
-        parse_upload(b"# energy mu\n1 nan\n2 3\n", "nonfinite.dat")
+def test_nonfinite_value_is_reported_for_its_column_instead_of_refusing_the_file():
+    # A dead-time-corrected channel reading 0/0 at one point used to refuse
+    # the whole file, even when nobody selected that channel.
+    parsed = parse_upload(b"# energy mu dtc\n1 2 nan\n2 3 4\n3 4 5\n", "nonfinite.dat")
 
-    assert exc.value.code == "upload_nonfinite"
+    assert parsed.columns[2].preview == (None, 4.0, 5.0)
+    assert any("'dtc' has 1 non-finite values (data rows 1)" in w for w in parsed.warnings)
+    assert parsed.inspection().model_dump_json()  # still valid JSON for the browser
+
+
+def test_truncated_last_row_is_dropped_with_a_warning_but_interior_rows_still_refuse():
+    rows = "".join(f"{7000 + i} {100 + i} {50 + i}\n" for i in range(10))
+    parsed = parse_upload(f"# energy i0 it\n{rows}7010 110\n".encode(), "interrupted.dat")
+    assert parsed.row_count == 10 and np.isfinite(parsed.arrays["column_0003"]).all()
+    assert any("last data row (11) is incomplete" in w for w in parsed.warnings)
+
+    damaged = rows.replace("7004 104 54\n", "7004 104\n")
+    with pytest.raises(WebInputError, match="data row 5 has 2 fields"):
+        parse_upload(f"# energy i0 it\n{damaged}".encode(), "damaged.dat")
 
 
 @pytest.mark.parametrize("delimiter", [";", "\t"])
@@ -124,6 +141,36 @@ def test_parse_upload_rejects_a_malformed_leading_observation(filename, data):
         parse_upload(data, filename)
 
     assert error.value.code == "upload_malformed_rows"
+
+
+def test_a_corrupt_row_is_not_dropped_as_if_it_were_a_comment():
+    """A row that starts with two numbers and then goes wrong is still a row.
+
+    Judging a line only by its width lets a truncated or garbled row fall
+    through to the comment filter, and the scan is then imported one point
+    short with nothing said about it -- the worst kind of wrong, because the
+    spectrum still looks fine.
+    """
+    data = (b"# energy i0 it iref\n7000 1.0 0.5 0.2\n"
+            b"7001 1.0 oops\n7002 1.0 0.5 0.2\n7003 1.0 0.5 0.2\n")
+    with pytest.raises(WebInputError) as error:
+        parse_upload(data, "truncated.dat")
+
+    assert error.value.code == "upload_malformed_rows"
+
+
+def test_a_note_that_begins_with_a_number_is_not_read_as_data():
+    """MRCAT writes the sample note '3000 x 806' on line 15 of its header.
+
+    One number followed by a word is prose; the rule above must not turn such
+    a line into a malformed row and reject the whole file.
+    """
+    path = (Path(__file__).resolve().parents[2]
+            / "examples" / "xafsdata" / "beamlines" / "APS10BM_2019.dat")
+    parsed = parse_upload(path.read_bytes(), path.name)
+
+    assert parsed.row_count == 3464  # the file's 3480 lines less its 16 of header
+    assert [column.name for column in parsed.columns][:2] == ["energy", "io"]
 
 
 def test_parse_upload_preserves_duplicate_source_labels():

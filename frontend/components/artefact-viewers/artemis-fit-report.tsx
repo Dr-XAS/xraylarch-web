@@ -47,6 +47,7 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
       <div><dt>Reduced χ²<SectionHelp label="Reduced chi square">Chi square scaled by the fit's degrees of freedom. Its size depends on the noise estimate as well as the residual.</SectionHelp></dt><dd>{format(stats.reduced_chi_square, 5)}</dd><span className={styles.metricHint}>Depends on noise estimate</span></div>
       <div><dt>Free parameters</dt><dd>{format(stats.n_varys)}</dd><span className={styles.metricHint}>Varied in this fit</span></div>
       <div><dt>Independent points<SectionHelp label="Independent points">The information available over the fit range. This is different from the number of sampled data points.</SectionHelp></dt><dd>{format(stats.n_independent, 4)}</dd><span className={styles.metricHint}>Available information</span></div>
+      <div><dt>Noise ε(k)<SectionHelp label="Noise estimate">χ² and the uncertainties are measured against this noise ε(k), estimated from the high-R part of the transform. Two fits are only comparable on χ² when they share that scale.</SectionHelp></dt><dd>{format(stats.epsilon_k)}</dd><span className={styles.metricHint}>Scale of χ² and uncertainties</span></div>
     </dl>
 
     {reviewNotes.length > 0 && <aside className={styles.review} aria-label="Fit review notes">

@@ -9,6 +9,9 @@ _DEFAULT_MAX_UPLOAD_BYTES = 50_000_000
 _DEFAULT_MAX_POINTS = 250_000
 # Multi-element detector scans can carry more than 64 source channels.
 DEFAULT_MAX_COLUMNS = 256
+# Detector arrays are decoded to float64, independently of scalar/text uploads.
+_DEFAULT_MAX_DETECTOR_BYTES = 256_000_000
+_DEFAULT_MAX_DETECTOR_DATASETS = 2048
 _DEFAULT_MAX_NFFT = 262_144
 # A bug report may carry a project export plus screenshots and attachments.
 _DEFAULT_BUG_REPORT_MAX_BYTES = 100_000_000
@@ -35,6 +38,9 @@ class Settings:
     max_upload_bytes: int = _DEFAULT_MAX_UPLOAD_BYTES
     max_points: int = _DEFAULT_MAX_POINTS
     max_columns: int = DEFAULT_MAX_COLUMNS
+    max_detector_bytes: int = _DEFAULT_MAX_DETECTOR_BYTES
+    max_detector_datasets: int = _DEFAULT_MAX_DETECTOR_DATASETS
+    xrf_workers: int = 8
     max_nfft: int = _DEFAULT_MAX_NFFT
     bug_report_max_bytes: int = _DEFAULT_BUG_REPORT_MAX_BYTES
     integration_api_enabled: bool = False
@@ -69,6 +75,9 @@ class Settings:
             ("XRAYLARCH_MAX_UPLOAD_BYTES", self.max_upload_bytes),
             ("XRAYLARCH_MAX_POINTS", self.max_points),
             ("XRAYLARCH_MAX_COLUMNS", self.max_columns),
+            ("XRAYLARCH_MAX_DETECTOR_BYTES", self.max_detector_bytes),
+            ("XRAYLARCH_MAX_DETECTOR_DATASETS", self.max_detector_datasets),
+            ("XRAYLARCH_XRF_WORKERS", self.xrf_workers),
             ("XRAYLARCH_MAX_NFFT", self.max_nfft),
             ("XRAYLARCH_BUG_REPORT_MAX_BYTES", self.bug_report_max_bytes),
             ("XRAYLARCH_DRAFT_TTL_SECONDS", self.draft_ttl_seconds),
@@ -157,6 +166,13 @@ class Settings:
             max_columns=integer_setting(
                 "XRAYLARCH_MAX_COLUMNS", DEFAULT_MAX_COLUMNS
             ),
+            max_detector_bytes=integer_setting(
+                "XRAYLARCH_MAX_DETECTOR_BYTES", _DEFAULT_MAX_DETECTOR_BYTES
+            ),
+            max_detector_datasets=integer_setting(
+                "XRAYLARCH_MAX_DETECTOR_DATASETS", _DEFAULT_MAX_DETECTOR_DATASETS
+            ),
+            xrf_workers=integer_setting("XRAYLARCH_XRF_WORKERS", 8),
             max_nfft=integer_setting("XRAYLARCH_MAX_NFFT", _DEFAULT_MAX_NFFT),
             bug_report_max_bytes=integer_setting(
                 "XRAYLARCH_BUG_REPORT_MAX_BYTES", _DEFAULT_BUG_REPORT_MAX_BYTES

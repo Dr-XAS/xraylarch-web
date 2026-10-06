@@ -18,6 +18,8 @@ export function useSpectrumViewerState(scope: "current" | "selected") {
   const [postEdge, setPostEdge] = useState(current)
   const [showWindow, setShowWindow] = useState(false)
   const [showLegend, setShowLegend] = useState(!current)
+  // A fit result names observed, fit and residual only in its legend.
+  const [showAnalysisLegend, setShowAnalysisLegend] = useState(true)
   const [showGrid, setShowGrid] = useState(true)
   const [showDataPoints, setShowDataPoints] = useState(false)
   const [plotColors, setPlotColors] = useState<PlotColorSettings>(defaultPlotColors)
@@ -38,6 +40,7 @@ export function useSpectrumViewerState(scope: "current" | "selected") {
     postEdge, setPostEdge,
     showWindow, setShowWindow,
     showLegend, setShowLegend,
+    showAnalysisLegend, setShowAnalysisLegend,
     showGrid, setShowGrid,
     showDataPoints, setShowDataPoints,
     plotColors, setPlotColors,

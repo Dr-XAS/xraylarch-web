@@ -83,14 +83,16 @@ def test_individual_fluorescence_rebin_references_and_preprocessing_match_previe
     assert imported['groups'][4]['source']['mapping']['numerator'] == [ids['if2']]
 
 
-@pytest.mark.parametrize('invalid', ['missing', 'duplicate', 'zero_denominator'])
+@pytest.mark.parametrize('invalid', ['missing', 'duplicate', 'dead_denominator'])
 def test_bad_second_recipe_leaves_no_partial_project_or_preferences(tmp_path, xas_arrays, invalid):
     store, p, info, req, ids = staged(tmp_path, xas_arrays)
     if invalid == 'missing': req.additional_fluorescence.numerator = ['missing']
     if invalid == 'duplicate': req.additional_fluorescence.numerator = [ids['if1'], ids['if1']]
-    if invalid == 'zero_denominator':
+    if invalid == 'dead_denominator':
+        # One zero I0 point is dropped with a warning; a monitor dead for
+        # most of the scan still refuses the whole import.
         arrays = store.storage.read_arrays(p['id'], f"upload-{info['upload_id']}.npz")
-        arrays[ids['i0']][500] = 0
+        arrays[ids['i0']][len(arrays[ids['i0']]) // 2:] = 0
         # Keep primary arithmetic valid while making only the second denominator zero.
         req.numerator = [ids['if1']]
         store.storage.write_arrays(p['id'], f"upload-{info['upload_id']}.npz", arrays)

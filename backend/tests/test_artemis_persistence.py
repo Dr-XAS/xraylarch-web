@@ -53,6 +53,55 @@ def post(client, project, group_id, action, **values):
     return response.json()
 
 
+def test_master_saved_fit_without_noise_statistic_opens_lists_and_exports(workspace, model):
+    """a3ce60aff's exact archive/result shape, with synthetic values, not a new fit minus a key."""
+    store, client, project, group_id = workspace
+    saved_model = draft(model)
+    for item in saved_model['paths']:
+        item.update(enabled=True, s02='amp', e0='del_e0', deltar='del_r', sigma2='sig2')
+    path = saved_model['paths'][0]
+    result = dict(
+        project_id=project['id'], group_id=group_id, group_label='Synthetic archive',
+        version=project['version'], success=True, message='Synthetic', report='Synthetic', warnings=[],
+        statistics=dict(n_varys=1, n_independent=10.0, n_data=20, nfev=5,
+                        chi_square=1.0, reduced_chi_square=0.1, r_factor=0.01,
+                        aic=2.0, bic=3.0, errorbars=True),
+        parameters=[dict(name='amp', kind='guess', value=1.0, initial=0.9,
+                         stderr=0.1, min=0.0, max=2.0, expression='')],
+        correlations=[], transform=model['transform'],
+        metadata=dict(engine='synthetic', kstep=0.05, nfft=2048, rwindow='hanning',
+                      phase_corrected=False, noise='synthetic', background_refined=False,
+                      r_residual='synthetic'),
+        k=dict(x=[1.0, 2.0], data=[0.1, 0.2], model=[0.1, 0.2], residual=[0.0, 0.0], weight=2),
+        r={'x': [1.0, 2.0], **{f'{curve}_{part}': [0.0, 0.0]
+           for curve in ('data', 'model', 'residual') for part in ('mag', 're', 'im')}},
+        paths=[dict(id=path['id'], label=path['label'], filename=path['filename'],
+                    metadata=path['metadata'], sigma2_expression='sig2',
+                    values=dict(s02=1.0, e0=0.0, deltar=0.0, sigma2=0.01),
+                    k=dict(chi=[0.1, 0.2]), r=dict(mag=[0.0, 0.0], re=[0.0, 0.0], im=[0.0, 0.0]))],
+        plot_source=dict(schema_version=1, data=[0.1, 0.2], model=[0.1, 0.2],
+                         paths=[dict(id=path['id'], chi=[0.1, 0.2])]),
+    )
+    record = dict(id='legacy-fit', created='2026-01-01T00:00:00+00:00',
+                  input_sha256=input_fingerprint(project['groups'][0]), imported=False,
+                  origin=dict(project_id=project['id'], group_id=group_id,
+                              project_version=project['version'], larch_version='2026.1.0'),
+                  model=saved_model, result=result)
+    project['groups'][0]['artemis'] = dict(schema_version=1, model=saved_model,
+                                         history=[record], current_input_sha256=record['input_sha256'])
+    store.storage.write_json(project['id'], 'project.json', project)
+    opened = client.get(f"/api/athena/projects/{project['id']}")
+    assert opened.status_code == 200, opened.text
+    assert opened.json()['groups'][0]['artemis']['history'] == [record]
+    listed = client.get('/api/athena/projects')
+    assert listed.status_code == 200, listed.text
+    assert project['id'] in listed.text
+    exported = client.get(f"/api/athena/projects/{project['id']}/export?format=json")
+    assert exported.status_code == 200, exported.text
+    assert exported.json()['groups'][0]['artemis']['history'] == [record]
+    assert AthenaStore(store.settings).load(project['id'])['groups'][0]['artemis']['history'] == [record]
+
+
 def test_unfinished_model_survives_new_store_and_undo_redo(workspace, model):
     store, client, original, group_id = workspace
     value = draft(model)
