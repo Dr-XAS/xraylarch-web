@@ -17,7 +17,7 @@ export function useSpectrumViewerState(scope: "current" | "selected") {
   const [preEdge, setPreEdge] = useState(current)
   const [postEdge, setPostEdge] = useState(current)
   const [showWindow, setShowWindow] = useState(false)
-  const [showLegend, setShowLegend] = useState(!current)
+  const [showLegend, setShowLegend] = useState(true)
   // A fit result names observed, fit and residual only in its legend.
   const [showAnalysisLegend, setShowAnalysisLegend] = useState(true)
   const [showGrid, setShowGrid] = useState(true)

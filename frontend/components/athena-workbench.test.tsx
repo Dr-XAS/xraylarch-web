@@ -690,7 +690,7 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("custom")
     expect(controls.getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "false")
     expect(document.querySelector('[data-viewer-id="wavelet"]')).toHaveAttribute("hidden")
-    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).not.toBeChecked()
     expect(api).toHaveBeenCalledTimes(initialCalls)
     expect(JSON.parse(localStorage.getItem("athena.viewer-order.v1")!)).toEqual({ sort: "custom", order: expected })
     cleanup()
@@ -764,7 +764,7 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(document.querySelector('[data-viewer-id="multiple"]')).not.toHaveAttribute("hidden")
     expect(multipleViewer().getByTestId("athena-plot")).toBeVisible()
     fireEvent.click(controls.getByRole("button", { name: "Single spectrum viewer" }))
-    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).not.toBeChecked()
     expect(plotProps().space).toBe("k")
 
     fireEvent.click(singleViewer().getByRole("button", { name: "Collapse Single spectrum viewer" }))
@@ -772,7 +772,7 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(singleViewer().getByTestId("athena-plot")).not.toBeVisible()
     expect(multipleViewer().getByTestId("athena-plot")).toBeVisible()
     fireEvent.click(singleViewer().getByRole("button", { name: "Expand Single spectrum viewer" }))
-    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).not.toBeChecked()
     fireEvent.click(multipleViewer().getByRole("button", { name: "Collapse Multiple spectra viewer" }))
     expect(singleViewer().getByTestId("athena-plot")).toBeVisible()
     expect(multipleViewer().getByTestId("athena-plot")).not.toBeVisible()
@@ -5567,9 +5567,10 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
   })
 
   it("shows an energy fit with its legend and without the Fourier view's Magnitude and Window controls", async () => {
-    // The LCF fit arrived as three unnamed curves (the single viewer's legend
-    // is off for spectra), under Magnitude/Window controls left from R space.
+    // Fit legends stay enabled even when the spectrum legend was turned off.
     const project = await openSaved()
+    fireEvent.click(singleViewer().getByRole("checkbox", { name: "Show legend" }))
+    expect(plotProps("current").showLegend).toBe(false)
     fireEvent.click(singleViewer().getByRole("tab", { name: /Fourier/ }))
     expect(singleViewer().getByRole("combobox", { name: "Complex component" })).toBeVisible()
     const dialog = await openTool("Analysis", /linear combination fitting/i)
@@ -6025,9 +6026,9 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
     expect(singleViewer().getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
     expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
-    expect(singleViewer().getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
+    expect(singleViewer().getByRole('checkbox', { name: 'Show legend' })).toBeChecked()
     expect(multipleViewer().getByRole('checkbox', { name: 'Show legend' })).toBeChecked()
-    expect(plotProps('current')).toMatchObject({ plotScope: 'current', showLegend: false, energyMode: 'mu',
+    expect(plotProps('current')).toMatchObject({ plotScope: 'current', showLegend: true, energyMode: 'mu',
       background: count > 0, preEdge: count > 0, postEdge: count > 0 })
     expect(plotProps()).toMatchObject({ plotScope: 'selected', showLegend: true, energyMode: 'flat',
       background: false, preEdge: false, postEdge: false })
@@ -6054,14 +6055,14 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(within(currentSpectrum()!).getByText('Unused reference')).toBeVisible()
     const legend = singleViewer().getByRole('checkbox', { name: 'Show legend' })
     expect(legend).toBeEnabled()
-    expect(legend).not.toBeChecked()
-    fireEvent.click(legend)
-    expect(plotProps('current').showLegend).toBe(true)
-    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Show legend' }))
-    expect(plotProps().showLegend).toBe(false)
-    expect(plotProps('current').showLegend).toBe(true)
+    expect(legend).toBeChecked()
     fireEvent.click(legend)
     expect(plotProps('current').showLegend).toBe(false)
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Show legend' }))
+    expect(plotProps().showLegend).toBe(false)
+    expect(plotProps('current').showLegend).toBe(false)
+    fireEvent.click(legend)
+    expect(plotProps('current').showLegend).toBe(true)
     expect(plotProps().showLegend).toBe(false)
   })
 
@@ -6087,7 +6088,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /import spectra/i })).not.toBeInTheDocument())
     expect(plotProps('current').groups).toEqual([afterSecond.groups.at(-1)])
     expect(plotProps().groups).toEqual(afterSecond.groups.filter(g => g.marked))
-    expect(plotProps('current')).toMatchObject({ energyMode: 'mu', showLegend: false })
+    expect(plotProps('current')).toMatchObject({ energyMode: 'mu', showLegend: true })
     expect(plotProps()).toMatchObject({ energyMode: 'flat', showLegend: true })
   })
 
