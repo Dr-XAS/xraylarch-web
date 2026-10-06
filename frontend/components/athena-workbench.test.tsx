@@ -756,6 +756,23 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(document.querySelector('[data-viewer-id="single"]')).toHaveAttribute("hidden")
   })
 
+  it("keeps a viewer hidden when it is toggled as soon as the loaded project is shown", async () => {
+    const project = projectFixture()
+    localStorage.setItem(storageKey, project.id)
+    api.mockResolvedValueOnce(project)
+    render(<AthenaWorkbench />)
+    let clicked = false
+    // waitFor checks from a MutationObserver, right after the commit and before
+    // passive effects run, so this toggles the viewer before any effect can catch
+    // up. Master's CI hit the same gap under load.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import data" })).toBeEnabled()
+      if (!clicked) { clicked = true; within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" }).click() }
+    })
+    await waitFor(() => expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "false"))
+    expect(document.querySelector('[data-viewer-id="wavelet"]')).toHaveAttribute("hidden")
+  })
+
   it("hides and collapses spectrum viewers independently while retaining their controls", async () => {
     await openSaved()
     const controls = within(screen.getByRole("group", { name: "Choose viewers" }))

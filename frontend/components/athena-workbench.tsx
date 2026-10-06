@@ -537,7 +537,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     setViewerActivity({})
     firstViewerEvents.current.clear()
   }
-  useEffect(() => { resetViewerLayout() }, [project?.id])
+  // Reset during commit, so a viewer toggled as soon as the new project is on
+  // screen is not undone by a reset still waiting to run.
+  useLayoutEffect(() => { resetViewerLayout() }, [project?.id])
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
     return () => window.cancelAnimationFrame(frame)
