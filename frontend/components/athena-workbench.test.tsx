@@ -552,7 +552,11 @@ const fluorescenceMapping = {
 }
 
 function importCalls() {
-  return api.mock.calls.filter(([path]) => path.endsWith("/import"))
+  return api.mock.calls.filter(([path]) => path.endsWith("/import")).map(([path, body]) => [path, body])
+}
+
+function importKeys() {
+  return api.mock.calls.filter(([path]) => path.endsWith("/import")).map(call => (call[4] as Record<string, string>)["Idempotency-Key"])
 }
 
 function submitImport(dialog: HTMLElement) {
@@ -4189,6 +4193,12 @@ describe("AthenaWorkbench batch import", () => {
       [`/projects/${project.id}/import`, { ...fluorescenceMapping, upload_id: inspections[1].upload_id, version: afterFirst.version }],
       [`/projects/${project.id}/import`, { ...fluorescenceMapping, upload_id: inspections[2].upload_id, version: afterSecond.version }],
     ])
+    // The failed upload is retried under its first key, so a backend that had
+    // saved it answers instead of importing it again (XAS-QA-007).
+    const keys = importKeys()
+    expect(keys.every(Boolean)).toBe(true)
+    expect(keys[2]).toBe(keys[1])
+    expect(new Set([keys[0], keys[1], keys[3]]).size).toBe(3)
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(plotProps().active).toEqual(afterThird.groups.at(-1))
   })

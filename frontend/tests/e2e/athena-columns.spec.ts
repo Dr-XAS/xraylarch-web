@@ -539,3 +539,62 @@ test("imports a batch with standard parameters, reference alignment and sample-o
   await page.getByText('Preprocess imported groups', { exact: true }).click()
   await expect(page.getByLabel('Mark each imported sample', { exact: true })).toBeChecked()
 })
+
+test("XAS-QA-007: retrying an import whose response was lost does not import the scan twice", async ({ page }) => {
+  test.setTimeout(60000)
+  const errors: string[] = []
+  page.on("pageerror", error => errors.push(error.message))
+  const panel = await openColumns(page)
+  const importButton = panel.getByRole("button", { name: "Import spectrum", exact: true })
+  await expect(importButton).toBeEnabled()
+
+  // The server commits the first import; only its response is lost on the way back.
+  const keys: (string | undefined)[] = []
+  let committed: { id: string; version: number; groups: { id: string }[] } | undefined
+  await page.route("**/api/athena/projects/*/import", async route => {
+    keys.push(route.request().headers()["idempotency-key"])
+    if (committed) return route.continue()
+    committed = await (await route.fetch()).json()
+    await route.abort("connectionreset")
+  })
+  await importButton.click()
+  await expect(panel.getByRole("alert")).toBeVisible()
+  expect(committed!.groups).toHaveLength(1)
+
+  await importButton.click()
+  await expect(page.getByText(/cu-detectors\.dat had already been imported before the connection dropped/)).toBeVisible()
+  await expect(page.getByRole("dialog", { name: "Import spectra", exact: true })).toHaveCount(0)
+  await expect(page.getByRole("heading", { name: /^Data groups 1\b/ })).toBeVisible()
+  expect(keys).toHaveLength(2)
+  expect(keys[0]).toBeTruthy()
+  expect(keys[1]).toBe(keys[0])
+  const stored = await (await page.request.get(`/api/backend/api/athena/projects/${committed!.id}?view=summary`)).json()
+  expect(stored.version).toBe(committed!.version)
+  expect(stored.groups).toHaveLength(1)
+  expect(errors).toEqual([])
+})
+
+test("XAS-QA-001: the fluorescence multiplier stays readable in a narrow dual-mode import", async ({ page }, info) => {
+  test.setTimeout(60000)
+  const panel = await openColumns(page)
+  await panel.getByRole("combobox", { name: "Measurement", exact: true }).selectOption("both")
+  const fluorescence = panel.getByRole("group", { name: "Fluorescence columns", exact: true })
+  const constant = fluorescence.getByLabel("Fluorescence multiplicative constant", { exact: true })
+  await constant.fill("0.5")
+  for (const width of [1400, 768, 390, 360]) {
+    await page.setViewportSize({ width, height: 844 })
+    await constant.scrollIntoViewIfNeeded()
+    const metrics = await constant.evaluate(input => {
+      const label = input.closest("label")!.querySelector("span")!.getBoundingClientRect()
+      const box = input.getBoundingClientRect()
+      const set = input.closest("fieldset")!
+      return { label: label.width, input: box.width, right: box.right, overflow: set.scrollWidth - set.clientWidth }
+    })
+    expect(metrics.label, `label width at ${width}px`).toBeGreaterThan(100)
+    expect(metrics.input, `input width at ${width}px`).toBeGreaterThan(100)
+    expect(metrics.right, `input right edge at ${width}px`).toBeLessThanOrEqual(width)
+    expect(metrics.overflow, `fieldset overflow at ${width}px`).toBeLessThanOrEqual(0)
+    await expect(constant).toHaveValue("0.5")
+    if (width === 360) await fluorescence.screenshot({ path: info.outputPath("fluorescence-360.png") })
+  }
+})

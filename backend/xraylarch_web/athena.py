@@ -206,6 +206,25 @@ def _foldered_group_order(groups, folders):
     return output
 
 
+def _replayed_import(project, prior):
+    """The response to an import retried under a key that already ran.
+
+    Shaped like a command's answered retry, so a caller reads both the same
+    way: `last_operation.idempotent_replay` says nothing was imported now.
+    """
+    return {**project, "last_operation": {
+        "action": "import", "skipped_group_ids": [],
+        "idempotent_replay": {
+            "action": "import",
+            "version_after": prior.get("version_after"),
+            "group_ids": list(prior.get("group_ids") or []),
+            "note": "This import already ran under the same key and was not "
+                    "run again. The project shown is its current state, which "
+                    "may include later changes.",
+        },
+    }}
+
+
 def _can_reimport_columns(group):
     """Cheap availability hint; validate actual retained data only on demand."""
     source = group.get('source') or {}
@@ -1978,9 +1997,24 @@ class AthenaStore:
         source = _exchange_source(source, len(plan.energy), self.settings)
         return source, plan.energy, plan.apply(y)
 
-    def import_data(self, ident, request: ImportRequest, *, replace_group_id=None):
+    def import_data(self, ident, request: ImportRequest, *, replace_group_id=None, idempotency_key: str | None = None):
+        """Import one inspected upload, or answer a retry of one that already ran.
+
+        A browser that loses the response cannot tell whether the import was
+        saved, and retrying it imports the same scan a second time. With an
+        Idempotency-Key the retry finds the key recorded beside the upload and
+        is answered with the current project instead. The record is written
+        after the save, under the same project lock, so a key is never
+        recorded for an import that did not happen. Reimport is left out: it
+        replaces one group and already rejects a stale retry.
+        """
         with self.storage.lock(ident):
             old = self.load(ident)
+            if idempotency_key is not None and replace_group_id is None:
+                self.storage._validate_id(request.upload_id)
+                prior = self._import_keys(ident, request.upload_id).get(idempotency_key)
+                if prior is not None:
+                    return _replayed_import(old, prior)
             self.check(old, request.version)
             p = copy.deepcopy(old)
             target = self.group(p, replace_group_id) if replace_group_id is not None else None
@@ -2135,6 +2169,8 @@ class AthenaStore:
             message = (f"Reimported columns for {target['label']} ({len(x)} points)" if target is not None else
                        f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")
             saved = self.save(p, old, message)
+            if idempotency_key is not None and target is None:
+                self._remember_import_key(ident, request.upload_id, idempotency_key, old, saved)
             try:
                 AthenaPreferences(self.settings).remember_columns(metadata, request, old)
             except (ValueError, OSError, KeyError, TypeError):
@@ -2142,6 +2178,25 @@ class AthenaStore:
                 # failed import (and invite duplicate imports) for a prefs error.
                 return saved | {'import_preferences_warning': 'Spectra imported, but column choices could not be remembered for the next import.'}
             return saved
+
+    def _import_keys(self, ident, upload_id) -> dict:
+        try:
+            keys = self.storage.read_json(ident, f"upload-{upload_id}.imports.json")
+        except (FileNotFoundError, ValueError):
+            return {}
+        return keys if isinstance(keys, dict) else {}
+
+    def _remember_import_key(self, ident, upload_id, key, old, saved) -> None:
+        known = {group["id"] for group in old["groups"]}
+        keys = self._import_keys(ident, upload_id)
+        keys[key] = {"version_after": saved["version"],
+                     "group_ids": [g["id"] for g in saved["groups"] if g["id"] not in known]}
+        try:
+            self.storage.write_json(ident, f"upload-{upload_id}.imports.json", keys)
+        except OSError:
+            # The spectrum is saved. Failing the response here would invite
+            # exactly the duplicate retry the key exists to prevent.
+            _LOGGER.warning("Could not record import idempotency key for %s", ident, exc_info=True)
 
     def preview_columns(self, ident, request: ImportRequest):
         from .athena_columns import map_columns, preview_trace
@@ -4577,11 +4632,12 @@ def build_athena_router(
         return guarded(lambda: AthenaPreferences(settings).save_dispersive(DispersiveDefaults(version=version,coefficients=decode_calibration(data))))
 
     @router.post("/projects/{ident}/import")
-    def import_data(ident: str, request: ImportRequest, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability")):
+    def import_data(ident: str, request: ImportRequest, capability: str | None = Header(default=None, alias="X-XrayLarch-Draft-Capability"),
+                    idempotency_key: str | None = Header(default=None, max_length=200, alias="Idempotency-Key")):
         authority = integration_draft(ident, capability, "import")
         return integrated_mutation(
             ident, capability, "import", authority,
-            lambda: guarded(lambda: store.import_data(ident, request)),
+            lambda: guarded(lambda: store.import_data(ident, request, idempotency_key=idempotency_key)),
         )
 
     @router.get('/projects/{ident}/uploads/{upload_id}/inspection')

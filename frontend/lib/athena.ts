@@ -127,7 +127,7 @@ export interface AthenaProject {
   group_added_orders?: Record<string, number>
   updated: string; undo: string[]; redo: string[]; history: { time: string; message: string }[]
   analyses?: Analysis[]
-  last_operation?: { action: string; warnings?: string[]; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string>; artemis_example?: { group_id: string; attachment_id: string; example: ArtemisExample } }
+  last_operation?: { action: string; warnings?: string[]; skipped_group_ids: string[]; skipped_reasons?: Record<string, string>; e0_results?: E0SelectionResult[]; difference_results?: DifferenceSavedResult[]; rebin_results?: Omit<DifferenceSavedResult, 'area'>[]; datatype_results?: { group_id: string; label: string; previous_type: string; data_type: string; is_normalized: boolean }[]; processing_errors?: Record<string, string>; idempotent_replay?: { action: string; version_after: number | null; group_ids?: string[]; note: string }; artemis_example?: { group_id: string; attachment_id: string; example: ArtemisExample } }
 }
 export interface Analysis {
   id?: string; created?: string
@@ -137,16 +137,16 @@ export interface Analysis {
 export const apiBase = backendUrl("/api/athena")
 export function athenaClient(session: AthenaSession = { mode: "legacy" }) {
   const transport = createAthenaTransport(session)
-  return <T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> => transport.api<T>(`/api/athena${path}`, {
+  return <T>(path: string, body?: unknown, method?: string, signal?: AbortSignal, headers?: Record<string, string>): Promise<T> => transport.api<T>(`/api/athena${path}`, {
     signal,
     method: method ?? (body === undefined ? "GET" : "POST"),
-    ...(body instanceof FormData ? { body } : body !== undefined ? {
-      headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-    } : {}),
+    ...(body instanceof FormData ? { body, headers } : body !== undefined ? {
+      headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
+    } : { headers }),
   })
 }
-export function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> {
-  return athenaClient()<T>(path, body, method, signal)
+export function athenaApi<T>(path: string, body?: unknown, method?: string, signal?: AbortSignal, headers?: Record<string, string>): Promise<T> {
+  return athenaClient()<T>(path, body, method, signal, headers)
 }
 export function athenaTransport() { return createAthenaTransport({ mode: "legacy" }) }
 export function athenaDownload(path: string, filename?: string) { return athenaTransport().download(`/api/athena${path}`, filename) }

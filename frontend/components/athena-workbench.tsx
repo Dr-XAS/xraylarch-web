@@ -346,6 +346,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const projectRef = useRef<AthenaProject | null>(null)
   const skippedCount = useRef(0)
   const preferenceWarnings = useRef<string[]>([])
+  // One Idempotency-Key per upload until its import is answered. After a lost
+  // response the retry reuses it, and the backend answers with the import that
+  // already ran instead of adding the same scan again.
+  const importKeys = useRef(new Map<string, string>())
   const init = useRef(false)
   const [activeId, setActiveId] = useState("")
   const [busy, setBusy] = useState("")
@@ -1431,6 +1435,15 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     setModal("import"); setFiles(incoming)
     await task("Inspecting " + incoming[0].name, async () => { await inspectFile(incoming[0], undefined, incoming) })
   }
+  async function importUpload(projectId: string, body: { upload_id: string } & Record<string, unknown>) {
+    const keys = importKeys.current
+    // getRandomValues also works on HTTP workspaces opened on a lab network.
+    const key = keys.get(body.upload_id) ?? `import-${crypto.getRandomValues(new Uint32Array(4)).join("-")}`
+    keys.set(body.upload_id, key)
+    const result = await athenaApi<AthenaProject>(`/projects/${projectId}/import`, body, undefined, undefined, { "Idempotency-Key": key })
+    keys.delete(body.upload_id)
+    return result
+  }
   async function importCurrent(readerReviewed = false) {
     if (busy || !inspection || !projectRef.current || (files.length > 1 && reuseMapping === null)) return
     if (readerReviewed) setReviewedUploadId(inspection.upload_id)
@@ -1444,15 +1457,16 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       const progress = (filename: string, phase: ImportProgress['phase']) => {
         if (reuseMapping) setBatchProgress({ total: files.length, completed: files.length - pendingCount, filename, phase })
       }
-      const imported = (result: AthenaProject) => {
+      const imported = (result: AthenaProject, filename: string) => {
         current = result
+        if (result.last_operation?.idempotent_replay) preferenceWarnings.current.push(`${filename} had already been imported before the connection dropped, so it was not imported again.`)
         if (result.import_preferences_warning && !preferenceWarnings.current.includes(result.import_preferences_warning)) {
           preferenceWarnings.current.push(result.import_preferences_warning)
         }
       }
       try {
         progress(inspection.display_name, 'importing')
-        imported(await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspection.upload_id, ...(readerReviewed ? { reader_reviewed: true } : {}) }))
+        imported(await importUpload(current.id, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspection.upload_id, ...(readerReviewed ? { reader_reviewed: true } : {}) }), inspection.display_name)
         let remaining = files.slice(1); setFiles(remaining)
         pendingCount = remaining.length
         while (remaining.length) {
@@ -1465,7 +1479,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           const shared = inspected && reuseMapping ? reuseColumnMapping(inspection, inspected, mapping) : null
           if (!inspected || !shared || inspected.file_plugin?.review_required) return
           progress(inspected.display_name, 'importing')
-          imported(await athenaApi<AthenaProject>(`/projects/${current.id}/import`, { ...columnPayload(shared), edge_policy, version: current.version, upload_id: inspected.upload_id }))
+          imported(await importUpload(current.id, { ...columnPayload(shared), edge_policy, version: current.version, upload_id: inspected.upload_id }), inspected.display_name)
           remaining = remaining.slice(1); setFiles(remaining)
           pendingCount = remaining.length
         }
@@ -1476,7 +1490,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         // per file and also keeps successful imports visible after a later failure.
         if (current !== initial) {
           accept(current)
-          setActiveId(lastImportedSample(current.groups.slice(initial.groups.length))!.id)
+          // An answered retry may add nothing beyond what was already loaded.
+          const added = lastImportedSample(current.groups.slice(initial.groups.length))
+          if (added) setActiveId(added.id)
         }
         setBatchProgress(null)
       }
