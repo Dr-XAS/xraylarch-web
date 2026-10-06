@@ -891,8 +891,10 @@ neighbor elements, distance ranges, alternative coordination weights, and any
 radius/oxidation-state warnings. The shell is the most probable bonded-neighbor
 set; it is not a fitted CN or an R-space Fourier-transform window.
 
-The viewer highlights the absorber in amber and exact periodic neighbors in
-cyan. **View → CrystalNN first shell** displays the entire shell, including
+The viewer keeps the element legend colors when highlighting the first shell.
+The largest sphere marks the center; larger neighboring spheres mark CrystalNN
+first-shell atoms. An on-canvas label identifies the center element and site.
+**View → CrystalNN first shell** displays the entire shell, including
 neighbors across cell boundaries, independently of the display radius. Changing
 the viewer center only changes the display; use the explicit FEFF absorber-site
 controls to change a calculation.
@@ -928,7 +930,8 @@ flagged because FEFF generation currently excludes H.
 ### Periodic radial shells
 
 **CIF structure viewer → View → Radial shells** colors neighbors by their radial
-shell around the selected center. The absorber is amber. The table below the
+shell around the selected center. The center remains in its element color and
+is shown as the largest sphere with an explicit center label. The table below the
 viewer shows each shell's actual minimum/maximum distance, neighbor count,
 element composition and symmetry pair groups. Select shell checkboxes to show
 any combination; initially shells 1–3 are visible. These complete periodic
