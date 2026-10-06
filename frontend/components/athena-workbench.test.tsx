@@ -5396,6 +5396,19 @@ describe("AthenaWorkbench weighted combinations", () => {
       fireEvent.click(within(dialog).getByRole('button',{name:'Cancel merge'}))
     }
   })
+  it('opens merge from a shortcut pressed as soon as the loaded project is shown',async()=>{
+    const project=projectFixture();localStorage.setItem(storageKey,project.id);api.mockResolvedValueOnce(project)
+    render(<AthenaWorkbench />);let pressed=false
+    // waitFor checks from a MutationObserver, right after the commit and before
+    // passive effects run, so this presses the keys before any effect can catch up.
+    // Master's CI hit the same gap under load.
+    await waitFor(()=>{
+      expect(screen.getByRole("button",{name:"Import data"})).toBeEnabled()
+      if(!pressed){pressed=true;document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'M',ctrlKey:true,shiftKey:true,bubbles:true}))}
+    })
+    serveMerge(project)
+    await screen.findByRole('dialog',{name:'Merge marked groups'})
+  })
   it("keeps relative merge weights paired with marked IDs in the saved list order", async () => {
     const initial=projectFixture();initial.groups=[initial.groups[0],initial.groups[2],initial.groups[1],initial.groups[3]]
     const project=await openSaved(initial);serveMerge(project);selectGroup('Unused reference')
