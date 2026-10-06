@@ -147,7 +147,6 @@ describe("ArtemisFittingPanel", () => {
     const view = render(panel(false))
     await screen.findByLabelText("Path 1 S₀²")
     expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole("button", { name: "Expand path 1 details" }))
     const initialValue = (screen.getByLabelText("Parameter 1 value") as HTMLInputElement).value
     const calls = api.mock.calls.length
     view.rerender(panel(true))
@@ -290,9 +289,11 @@ describe("ArtemisFittingPanel", () => {
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
     for (const [index, source] of example().paths.entries()) {
-      expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).not.toBeVisible()
+      expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).toBeVisible()
       expect(screen.getByText(source.filename)).toBeVisible()
     }
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all path details" }))
+    for (const index of [1, 2, 3, 4]) expect(screen.getByLabelText(`Path ${index} S₀²`)).not.toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Expand all path details" }))
     for (const index of [1, 2, 3, 4]) expect(screen.getByLabelText(`Path ${index} S₀²`)).toBeVisible()
     expect(api).not.toHaveBeenCalled()
@@ -328,6 +329,7 @@ describe("ArtemisFittingPanel", () => {
 
   it("offers CN while paths are collapsed and saves a normalized CN model without changing other paths", async () => {
     render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getByRole("button", { name: "Collapse path 1 details" }))
     expect(screen.getByLabelText("Path 1 S₀²")).not.toBeVisible()
     const control = screen.getAllByText("Set / fit coordination number", { exact: true })[0]
     expect(control).toBeVisible()

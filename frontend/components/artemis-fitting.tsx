@@ -37,7 +37,7 @@ import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
 
-interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; result: { revision: number; data: ArtemisFitResult } | null }
+interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; collapsedPathIds?: Set<string>; result: { revision: number; data: ArtemisFitResult } | null }
 type TransformField = keyof TransformDraft
 const transformLabels: Record<TransformField, string> = {
   fitspace: "Fit space", kmin: "k min (Å⁻¹)", kmax: "k max (Å⁻¹)", rmin: "R min (Å)", rmax: "R max (Å)",
@@ -332,7 +332,8 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
   const [notice, setNotice] = useState("")
   const [transformMenu, setTransformMenu] = useState<{ field?: TransformField; anchor: { x: number; y: number }; trigger: HTMLElement } | null>(null)
   const pathDetailsId = useId()
-  const [expandedPathIds, setExpandedPathIds] = useState<Set<string>>(() => new Set())
+  // New paths open once; saved models start compact and this session's choices survive spectrum switches.
+  const [collapsedPathIds, setCollapsedPathIds] = useState<Set<string>>(() => initial?.collapsedPathIds ?? new Set(group?.artemis ? draft.paths.map(path => path.id) : []))
   const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
   const [radialContext, setRadialContext] = useState<RadialShellContext | null>(null)
   const radialState = useRadialShells(radialContext?.structure ?? null, radialContext?.siteIndex)
@@ -376,7 +377,9 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
   }, [persisted?.model])
 
   useEffect(() => {
-    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, result }, modelDirty)
+    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, collapsedPathIds, result }, modelDirty)
+  }, [draft, result, currentResult, selectedFitId, collapsedPathIds, modelDirty, group?.id, persisted])
+  useEffect(() => {
     callbacks.current.onFitResult?.(currentResult)
     if (group) callbacks.current.onDirtyChange?.(group.id, modelDirty)
   }, [draft, result, currentResult, selectedFitId, modelDirty, group?.id, persisted])
@@ -677,8 +680,8 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         <input ref={inputRef} className={styles.fileInput} type="file" multiple accept=".dat" aria-label="Upload FEFF path files"
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
         {draft.paths.length > 1 && <div className={styles.pathViewActions}>
-          <button type="button" aria-label="Expand all path details" disabled={draft.paths.every(path => expandedPathIds.has(path.id))} onClick={() => setExpandedPathIds(new Set(draft.paths.map(path => path.id)))}>Expand all</button>
-          <button type="button" aria-label="Collapse all path details" disabled={!draft.paths.some(path => expandedPathIds.has(path.id))} onClick={() => setExpandedPathIds(new Set())}>Collapse all</button>
+          <button type="button" aria-label="Expand all path details" disabled={draft.paths.every(path => !collapsedPathIds.has(path.id))} onClick={() => setCollapsedPathIds(new Set())}>Expand all</button>
+          <button type="button" aria-label="Collapse all path details" disabled={!draft.paths.some(path => !collapsedPathIds.has(path.id))} onClick={() => setCollapsedPathIds(new Set([...collapsedPathIds, ...draft.paths.map(path => path.id)]))}>Collapse all</button>
         </div>}
       </div>
       <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
@@ -687,13 +690,13 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         renderPath={(path, shell) => {
           const i = draft.paths.findIndex(item => item.id === path.id)
           const member = radialContext && radialState.data ? radialPathNeighbor(path.metadata, radialContext.structure, radialState.data) : undefined
-          const expanded = expandedPathIds.has(path.id)
+          const expanded = !collapsedPathIds.has(path.id)
           const detailsId = `${pathDetailsId}-${path.id}`
           return <div className={styles.path} data-path-id={path.id}>
         <div className={styles.pathHeader}>
           <label className={styles.pathInclude} title={`Include ${path.filename} in the fit`}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /></label>
           <button type="button" className={styles.pathToggle} aria-label={`${expanded ? "Collapse" : "Expand"} path ${i + 1} details`} aria-expanded={expanded} aria-controls={detailsId}
-            onClick={() => setExpandedPathIds(previous => { const next = new Set(previous); if (next.has(path.id)) next.delete(path.id); else next.add(path.id); return next })}>
+            onClick={() => setCollapsedPathIds(previous => { const next = new Set(previous); if (next.has(path.id)) next.delete(path.id); else next.add(path.id); return next })}>
             <ChevronRight size={14} className={styles.pathChevron} aria-hidden="true" />
             <span className={styles.pathIdentity}>
               <span className={styles.pathFilename} title={path.filename}>{path.filename}</span>

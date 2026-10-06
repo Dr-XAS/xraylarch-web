@@ -14,7 +14,7 @@ test("shows matching shell labels beside every fitting and generated FEFF filena
     await expect(pathCard(index).getByText("Shell unassigned", { exact: true })).toBeVisible()
   }
   await expect(pathCard(3).getByText("Multiple scattering", { exact: true })).toBeVisible()
-  await fitting.getByRole("button", { name: "Expand all path details", exact: true }).click()
+  await expect(fitting.getByRole("button", { name: "Expand all path details", exact: true })).toBeDisabled()
   const expressions = fitting.getByRole("textbox", { name: /^Path \d+ (?:S₀²|ΔE₀|ΔR|σ²)/ })
   await expect(expressions).toHaveCount(16)
   const originalExpressions = await expressions.evaluateAll(inputs => inputs.map(input => (input as HTMLInputElement).value))

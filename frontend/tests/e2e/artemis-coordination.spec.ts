@@ -13,6 +13,7 @@ test("discovers, saves, reopens and fits an explicit coordination number", async
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
 
   // CN must be discoverable without expanding the advanced path expressions.
+  await page.getByRole("button", { name: "Collapse path 1 details", exact: true }).click()
   await expect(page.getByRole("button", { name: "Expand path 1 details", exact: true })).toBeVisible()
   await expect(page.getByLabel("Path 1 S₀²", { exact: true })).not.toBeVisible()
   const summary = page.getByText("Set / fit coordination number", { exact: true }).first()
