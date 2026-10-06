@@ -35,7 +35,13 @@ The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 **Save project** defaults to the complete web project (`.json`), with a file-name
 confirmation before download. Native Athena (`.prj`) exports remain in **File**.
 Enable **Show instruction** at the top right to display inline information icons;
-they are hidden by default.
+they are hidden by default. Field-level instructions cover processing, imports,
+analysis, EXAFS fitting, CIF/FEFF setup, simulation, and viewer controls. Hover,
+focus, or tap an icon for its meaning, units, and relevant constraints; press
+Escape to dismiss it. Help stays out of the form layout and does not change data.
+
+The Xraylarch, Demeter, and Dr. XAS team credits stay visible below the Larch-Web
+title, independently of **Show instruction**.
 
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
@@ -83,7 +89,11 @@ and already-normalized inputs.
 The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
 middle parameter panel. Search the bundled AMCSD database or Materials Project
 in the CIF popup (MP requires `MP_API_KEY` in the backend environment), attach
-the selected CIF directly to the project, select an absorber
+the selected CIF directly to the project, or choose **Upload CIF** to attach your
+own `.cif` file (up to 500 KB). Uploaded CIFs keep their original text and filename
+in saved projects. Use **Rename** beside an attached CIF to give it a project-specific name.
+Names survive saving and reopening the project; source identifiers, original CIF
+text, and uploaded filenames stay intact. Select an absorber
 site, and calculate FEFF8L scattering paths using
 Larch/Larixite. Review the generated paths and add the selected ones to the
 model, or import existing FEFF path files. Define Guess/Set/Def parameters
@@ -99,6 +109,13 @@ automatically; the exported filename does not rename the saved project.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
+**Simulate EXAFS from CIF** uses the same attached structure and FEFF calculation
+without requiring a measured spectrum. Choose an absorbing site and edge, run
+FEFF, then sum all available paths or the selected paths with explicit S₀²,
+σ², ΔE₀ and ΔR. View χ(k) and |χ(R)|, download CSV curves, or export simulation
+JSON containing the exact CIF, FEFF input, path files, parameters and results.
+The shared σ² is an assumption; inequivalent sites are not averaged automatically.
+
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.
 Both panels can stay open together and keep independent plot spaces, ranges,
@@ -108,8 +125,11 @@ separately shows the fitted μ₀(E) background when available.
 Each normalization-line toggle also marks its interval's start and end on
 μ(E). Hover a marker to see its energy and offset from E₀.
 
-Drag the handle below the spectrum to resize its height; double-click it to
-restore the default. **Show legend** toggles the single-column legend on the
+Drag the handle below any artifact viewer to resize its plot or 3D structure;
+double-click it to restore the default. Each viewer remembers its own height,
+including CIF previews, FEFF structures, path contributions, and simulations.
+The focused handle also supports Up/Down arrows and Enter to reset.
+**Show legend** toggles the single-column legend on the
 right. The **k-weight** selector above the viewer controls the k, R,
 back-transform, and wavelet views together. **Auto** uses each spectrum’s
 processed weight; choosing 0–4 updates the display without changing saved
@@ -154,6 +174,10 @@ recognizes FEFF `xmu.dat` tables, selecting photon energy (`omega`) and `mu`
 while preserving the supplied normalization. Detector choices and previewed
 signals can be reviewed before import; successful import choices are remembered
 for subsequent matching files.
+
+The current group's element and absorption edge are shown automatically, using
+saved file metadata when available or inference from E₀. No manual identity
+selection is required.
 
 Use **Group → Change data type** to correct current, marked, or all energy
 groups after import. The type button next to Freeze also supports Athena's

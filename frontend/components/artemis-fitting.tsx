@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type MouseEvent, type KeyboardEvent } from "react"
 import { ChevronRight, History, Plus, RefreshCw, SlidersHorizontal, Trash2, Upload, type LucideIcon } from "lucide-react"
 import { athenaApi, type AthenaGroup, type AthenaProject } from "@/lib/athena"
 import { ApiRequestError } from "@/lib/backend-client"
@@ -14,6 +14,8 @@ import type { ArtemisPreviewRequest } from "@/lib/artemis-path-preview"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { planDisorderInsertion, type DisorderOptions } from "@/lib/artemis-disorder"
 import { ArtemisDisorderControl } from "./artemis-disorder"
+import { planCoordinationInsertion, type CoordinationOptions } from "@/lib/artemis-coordination"
+import { ArtemisCoordinationControl } from "./artemis-coordination"
 import { ArtemisModelAutosave, type ArtemisSaveStatus } from "@/lib/artemis-model-autosave"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
@@ -29,12 +31,19 @@ import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-
 import { FitRangeIcon } from "./athena-parameter-icons"
 import { ParameterSectionHeading } from "./parameter-section-heading"
 import { SectionHelp } from "./section-help"
+import { AthenaContextMenu } from "./athena-context-menu"
 import type { FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
 import styles from "./artemis-fitting.module.css"
 
 export type { ArtemisFitResult } from "@/lib/artemis"
 
-interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; result: { revision: number; data: ArtemisFitResult } | null }
+interface SavedDraft { draft: Draft; base?: Draft; persisted?: boolean; selectedFitId?: string; collapsedPathIds?: Set<string>; result: { revision: number; data: ArtemisFitResult } | null }
+type TransformField = keyof TransformDraft
+const transformLabels: Record<TransformField, string> = {
+  fitspace: "Fit space", kmin: "k min (Å⁻¹)", kmax: "k max (Å⁻¹)", rmin: "R min (Å)", rmax: "R max (Å)",
+  dk: "k taper dk (Å⁻¹)", dr: "R taper dr (Å)", window: "k window", kweight: "Fit k-weight",
+}
+type ContextEvent = MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>
 export type ArtemisModelActions = {
   flush: () => Promise<void>
   importModel: () => void
@@ -81,19 +90,35 @@ function newDraft(): Draft {
   return { revision: 0, paths: [], parameters: defaultParameters.map(parameterDraft),
     transform: transformDraft({ fitspace: "r", kmin: 3, kmax: 12, kweight: [0, 1, 2, 3], dk: 1, window: "hanning", rmin: 1, rmax: 3, dr: 0 }) }
 }
+function draftForGroup(group: AthenaGroup | undefined, initial: SavedDraft | undefined): Draft {
+  if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
+  if (!group?.artemis && initial?.persisted && initial.base && artemisModelKey(initial.draft) === artemisModelKey(initial.base)) return newDraft()
+  return initial?.draft ?? group?.artemis?.model ?? newDraft()
+}
 function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
   return { ...path, id: nextId(), label: path.filename, enabled: true, s02: "amp", e0: "del_e0", deltar: "del_r", sigma2: "sig2" }
 }
-function exampleDraft(example: ArtemisExample, revision = 0): Draft {
+function exampleDraft(example: ArtemisExample, attachmentId: string, revision = 0): Draft {
   const viewerCluster = parseFeffCluster(example.feff_input)
+  const sourceCif = { sha256: example.cif_sha256, label: "Cuprite · AMCSD 0015851", siteIndex: 1, attachmentId }
   return { revision, paths: example.paths.map((path, index) => ({ ...pathDraft(path), ...example.path_parameters?.[index],
     label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
-    metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata })),
+    metadata: { ...path.metadata, sourceCif, ...(viewerCluster ? { viewerCluster } : {}) } })),
     parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }
 }
 function numberValue(value: string, label: string) {
   if (!value.trim() || !Number.isFinite(Number(value))) throw new Error(`${label} must be a finite number.`)
   return Number(value)
+}
+function transformFromDraft(t: TransformDraft): ArtemisTransform {
+  const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
+    kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
+    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
+  if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
+  if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
+  if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
+  if (!transform.kweight.length) throw new Error("Select at least one fit k-weight.")
+  return transform
 }
 /** Read the editor's text fields as numbers. Only the rules a model must obey to
  *  be evaluated at all live here; the extra rules a fit needs are in requestFromDraft. */
@@ -112,14 +137,7 @@ function modelFromDraft(draft: Draft): ArtemisPreviewRequest {
     if (parameter.kind === "def" && !parameter.expression.trim()) throw new Error(`${name}: enter an expression for this Def parameter.`)
     return { name, kind: parameter.kind, value, min, max, expression: parameter.kind === "def" ? parameter.expression.trim() : "" }
   })
-  const t = draft.transform
-  const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
-    kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
-    dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
-  if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
-  if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
-  if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
-  if (!transform.kweight.length) throw new Error("Select at least one fit k-weight.")
+  const transform = transformFromDraft(draft.transform)
   return { parameters, transform, paths: draft.paths.map(path => ({ id: path.id, label: path.label,
     filename: path.filename, content: path.content, enabled: path.enabled, s02: path.s02, e0: path.e0, deltar: path.deltar, sigma2: path.sigma2 })) }
 }
@@ -150,12 +168,16 @@ function importRequest(text: string): ArtemisFitRequest {
 }
 
 /** Native disclosures keep form and CIF-dialog state mounted while folded. */
-function FittingSection({ title, icon, summary, help, disabled, children }: {
+function FittingSection({ title, icon, summary, help, disabled, children, contextMenu, menuOpen }: {
   title: string; icon: LucideIcon; summary?: string; help?: ReactNode; disabled?: boolean; children: ReactNode
+  contextMenu?: (event: ContextEvent) => void; menuOpen?: boolean
 }) {
   const [open, setOpen] = useState(true)
-  return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)}>
-    <ParameterSectionHeading icon={icon} detail={summary}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}</ParameterSectionHeading>
+  return <details className={styles.section} open={open} onToggle={event => setOpen(event.currentTarget.open)} onContextMenu={contextMenu}
+    onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) contextMenu?.(event) }}>
+    <ParameterSectionHeading icon={icon} detail={summary}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}
+      {contextMenu && <button type="button" className={styles.contextTrigger} aria-label={`${title} actions`} aria-haspopup="menu" aria-expanded={menuOpen} disabled={disabled} onClick={contextMenu}>⋯</button>}
+    </ParameterSectionHeading>
     <fieldset className={styles.sectionBody} aria-label={`${title} controls`} disabled={disabled}>{children}</fieldset>
   </details>
 }
@@ -243,7 +265,7 @@ export function ArtemisFittingPanel(props: PanelProps) {
     const exampleKey = `${setup.projectId}:${setup.groupId}`
     // Prepare the Cu₂O model even while a foil is selected. Never replace a
     // saved draft, including a model whose paths the user deliberately removed.
-    if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example), result: null })
+    if (!cache.current.has(exampleKey) && !(props.group?.id === setup.groupId && props.group.artemis)) cache.current.set(exampleKey, { draft: exampleDraft(setup.example, setup.attachmentId), result: null })
   }
   const key = `${props.projectId ?? "none"}:${props.group?.id ?? "none"}`
   useEffect(() => {
@@ -255,8 +277,34 @@ export function ArtemisFittingPanel(props: PanelProps) {
       if (group && !group.artemis && saved.draft.paths.length && !saved.persisted) saver.update(props.projectId, groupId, saved.draft, undefined, true)
     }
   }, [props.projectId, props.groups, props.onProjectChange, setup, saver])
+  function copyTransform(transform: TransformDraft, field?: TransformField) {
+    if (props.pending || mutationPending.current || mutationCount.current) throw new Error("Wait for the current fit or project operation to finish before copying settings.")
+    if (!props.projectId || !props.group) return 0
+    const projectId = props.projectId
+    // Prepare every target before changing any drafts, so invalid ranges cannot
+    // leave only part of the marked set updated. Parameter drafts may be unfinished.
+    const updates = (props.groups ?? []).filter(group => group.marked && group.id !== props.group!.id).map(group => {
+      const cacheKey = `${projectId}:${group.id}`
+      const cached = cache.current.get(cacheKey)
+      const original = draftForGroup(group, cached)
+      const nextTransform = field ? { ...original.transform, [field]: transform[field] } : { ...transform }
+      nextTransform.kweight = nextTransform.kweight.slice()
+      try { transformFromDraft(nextTransform) } catch (error) { throw new Error(`${group.label}: ${errorText(error)}`) }
+      const draft = { ...original, transform: nextTransform, revision: original.revision + 1 }
+      return { group, cacheKey, original, draft, cached }
+    }).filter(({ original, draft }) => artemisModelKey(original) !== artemisModelKey(draft))
+    for (const { group, cacheKey, original, draft, cached } of updates) {
+      cache.current.set(cacheKey, { ...cached, draft, base: group.artemis?.model ?? cached?.base ?? original,
+        persisted: !!group.artemis, result: cached?.result ?? null })
+      if (props.onProjectChange) saver.update(projectId, group.id, draft, group.artemis?.model, true)
+      props.onDirtyChange?.(group.id, true)
+    }
+    refresh(value => value + 1)
+    return updates.length
+  }
   return <FittingEditor key={key} {...props} onProjectChange={props.onProjectChange ? acceptProject : undefined}
     initial={cache.current.get(key)} actions={actions} onEditorActions={registerEditorActions} onMutationPending={pause} prepareMutation={prepareMutation}
+    onCopyTransform={copyTransform}
     preserveDraft={!!props.projectId && !!props.group && saver.hasChanges(props.projectId, props.group.id)}
     onSave={(saved, dirty) => {
       cache.current.set(key, saved)
@@ -264,17 +312,14 @@ export function ArtemisFittingPanel(props: PanelProps) {
     }} />
 }
 
-function FittingEditor({ projectId, version, group, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft }: PanelProps & {
+function FittingEditor({ projectId, version, group, groups, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft, onCopyTransform }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft, dirty: boolean) => void
   actions: ArtemisModelActions; onEditorActions: (actions: EditorActions) => void
   onMutationPending: (busy: boolean) => void; prepareMutation: () => Promise<ModelMutation>
   preserveDraft: boolean
+  onCopyTransform: (transform: TransformDraft, field?: TransformField) => number
 }) {
-  const [draft, setDraft] = useState<Draft>(() => {
-    if (group?.artemis && (!initial?.base || artemisModelKey(initial.draft) === artemisModelKey(initial.base))) return group.artemis.model
-    if (!group?.artemis && initial?.persisted && initial.base && artemisModelKey(initial.draft) === artemisModelKey(initial.base)) return newDraft()
-    return initial?.draft ?? group?.artemis?.model ?? newDraft()
-  })
+  const [draft, setDraft] = useState<Draft>(() => draftForGroup(group, initial))
   const base = useRef(group?.artemis?.model ?? (initial?.persisted ? draft : initial?.base ?? draft))
   const persisted = group?.artemis
   const previousSaved = useRef(persisted?.model)
@@ -285,8 +330,10 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   const [busy, setBusy] = useState<"fit" | "upload" | "save" | "remove" | null>(null)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
+  const [transformMenu, setTransformMenu] = useState<{ field?: TransformField; anchor: { x: number; y: number }; trigger: HTMLElement } | null>(null)
   const pathDetailsId = useId()
-  const [expandedPathIds, setExpandedPathIds] = useState<Set<string>>(() => new Set())
+  // New paths open once; saved models start compact and this session's choices survive spectrum switches.
+  const [collapsedPathIds, setCollapsedPathIds] = useState<Set<string>>(() => initial?.collapsedPathIds ?? new Set(group?.artemis ? draft.paths.map(path => path.id) : []))
   const [shellSelection, setShellSelection] = useState<FirstShellSelection | null>(null)
   const [radialContext, setRadialContext] = useState<RadialShellContext | null>(null)
   const radialState = useRadialShells(radialContext?.structure ?? null, radialContext?.siteIndex)
@@ -330,7 +377,9 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   }, [persisted?.model])
 
   useEffect(() => {
-    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, result }, modelDirty)
+    callbacks.current.onSave({ draft, base: base.current, persisted: !!persisted, selectedFitId, collapsedPathIds, result }, modelDirty)
+  }, [draft, result, currentResult, selectedFitId, collapsedPathIds, modelDirty, group?.id, persisted])
+  useEffect(() => {
     callbacks.current.onFitResult?.(currentResult)
     if (group) callbacks.current.onDirtyChange?.(group.id, modelDirty)
   }, [draft, result, currentResult, selectedFitId, modelDirty, group?.id, persisted])
@@ -360,11 +409,41 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     setNotice("")
     setDraft(previous => ({ ...change(previous), revision: previous.revision + 1 }))
   }
+  function openTransformMenu(event: ContextEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    if (busy || pending) return
+    const target = event.target as HTMLElement
+    const field = target.closest<HTMLElement>("[data-transform-field]")?.dataset.transformField as TransformField | undefined
+    const trigger = target.closest<HTMLElement>("input, select, button, summary") ?? event.currentTarget.querySelector<HTMLElement>("summary") ?? event.currentTarget
+    const rect = trigger.getBoundingClientRect()
+    setTransformMenu({ field, trigger, anchor: "clientX" in event && (event.clientX || event.clientY)
+      ? { x: event.clientX, y: event.clientY } : { x: rect.left, y: rect.bottom } })
+  }
+  function applyTransform(field?: TransformField) {
+    if (busy || pending) return
+    setError("")
+    setNotice("")
+    try {
+      const count = onCopyTransform(draft.transform, field)
+      setNotice(count ? `Applied ${field ? transformLabels[field] : "fit range & transform"} to ${count} marked group${count === 1 ? "" : "s"}.`
+        : "Marked groups already have these settings.")
+    } catch (error) { setError(errorText(error)) }
+  }
   function editParameter(id: string, field: keyof ParameterDraft, value: string) {
     edit(previous => ({ ...previous, parameters: previous.parameters.map(parameter => parameter.id === id ? { ...parameter, [field]: value } : parameter) }))
   }
   function editPath(id: string, field: keyof ArtemisPath, value: string | boolean) {
     edit(previous => ({ ...previous, paths: previous.paths.map(path => path.id === id ? { ...path, [field]: value } : path) }))
+  }
+  function insertCoordination(pathId: string, options: CoordinationOptions) {
+    try {
+      const insertion = planCoordinationInsertion(draft, pathId, options)
+      const removed = new Set(insertion.removed)
+      edit(previous => ({ ...previous, paths: insertion.paths,
+        parameters: [...previous.parameters.filter(parameter => !removed.has(parameter.name.trim())), ...insertion.added.map(parameterDraft)] }))
+      setNotice(`Coordination number: ${insertion.coordinationName} (${options.refine ? "Guess" : "Set"}); ${insertion.amplitudeName} is fixed. Values and bounds are editable in Parameters.`)
+    } catch (error) { setError(errorText(error)) }
   }
   function insertDisorder(pathId: string, options: DisorderOptions) {
     try {
@@ -542,10 +621,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     : fastRequest ? "" : "Finish the model before comparing backends."
   return <section className={styles.editor} aria-label="Artemis EXAFS fitting setup">
     <header className={styles.intro}><h3><FitCurvesIcon size={20} aria-hidden="true" />EXAFS fitting</h3></header>
-    <div className={styles.actions}>
-      {error && <p className={styles.error} role="alert">{error}</p>}
-      <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
-    </div>
+    {error && <p className={styles.error} role="alert">{error}</p>}
     {projectId && group && <ArtemisFastFitComparison key={`${shownArchive?.id ?? "local"}:${draft.revision}`}
       projectId={projectId} groupId={group.id} request={fastRequest} reference={currentResult}
       blocked={fastBlocked} disabled={disabled} />}
@@ -559,14 +635,6 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       <p className={styles.help} aria-live="polite">{actions.status === "saving" ? "Saving model…" : actions.status === "pending" ? "Model changes waiting to save…" : "Model could not be saved."}</p>
       {actions.status === "failed" && <><p className={styles.error} role="alert">{actions.error}</p><button type="button" disabled={disabled} onClick={() => void actions.retry().catch(() => {})}>Retry saving model</button></>}
     </div>}
-    {!!persisted?.history.length && <FittingSection title="Saved fit history" icon={History} summary={`${persisted.history.length}/10`} disabled={disabled}
-      help="Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.">
-        <label>Saved fit history ({persisted.history.length}/10)<select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
-          {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
-        </select></label>
-        <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
-          <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
-    </FittingSection>}
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} spectrumEdge={group ? currentEdgeIdentity(group) : null} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
       availableSlots={24 - draft.paths.length} onAddPaths={(paths, replace) => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
@@ -596,7 +664,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     {({ structures, feff }) => <>
     <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">{structures}</FittingSection>
     <FittingSection title="FEFF paths" icon={FeffScatteringIcon} summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}
-      help={<><p>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
+      help={<><p>FEFF N is the path degeneracy from the file. Use Set / fit coordination number on a single-scattering path to define CN with fixed S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
         {radialContext && <p>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>}</>}>
       {feff}
       {radialContext ? <>
@@ -612,8 +680,8 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         <input ref={inputRef} className={styles.fileInput} type="file" multiple accept=".dat" aria-label="Upload FEFF path files"
           onChange={event => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void upload(files) }} />
         {draft.paths.length > 1 && <div className={styles.pathViewActions}>
-          <button type="button" aria-label="Expand all path details" disabled={draft.paths.every(path => expandedPathIds.has(path.id))} onClick={() => setExpandedPathIds(new Set(draft.paths.map(path => path.id)))}>Expand all</button>
-          <button type="button" aria-label="Collapse all path details" disabled={!draft.paths.some(path => expandedPathIds.has(path.id))} onClick={() => setExpandedPathIds(new Set())}>Collapse all</button>
+          <button type="button" aria-label="Expand all path details" disabled={draft.paths.every(path => !collapsedPathIds.has(path.id))} onClick={() => setCollapsedPathIds(new Set())}>Expand all</button>
+          <button type="button" aria-label="Collapse all path details" disabled={!draft.paths.some(path => !collapsedPathIds.has(path.id))} onClick={() => setCollapsedPathIds(new Set([...collapsedPathIds, ...draft.paths.map(path => path.id)]))}>Collapse all</button>
         </div>}
       </div>
       <RadialPathGroups paths={draft.paths} structure={radialContext?.structure ?? null} analysis={radialState.data} selectedIds={draft.paths.filter(path => path.enabled).map(path => path.id)} disabled={disabled} action="Include"
@@ -622,13 +690,13 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         renderPath={(path, shell) => {
           const i = draft.paths.findIndex(item => item.id === path.id)
           const member = radialContext && radialState.data ? radialPathNeighbor(path.metadata, radialContext.structure, radialState.data) : undefined
-          const expanded = expandedPathIds.has(path.id)
+          const expanded = !collapsedPathIds.has(path.id)
           const detailsId = `${pathDetailsId}-${path.id}`
           return <div className={styles.path} data-path-id={path.id}>
         <div className={styles.pathHeader}>
           <label className={styles.pathInclude} title={`Include ${path.filename} in the fit`}><input type="checkbox" checked={path.enabled} aria-label={`Include path ${i + 1}`} onChange={event => editPath(path.id, "enabled", event.target.checked)} /></label>
           <button type="button" className={styles.pathToggle} aria-label={`${expanded ? "Collapse" : "Expand"} path ${i + 1} details`} aria-expanded={expanded} aria-controls={detailsId}
-            onClick={() => setExpandedPathIds(previous => { const next = new Set(previous); if (next.has(path.id)) next.delete(path.id); else next.add(path.id); return next })}>
+            onClick={() => setCollapsedPathIds(previous => { const next = new Set(previous); if (next.has(path.id)) next.delete(path.id); else next.add(path.id); return next })}>
             <ChevronRight size={14} className={styles.pathChevron} aria-hidden="true" />
             <span className={styles.pathIdentity}>
               <span className={styles.pathFilename} title={path.filename}>{path.filename}</span>
@@ -638,19 +706,21 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           <button type="button" aria-label={`Remove path ${i + 1}`} title={`Remove ${path.filename}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
         {path.label && path.label !== path.filename && <p className={styles.pathLabel} title={path.label}>{path.label}</p>}
-        <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
+        <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · FEFF N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
         {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
         {member && <p className={styles.metadata}>{member.element} pair {member.group_id}</p>}
+        {path.metadata.nleg === 2 && <ArtemisCoordinationControl index={i + 1} path={path} parameters={draft.parameters}
+          onPreview={options => planCoordinationInsertion(draft, path.id, options)} onApply={options => insertCoordination(path.id, options)} />}
         {/* Keep the inputs mounted so folding a path preserves edits and native undo. */}
         <div id={detailsId} className={styles.pathDetails} hidden={!expanded}>
-        <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
+        <label className={styles.fullField}><span>Path label<SectionHelp label={`Path ${i + 1} label`}>A readable name for this path in the model and results. Renaming leaves the FEFF file and scattering calculation unchanged.</SectionHelp></span><input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
-            ["s02", "S₀²", "Amplitude factor; FEFF degeneracy N is already included."],
+            ["s02", "S₀²", "Amplitude expression; FEFF N is already included. Use Set / fit coordination number above to create a CN parameter."],
             ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Athena edge energy."],
-            ["deltar", "ΔR (Å)", "Change in the FEFF effective half-path length."],
-            ["sigma2", "σ² (Å²)", "Mean-square relative displacement."],
-          ] as const).map(([field, label, title]) => <label key={field} title={title}>{label}<input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
+            ["deltar", "ΔR (Å)", "Change in the FEFF effective half-path length. The fitted distance is R_eff + ΔR; ΔR often correlates with ΔE₀."],
+            ["sigma2", "σ² (Å²)", "Mean-square relative displacement in Å², damping the path by exp(−2k²σ²). Use separate values for distinct environments when justified."],
+          ] as const).map(([field, label, title]) => <label key={field}><span>{label}<SectionHelp label={`Path ${i + 1} ${label}`}>{title} Enter a number, parameter name or expression; use the same name to share a parameter across paths.</SectionHelp></span><input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
         </div>
         <ArtemisDisorderControl index={i + 1} enabled={path.enabled} onPreview={options => planDisorderInsertion(draft, path.id, options)} onApply={options => insertDisorder(path.id, options)} />
         </div>
@@ -665,29 +735,52 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
         <SectionHelp label="Sync parameters">Sync adds missing parameters and removes those unused by included paths, including Def dependencies. Existing values and constraints are kept.</SectionHelp></div>
       {draft.parameters.map((parameter, i) => <div key={parameter.id} className={styles.parameter}>
         <div className={styles.parameterHeader}>
-          <input aria-label={`Parameter ${i + 1} name`} value={parameter.name} maxLength={32} placeholder="Parameter name" onChange={event => editParameter(parameter.id, "name", event.target.value)} spellCheck={false} />
-          <select aria-label={`Parameter ${i + 1} kind`} value={parameter.kind} onChange={event => editParameter(parameter.id, "kind", event.target.value)}><option value="guess">Guess</option><option value="set">Set</option><option value="def">Def</option></select>
+          <span className={styles.parameterControl}><input aria-label={`Parameter ${i + 1} name`} value={parameter.name} maxLength={32} placeholder="Parameter name" onChange={event => editParameter(parameter.id, "name", event.target.value)} spellCheck={false} /><SectionHelp label={`Parameter ${i + 1} name`}>The name used by path and Def expressions. Give each parameter a unique name; reusing that name in several paths couples them.</SectionHelp></span>
+          <span className={styles.parameterControl}><select aria-label={`Parameter ${i + 1} kind`} value={parameter.kind} onChange={event => editParameter(parameter.id, "kind", event.target.value)}><option value="guess">Guess</option><option value="set">Set</option><option value="def">Def</option></select><SectionHelp label={`Parameter ${i + 1} kind`}>Guess varies during fitting, Set stays fixed, and Def is calculated from an expression. Only Guess parameters count as free variables.</SectionHelp></span>
           <button type="button" aria-label={`Remove parameter ${i + 1}`} onClick={() => edit(previous => ({ ...previous, parameters: previous.parameters.filter(item => item.id !== parameter.id) }))}><Trash2 size={13} /></button>
         </div>
-        {parameter.kind === "def" ? <label className={styles.fullField}>Expression<input aria-label={`Parameter ${i + 1} expression`} value={parameter.expression} placeholder="e.g. amp * 0.5" onChange={event => editParameter(parameter.id, "expression", event.target.value)} spellCheck={false} /></label>
+        {parameter.kind === "def" ? <label className={styles.fullField}><span>Expression<SectionHelp label={`Parameter ${i + 1} expression`}>Calculate this parameter from other parameters, for example amp * 0.5. Keep units consistent and avoid circular dependencies.</SectionHelp></span><input aria-label={`Parameter ${i + 1} expression`} value={parameter.expression} placeholder="e.g. amp * 0.5" onChange={event => editParameter(parameter.id, "expression", event.target.value)} spellCheck={false} /></label>
           : <div className={parameter.kind === "guess" ? styles.parameterValues : styles.grid}>
-            <label>{parameter.kind === "guess" ? "Start" : "Value"}<input aria-label={`Parameter ${i + 1} value`} inputMode="decimal" value={parameter.value} onChange={event => editParameter(parameter.id, "value", event.target.value)} /></label>
-            {parameter.kind === "guess" && <><label>Min<input aria-label={`Parameter ${i + 1} minimum`} inputMode="decimal" value={parameter.min} placeholder="−∞" onChange={event => editParameter(parameter.id, "min", event.target.value)} /></label><label>Max<input aria-label={`Parameter ${i + 1} maximum`} inputMode="decimal" value={parameter.max} placeholder="∞" onChange={event => editParameter(parameter.id, "max", event.target.value)} /></label></>}
+            <label><span>{parameter.kind === "guess" ? "Start" : "Value"}<SectionHelp label={`Parameter ${i + 1} value`}>{parameter.kind === "guess" ? "Initial value for the optimizer, within any bounds. Different starting values can reveal competing fit solutions." : "Fixed value used throughout the fit."} Units follow the path quantity using this parameter.</SectionHelp></span><input aria-label={`Parameter ${i + 1} value`} inputMode="decimal" value={parameter.value} onChange={event => editParameter(parameter.id, "value", event.target.value)} /></label>
+            {parameter.kind === "guess" && <><label><span>Min<SectionHelp label={`Parameter ${i + 1} minimum`}>Optional lower bound in this parameter’s units. Leave blank for no lower bound. A fitted value at a bound has unreliable uncertainty.</SectionHelp></span><input aria-label={`Parameter ${i + 1} minimum`} inputMode="decimal" value={parameter.min} placeholder="−∞" onChange={event => editParameter(parameter.id, "min", event.target.value)} /></label><label><span>Max<SectionHelp label={`Parameter ${i + 1} maximum`}>Optional upper bound in this parameter’s units. Leave blank for no upper bound. Bounds should reflect physically justified limits.</SectionHelp></span><input aria-label={`Parameter ${i + 1} maximum`} inputMode="decimal" value={parameter.max} placeholder="∞" onChange={event => editParameter(parameter.id, "max", event.target.value)} /></label></>}
           </div>}
       </div>)}
       <button type="button" disabled={draft.parameters.length >= 32} onClick={() => edit(previous => ({ ...previous, parameters: [...previous.parameters, parameterDraft({ name: `param${previous.parameters.length + 1}`, kind: "guess", value: 0, expression: "", min: null, max: null })] }))}><Plus size={13} />Add parameter</button>
     </FittingSection>
 
     <FittingSection title="Fit range & transform" icon={FitRangeIcon} summary={draft.transform.fitspace === "r" ? "R space" : "k space"} disabled={disabled}
+      contextMenu={openTransformMenu} menuOpen={!!transformMenu}
       help={<>{draft.transform.fitspace === "r" ? "R fitting uses the real and imaginary components within the selected R range. " : "k fitting uses the selected k range; the R range sets the independent-point estimate. "}Multiple k-weights share one fit and do not add independent data.</>}>
-      <div className={styles.choice} role="group" aria-label="Fit space">{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
+      <div className={styles.choice} role="group" aria-label="Fit space" data-transform-field="fitspace"><SectionHelp label="Fit space">R space fits the real and imaginary Fourier components over the R interval. k space fits χ(k) over the k interval; its R interval still sets the independent-point estimate.</SectionHelp>{(["r", "k"] as const).map(space => <button key={space} type="button" aria-pressed={draft.transform.fitspace === space} onClick={() => edit(previous => ({ ...previous, transform: { ...previous.transform, fitspace: space } }))}>{space === "r" ? "R space" : "k space"}</button>)}</div>
       <div className={styles.grid}>
         {([
-          ["kmin", "k min (Å⁻¹)"], ["kmax", "k max (Å⁻¹)"], ["rmin", "R min (Å)"], ["rmax", "R max (Å)"], ["dk", "k taper dk (Å⁻¹)"],
-        ] as const).map(([field, label]) => <label key={field}>{label}<input aria-label={label} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
-        <label>k window<select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
+          ["kmin", "k min (Å⁻¹)", "Lower limit of the photoelectron wavenumber interval used in fitting and the Fourier transform. Choose where the EXAFS model is applicable."],
+          ["kmax", "k max (Å⁻¹)", "Upper wavenumber limit. Stay within the measured signal and the FEFF path range; extending into noise does not add reliable structural information."],
+          ["rmin", "R min (Å)", "Lower Fourier-distance limit for R-space fitting. This axis is not phase corrected, so its peaks are not bond lengths."],
+          ["rmax", "R max (Å)", "Upper Fourier-distance limit for R-space fitting. Include the region represented by your paths; both R bounds also set the independent-point estimate."],
+          ["dk", "k taper dk (Å⁻¹)", "Width of the smooth k-window taper at the interval edges. A larger taper reduces sharp-edge artifacts while reducing effective k support."],
+        ] as const).map(([field, label, help]) => <label key={field} data-transform-field={field}><span>{label}<SectionHelp label={`Fit ${label}`}>{help}</SectionHelp></span><input aria-label={label} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
+        <label data-transform-field="window"><span>k window<SectionHelp label="Fit k window">Window shape applied before the Fourier transform. It balances Fourier peak width and ringing; use consistent windows when comparing fits.</SectionHelp></span><select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
       </div>
-      <div className={styles.weights} role="group" aria-label="Fit k-weight"><span>Fit k-weight</span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
+      <div className={styles.weights} role="group" aria-label="Fit k-weight" data-transform-field="kweight"><span>Fit k-weight<SectionHelp label="Fit k-weight">Multiply χ(k) by k to each selected power before fitting. Higher weights emphasize high-k oscillations. Multiple weights constrain one model without creating independent data.</SectionHelp></span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>
+      <div className={styles.toolbar}>
+        <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
+      </div>
     </FittingSection>
+    {transformMenu && <AthenaContextMenu label="Fit range & transform actions" anchor={transformMenu.anchor} returnFocus={transformMenu.trigger} onClose={() => setTransformMenu(null)}
+      items={[
+        ...(transformMenu.field ? [{ id: "field", label: `Apply ${transformLabels[transformMenu.field]} to marked groups`,
+          disabled: disabled || !projectId || !group || !groups?.some(item => item.marked && item.id !== group.id), onSelect: () => applyTransform(transformMenu.field) }] : []),
+        { id: "transform", label: "Apply fit range & transform to marked groups", separatorBefore: !!transformMenu.field,
+          disabled: disabled || !projectId || !group || !groups?.some(item => item.marked && item.id !== group.id), onSelect: () => applyTransform() },
+      ]} />}
+    {!!persisted?.history.length && <FittingSection title="Saved fit history" icon={History} summary={`${persisted.history.length}/10`} disabled={disabled}
+      help="Up to 10 fits per spectrum. Export the project before removing history you want to keep. Removal can be undone.">
+        <label><span>Saved fit history ({persisted.history.length}/10)<SectionHelp label="Saved fit selection">Choose a saved result to view. Choose Use this fit’s model to copy its parameters, paths and transform into the editor; selecting a result alone does not change the current model.</SectionHelp></span><select aria-label="Saved fit history" disabled={disabled} value={archive?.id ?? ""} onChange={event => setSelectedFitId(event.target.value)}>
+          {persisted.history.slice().reverse().map((item, i) => <option key={item.id} value={item.id}>Fit {persisted.history.length - i} · {new Date(item.created).toLocaleString()}{item.imported ? " · Imported" : ""}{item.input_sha256 !== persisted.current_input_sha256 ? " · Outdated input" : ""}</option>)}
+        </select></label>
+        <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
+          <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
+    </FittingSection>}
   </section>
 }

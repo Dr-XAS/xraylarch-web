@@ -41,6 +41,7 @@ const MAX_CIF_LENGTH = 2_000_000
 const MAX_SYMMETRY_OPERATIONS = 384
 const TOLERANCE = 1e-6
 type StructureSite = ArtemisStructure["sites"][number]
+type UnitCellSite = { site: StructureSite & { label?: string }; frac: CifVector }
 type SymmetryCoordinate = [number, number, number, number]
 type SymmetryOperation = [SymmetryCoordinate, SymmetryCoordinate, SymmetryCoordinate]
 const IDENTITY: SymmetryOperation = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]
@@ -61,6 +62,12 @@ export function cartesian(frac: CifVector, lattice: CifLattice): CifVector {
 function wrapped(value: number) {
   const result = ((value % 1) + 1) % 1
   return result < TOLERANCE || result > 1 - TOLERANCE ? 0 : result
+}
+function sameFractionalPosition(left: CifVector, right: CifVector) {
+  return left.every((value, axis) => {
+    const difference = Math.abs(wrapped(value) - wrapped(right[axis]))
+    return Math.min(difference, 1 - difference) < TOLERANCE
+  })
 }
 
 /** Conventional fractional-to-Cartesian basis, including oblique cells. */
@@ -167,12 +174,80 @@ function symmetryOperations(text: string): SymmetryOperation[] {
   }) : [IDENTITY]
 }
 
-function unitCellSites(structure: ArtemisStructure): { site: StructureSite; frac: CifVector }[] {
+/** P1 exports list the complete cell, even when the backend detects higher symmetry. */
+function explicitP1Sites(structure: ArtemisStructure): UnitCellSite[] | null {
+  const tokens = cifTokens(structure.cif)
+  const control = (token: { value: string; quoted: boolean }) => !token.quoted && /^(?:_|loop_$|stop_$|data_|save_)/i.test(token.value)
+  if (tokens.filter(token => !token.quoted && /^data_/i.test(token.value)).length !== 1) return null
+  let atoms: UnitCellSite[] | null = null
+  const number = (value: string) => {
+    // CIF reals can carry a standard uncertainty, including before an exponent.
+    if (!/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:\(\d+\))?(?:[eE][+-]?\d+)?$/.test(value)) throw new Error("The CIF contains invalid atom-site values.")
+    const result = Number(value.replace(/\(\d+\)/, ""))
+    if (!Number.isFinite(result)) throw new Error("The CIF contains invalid atom-site values.")
+    return result
+  }
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i].quoted || tokens[i].value.toLowerCase() !== "loop_") continue
+    const headers: string[] = []
+    while (tokens[i + 1] && !tokens[i + 1].quoted && tokens[i + 1].value.startsWith("_")) headers.push(tokens[++i].value.toLowerCase().replaceAll(".", "_"))
+    const values: string[] = []
+    while (tokens[i + 1] && !control(tokens[i + 1])) values.push(tokens[++i].value)
+    if (!headers.includes("_atom_site_fract_x")) continue
+    if (atoms || !headers.length || values.length % headers.length || new Set(headers).size !== headers.length) throw new Error("The CIF atom-site loop is incomplete or ambiguous.")
+    const columns = ["type_symbol", "fract_x", "fract_y", "fract_z"].map(name => headers.indexOf(`_atom_site_${name}`))
+    if (columns.some(column => column < 0)) return null
+    const occupancyColumn = headers.indexOf("_atom_site_occupancy")
+    const multiplicityColumn = headers.indexOf("_atom_site_symmetry_multiplicity")
+    const labelColumn = headers.indexOf("_atom_site_label")
+    atoms = []
+    for (let offset = 0; offset < values.length; offset += headers.length) {
+      const symbol = values[offset + columns[0]]
+      const element = symbol.match(/^([A-Z][a-z]?)(?:\d*[+-])?$/)?.[1]
+      if (!element) throw new Error("The CIF contains an invalid atom-site element.")
+      const frac = columns.slice(1).map(column => wrapped(number(values[offset + column]))) as CifVector
+      const occupancy = occupancyColumn < 0 ? 1 : number(values[offset + occupancyColumn])
+      if (occupancy <= 0 || (multiplicityColumn >= 0 && number(values[offset + multiplicityColumn]) !== 1)) return null
+      const label = labelColumn < 0 ? `${element}${atoms.length + 1}` : values[offset + labelColumn]
+      atoms.push({ site: { index: -1, element, species: symbol, occupancy, multiplicity: 1, wyckoff: "", x: frac[0], y: frac[1], z: frac[2], label }, frac })
+      if (atoms.length > MAX_CELL_ATOMS) throw new Error("Too many unit-cell atoms for the structure preview.")
+    }
+  }
+  if (!atoms?.length) return null
+  const sameSpecies = (left: StructureSite, right: StructureSite) => left.element === right.element && Math.abs(left.occupancy - right.occupancy) < TOLERANCE
+  // Counts alone cannot establish completeness: require every representative,
+  // species/occupancy population, and distinct periodic position to agree.
+  if (atoms.length !== structure.sites.reduce((sum, site) => sum + site.multiplicity, 0)) return null
+  for (const site of structure.sites) {
+    if (!atoms.some(atom => sameSpecies(atom.site, site) && sameFractionalPosition(atom.frac, [site.x, site.y, site.z]))) return null
+    const expected = structure.sites.filter(other => sameSpecies(other, site)).reduce((sum, other) => sum + other.multiplicity, 0)
+    if (atoms.filter(atom => sameSpecies(atom.site, site)).length !== expected) return null
+  }
+  for (const [index, atom] of atoms.entries()) {
+    if (atoms.slice(0, index).some(other => other.site.element === atom.site.element && sameFractionalPosition(other.frac, atom.frac))) return null
+    const candidates = structure.sites.filter(site => sameSpecies(atom.site, site))
+    const representative = candidates.find(site => sameFractionalPosition(atom.frac, [site.x, site.y, site.z]))
+    // A P1 CIF does not encode which of several same-element orbits a row belongs
+    // to. Keep its CIF label instead of inventing a crystallographic site index.
+    const site = representative ?? (candidates.length === 1 ? candidates[0] : undefined)
+    if (site) atom.site = { ...atom.site, index: site.index }
+  }
+  return atoms
+}
+
+function unitCellSites(structure: ArtemisStructure): UnitCellSite[] {
   if (structure.sites.length > MAX_CELL_ATOMS) throw new Error("Too many sites for the structure preview.")
   const operations = symmetryOperations(structure.cif)
-  const atoms: { site: StructureSite; frac: CifVector }[] = []
   for (const site of structure.sites) {
     if (![site.x, site.y, site.z, site.occupancy, site.multiplicity].every(Number.isFinite) || site.occupancy <= 0 || site.multiplicity < 1) throw new Error("The CIF contains invalid site coordinates or occupancies.")
+  }
+  const identityOnly = operations.every(operation => operation.every((row, axis) => row.slice(0, 3).every((value, column) => value === Number(axis === column)) && wrapped(row[3]) === 0))
+  if (identityOnly && structure.sites.some(site => site.multiplicity > 1)) {
+    const explicit = explicitP1Sites(structure)
+    if (explicit) return explicit
+  }
+  const atoms: UnitCellSite[] = []
+  for (const site of structure.sites) {
     const positions = new Map<string, CifVector>()
     for (const operation of operations) {
       const frac = operation.map(row => wrapped(row[0] * site.x + row[1] * site.y + row[2] * site.z + row[3])) as CifVector
@@ -198,7 +273,10 @@ export function buildCifGeometry(structure: ArtemisStructure, options: CifGeomet
     const sites = unitCellSites(structure)
     const selected = structure.sites.find(site => (options.siteIndex === undefined || site.index === options.siteIndex) && (!options.absorber || site.element === options.absorber))
     if (!selected) throw new Error("The selected absorber site is not available in this CIF.")
-    const centerFrac: CifVector = [wrapped(selected.x), wrapped(selected.y), wrapped(selected.z)]
+    const selectedFrac: CifVector = [wrapped(selected.x), wrapped(selected.y), wrapped(selected.z)]
+    // Anchor on the actual displayed row even if CIF rounding differs slightly
+    // from the backend representative, so shell views always retain the center.
+    const centerFrac = sites.find(({ site, frac }) => site.index === selected.index && site.element === selected.element && sameFractionalPosition(frac, selectedFrac))?.frac ?? selectedFrac
     geometry.center = cartesian(centerFrac, lattice)
     const cellRepeats = [0, 1, 2].map(axis => {
       const value = options.mode === "cell" ? options.cellRepeats?.[axis] : undefined
@@ -226,10 +304,10 @@ export function buildCifGeometry(structure: ArtemisStructure, options: CifGeomet
         geometry.cellEdges.push([subtract(cartesian(frac, lattice), geometry.center), subtract(cartesian(endpoint, lattice), geometry.center)])
       }
     }
-    const makeAtom = (site: StructureSite, frac: CifVector): CifViewerAtom => {
+    const makeAtom = (site: UnitCellSite["site"], frac: CifVector): CifViewerAtom => {
       const [x, y, z] = cartesian(subtract(frac, centerFrac), lattice)
       const distance = Math.hypot(x, y, z)
-      return { element: site.element, label: `${site.element}${site.index}`, siteIndex: site.index, occupancy: site.occupancy, x, y, z, distance, isAbsorber: site.index === selected.index && site.element === selected.element && distance < TOLERANCE }
+      return { element: site.element, label: site.label ?? `${site.element}${site.index}`, siteIndex: site.index, occupancy: site.occupancy, x, y, z, distance, isAbsorber: site.index === selected.index && site.element === selected.element && distance < TOLERANCE }
     }
     if (options.mode === "cell") {
       for (let a = 0; a < na; a++) for (let b = 0; b < nb; b++) for (let c = 0; c < nc; c++) {

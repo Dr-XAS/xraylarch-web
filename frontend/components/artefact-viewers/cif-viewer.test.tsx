@@ -272,7 +272,8 @@ describe("CifViewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show O atoms" }))
     expect(screen.getByRole("button", { name: "Show O atoms" })).toHaveAttribute("aria-pressed", "false")
     expect(screen.getByText("1 atom shown")).toBeVisible()
-    expect(instance.addStyle.mock.calls.map(([selection]) => selection)).toEqual([{ elem: "Cu" }])
+    expect(instance.addStyle.mock.calls.map(([selection]) => selection)).toEqual([{ elem: "Cu" }, { index: 0 }])
+    expect(screen.getByText("Center: Cu · site 3")).toBeVisible()
     expect(atoms(instance)).toHaveLength(2)
 
     instance.addStyle.mockClear()

@@ -20,6 +20,11 @@ _FIELDS = (
     "integration_guest_max_bytes", "integration_guest_max_groups",
     "integration_guest_max_exports", "integration_guest_ttl_seconds",
 )
+# Backend-only provider secrets that are not Settings fields. Each entry maps the
+# private-config key to the exact environment variable the backend reads. Values must
+# be single-line, printable, non-empty strings; nothing else about them is interpreted.
+_SECRET_FIELDS = {"mp_api_key": "MP_API_KEY"}
+_MAX_SECRET_LENGTH = 512
 _ERROR = "Invalid integration runtime configuration"
 
 
@@ -36,6 +41,8 @@ def backend_environment(path: Path, inherited: dict[str, str]) -> dict[str, str]
     environment = dict(inherited)
     for field in _FIELDS:
         environment.pop("XRAYLARCH_" + field.upper(), None)
+    for variable in _SECRET_FIELDS.values():
+        environment.pop(variable, None)
     try:
         descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     except FileNotFoundError:
@@ -51,8 +58,14 @@ def backend_environment(path: Path, inherited: dict[str, str]) -> dict[str, str]
         if len(raw) > 16384:
             raise ValueError(_ERROR)
         values = json.loads(raw, object_pairs_hook=_unique_object)
-        if not isinstance(values, dict) or set(values) - set(_FIELDS):
+        if not isinstance(values, dict) or set(values) - set(_FIELDS) - set(_SECRET_FIELDS):
             raise ValueError(_ERROR)
+        secrets = {key: values.pop(key) for key in list(values) if key in _SECRET_FIELDS}
+        for key, value in secrets.items():
+            if (not isinstance(value, str) or not value or len(value) > _MAX_SECRET_LENGTH
+                    or value != value.strip() or not value.isprintable()):
+                raise ValueError(_ERROR)
+            environment[_SECRET_FIELDS[key]] = value
         # Reuse the backend's gate hierarchy, strict boolean and TTL validation.
         Settings(data_root=Path(environment.get("XRAYLARCH_DATA_ROOT", ".")), **values)
         for key, value in values.items():

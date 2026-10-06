@@ -1,7 +1,7 @@
 "use client"
 
 import { SectionHelp } from "./section-help"
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import type { GLViewer, Label, Vector2 } from "3dmol"
 import { createCifRenderer } from "@/lib/cif-renderer"
 import { CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS, cifElementColor } from "@/lib/cif-viewer-style"
@@ -10,6 +10,7 @@ import type { FeffPathEquivalents } from "@/lib/feff-path-equivalents"
 import { AtomLegend } from "./atom-legend"
 import { LocalStructureControls } from "./local-structure-controls"
 import { StructureDisplayLegend } from "./structure-display-legend"
+import { ResizablePlotCard } from "./artefact-viewers/athena-plot-card"
 import structureStyles from "./artefact-viewers/cif-viewer.module.css"
 import pathStyles from "./artefact-viewers/feff-path-viewer.module.css"
 
@@ -87,6 +88,7 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
   legend?: ReactNode
 }) {
   const host = useRef<HTMLDivElement>(null)
+  const plotId = useId()
   const viewer = useRef<GLViewer | null>(null)
   const renderedContext = useRef<string | null>(null)
   const labelOffset = useRef<Vector2 | undefined>(undefined)
@@ -239,9 +241,11 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
       <h4>Local structure<SectionHelp label="FEFF local structure">Drag to rotate; scroll or pinch to zoom; hover for atom details. Bonds are inferred from distances. Colored arrows show the scattering sequence.</SectionHelp></h4>
       <button type="button" disabled={!ready || !!error || !atoms.length} onClick={() => { viewer.current?.zoomTo(); viewer.current?.render() }}>Reset view</button>
     </div>
+    <ResizablePlotCard className={structureStyles.resizeCard} storageKey="artemis.feff.structure.height.v1"
+      defaultHeight={310} minHeight={250} plotSelector="[data-feff-plot]" resizeLabel="Resize FEFF structure height" controlsId={plotId}>
     {structureControls}
     <div className={`${structureStyles.canvas} ${pathStyles.sceneCanvas}`}>
-      <div ref={host} className={`${structureStyles.surface} ${pathStyles.sceneSurface}`} role="img" aria-label={imageDescription} />
+      <div id={plotId} data-feff-plot ref={host} className={`${structureStyles.surface} ${pathStyles.sceneSurface}`} role="img" aria-label={imageDescription} />
       {ready && !error && elements.length > 0 && <div className={pathStyles.cornerLegend}>
         <AtomLegend elements={elements} className={pathStyles.atomLegend} ariaLabel="Visible FEFF elements" />
         <StructureDisplayLegend bonds={bonds} onBondsChange={setBonds} />
@@ -255,8 +259,9 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
       radiusAriaLabel="FEFF display radius" radiusDisabled={!contextLabel || !showContext}
       bonds={bonds} onBondsChange={setBonds} showBondsControl={false} atomCount={atoms.length}>
       {contextLabel && <span>{contextLabel}</span>}
-      <label><input type="checkbox" checked={labels} onChange={event => setLabels(event.target.checked)} />Labels</label>
-      {contextLabel && <label><input type="checkbox" checked={showContext} onChange={event => setShowContext(event.target.checked)} />Local structure</label>}
+      <label><input type="checkbox" aria-label="Labels" checked={labels} onChange={event => setLabels(event.target.checked)} />Labels<SectionHelp label="FEFF atom labels">Show element and atom identifiers on the scattering path. Hide labels to reduce overlap; hover still provides atom details.</SectionHelp></label>
+      {contextLabel && <label><input type="checkbox" aria-label="Local structure" checked={showContext} onChange={event => setShowContext(event.target.checked)} />Local structure<SectionHelp label="Show FEFF local structure">Show surrounding atoms from the verified FEFF input or matching CIF. The selected scattering paths remain visible when the context is hidden.</SectionHelp></label>}
     </LocalStructureControls>
+    </ResizablePlotCard>
   </section>
 }

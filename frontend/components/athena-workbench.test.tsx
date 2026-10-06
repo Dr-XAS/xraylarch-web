@@ -196,7 +196,7 @@ describe("integration mode", () => {
     await waitForIntegratedProject()
     expect(screen.queryByRole("button", { name: /^Import data$/i })).not.toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Mark Foil scan" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: /edit absorber and edge/i })).toBeDisabled()
+    expect(screen.queryByRole("button", { name: /edit absorber and edge/i })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /plot shortcuts/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /edit group information/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Edit" }))
@@ -211,7 +211,7 @@ describe("integration mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Group" }))
     expect(screen.getByRole("button", { name: /mark \/ freeze groups/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /processing settings…/i })).toBeDisabled()
-    expect(screen.getAllByRole("button", { name: /edit absorber and edge/i }).every(button => button.hasAttribute("disabled"))).toBe(true)
+    expect(screen.queryByRole("button", { name: /edit absorber and edge/i })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /file metadata/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /duplicate current group/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /remove current group/i })).toBeDisabled()
@@ -620,25 +620,6 @@ async function enableCopperPolicy() {
 }
 
 function identityBar() { return screen.getByRole("region", { name: "Current absorber and edge" }) }
-async function openIdentityDialog() {
-  fireEvent.click(within(identityBar()).getByRole("button", { name: "Edit absorber and edge…" }))
-  return screen.findByRole("dialog", { name: "Edit absorber and edge" })
-}
-async function chooseIronIdentity(dialog: HTMLElement) {
-  const view = within(dialog)
-  fireEvent.change(view.getByRole("textbox", { name: "Element symbol" }), { target: { value: "fe" } })
-  api.mockResolvedValueOnce({ element: "Fe", edges: [{ edge: "K", energy: 7112 }, { edge: "L3", energy: 706.8 }] })
-  fireEvent.click(view.getByRole("button", { name: "Look up edges" }))
-  await view.findByRole("option", { name: "K · 7112 eV" })
-  fireEvent.change(view.getByRole("combobox", { name: "Absorption edge" }), { target: { value: "K" } })
-}
-function identityResponse(project: AthenaProject, id: string) {
-  const saved = project.groups.find(g => g.id === id)!
-  return nextProject(project, { [id]: {
-    source: { ...saved.source, edge_identity: { element: "Fe", edge: "K", origin: "selected" } },
-    result: saved.result ? { ...saved.result, effective: { ...saved.result.effective, element: "Fe", edge: "K" } } : null,
-  } })
-}
 
 describe("AthenaWorkbench EXAFS fitting", () => {
   it("accepts saved CIF revisions only for the current project without changing the active spectrum", async () => {
@@ -709,7 +690,7 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(screen.getByRole("combobox", { name: "Sort viewers" })).toHaveValue("custom")
     expect(controls.getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "false")
     expect(document.querySelector('[data-viewer-id="wavelet"]')).toHaveAttribute("hidden")
-    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).not.toBeChecked()
     expect(api).toHaveBeenCalledTimes(initialCalls)
     expect(JSON.parse(localStorage.getItem("athena.viewer-order.v1")!)).toEqual({ sort: "custom", order: expected })
     cleanup()
@@ -756,6 +737,23 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(document.querySelector('[data-viewer-id="single"]')).toHaveAttribute("hidden")
   })
 
+  it("keeps a viewer hidden when it is toggled as soon as the loaded project is shown", async () => {
+    const project = projectFixture()
+    localStorage.setItem(storageKey, project.id)
+    api.mockResolvedValueOnce(project)
+    render(<AthenaWorkbench />)
+    let clicked = false
+    // waitFor checks from a MutationObserver, right after the commit and before
+    // passive effects run, so this toggles the viewer before any effect can catch
+    // up. Master's CI hit the same gap under load.
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Import data" })).toBeEnabled()
+      if (!clicked) { clicked = true; within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" }).click() }
+    })
+    await waitFor(() => expect(within(screen.getByRole("group", { name: "Choose viewers" })).getByRole("button", { name: "Wavelet plotter" })).toHaveAttribute("aria-pressed", "false"))
+    expect(document.querySelector('[data-viewer-id="wavelet"]')).toHaveAttribute("hidden")
+  })
+
   it("hides and collapses spectrum viewers independently while retaining their controls", async () => {
     await openSaved()
     const controls = within(screen.getByRole("group", { name: "Choose viewers" }))
@@ -766,7 +764,7 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(document.querySelector('[data-viewer-id="multiple"]')).not.toHaveAttribute("hidden")
     expect(multipleViewer().getByTestId("athena-plot")).toBeVisible()
     fireEvent.click(controls.getByRole("button", { name: "Single spectrum viewer" }))
-    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).not.toBeChecked()
     expect(plotProps().space).toBe("k")
 
     fireEvent.click(singleViewer().getByRole("button", { name: "Collapse Single spectrum viewer" }))
@@ -774,7 +772,7 @@ describe("AthenaWorkbench viewer selection", () => {
     expect(singleViewer().getByTestId("athena-plot")).not.toBeVisible()
     expect(multipleViewer().getByTestId("athena-plot")).toBeVisible()
     fireEvent.click(singleViewer().getByRole("button", { name: "Expand Single spectrum viewer" }))
-    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).toBeChecked()
+    expect(singleViewer().getByRole("checkbox", { name: "Show legend" })).not.toBeChecked()
     fireEvent.click(multipleViewer().getByRole("button", { name: "Collapse Multiple spectra viewer" }))
     expect(singleViewer().getByTestId("athena-plot")).toBeVisible()
     expect(multipleViewer().getByTestId("athena-plot")).not.toBeVisible()
@@ -817,15 +815,17 @@ describe("AthenaWorkbench branding", () => {
     await openSaved()
 
     expect(screen.getByRole("heading", { level: 1, name: "Larch-Web" })).toBeVisible()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
-    fireEvent.focus(screen.getByRole("button", { name: "About Larch-Web" }))
+    expect(screen.getByRole("checkbox", { name: "Show instruction" })).not.toBeChecked()
     const xraylarch = screen.getByRole("link", { name: "Xraylarch" })
     const demeter = screen.getByRole("link", { name: "Demeter" })
     expect(xraylarch).toHaveAttribute("href", "https://xraypy.github.io/xraylarch/")
     expect(demeter).toHaveAttribute("href", "https://bruceravel.github.io/demeter/")
     expect(xraylarch).toHaveAttribute("target", "_blank")
     expect(demeter).toHaveAttribute("target", "_blank")
-    expect(xraylarch.closest('[role="tooltip"]')).toHaveTextContent("powered by Xraylarch, inspired by Demeter, and developed by the Dr. XAS team.")
+    expect(xraylarch).toBeVisible()
+    expect(demeter).toBeVisible()
+    expect(document.querySelector(".ath-brand-credits")).toHaveTextContent("powered by Xraylarch, inspired by Demeter, and developed by the Dr. XAS team.")
+    expect(xraylarch.closest(".ath-brand")).toContainElement(screen.getByRole("heading", { level: 1, name: "Larch-Web" }))
   })
 
   it("omits the extra workspace copy while keeping the example loader and viewer controls", async () => {
@@ -2530,169 +2530,28 @@ describe("AthenaWorkbench native context actions", () => {
 })
 
 describe("AthenaWorkbench absorber and edge identity", () => {
-  it("displays saved native identity before effective fallback or Unknown, without lookups or activating import policy", async () => {
+  it("displays saved identity or effective fallback without manual selection, lookups or project mutations", async () => {
     const initial = projectFixture()
     initial.groups[0].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
     initial.groups[0].result!.effective = { ...initial.groups[0].result!.effective, element: "Fe", edge: "K" }
     initial.groups[1].result!.effective = { ...initial.groups[1].result!.effective, element: "Zn", edge: "L3" }
+    initial.groups[1].frozen = true
     await openSaved(initial)
     expect(identityBar()).toHaveTextContent("Cu K · native")
+    expect(within(identityBar()).queryByRole("button")).not.toBeInTheDocument()
+    openGroupMenu()
+    expect(within(screen.getByRole("navigation", { name: /main menu/i })).queryByRole("button", { name: "Edit absorber and edge…" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Group" }))
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
     expectPolicyMenuState(false)
     selectGroup("Sample scan")
     expect(identityBar()).toHaveTextContent("Zn L3")
+    expect(within(identityBar()).queryByRole("button")).not.toBeInTheDocument()
     selectGroup("Oxide standard")
     expect(identityBar()).toHaveTextContent("Unknown")
-    const dialog = await openIdentityDialog()
-    expect(within(dialog).getByRole("textbox", { name: "Element symbol" })).toHaveValue("")
-    expect(within(dialog).getByRole("button", { name: "Save identity" })).toBeDisabled()
-    expect(within(dialog).queryByRole("spinbutton")).not.toBeInTheDocument()
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
     expect(api.mock.calls).toEqual([[`/projects/${initial.id}`]])
-    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
-  })
-
-  it("saves current-group identity after pending recipes, preserving arrays, ties, and tab enforcement", async () => {
-    sessionStorage.setItem(edgePolicyStorageKey, JSON.stringify(copperPolicy))
-    const initial = projectFixture()
-    initial.groups[0].parameters.energy_shift = 3
-    initial.groups[0].reference_id = "unused"
-    initial.groups[0].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
-    const project = await openSaved(initial)
-    selectGroup("Sample scan"); editNumber(/^Rbkg/, 2.8)
-    selectGroup("Foil scan"); editNumber(/^Rbkg/, 2.3); editNumber(/^E₀/, 8990); editNumber(/^Energy shift/, 9)
-    const applied = await finishParameterDrafts(project, [
-      { groupId: "sample", options: { rbkg: 2.8 } },
-      { groupId: "foil", options: { e0: 8990, rbkg: 2.3, energy_shift: 9 } },
-    ])
-    const dialog = await openIdentityDialog()
-    await chooseIronIdentity(dialog) // 7112 eV is intentionally outside the saved Cu scan.
-    expect(api.mock.calls.at(-1)).toEqual(["/edges?element=Fe"])
-    const next = identityResponse(applied, "foil")
-    api.mockResolvedValueOnce(next)
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save identity" }))
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api.mock.calls.at(-1)).toEqual([`/projects/${project.id}/command`, {
-      version: applied.version, action: "edge_identity", group_ids: ["foil"], options: { element: "Fe", edge: "K" },
-    }])
-    expect(identityBar()).toHaveTextContent("Fe K · selected")
-    expect(screen.getByRole("status")).toHaveTextContent("Saving absorber and edge · complete")
-    expect(plotProps().active?.parameters).toEqual(applied.groups[0].parameters)
-    expect(plotProps().active?.result?.arrays).toBe(project.groups[0].result!.arrays)
-    expect(plotProps().active?.reference_id).toBe("unused")
-    expect(screen.getByRole("spinbutton", { name: /^E₀/ })).toHaveValue(8990)
-    expect(screen.getByRole("spinbutton", { name: /^Energy shift/ })).toHaveValue(9)
-    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
-    selectGroup("Sample scan")
-    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.8)
-    selectGroup("Foil scan")
-    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
-    expect(sessionStorage.getItem(edgePolicyStorageKey)).toBe(JSON.stringify(copperPolicy))
-    expectPolicyMenuState(true)
-    expect(api).toHaveBeenCalledTimes(5)
-  })
-
-  it.each(["chi", "difference"] as const)("allows %s identity metadata even though E₀ selection is unsupported", async kind => {
-    const initial = projectFixture()
-    if (kind === "chi") initial.groups[0].data_type = "chi"
-    else initial.groups[0].is_difference = true
-    const project = await openSaved(initial)
-    if (kind === "difference") expect(screen.getByRole("button", { name: /Foil scan Difference \(E\)/ })).toBeEnabled()
-    const e0 = await openE0Dialog()
-    expect(within(e0).getByRole("button", { name: "Apply E₀" })).toBeDisabled()
-    fireEvent.click(within(e0).getByRole("button", { name: "Cancel" }))
-    openGroupMenu()
-    fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Edit absorber and edge…" }))
-    const dialog = await screen.findByRole("dialog", { name: "Edit absorber and edge" })
-    await chooseIronIdentity(dialog)
-    api.mockResolvedValueOnce(identityResponse(project, "foil"))
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save identity" }))
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: project.version, action: "edge_identity", group_ids: ["foil"], options: { element: "Fe", edge: "K" } })
-    expect(identityBar()).toHaveTextContent("Fe K · selected")
-    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
-    expect(plotProps().active?.data_type).toBe(project.groups[0].data_type)
-  })
-
-  it("shows frozen identity but disables both edit entry points and enables them for the next writable scan", async () => {
-    const initial = projectFixture()
-    initial.groups[1].frozen = true
-    initial.groups[1].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
-    await openSaved(initial)
-    selectGroup("Sample scan")
-    expect(identityBar()).toHaveTextContent("Cu K · native")
-    expect(within(identityBar()).getByRole("button", { name: "Edit absorber and edge…" })).toBeDisabled()
-    openGroupMenu()
-    const menuEdit = within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Edit absorber and edge…" })
-    expect(menuEdit).toBeDisabled()
-    fireEvent.click(menuEdit)
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
-    selectGroup("Oxide standard")
-    expect(within(identityBar()).getByRole("button", { name: "Edit absorber and edge…" })).toBeEnabled()
-    expect(api).toHaveBeenCalledTimes(1)
-  })
-
-  it("locks pending saves and retries a backend failure with the same accepted version and catalog selection", async () => {
-    const project = await openSaved()
-    editNumber(/^Rbkg/, 2.3)
-    const applied = await finishParameterDrafts(project, [{ groupId: "foil", options: { rbkg: 2.3 } }])
-    const saved = plotProps().active
-    const dialog = await openIdentityDialog()
-    const view = within(dialog)
-    await chooseIronIdentity(dialog)
-    const pending = deferred<AthenaProject>()
-    api.mockReturnValueOnce(pending.promise)
-    fireEvent.click(view.getByRole("button", { name: "Save identity" }))
-    expect(view.getByRole("textbox", { name: "Element symbol" })).toBeDisabled()
-    expect(view.getByRole("combobox", { name: "Absorption edge" })).toBeDisabled()
-    expect(view.getByRole("button", { name: "Cancel" })).toBeDisabled()
-    expect(view.getByRole("button", { name: "Saving identity…" })).toBeDisabled()
-    fireEvent.click(view.getByRole("button", { name: "Close dialog" }))
-    fireEvent(dialog, new Event("cancel", { cancelable: true }))
-    selectGroup("Sample scan") // Busy workbench controls must also retain the target.
-    expect(plotProps().active?.id).toBe("foil")
-    expect(dialog).toBeInTheDocument()
-    await act(async () => pending.reject(new Error("Identity save failed; retry this group")))
-    expect(view.getByRole("alert")).toHaveTextContent("Identity save failed; retry this group")
-    expect(plotProps().active).toBe(saved)
-    expect(identityBar()).toHaveTextContent("Unknown")
-    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
-    expect(view.getByRole("textbox", { name: "Element symbol" })).toHaveValue("Fe")
-    expect(view.getByRole("combobox", { name: "Absorption edge" })).toHaveValue("K")
-    api.mockResolvedValueOnce(identityResponse(applied, "foil"))
-    fireEvent.click(view.getByRole("button", { name: "Save identity" }))
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api.mock.calls[4]).toEqual(api.mock.calls[3])
-    expect(api).toHaveBeenCalledTimes(5)
-    expect(identityBar()).toHaveTextContent("Fe K · selected")
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
-    expect(screen.getByRole("spinbutton", { name: /^Rbkg/ })).toHaveValue(2.3)
-  })
-
-  it("invalidates old catalog responses and editor choices when the active scan changes", async () => {
-    const initial = projectFixture()
-    initial.groups[0].source.edge_identity = { element: "Cu", edge: "K", origin: "native" }
-    initial.groups[1].source.edge_identity = { element: "Fe", edge: "L3", origin: "native" }
-    const project = await openSaved(initial)
-    let dialog = await openIdentityDialog()
-    const pending = deferred<unknown>()
-    api.mockReturnValueOnce(pending.promise)
-    fireEvent.click(within(dialog).getByRole("button", { name: "Look up edges" }))
-    // Simulate an external active-group change while the native dialog is open.
-    selectGroup("Sample scan")
-    dialog = await screen.findByRole("dialog", { name: "Edit absorber and edge" })
-    expect(within(dialog).getByRole("textbox", { name: "Element symbol" })).toHaveValue("Fe")
-    expect(within(dialog).getByRole("button", { name: "Save identity" })).toBeDisabled()
-    await act(async () => pending.resolve({ element: "Cu", edges: [{ edge: "K", energy: 8979 }] }))
-    expect(within(dialog).queryByRole("option", { name: "K · 8979 eV" })).not.toBeInTheDocument()
-    await chooseIronIdentity(dialog)
-    api.mockResolvedValueOnce(identityResponse(project, "sample"))
-    fireEvent.click(within(dialog).getByRole("button", { name: "Save identity" }))
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: project.version, action: "edge_identity", group_ids: ["sample"], options: { element: "Fe", edge: "K" } })
-    selectGroup("Foil scan")
-    expect(identityBar()).toHaveTextContent("Cu K · native")
+    expect(plotProps().active).toBe(initial.groups[2])
   })
 
   it.each([
@@ -5710,9 +5569,10 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
   })
 
   it("shows an energy fit with its legend and without the Fourier view's Magnitude and Window controls", async () => {
-    // The LCF fit arrived as three unnamed curves (the single viewer's legend
-    // is off for spectra), under Magnitude/Window controls left from R space.
+    // Fit legends stay enabled even when the spectrum legend was turned off.
     const project = await openSaved()
+    fireEvent.click(singleViewer().getByRole("checkbox", { name: "Show legend" }))
+    expect(plotProps("current").showLegend).toBe(false)
     fireEvent.click(singleViewer().getByRole("tab", { name: /Fourier/ }))
     expect(singleViewer().getByRole("combobox", { name: "Complex component" })).toBeVisible()
     const dialog = await openTool("Analysis", /linear combination fitting/i)
@@ -6168,9 +6028,9 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
 
     expect(singleViewer().getByRole('radio', { name: 'μ(E) · raw' })).toBeChecked()
     expect(multipleViewer().getByRole('radio', { name: 'μ(E) · flattened' })).toBeChecked()
-    expect(singleViewer().getByRole('checkbox', { name: 'Show legend' })).not.toBeChecked()
+    expect(singleViewer().getByRole('checkbox', { name: 'Show legend' })).toBeChecked()
     expect(multipleViewer().getByRole('checkbox', { name: 'Show legend' })).toBeChecked()
-    expect(plotProps('current')).toMatchObject({ plotScope: 'current', showLegend: false, energyMode: 'mu',
+    expect(plotProps('current')).toMatchObject({ plotScope: 'current', showLegend: true, energyMode: 'mu',
       background: count > 0, preEdge: count > 0, postEdge: count > 0 })
     expect(plotProps()).toMatchObject({ plotScope: 'selected', showLegend: true, energyMode: 'flat',
       background: false, preEdge: false, postEdge: false })
@@ -6197,14 +6057,14 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(within(currentSpectrum()!).getByText('Unused reference')).toBeVisible()
     const legend = singleViewer().getByRole('checkbox', { name: 'Show legend' })
     expect(legend).toBeEnabled()
-    expect(legend).not.toBeChecked()
-    fireEvent.click(legend)
-    expect(plotProps('current').showLegend).toBe(true)
-    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Show legend' }))
-    expect(plotProps().showLegend).toBe(false)
-    expect(plotProps('current').showLegend).toBe(true)
+    expect(legend).toBeChecked()
     fireEvent.click(legend)
     expect(plotProps('current').showLegend).toBe(false)
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Show legend' }))
+    expect(plotProps().showLegend).toBe(false)
+    expect(plotProps('current').showLegend).toBe(false)
+    fireEvent.click(legend)
+    expect(plotProps('current').showLegend).toBe(true)
     expect(plotProps().showLegend).toBe(false)
   })
 
@@ -6230,7 +6090,7 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: /import spectra/i })).not.toBeInTheDocument())
     expect(plotProps('current').groups).toEqual([afterSecond.groups.at(-1)])
     expect(plotProps().groups).toEqual(afterSecond.groups.filter(g => g.marked))
-    expect(plotProps('current')).toMatchObject({ energyMode: 'mu', showLegend: false })
+    expect(plotProps('current')).toMatchObject({ energyMode: 'mu', showLegend: true })
     expect(plotProps()).toMatchObject({ energyMode: 'flat', showLegend: true })
   })
 
@@ -6604,12 +6464,21 @@ describe("Instruction visibility", () => {
     await openSaved()
     const toggle = screen.getByRole("checkbox", { name: "Show instruction" })
     expect(toggle).not.toBeChecked()
-    expect(screen.queryByRole("button", { name: "About Larch-Web" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "About Rbkg" })).not.toBeInTheDocument()
+    expect(document.querySelector(".ath-brand-credits")).toBeVisible()
     const callsBefore = api.mock.calls.length
     fireEvent.click(toggle)
-    expect(screen.getByRole("button", { name: "About Larch-Web" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "About Rbkg" })).toBeVisible()
+    expect(document.querySelector(".ath-brand-credits")).toBeVisible()
+    const rbkg = screen.getByRole("spinbutton", { name: "Rbkg Å" })
+    const valueBefore = (rbkg as HTMLInputElement).value
+    fireEvent.focus(screen.getByRole("button", { name: "About Rbkg" }))
+    expect(screen.getByRole("tooltip")).toHaveTextContent("AUTOBK minimizes background")
     fireEvent.click(toggle)
-    expect(screen.queryByRole("button", { name: "About Larch-Web" })).not.toBeInTheDocument()
+    expect(document.querySelector(".ath-brand-credits")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "About Rbkg" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    expect((rbkg as HTMLInputElement).value).toBe(valueBefore)
     expect(api.mock.calls.length).toBe(callsBefore)
   })
 })

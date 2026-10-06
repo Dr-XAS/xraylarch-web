@@ -77,7 +77,7 @@ export function AthenaParameterReport({ project, initialScope, close, onBusyChan
       <label className="ath-field"><span>Report groups <SectionHelp label="Parameter report">The XLS report contains all 28 parameter columns. Processed values take precedence over saved settings. Main-pane edits process automatically; wait for processing to finish before exporting. Unused or unavailable settings are identified in the report notes.</SectionHelp></span><select value={scope} disabled={downloading} onChange={e => setScope(e.target.value as Scope)}>
         <option value="all">All groups</option><option value="marked">Marked groups</option>
       </select></label>
-      <label className="ath-field"><span>Preview section</span><select value={section} onChange={e => setSection(e.target.value)}>
+      <label className="ath-field"><span>Preview section <SectionHelp label="Preview section">Choose which family of processing parameters to inspect in the preview. The downloaded report still contains all 28 parameter columns.</SectionHelp></span><select value={section} onChange={e => setSection(e.target.value)}>
         {(report?.sections ?? [{ key: 'identity', label: 'Group information' }]).map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
         <option value="all">All parameter columns</option>
       </select></label>

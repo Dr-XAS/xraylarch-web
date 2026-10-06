@@ -79,10 +79,15 @@ a missing or failing Slack post never affects the saved report.
 The backend-only integration launcher additionally reads the optional private
 regular file `/local/apps/xraylarch-web/config/integration.json`, owned by the
 service user with no group/other permissions. Its explicit allowlist contains
-the three integration gates, issuer, audience, HMAC secret and draft TTL. Values
+the three integration gates, issuer, audience, HMAC secret, draft TTL, the quota
+settings, and the optional provider secret `mp_api_key`, which the launcher
+exports to the backend as `MP_API_KEY` for Materials Project CIF search. Values
 are validated and passed only in the backend environment, never screen command
 arguments, frontend/build environments or release metadata. Missing configuration
-preserves integration-off behavior; invalid configuration blocks startup.
+preserves integration-off behavior; invalid configuration blocks startup. Adding
+or changing a value takes effect only when the backend is next launched by the
+deployer (a `deploy` retry of the active SHA restarts both processes under its
+identity contract); nothing here hot-reloads.
 Rollback releases predating this launcher use their original clean startup.
 
 The web backend release CI job builds a fresh Python 3.12 environment with the

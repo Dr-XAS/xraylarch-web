@@ -6,6 +6,7 @@ import type { ColumnMapping } from "@/lib/athena-import"
 import type { InspectionResponse } from "@/lib/contracts"
 import { numeratorRange } from "@/lib/athena-import"
 import { AthenaColumnSelection } from "./athena-column-selection"
+import { InstructionVisibility } from "./section-help"
 
 vi.mock("./athena-import-preview", () => ({ AthenaImportPreview: () => <div /> }))
 vi.mock("@/lib/athena", async importOriginal => ({
@@ -26,6 +27,23 @@ function Harness({ busy = false, columnUnits, inspection = {}, remaining = 1, in
     chooseAnother={() => {}} importCurrent={() => {}} replacement={replacement} /><output data-testid="mapping">{JSON.stringify(mapping)}</output></>
 }
 function accepted() { return JSON.parse(screen.getByTestId("mapping").textContent!) }
+it('shows field instructions on demand without changing column selections or field names', () => {
+  const { rerender } = render(<InstructionVisibility.Provider value={false}><Harness /></InstructionVisibility.Provider>)
+  expect(screen.queryByRole('button', { name: 'About Multiplicative constant' })).not.toBeInTheDocument()
+  const before = accepted()
+  rerender(<InstructionVisibility.Provider value><Harness /></InstructionVisibility.Provider>)
+  const help = screen.getByRole('button', { name: 'About Multiplicative constant' })
+  fireEvent.focus(help)
+  expect(screen.getByRole('tooltip')).toHaveTextContent('Scale the calculated absorption signal')
+  expect(screen.getByLabelText('Multiplicative constant')).toHaveValue(1)
+  expect(screen.getByLabelText('Input already normalized')).not.toBeChecked()
+  fireEvent.click(screen.getByRole('button', { name: 'About Input already normalized' }))
+  expect(screen.getByLabelText('Input already normalized')).not.toBeChecked()
+  expect(accepted()).toEqual(before)
+  rerender(<InstructionVisibility.Provider value={false}><Harness /></InstructionVisibility.Provider>)
+  expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'About Multiplicative constant' })).not.toBeInTheDocument()
+})
 it('keeps normalization independent of EXAFS processing for the same absorption input format', () => {
   render(<Harness />)
   expect(screen.getByLabelText('Input format')).toHaveValue('mu')

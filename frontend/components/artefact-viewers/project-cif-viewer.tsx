@@ -1,7 +1,8 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useMemo } from "react"
-import { structureLabel, type ArtemisStructureAttachment } from "@/lib/artemis-structures"
+import { attachmentName, structureLabel, type ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { CifViewer } from "./cif-viewer"
 import { ViewerPanel } from "./viewer-panel"
 
@@ -21,10 +22,10 @@ export function ProjectCifViewer({ attachments = [], selectedId, selectedSite, o
 
   return <div className="ath-project-cif-viewer">
     <CifViewer key={`${selected.id}:${selected.sha256}`} structure={structure} selectedSite={selected.id === selectedId && structure.sites.some(site => site.index === selectedSite) ? selectedSite : undefined} onSiteChange={site => onSelect(selected.id, site)} collapsible structureControls={
-      <label className="ath-cif-selection">Project CIF
+      <label className="ath-cif-selection"><span>Project CIF<SectionHelp label="Viewed CIF structure">Choose an attached structure for the 3D viewer. The listed names identify the saved CIF snapshots; changing the viewed structure does not replace any attachment.</SectionHelp></span>
         <select aria-label="Viewed CIF structure" value={selected.id} onChange={event => onSelect(event.target.value)}>
           {attachments.map(attachment => <option key={attachment.id} value={attachment.id}>
-            {attachment.structure.mineral || attachment.structure.formula} · {structureLabel(attachment.structure)}
+            {attachmentName(attachment)} · {structureLabel(attachment.structure)}
           </option>)}
         </select>
       </label>

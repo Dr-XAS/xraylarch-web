@@ -62,8 +62,8 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
   }) : []
   return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" viewerId="fit" className={styles.viewer} help={<>Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model.{visible && <> {space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {plottedWeight}; fit weights {visible.transform.kweight.join(", ")}.</>}</>} actions={<div className={styles.resultActions}>
-    <div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>
-    {visible && space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}</div>}
+    <div className={styles.choice} role="group" aria-label="Fit plot space">{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}<SectionHelp label="Fit plot space">Compare the saved data and model in k space or after the Fourier transform in R space. Changing the plot space does not repeat the fit.</SectionHelp></div>
+    {visible && space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}<SectionHelp label="R plot component">Magnitude shows |χ(R)|; Real and Imaginary show its signed complex components. Use the signed components to inspect how paths interfere before their complex sum is converted to magnitude.</SectionHelp></div>}
   </div>}>
     <ResizablePlotCard storageKey="artemis.fit.height.v1" defaultHeight={380} plotSelector="#artemis-fit-plot" resizeLabel="Resize EXAFS fit plot height" controlsId="artemis-fit-plot">
       {visible?.archive && <div className={styles.message} role="status">
@@ -90,9 +90,9 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       </div>
       {visible && <ViewerDisplayControls label="Fit plot display options">
         <ViewerControlGroup>
-          <ViewerToggle label="Offset plot" checked={offsetPlot} onChange={setOffsetPlot} />
+          <ViewerToggle label="Offset plot" help="Separate the residual and individual paths vertically. Data and model keep the same baseline; offsets only change the display." checked={offsetPlot} onChange={setOffsetPlot} />
           {offsetPlot && <>
-            <ViewerControlField label="Spacing"><input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
+            <ViewerControlField label="Spacing" help="Set the nonnegative vertical distance between curves, or use Auto to restore automatic spacing. This does not change the fitted amplitudes."><input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
               onChange={event => setOffsetDraft({ result: plotted!, space, component, value: event.target.value })} /></ViewerControlField>
             <button type="button" onClick={() => setOffsetDraft(null)} title="Use automatic spacing for the visible curves">Auto</button>
           </>}

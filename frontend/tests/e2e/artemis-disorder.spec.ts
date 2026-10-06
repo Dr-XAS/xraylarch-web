@@ -8,7 +8,7 @@ test("inserts, saves, reopens and fits Einstein and Debye path models", async ({
   await page.goto("/")
   await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
-  await page.getByRole("button", { name: "Expand all path details", exact: true }).click()
+  await expect(page.getByLabel("Path 1 σ² (Å²)", { exact: true })).toBeVisible()
   for (const index of [2, 3, 4]) await page.getByLabel(`Include path ${index}`, { exact: true }).uncheck()
   await page.getByLabel("R max (Å)", { exact: true }).fill("2.5")
   await page.getByText("Insert Debye–Waller factor", { exact: true }).first().click()

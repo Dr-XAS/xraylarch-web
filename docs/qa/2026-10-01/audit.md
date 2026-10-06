@@ -17,7 +17,7 @@ Tested deployment: `881d526f62d72f05f6fdaa8bfb879baee89acd55`. This is the stand
 | XAS-QA-005 | P3 | Artemis rejects valid decimal minimum-width k/R windows because of floating-point rounding. | [Reproduction](bugs/bug-artemis-decimal-minimum-ranges.md) | Fixed, PR #11 |
 | XAS-QA-006 | P4 | FEFF control reads "Exclude unmatched paths paths". | [Reproduction](bugs/bug-artemis-unmatched-path-label.md) · [Screenshot](screenshots/ui-artemis-loaded.png) | Fixed, PR #12 |
 
-P2 indicates a normal workflow impediment affecting a scientific input; P3 indicates a narrower correctness/usability defect; P4 is cosmetic. All six were fixed in PRs #10–#12, merged October 5, 2026, and not yet deployed. Reports include expected and observed behavior, reproduction steps and evidence. The user requested project-memory storage instead of external issue submissions. GitHub Issues is disabled.
+P2 indicates a normal workflow impediment affecting a scientific input; P3 indicates a narrower correctness/usability defect; P4 is cosmetic. All six were fixed in PRs #10–#12, merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). Reports include expected and observed behavior, reproduction steps and evidence. The user requested project-memory storage instead of external issue submissions. GitHub Issues is disabled.
 
 Shared memory is installed and verified for this repository. All six reports are in its canonical `beamline-qa-2026-10-01` topic. Final checks confirmed that EXAFS display-weight changes preserve the saved fit and that 3D wavelet camera/resize controls work with WebGL enabled.
 

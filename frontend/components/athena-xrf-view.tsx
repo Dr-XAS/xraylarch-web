@@ -1,11 +1,25 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
+
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState } from 'react'
 import type { AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-xrf-view.module.css'
+
+const fieldInstructions: Record<string, string> = {
+  "point": "Zero-based scan-point index for the displayed detector spectrum. Point 0 is the first recorded measurement.",
+  "average": "Average this many neighbouring scan points around the chosen point to inspect weak spectra. One shows that point alone; the block is limited by scan endpoints.",
+  "channel_lo": "First detector channel to read, included in the range. Limit the range to reduce file-reading work while retaining the lines of interest.",
+  "channel_hi": "Exclusive end of the detector-channel range. The channel with this index is not read.",
+  "rebin": "Sum this many adjacent detector channels into each displayed bin. One preserves the original channel grid; larger bins trade spectral detail for a compact view.",
+  "roi_lo": "First included channel of the window summed across the scan. Keep it within the channels being read.",
+  "roi_hi": "Exclusive end channel of the window summed across the scan. This window drives the trace and raster map; energy calibration only changes its displayed energy labels.",
+  "cal_offset": "Energy in keV at channel zero for the displayed spectrum. This labels the axis only and does not move counts or fit the detector calibration.",
+  "cal_slope": "Positive gain in keV per detector channel. Use the beamline calibration; 0.01 keV is 10 eV per channel."
+}
 
 type Detector={name:string;elements:number;channels:number}
 type Axis={name:string;min:number;max:number}
@@ -148,7 +162,7 @@ export function AthenaXrfView({project,setBusy}: {
     return {...f,[name]:next}
   })}
   function field(name:keyof typeof blank,step:'any'|1,extra?:{min?:number;max?:number}) {
-    return <label className="ath-field" key={name}><span>{labels[name]}</span>
+    return <label className="ath-field" key={name}><span>{labels[name]} <SectionHelp label={labels[name]}>{fieldInstructions[name]}</SectionHelp></span>
       <input type="number" step={step} {...extra} value={form[name]}
         onChange={e=>edit(name,e.target.value)} /></label>
   }
@@ -195,17 +209,17 @@ export function AthenaXrfView({project,setBusy}: {
 
   return <div className="ath-modal-body"><div className={styles.layout}>
     <fieldset disabled={pending&&!inspection} className={styles.controls}>
-      <label className="ath-field"><span>Detector file</span><input type="file" aria-label="Choose detector file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
+      <label className="ath-field"><span>Detector file <SectionHelp label="Detector file">Load a supported fluorescence detector scan to inspect counts, detector elements and scan-point spectra before extracting XAS.</SectionHelp></span><input type="file" aria-label="Choose detector file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
       <p className="ath-hint">An HDF5 file holding a multi-channel detector array — a NeXus-style scan or map with the array in its data group, or an APS 20-BM detector file with one MCA array per element. Nothing is fitted here and nothing is divided by the incident flux — these are the counts as the detector recorded them.</p>
       {inspection&&<>
         <h3>{inspection.display_name} · {inspection.points} point{inspection.points===1?'':'s'}{inspection.raster?` · ${inspection.raster.rows} × ${inspection.raster.columns} map`:''}</h3>
         <div className="ath-fields">
-          <label className="ath-field"><span>Detector</span><select value={detector} onChange={e=>pickDetector(inspection,e.target.value)}>{inspection.detectors.map(d=><option key={d.name} value={d.name}>{d.name} · {d.elements} elements · {d.channels} channels</option>)}</select></label>
-          <label className="ath-field"><span>Trace abscissa</span><select value={axis} onChange={e=>setAxis(e.target.value)}>
+          <label className="ath-field"><span>Detector <SectionHelp label="Detector">Choose the detector array in the file. Its channel count and available detector elements determine the controls below.</SectionHelp></span><select value={detector} onChange={e=>pickDetector(inspection,e.target.value)}>{inspection.detectors.map(d=><option key={d.name} value={d.name}>{d.name} · {d.elements} elements · {d.channels} channels</option>)}</select></label>
+          <label className="ath-field"><span>Trace abscissa <SectionHelp label="Trace abscissa">Choose the scan coordinate for the window-sum trace. This changes the plotted horizontal axis, not the detector’s energy calibration.</SectionHelp></span><select value={axis} onChange={e=>setAxis(e.target.value)}>
             <option value="">Point number</option>
             {inspection.axes.map(a=><option key={a.name} value={a.name}>{a.name} · {a.min.toPrecision(4)} to {a.max.toPrecision(4)}</option>)}</select></label>
         </div>
-        {elements.length>1&&<div className={styles.elements} aria-label="Detector elements">
+        {elements.length>1&&<div className={styles.elements} aria-label="Detector elements"><SectionHelp label="Detector elements">Select the detector elements to plot and sum. Compare their counts and exclude dead or shadowed elements before interpreting the window trace.</SectionHelp>
           {elements.map(index=><label className="ath-check" key={index}>
             <input type="checkbox" checked={selected.includes(index)}
               onChange={e=>setChosen(c=>e.target.checked?[...c,index]:c.filter(v=>v!==index))} />
@@ -216,7 +230,7 @@ export function AthenaXrfView({project,setBusy}: {
           {field('point',1,{min:0,max:Math.max(0,inspection.points-1)})}
           {field('average',1,{min:1,max:1024})}
         </div>
-        <label className={styles.slider}><span>Move through the scan</span>
+        <label className={styles.slider}><span>Move through the scan <SectionHelp label="Move through the scan">Move to a zero-based scan point to inspect its fluorescence spectrum and the selected averaging window.</SectionHelp></span>
           <input type="range" min={0} max={Math.max(0,inspection.points-1)} step={1}
             value={form.point} onChange={e=>edit('point',e.target.value)} /></label>
         <div className="ath-fields">{field('channel_lo',1)}{field('channel_hi',1)}{field('rebin',1,{min:1,max:64})}</div>
@@ -231,7 +245,7 @@ export function AthenaXrfView({project,setBusy}: {
     <section className={styles.previews}>
       <h3>Detector spectrum{shown?` at point ${shown.point}`:''}{shown&&shown.averaged[1]-shown.averaged[0]>1?`, averaged over points ${shown.averaged[0]}–${shown.averaged[1]-1}`:''}</h3>
       <div className={styles.display} aria-label="Spectrum display">
-        <label className="ath-check"><input type="checkbox" checked={logCounts} onChange={e=>setLogCounts(e.target.checked)} />Logarithmic counts</label>
+        <label className="ath-check"><input type="checkbox" checked={logCounts} onChange={e=>setLogCounts(e.target.checked)} />Logarithmic counts <SectionHelp label="Logarithmic counts">Use a logarithmic vertical axis to see weak fluorescence lines beside strong peaks. Nonpositive counts cannot be displayed on this axis.</SectionHelp></label>
       </div>
       <Figure label="XRF spectrum" traces={spectrum} xlabel="Detected energy (keV)" ylabel="Counts"
         revision={`${revision}:spectrum`} log={logCounts}
@@ -244,7 +258,7 @@ export function AthenaXrfView({project,setBusy}: {
       {current?.map
         ? <><h3>Map of the window of interest</h3>
           <div className={styles.display} aria-label="Map display options">
-            <label className="ath-check"><input type="checkbox" checked={logMap} onChange={e=>setLogMap(e.target.checked)} />Logarithmic colour scale</label>
+            <label className="ath-check"><input type="checkbox" checked={logMap} onChange={e=>setLogMap(e.target.checked)} />Logarithmic colour scale <SectionHelp label="Logarithmic colour scale">Use logarithmic colour spacing to reveal weak map features. This only changes the map display.</SectionHelp></label>
           </div>
           <MapFigure image={current.map} revision={`${revision}:map`} log={logMap} /></>
         : inspection&&<p className="ath-hint">This file holds a one-dimensional scan: its positions do not form a raster, so there is no image to draw. A map written one row to a file is one row here.</p>}

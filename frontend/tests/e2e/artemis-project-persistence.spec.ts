@@ -22,7 +22,7 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   const initial = await (await examples).json() as AthenaProject
   await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(4)
   await page.getByLabel("Parameter 1 value", { exact: true }).fill("0.85")
-  await page.getByRole("button", { name: "Expand path 1 details", exact: true }).click()
+  await expect(page.getByLabel("Path 1 label", { exact: true })).toBeVisible()
   await page.getByLabel("Path 1 label", { exact: true }).fill("Cu–O saved model")
 
   // An immediate project download flushes the latest model edits automatically.

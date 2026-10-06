@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest"
 
-import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
+import { createHash, webcrypto } from "node:crypto"
 import { useState, type ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
@@ -16,7 +17,7 @@ vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: firstSh
 const radialAnalysis = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
-  CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} />,
+  CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} data-structure-id={structure.id} data-provider={structure.provider ?? "amcsd"} />,
 }))
 const api = vi.mocked(artemisApi)
 const request: ArtemisFeffRequest = { project_id: "p", attachment_id: "cif1", version: 2, absorber: "Cu", edge: "K", site_index: 3, cluster_radius: 5, path_radius: 4, max_legs: 4, max_paths: 60 }
@@ -30,7 +31,7 @@ function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure 
       { index: 7, element: "Fe", species: "Fe", multiplicity: 8, wyckoff: "8b", x: 0.25, y: 0.25, z: 0.25, occupancy: 1 },
     ], ...overrides }
 }
-function attachment(): ArtemisStructureAttachment { return { id: "cif1", amcsd_id: 13088, attached_at: "2026-09-16T00:00:00Z", sha256: "abc", structure: structure() } }
+function attachment(): ArtemisStructureAttachment { return { id: "cif1", amcsd_id: 13088, attached_at: "2026-09-16T00:00:00Z", sha256: "a".repeat(64), structure: structure() } }
 function tungstenAttachment(): ArtemisStructureAttachment {
   return { ...attachment(), structure: structure({ mineral: "Tungsten oxide", formula: "W O3", elements: ["O", "W"],
     sites: structure().sites.map(site => ({ ...site, element: site.index === 3 ? "W" : "O", species: site.index === 3 ? "W" : "O" })) }) }
@@ -72,6 +73,15 @@ async function generate() {
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
 
+function cifFile(name = "my-copper.cif", text = structure().cif) {
+  const file = new File([text], name, { type: "chemical/x-cif" })
+  Object.defineProperty(file, "text", { configurable: true, value: async () => text })
+  return file
+}
+async function chooseCif(file: File, inDialog = true) {
+  await act(async () => { fireEvent.change(screen.getByLabelText(inDialog ? "Upload CIF file in dialog" : "Upload CIF file"), { target: { files: [file] } }) })
+}
+
 beforeEach(() => {
   api.mockReset()
   firstShell.shell = null
@@ -81,6 +91,12 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute("open", "") } })
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute("open"); this.dispatchEvent(new Event("close")) } })
   api.mockImplementation(async (url, body) => {
+    if (url.startsWith("/projects/p/structures/") && url.endsWith("/rename")) {
+      const id = url.split("/").at(-2)
+      savedAttachments = savedAttachments.map(item => item.id === id ? { ...item, label: (body as { label: string }).label } : item)
+      savedVersion += 1
+      return project()
+    }
     if (url.startsWith("/projects/p/structures/") && url.endsWith("/remove")) {
       const id = url.split("/").at(-2)
       savedAttachments = savedAttachments.filter(item => item.id !== id)
@@ -88,6 +104,12 @@ beforeEach(() => {
       return project()
     }
     if (url.includes("/projects/") && url.endsWith("/structures")) {
+      if (body && (body as { provider?: string }).provider === "uploaded") {
+        const upload = body as { filename: string; cif: string }
+        savedAttachments = [{ id: "upload1", provider: "uploaded", sha256: "upload-hash", attached_at: "2026-10-06T00:00:00Z", structure: structure({ id: "cif-upload-hash", provider: "uploaded", filename: upload.filename, cif: upload.cif }) }]
+        savedVersion = 2
+        return project()
+      }
       if (body) { savedAttachments = [attachment()]; savedVersion = 2; return project() }
       return { project_id: "p", version: savedVersion, structures: savedAttachments }
     }
@@ -97,9 +119,183 @@ beforeEach(() => {
     return job()
   })
 })
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
+  it("renames only the chosen CIF and retains the generated paths and source metadata", async () => {
+    const original = attachment()
+    savedAttachments = [original, { ...attachment(), id: "cif2", amcsd_id: 13089, structure: structure({ id: 13089 }) }]
+    const onProjectChange = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange} />)
+    await screen.findAllByRole("button", { name: "Rename Copper CIF" })
+    const region = screen.getByRole("region", { name: "Project CIF structures" })
+    fireEvent.click(within(region).getAllByRole("button", { name: "Open attached Copper CIF" })[0])
+    await openFeff()
+    await generate()
+    await click("Close FEFF paths")
+    fireEvent.click(within(region).getAllByRole("button", { name: "Rename Copper CIF" })[0])
+    const input = screen.getByRole("textbox", { name: "CIF name" })
+    expect(input).toHaveFocus()
+    expect(input).toHaveValue("Copper")
+    fireEvent.change(input, { target: { value: "  Copper at 300 K  " } })
+    await click("Save CIF name")
+    expect(api).toHaveBeenCalledWith("/projects/p/structures/cif1/rename", { version: 1, label: "Copper at 300 K" })
+    expect(savedAttachments[0]).toEqual({ ...original, label: "Copper at 300 K" })
+    expect(savedAttachments[1].label).toBeUndefined()
+    expect(within(region).getByRole("button", { name: "Rename Copper at 300 K CIF" })).toBeEnabled()
+    expect(onProjectChange).toHaveBeenCalledOnce()
+    await openFeff()
+    expect(screen.getByRole("option", { name: "Copper at 300 K · AMCSD 0013088" })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeInTheDocument()
+    expect(api.mock.calls.filter(([url]) => url === "/feff/jobs")).toHaveLength(1)
+  })
+
+  it("supports cancelling a rename and refuses blank names without sending a mutation", async () => {
+    savedAttachments = [attachment()]
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "   " } })
+    expect(screen.getByRole("button", { name: "Save CIF name" })).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "CIF name" }), { key: "Enter" })
+    await click("Cancel CIF rename")
+    expect(screen.queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+    await click("Rename Copper CIF")
+    expect(screen.getByRole("textbox", { name: "CIF name" })).toHaveValue("Copper")
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "CIF name" }), { key: "Escape" })
+    expect(screen.queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/rename"))).toHaveLength(0)
+  })
+
+  it("renames from the CIF dialog with Enter and keeps that dialog open on Escape", async () => {
+    savedAttachments = [attachment()]
+    setup()
+    const dialog = screen.getByRole("dialog", { name: "Crystal structures" })
+    await within(dialog).findByRole("button", { name: "Rename Copper CIF" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename Copper CIF" }))
+    fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "CIF name" }), { key: "Escape" })
+    expect(dialog).toBeVisible()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename Copper CIF" }))
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "CIF name" }), { target: { value: "Foil reference" } })
+    await act(async () => { fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "CIF name" }), { key: "Enter" }) })
+    expect(within(dialog).getByRole("button", { name: "Use attached Foil reference CIF" })).toBeInTheDocument()
+    expect(within(dialog).queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+  })
+
+  it("retains a failed rename for correction and retry", async () => {
+    savedAttachments = [attachment()]
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "Copper reference" } })
+    api.mockRejectedValueOnce(new Error("Project changed; reload and retry."))
+    await click("Save CIF name")
+    expect(screen.getByRole("alert")).toHaveTextContent("Project changed")
+    expect(screen.getByRole("textbox", { name: "CIF name" })).toHaveValue("Copper reference")
+    expect(screen.getByRole("button", { name: "Rename Copper CIF" })).toBeEnabled()
+    await click("Save CIF name")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Rename Copper reference CIF" })).toBeEnabled()
+  })
+
+  it("waits for pending fit edits and releases the mutation queue after renaming", async () => {
+    savedAttachments = [attachment()]
+    const pending = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} prepareMutation={() => pending.promise} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "Reference" } })
+    await click("Save CIF name")
+    expect(screen.getByRole("button", { name: "Save CIF name" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Remove Copper CIF from project" })).toBeDisabled()
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/rename"))).toHaveLength(0)
+    savedVersion = 2
+    await act(async () => { pending.resolve({ version: 2, finish }) })
+    expect(api).toHaveBeenCalledWith("/projects/p/structures/cif1/rename", { version: 2, label: "Reference" })
+    expect(finish).toHaveBeenCalledOnce()
+  })
+
+  it("abandons an unsent rename if the spectrum changes while flushing fit edits", async () => {
+    savedAttachments = [attachment()]
+    const pending = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn()
+    const props = { contextKey: "p:cu", availableSlots: 24, onAddPaths: addPathsMock(), prepareMutation: () => pending.promise }
+    const view = render(<Harness {...props} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "Reference" } })
+    await click("Save CIF name")
+    view.rerender(<Harness {...props} contextKey="p:other" />)
+    await act(async () => { pending.resolve({ version: 2, finish }) })
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/rename"))).toHaveLength(0)
+    expect(finish).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+  })
+
+  it("uploads and displays a custom CIF, then generates FEFF from its saved attachment", async () => {
+    const onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" spectrumEdge={{ element: "Cu", edge: "K" }} availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />)
+    expect(screen.getByRole("button", { name: "Upload CIF" })).toBeEnabled()
+    const file = cifFile()
+    await chooseCif(file, false)
+    expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, provider: "uploaded", filename: file.name, cif: structure().cif })
+    expect(screen.getByRole("dialog", { name: "Crystal structures" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
+    expect(screen.getAllByText("Uploaded CIF · my-copper.cif").length).toBeGreaterThan(0)
+    expect(onViewStructure).toHaveBeenCalledWith("upload1", 3)
+    await openFeff()
+    await click("Run FEFF calculation")
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ project_id: "p", attachment_id: "upload1", version: 2, absorber: "Cu", site_index: 3 }), expect.any(AbortSignal))
+  })
+
+  it("rejects oversized CIFs before sending and allows a subsequent upload", async () => {
+    setup()
+    await chooseCif(cifFile("large.cif", "x".repeat(500_001)))
+    expect(screen.getByRole("alert")).toHaveTextContent("at most 500 KB")
+    expect(api.mock.calls.filter(([url, body]) => url === "/projects/p/structures" && body)).toHaveLength(0)
+    await chooseCif(cifFile())
+    expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("shows backend validation errors and permits retrying the same file", async () => {
+    setup()
+    await act(async () => {})
+    api.mockRejectedValueOnce(new Error("The uploaded CIF does not contain a readable periodic crystal structure with atomic sites."))
+    const file = cifFile()
+    await chooseCif(file)
+    expect(screen.getByRole("alert")).toHaveTextContent("readable periodic crystal structure")
+    expect(within(screen.getByRole("dialog", { name: "Crystal structures" })).getByRole("button", { name: "Upload CIF" })).toBeEnabled()
+    await chooseCif(file)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+  })
+
+  it("does not submit an upload whose project context changed while reading the file", async () => {
+    const props = { contextKey: "p:cu", availableSlots: 24, onAddPaths: addPathsMock() }
+    const view = render(<Harness {...props} />)
+    const text = deferred<string>()
+    const file = cifFile()
+    Object.defineProperty(file, "text", { value: () => text.promise })
+    await chooseCif(file, false)
+    view.rerender(<Harness {...props} contextKey="p:other" />)
+    await act(async () => { text.resolve(structure().cif) })
+    expect(api.mock.calls.filter(([url, body]) => url === "/projects/p/structures" && body)).toHaveLength(0)
+  })
+
+  it("waits for pending model edits before uploading at the resulting project version", async () => {
+    const pending = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} prepareMutation={() => pending.promise} />)
+    await chooseCif(cifFile(), false)
+    expect(screen.getByRole("button", { name: "Search / attach CIF" })).toBeDisabled()
+    expect(api.mock.calls.filter(([url, body]) => url === "/projects/p/structures" && body)).toHaveLength(0)
+    await act(async () => { pending.resolve({ version: 2, finish }) })
+    expect(api).toHaveBeenCalledWith("/projects/p/structures", expect.objectContaining({ version: 2, provider: "uploaded" }))
+    expect(finish).toHaveBeenCalledOnce()
+  })
+
   it("searches, attaches and generates paths with Materials Project identity", async () => {
     const mp = structure({ id: "mp-aaaaaaft", provider: "materials_project", mineral: "Cu", formula: "Cu",
       provenance: { database_version: "2026.04.13", retrieved_at: "2026-10-02T00:00:00Z", task_id: "task-Cu", structure_type: "dft_relaxed" } })
@@ -119,6 +315,12 @@ describe("ArtemisStructures", () => {
     expect(api).toHaveBeenCalledWith("/structures?q=Cu&limit=25&provider=materials_project", undefined, expect.any(AbortSignal))
     await click(/Cu.*Materials Project mp-aaaaaaft/)
     expect(screen.getByText(/Database version: 2026.04.13/)).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", mp.id)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-provider", "materials_project")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", mp.cif)
+    expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
+    expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
     expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, provider: "materials_project", material_id: "mp-aaaaaaft" })
     await openFeff()
@@ -560,7 +762,11 @@ describe("ArtemisStructures", () => {
     const crystalDialog = screen.getByRole("dialog", { name: "Crystal structures" })
     expect(within(crystalDialog).queryByRole("radio", { name: "Absorber site 3" })).not.toBeInTheDocument()
     expect(within(crystalDialog).queryByRole("button", { name: "Run FEFF calculation" })).not.toBeInTheDocument()
-    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(within(crystalDialog).getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13088")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-provider", "amcsd")
+    expect(screen.getByText("View CIF").closest("details")).not.toHaveAttribute("open")
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
@@ -577,6 +783,68 @@ describe("ArtemisStructures", () => {
     await generate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual(request)
     expect(api.mock.calls.at(-1)?.[1]).not.toHaveProperty("amcsd_id")
+  })
+
+  it("replaces the candidate preview and clears it while the next CIF loads or fails", async () => {
+    const cuprite = structure({ id: 13089, mineral: "Cuprite", formula: "Cu2O", cif: "data_Cu2O\n_cell_length_a 4.27" })
+    const next = deferred<ArtemisStructure>()
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "copper", source: "AMCSD", results: [structure(), cuprite], count: 2, limited: false }
+      if (url === "/structures/13089") return next.promise
+      return fallback(url, body, signal)
+    })
+    const onProjectChange = vi.fn(), onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange} onViewStructure={onViewStructure} />)
+    await click("Search / attach CIF")
+    await findAndSelect(false)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    await click(/Cuprite.*AMCSD/)
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("Reading CIF")
+    expect(screen.queryByRole("button", { name: "Attach to project" })).not.toBeInTheDocument()
+    await act(async () => { next.resolve(cuprite) })
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13089")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", cuprite.cif)
+    await click(/Copper.*AMCSD/)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    api.mockRejectedValueOnce(new Error("Could not retrieve the selected CIF. Try again."))
+    await click(/Cuprite.*AMCSD/)
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not retrieve the selected CIF")
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Attach to project" })).not.toBeInTheDocument()
+    await click(/Cuprite.*AMCSD/)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", cuprite.cif)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(onProjectChange).not.toHaveBeenCalled()
+    expect(onViewStructure).not.toHaveBeenCalled()
+    expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
+    expect(api.mock.calls.some(([url]) => url === "/feff/jobs")).toBe(false)
+  })
+
+  it("ignores a late CIF response after another candidate was selected", async () => {
+    const cuprite = structure({ id: 13089, mineral: "Cuprite", formula: "Cu2O", cif: "data_Cu2O" })
+    const next = deferred<ArtemisStructure>()
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "copper", source: "AMCSD", results: [structure(), cuprite], count: 2, limited: false }
+      if (url === "/structures/13089") return next.promise
+      return fallback(url, body, signal)
+    })
+    setup()
+    await findAndSelect(false)
+    await click(/Cuprite.*AMCSD/)
+    const signal = api.mock.calls.at(-1)?.[2]
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    await click(/Copper.*AMCSD/)
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13088")
+    await act(async () => { next.resolve(cuprite) })
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13088")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    expect(screen.getByRole("button", { name: /Copper.*AMCSD/ })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: /Cuprite.*AMCSD/ })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
   })
 
   it("blocks dismissal during attachment and receives the committed project after the context changes", async () => {
@@ -608,7 +876,8 @@ describe("ArtemisStructures", () => {
     expect(screen.getByText(/Copper structure/)).not.toBeVisible()
     fireEvent.mouseEnter(screen.getByRole("button", { name: "About CIF citation" }))
     expect(screen.getByText(/Copper structure/)).toBeVisible()
-    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
     await click("Attach to project")
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
@@ -633,7 +902,7 @@ describe("ArtemisStructures", () => {
     savedAttachments = []
     await click("Search / attach CIF")
     expect(screen.queryByRole("button", { name: "Open attached Copper CIF" })).not.toBeInTheDocument()
-    expect(screen.getByText("Select a search result or open a CIF already attached to this project.")).toBeVisible()
+    expect(screen.getByText("Upload a CIF, select a search result, or open a CIF already attached to this project.")).toBeVisible()
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
   })
 
@@ -715,7 +984,9 @@ describe("ArtemisStructures", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
     expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeDisabled()
     await click("Add selected paths (1)")
-    expect(onAddPaths).toHaveBeenCalledExactlyOnceWith([{ ...job().paths[0], id: undefined, label: "Copper · AMCSD 0013088 · Cu site 3 · feff0001.dat" }].map(({ id: _id, ...path }) => path))
+    expect(onAddPaths).toHaveBeenCalledExactlyOnceWith([{ ...job().paths[0], id: undefined,
+      metadata: { ...job().paths[0].metadata, sourceCif: { sha256: attachment().sha256, attachmentId: "cif1", label: "Copper · AMCSD 0013088", siteIndex: 3 } },
+      label: "Copper · AMCSD 0013088 · Cu site 3 · feff0001.dat" }].map(({ id: _id, ...path }) => path))
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeDisabled()
     expect(screen.getByText(/Added 1 generated path/)).toBeVisible()
     expect(screen.getByText("FEFF input")).toBeVisible()
@@ -819,7 +1090,45 @@ describe("ArtemisStructures", () => {
       { atom: "Cu", x: -2.55, y: 0, z: 0, ipot: 1 },
     ] })
     expect(onAddPaths.mock.calls[0][0][0].metadata.degen).toBe(12)
+    expect(onAddPaths.mock.calls[0][0][0].metadata.sourceCif).toEqual({ sha256: attachment().sha256,
+      attachmentId: "cif1", label: "Copper · AMCSD 0013088", siteIndex: 3 })
     expect(completed.paths[0].metadata).not.toHaveProperty("viewerCluster")
+    expect(completed.paths[0].metadata).not.toHaveProperty("sourceCif")
+  })
+
+  it("identifies a completed job by its actual CIF when the saved attachment snapshot differs", async () => {
+    vi.stubGlobal("crypto", webcrypto)
+    const { onAddPaths } = setup()
+    await findAndSelect()
+    const completed = job()
+    completed.provenance.cif = "data_completed_snapshot\n_cell_length_a 3.62"
+    api.mockResolvedValueOnce(completed)
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    await click("Add selected paths (1)")
+    await waitFor(() => expect(onAddPaths).toHaveBeenCalledOnce())
+    expect(onAddPaths.mock.calls[0][0][0].metadata.sourceCif).toEqual({
+      sha256: createHash("sha256").update(completed.provenance.cif).digest("hex"),
+      label: "Copper · AMCSD 0013088", siteIndex: 3,
+    })
+  })
+
+  it("does not add paths to another spectrum after hashing their CIF finishes", async () => {
+    const hashed = deferred<ArrayBuffer>()
+    vi.stubGlobal("crypto", { subtle: { digest: vi.fn(() => hashed.promise) } })
+    const { onAddPaths, rerender } = setup()
+    await findAndSelect()
+    const completed = job()
+    completed.provenance.cif = "data_completed_snapshot"
+    api.mockResolvedValueOnce(completed)
+    await generate()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    await click("Add selected paths (1)")
+    expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeDisabled()
+    rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} />)
+    await act(async () => { hashed.resolve(new Uint8Array(32).buffer) })
+    expect(onAddPaths).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: "Generate FEFF paths" })).toBeEnabled()
   })
 
   it("recovers from polling failure without restarting FEFF, then ignores a late status after context changes", async () => {

@@ -1,6 +1,7 @@
 "use client"
 
 import { SectionHelp } from "./section-help"
+import { rebinInstructions } from "./athena-rebin-help"
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { rebinUnavailable, type AthenaProject, type RebinPreview } from '@/lib/athena'
@@ -84,7 +85,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
       <div className="ath-fields">{([
         ['emin', 'Edge region start · eV relative to E₀'], ['emax', 'Edge region end · eV relative to E₀'],
         ['pre', 'Pre-edge grid · eV'], ['xanes', 'XANES grid · eV'], ['exafs', 'EXAFS grid · Å⁻¹'], ['width', 'Smoothing width · points'],
-      ] as const).map(([name, title]) => <label className="ath-field" key={name}><span>{title}</span>
+      ] as const).map(([name, title]) => <label className="ath-field" key={name}><span>{title} <SectionHelp label={title}>{rebinInstructions[name]}</SectionHelp></span>
         <input type="number" step={name === 'width' ? 1 : 'any'} value={grid[name]}
           onChange={e => setGrid({ ...grid, [name]: e.target.value === '' ? '' : Number(e.target.value) })} />
       </label>)}</div>
@@ -97,7 +98,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
       </div>
       {defaultsControls}
     </fieldset><section className={styles.preview} aria-label="Rebin preview">
-      <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Show original data</label>
+      <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Show original data <SectionHelp label="Show original data">Overlay the original points to check how rebinning changes sampling and preserves the edge and EXAFS oscillations.</SectionHelp></label>
       <div className={styles.plot} aria-label={`${space}-space rebin preview`} aria-busy={!value && !previewError && !!groupIds.length}>
         {value && traces.length ? <Plot data={traces} layout={{ autosize: true, margin: { l: 60, r: 20, t: 20, b: 135 },
           xaxis: { title: { text: space === 'E' ? 'Energy (eV)' : 'k (Å⁻¹)' }, automargin: true },

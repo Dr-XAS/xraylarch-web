@@ -79,6 +79,19 @@ it("lets keyboard users enter and leave source links in help", () => {
   expect(screen.queryByRole("tooltip")).toBeNull()
 })
 
+it("keeps keyboard help anchored when focus scrolls its field into view", () => {
+  render(<SectionHelp label="Fit space">Choose k or R space.</SectionHelp>)
+  const trigger = screen.getByRole("button", { name: "About Fit space" })
+  vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({ top: 100, bottom: 120, left: 30, right: 50, width: 20, height: 20, x: 30, y: 100, toJSON: () => ({}) })
+  act(() => trigger.focus())
+  fireEvent.scroll(window)
+  expect(screen.getByRole("tooltip")).toBeVisible()
+  expect(trigger).toHaveFocus()
+  vi.mocked(trigger.getBoundingClientRect).mockReturnValue({ top: -30, bottom: -10, left: 30, right: 50, width: 20, height: 20, x: 30, y: -30, toJSON: () => ({}) })
+  fireEvent.scroll(window)
+  expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+})
+
 it("hides instruction icons and closes open tooltips when instructions are switched off", () => {
   const content = <SectionHelp label="Normalization">Normalize the spectrum.</SectionHelp>
   const { rerender } = render(<InstructionVisibility value={false}>{content}</InstructionVisibility>)

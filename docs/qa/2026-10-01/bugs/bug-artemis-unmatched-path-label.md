@@ -2,7 +2,7 @@
 
 Severity: cosmetic. Confirmed visually on deployed revision 881d526f62d72f05f6fdaa8bfb879baee89acd55.
 
-Status: fixed by PR #12 (`b13a8c937`), merged October 5, 2026; not yet deployed. The button reads "Exclude unmatched paths".
+Status: fixed by PR #12 (`b13a8c937`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). The button reads "Exclude unmatched paths".
 
 1. Open a spectrum with an imported or saved FEFF path before selecting a matching CIF/site for shell assignment.
 2. Select EXAFS fitting and inspect the FEFF paths section.

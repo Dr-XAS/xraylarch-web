@@ -107,8 +107,11 @@ Cu4 Cu 0.5 0.5 0 1
     fileURLToPath(new URL(`../../../examples/feffit/Feff_Cu/${filename}`, import.meta.url)),
   ))
   const panel = page.getByRole("region", { name: "FEFF path viewer", exact: true })
-  await expect(panel.getByRole("group", { name: "FEFF path legend", exact: true }).getByRole("button")).toHaveCount(4)
+  await expect(panel.getByRole("group", { name: "FEFF path legend", exact: true }).getByRole("button")).toHaveCount(withMatchingCif ? 4 : 1)
+  await expect(panel.getByRole("combobox", { name: "FEFF path CIF source" }).locator("option")).toHaveCount(withMatchingCif ? 1 : 4)
   await expect.poll(() => inspected).toEqual(filenames.map((filename, i) => ({ filename, nleg: [2, 3, 3, 4][i] })))
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({ timeout: 30000 })
+  await page.waitForLoadState("networkidle")
   return panel
 }
 
@@ -171,6 +174,12 @@ async function expectScene(panel: Locator, atomCount: number, legCount: number) 
 
 async function selectPath(panel: Locator, filename: string) {
   const legend = panel.getByRole("group", { name: "FEFF path legend", exact: true })
+  if (!await legend.getByRole("button", { name: `Show ${filename}`, exact: true }).count()) {
+    // Imported files without a verified shared CIF are inspected individually.
+    const picker = panel.getByRole("combobox", { name: "FEFF path CIF source" })
+    const value = await picker.locator("option", { hasText: filename }).getAttribute("value")
+    await picker.selectOption(value!)
+  }
   const selectedNames = await legend.getByRole("button", { pressed: true }).evaluateAll(buttons => buttons.map(button => button.getAttribute("aria-label")!))
   for (const name of selectedNames) {
     if (name !== `Show ${filename}`) await legend.getByRole("button", { name, exact: true }).click()
@@ -185,9 +194,12 @@ async function expectLegendInsideCanvas(panel: Locator) {
   await expect(panel.getByRole("navigation", { name: "FEFF paths" })).toHaveCount(0)
   const legendLocator = panel.getByRole("group", { name: "FEFF path legend", exact: true })
   const sceneLocator = panel.getByRole("img", { name: /^Interactive 3D scattering path/ })
-  const legend = (await legendLocator.boundingBox())!
-  const scene = (await sceneLocator.boundingBox())!
-  const canvas = (await sceneLocator.locator("..").boundingBox())!
+  // Take all coordinates in one frame: background saves and plots can move
+  // this panel between separate boundingBox calls.
+  const { legend, scene, canvas } = await sceneLocator.evaluate(element => ({
+    legend: element.parentElement!.querySelector('[aria-label="FEFF path legend"]')!.getBoundingClientRect().toJSON(),
+    scene: element.getBoundingClientRect().toJSON(), canvas: element.parentElement!.getBoundingClientRect().toJSON(),
+  }))
   expect(legend.x).toBeGreaterThanOrEqual(canvas.x)
   expect(legend.y).toBeGreaterThanOrEqual(canvas.y)
   expect(legend.x + legend.width).toBeLessThanOrEqual(canvas.x + canvas.width + 1)
@@ -516,6 +528,41 @@ test("the in-canvas legend combines independently colored paths and allows every
   expect(scienceRequests).toEqual([])
 })
 
+
+test("separates another source with the same FEFF filename from the prepared CIF paths", async ({ page }) => {
+  test.setTimeout(120000)
+  await page.goto("/", { waitUntil: "domcontentloaded" })
+  await page.getByRole("button", { name: "Load copper examples", exact: true }).click()
+  const panel = page.getByRole("region", { name: "FEFF path viewer", exact: true })
+  const legend = panel.getByRole("group", { name: "FEFF path legend", exact: true })
+  await expect(legend.getByRole("button")).toHaveCount(4)
+  await expectScene(panel, 3, 2)
+  await page.getByLabel("Upload FEFF path files", { exact: true }).setInputFiles(
+    fileURLToPath(new URL("../../../examples/feffit/Feff_Cu/feff0001.dat", import.meta.url)),
+  )
+  const picker = panel.getByRole("combobox", { name: "FEFF path CIF source" })
+  await expect(picker.locator("option")).toHaveCount(2)
+  await expect(legend.getByRole("button")).toHaveCount(4)
+  const original = await picker.inputValue()
+  const imported = await picker.locator("option", { hasText: "CIF unknown" }).getAttribute("value")
+  await expect(page.getByText("Saved locally", { exact: true })).toBeVisible({ timeout: 30000 })
+  await page.waitForLoadState("networkidle")
+  const scienceRequests: string[] = []
+  page.on("request", request => {
+    if (/\/api\/artemis\/|\/command$/.test(request.url())) scienceRequests.push(request.url())
+  })
+  await picker.selectOption(imported!)
+  await expect(legend.getByRole("button")).toHaveCount(1)
+  await expect(legend.getByRole("button", { name: "Show feff0001.dat", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expectScene(panel, 2, 2)
+  await expect(panel.getByLabel("Scattering sequence", { exact: true })).toHaveText("Cu A → Cu 1 → Cu A")
+  await picker.selectOption(original)
+  await expect(legend.getByRole("button")).toHaveCount(4)
+  await expectScene(panel, 3, 2)
+  expect(scienceRequests).toEqual([])
+  // Source switching changes no fitting-model inclusions.
+  await expect(page.getByRole("checkbox", { name: /^Include path \d+$/ })).toHaveCount(5)
+})
 
 test("copper demo opens the prepared Cu2O model and draws one representative first-shell route", async ({ page }, info) => {
   test.setTimeout(150000)

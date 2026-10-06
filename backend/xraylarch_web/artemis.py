@@ -835,6 +835,7 @@ def preview_paths(request: PathPreviewRequest) -> dict:
         transform._xafsft(total_chi, group=total, rmax_out=10)
     return dict(paths=records, warnings=warnings, transform=request.transform.model_dump(),
                 k=dict(x=_finite_array(k, "k"), weight=weight,
+                       chi=_finite_array(total_chi, "unweighted total chi(k)"),
                        total=_finite_array(total_chi * k ** weight, "total chi(k)")),
                 r=dict(x=_finite_array(grid, "R"),
                        **{f"total_{key}": _finite_array(function(total.chir), f"total R {key}")
@@ -869,6 +870,9 @@ def build_artemis_router(store) -> APIRouter:
     from .artemis_structures import FeffJobs
 
     jobs = FeffJobs(store.settings.data_root, store=store)
+
+    from .artemis_simulation import register_simulation_route
+    register_simulation_route(router, jobs)
 
     def _run_fit(ident: str, group_id: str, request: FitRouteRequest, view: str, backend):
         project = store.load(ident)

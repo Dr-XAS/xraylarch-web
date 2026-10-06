@@ -19,7 +19,9 @@ it("shows complete shell beyond display radius, styles neighbors and respects hi
   render(<CifViewer structure={structure} selectedSite={1} analysis={{ shell, error: "", loading: false, retry: vi.fn() }} />)
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
   expect(screen.getByText("CrystalNN first shell · CN 1")).toBeVisible()
-  await waitFor(() => expect(renderer.addStyle).toHaveBeenCalledWith({ index: 1 }, { sphere: { color: "#06b6d4", radius: 0.36 } }))
+  await waitFor(() => expect(renderer.addStyle).toHaveBeenCalledWith({ index: 1 }, { sphere: { color: "#e5bf46", radius: 0.42 } }))
+  expect(renderer.addStyle).toHaveBeenCalledWith({ index: 0 }, { sphere: { color: "#225ea8", radius: 0.5 } })
+  expect(screen.getByText("Center: Cu · site 1")).toBeVisible()
   fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "1" } })
   expect(screen.getByText("1 atom shown")).toBeVisible()
   fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "shell" } })
@@ -39,7 +41,9 @@ it("shows complete shell beyond display radius, styles neighbors and respects hi
 it("does not highlight a different center with an old shell", async () => {
   render(<CifViewer structure={structure} selectedSite={2} analysis={{ shell, error: "", loading: false, retry: vi.fn() }} />)
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
-  expect(renderer.addStyle.mock.calls.every(([selection]) => !("index" in selection))).toBe(true)
+  expect(renderer.addStyle).toHaveBeenCalledWith({ index: 0 }, { sphere: { color: "#e5bf46", radius: 0.5 } })
+  expect(renderer.addStyle.mock.calls.filter(([selection]) => "index" in selection)).toHaveLength(1)
+  expect(screen.getByText("Center: O · site 2")).toBeVisible()
   expect(screen.queryByRole("checkbox", { name: "Highlight CrystalNN first shell" })).toBeNull()
 })
 it("follows an explicit absorber selection round trip after a local display edit", async () => {

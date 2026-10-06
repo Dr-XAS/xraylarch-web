@@ -1,6 +1,6 @@
 # Mobile combined import collapses the fluorescence multiplier to an unreadable 18-pixel input
 
-Severity: P2. Status: fixed by PR #10 (`e71720b60`), merged October 5, 2026; not yet deployed. The multiplier now gets its own row when the Flip button leaves too little room.
+Severity: P2. Status: fixed by PR #10 (`e71720b60`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). The multiplier now gets its own row when the Flip button leaves too little room.
 
 A scientist importing fluorescence together with transmission cannot read or reliably change the fluorescence multiplicative constant on a phone. At 360 px the control also extends beyond the viewport. The value affects imported scientific data, so the user needs to see it before confirming import.
 

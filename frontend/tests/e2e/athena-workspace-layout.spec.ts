@@ -152,8 +152,13 @@ test("keeps current and marked spectra in independent viewer panels", async ({ p
 
   const singleLegend = single.getByRole("checkbox", { name: "Show legend", exact: true })
   const multipleLegend = multiple.getByRole("checkbox", { name: "Show legend", exact: true })
-  await expect(singleLegend).not.toBeChecked()
+  await expect(singleLegend).toBeChecked()
   await expect(multipleLegend).toBeChecked()
+  await expect.poll(() => single.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { layout: { showlegend: boolean } }).layout.showlegend)).toBe(true)
+  await singleLegend.uncheck()
+  await expect.poll(() => single.locator(".js-plotly-plot").evaluate(element =>
+    (element as HTMLElement & { layout: { showlegend: boolean } }).layout.showlegend)).toBe(false)
   await singleLegend.check()
   await multipleLegend.uncheck()
   await expect(singleLegend).toBeChecked()

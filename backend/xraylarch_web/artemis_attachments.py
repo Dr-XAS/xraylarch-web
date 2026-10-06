@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, model_validator
 
 from .errors import WebInputError
 
@@ -42,6 +42,27 @@ class SiteSnapshot(SnapshotModel):
 
 AmcsdId = Annotated[int, Field(gt=0, le=99_999_999)]
 MaterialId = Annotated[str, Field(pattern=r"^mp-(?:[1-9][0-9]{0,11}|[a-z]{8})$")]
+UploadedId = Annotated[str, Field(pattern=r"^cif-[0-9a-f]{64}$")]
+StructureProvider = Literal["amcsd", "materials_project", "uploaded"]
+Filename = Annotated[str, Field(min_length=1, max_length=255, pattern=r"^[^/\\\x00-\x1f\x7f]+\.[cC][iI][fF]$")]
+
+
+def _trim_label(value):
+    if isinstance(value, str):
+        if re.search(r"[\x00-\x1f\x7f-\x9f]", value):
+            raise ValueError("CIF names cannot contain control characters.")
+        return value.strip()
+    return value
+
+
+AttachmentLabel = Annotated[str, Field(min_length=1, max_length=200), BeforeValidator(_trim_label)]
+
+
+def validate_cif_text(cif):
+    if not re.search(r"(?m)^\s*data_\S*", cif) or "\n" not in cif or "\x00" in cif:
+        raise ValueError("Supply full CIF text, not a filesystem path.")
+    if len(cif.encode("utf-8")) > 500_000:
+        raise ValueError("Each attached CIF must be at most 500 KB.")
 
 
 class MaterialsProjectProvenance(SnapshotModel):
@@ -57,8 +78,9 @@ class MaterialsProjectProvenance(SnapshotModel):
 
 
 class StructureSnapshot(SnapshotModel):
-    id: AmcsdId | MaterialId
-    provider: Literal["amcsd", "materials_project"] = "amcsd"
+    id: AmcsdId | MaterialId | UploadedId
+    provider: StructureProvider = "amcsd"
+    filename: Filename | None = None
     provenance: MaterialsProjectProvenance | None = None
     mineral: str = Field(max_length=5000)
     formula: str = Field(max_length=5000)
@@ -79,16 +101,21 @@ class StructureSnapshot(SnapshotModel):
     @model_validator(mode="after")
     def validate_snapshot(self):
         if self.provider == "materials_project":
-            if not isinstance(self.id, str) or self.provenance is None:
+            if not isinstance(self.id, str) or not self.id.startswith("mp-") or self.provenance is None:
                 raise ValueError("Materials Project snapshots require an MP ID and provenance.")
             if self.source != f"https://materialsproject.org/materials/{self.id}":
                 raise ValueError("The Materials Project source URL does not match the material ID.")
+        elif self.provider == "uploaded":
+            expected = "cif-" + hashlib.sha256(self.cif.encode("utf-8")).hexdigest()
+            if self.id != expected or self.filename is None or self.provenance is not None:
+                raise ValueError("Uploaded CIF snapshots require a filename and a matching content ID.")
+            if self.source != self.filename:
+                raise ValueError("The uploaded CIF source must match its filename.")
         elif not isinstance(self.id, int) or self.provenance is not None:
             raise ValueError("AMCSD snapshots require a numeric ID.")
-        if not re.search(r"(?m)^\s*data_\S*", self.cif) or "\n" not in self.cif or "\x00" in self.cif:
-            raise ValueError("An attachment must contain full CIF text, not a filesystem path.")
-        if len(self.cif.encode("utf-8")) > 500_000:
-            raise ValueError("Each attached CIF must be at most 500 KB.")
+        if self.provider != "uploaded" and self.filename is not None:
+            raise ValueError("Only uploaded CIFs have an upload filename.")
+        validate_cif_text(self.cif)
         if set(self.cell) - {"a", "b", "c", "alpha", "beta", "gamma"}:
             raise ValueError("Unknown crystallographic cell field.")
         if any(len(value) > 2000 for value in self.warnings):
@@ -100,7 +127,8 @@ class StructureSnapshot(SnapshotModel):
 
 class StructureAttachment(SnapshotModel):
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
-    provider: Literal["amcsd", "materials_project"] = "amcsd"
+    label: AttachmentLabel | None = None
+    provider: StructureProvider = "amcsd"
     amcsd_id: AmcsdId | None = None
     material_id: MaterialId | None = None
     attached_at: str = Field(max_length=60)
@@ -114,6 +142,9 @@ class StructureAttachment(SnapshotModel):
         if self.provider == "materials_project":
             if self.amcsd_id is not None or self.material_id != self.structure.id:
                 raise ValueError("The Materials Project identifiers do not agree.")
+        elif self.provider == "uploaded":
+            if self.amcsd_id is not None or self.material_id is not None:
+                raise ValueError("Uploaded CIFs cannot have database identifiers.")
         elif self.material_id is not None or self.amcsd_id != self.structure.id:
             raise ValueError("The AMCSD identifiers do not agree.")
         if hashlib.sha256(self.structure.cif.encode("utf-8")).hexdigest() != self.sha256:
@@ -124,12 +155,21 @@ class StructureAttachment(SnapshotModel):
 
 class AttachRequest(SnapshotModel):
     version: int = Field(ge=0)
-    provider: Literal["amcsd", "materials_project"] = "amcsd"
+    provider: StructureProvider = "amcsd"
     amcsd_id: AmcsdId | None = None
     material_id: MaterialId | None = None
+    filename: Filename | None = None
+    cif: str | None = Field(default=None, min_length=40, max_length=500_000)
 
     @model_validator(mode="after")
     def validate_source(self):
+        if self.provider == "uploaded":
+            if self.cif is None or self.filename is None or self.amcsd_id is not None or self.material_id is not None:
+                raise ValueError("Upload a CIF filename and its full text, without database identifiers.")
+            validate_cif_text(self.cif)
+            return self
+        if self.cif is not None or self.filename is not None:
+            raise ValueError("CIF uploads require the uploaded provider.")
         if self.provider == "materials_project":
             valid = self.material_id is not None and self.amcsd_id is None
         else:
@@ -141,6 +181,11 @@ class AttachRequest(SnapshotModel):
 
 class RemoveRequest(SnapshotModel):
     version: int = Field(ge=0)
+
+
+class RenameRequest(SnapshotModel):
+    version: int = Field(ge=0)
+    label: AttachmentLabel
 
 
 def validate_attachments(records):
@@ -161,11 +206,15 @@ def validate_attachments(records):
 
 
 def source_identity(record):
+    if record.get("provider") == "uploaded":
+        return "uploaded", record["structure"]["id"]
     return record.get("provider", "amcsd"), record.get("material_id") or record.get("amcsd_id")
 
 
 def source_label(record):
     provider, ident = source_identity(record)
+    if provider == "uploaded":
+        return f"Uploaded CIF {record['structure']['filename']}"
     return f"Materials Project {ident}" if provider == "materials_project" else f"AMCSD {ident}"
 
 
@@ -205,11 +254,14 @@ def attached_source(store, project_id, attachment_id, version):
     _fail("This attached CIF is no longer present in the selected project.", "attachment_id")
 
 
-def structure_attachment(amcsd_id=None, *, material_id=None):
-    """Prepare a validated database snapshot without committing a project edit."""
-    from .artemis_structures import structure_details
+def structure_attachment(amcsd_id=None, *, material_id=None, cif=None, filename=None):
+    """Prepare a validated snapshot without committing a project edit."""
+    from .artemis_structures import structure_details, uploaded_structure_details
 
-    if material_id is not None:
+    if cif is not None:
+        details = uploaded_structure_details(cif, filename)
+        identity = dict(provider="uploaded")
+    elif material_id is not None:
         from .materials_project import structure_details as mp_details
         details = mp_details(material_id)
         identity = dict(provider="materials_project", material_id=material_id)
@@ -227,12 +279,13 @@ def attach_structure(store, ident, request: AttachRequest):
         old = local_project(store, ident)
         store.check(old, request.version)
         records = validate_attachments(old.get(PROJECT_FIELD, []))
-        identity = (request.provider, request.material_id or request.amcsd_id)
+        source_id = "cif-" + hashlib.sha256(request.cif.encode("utf-8")).hexdigest() if request.provider == "uploaded" else request.material_id or request.amcsd_id
+        identity = (request.provider, source_id)
         if any(source_identity(record) == identity for record in records):
             return old
         if len(records) >= MAX_STRUCTURES:
             _fail(f"A project can contain at most {MAX_STRUCTURES} attached CIF structures.")
-        record = structure_attachment(request.amcsd_id, material_id=request.material_id)
+        record = structure_attachment(request.amcsd_id, material_id=request.material_id, cif=request.cif, filename=request.filename)
         updated = copy.deepcopy(old)
         updated[PROJECT_FIELD] = validate_attachments([*records, record])
         return store.save(updated, old, f"Attached {source_label(record)}: {record['structure']['mineral']}")
@@ -251,6 +304,23 @@ def remove_structure(store, ident, attachment_id, request: RemoveRequest):
         return store.save(updated, old, f"Removed {source_label(record)}: {record['structure']['mineral']}")
 
 
+def rename_structure(store, ident, attachment_id, request: RenameRequest):
+    with store.storage.lock(ident):
+        old = local_project(store, ident)
+        store.check(old, request.version)
+        records = validate_attachments(old.get(PROJECT_FIELD, []))
+        record = next((item for item in records if item["id"] == attachment_id), None)
+        if record is None:
+            _fail("This attached CIF is no longer present in the selected project.", "attachment_id")
+        if record.get("label") == request.label:
+            return old
+        previous = record.get("label") or record["structure"]["mineral"] or record["structure"]["formula"]
+        record["label"] = request.label
+        updated = copy.deepcopy(old)
+        updated[PROJECT_FIELD] = validate_attachments(records)
+        return store.save(updated, old, f"Renamed {source_label(record)}: {previous} → {request.label}")
+
+
 def build_attachments_router(store):
     router = APIRouter(tags=["Artemis project structures"])
 
@@ -267,5 +337,9 @@ def build_attachments_router(store):
     @router.post("/projects/{ident}/structures/{attachment_id}/remove")
     def remove(ident: str, attachment_id: str, request: RemoveRequest):
         return remove_structure(store, ident, attachment_id, request)
+
+    @router.post("/projects/{ident}/structures/{attachment_id}/rename")
+    def rename(ident: str, attachment_id: str, request: RenameRequest):
+        return rename_structure(store, ident, attachment_id, request)
 
     return router

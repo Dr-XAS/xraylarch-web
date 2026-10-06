@@ -288,6 +288,53 @@ def test_escape_is_silent_below_the_detector_k_edge():
     assert np.allclose(with_escape, without, rtol=1e-12, atol=0.0)
 
 
+@pytest.mark.parametrize('material', ['Ge', 'Si'])
+def test_the_reused_detector_response_is_larchs_own_to_the_bit(material):
+    """The calibration evaluates the detector's attenuation and escape scale
+    once per channel axis and reuses the material constants behind them. If
+    that copy drifted from what Larch computes -- a different density, a
+    different attenuation kind, an edge applied on the wrong side -- every
+    column would carry the drift, and only a fit far from its optimum would
+    show it. Silicon puts the axis above the detector's K edge, so its escape
+    scale is not zero; germanium's below-edge zero is checked too."""
+    energy = np.linspace(3.8, 7.8, 401) + 1e-4 * np.linspace(-1.0, 1.0, 401) ** 2
+    model = engine.build_model(['Mn'], 7.2, (3.8, 7.8), material=material, thickness=1.0,
+                               det_noise=0.06, peak_step=1e-3, peak_tail=0.05,
+                               escape_amp=1.0)
+    model.detector.calc_mu(energy)
+    model.calc_escape_scale(energy)
+
+    escape = engine.escape_constants(material)
+    mu_total, scale = engine.detector_response(model.detector, energy, escape)
+    assert np.array_equal(mu_total, model.detector.mu_total)
+    assert np.array_equal(scale, model.escape_scale)
+    assert 0.001 * escape['escape_energy_ev'] == model.escape_energy
+    assert np.any(scale > 0) == (material == 'Si')
+
+
+def test_a_calibration_that_revisits_a_shape_gets_a_fresh_basis():
+    """Basis pieces are reused across evaluations, keyed by their exact
+    inputs. A key that missed one input would hand an evaluation the columns
+    of another: this walks a Jacobian-like sequence -- axis, line shape,
+    scatter shape and Voigt gamma moved one at a time, then back -- and holds
+    every basis to the one a fitter that has never seen another shape builds."""
+    options = make_options(escape_amp=2.0, detector_material='Si')
+    energy_ev = scan_energies()
+    indices = np.array([0, 13, 27, 39])
+    start = dict(engine.initial_parameters(options).valuesdict())
+    moves = [dict(), dict(cal_offset=0.004), dict(cal_curvature=0.02), dict(),
+             dict(det_noise=0.07), dict(det_variance_slope=0.0006), dict(peak_gamma=0.05),
+             dict(elastic_sigmax=1.2), dict(compton_angle=112.0), dict(compton_tail=1.3),
+             dict(elastic_sigmax=1.2), dict()]
+    reused = make_fitter(options, energy_ev)
+    for move in moves:
+        values = start | move
+        axis, basis = reused.basis(values, indices)
+        fresh_axis, fresh = make_fitter(options, energy_ev).basis(values, indices)
+        assert np.array_equal(axis, fresh_axis), move
+        assert np.array_equal(basis, fresh), move
+
+
 # ------------------------------------------------------------- the solve
 
 

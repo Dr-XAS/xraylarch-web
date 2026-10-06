@@ -8,6 +8,7 @@ import { artemisApi, type ArtemisModelDraft, type ArtemisExample, type ArtemisEx
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { ApiRequestError } from "@/lib/backend-client"
 import { ArtemisFittingPanel, type ArtemisModelActions } from "./artemis-fitting"
+import { InstructionVisibility } from "./section-help"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import type { ArtemisPlotWeightResult } from "./artefact-viewers/artemis-plot-weight"
 
@@ -137,6 +138,30 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe("ArtemisFittingPanel", () => {
+  it("reveals field instructions without changing the model or running a fit", async () => {
+    const setup = preparedExample()
+    const source = group()
+    const panel = (visible: boolean) => <InstructionVisibility.Provider value={visible}>
+      <ArtemisFittingPanel projectId="p" version={4} group={source} exampleSetup={setup} />
+    </InstructionVisibility.Provider>
+    const view = render(panel(false))
+    await screen.findByLabelText("Path 1 S₀²")
+    expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
+    const initialValue = (screen.getByLabelText("Parameter 1 value") as HTMLInputElement).value
+    const calls = api.mock.calls.length
+    view.rerender(panel(true))
+    for (const name of ["Path 1 S₀²", "Path 1 ΔE₀ (eV)", "Path 1 ΔR (Å)", "Path 1 σ² (Å²)", "Parameter 1 name", "Parameter 1 kind", "Parameter 1 minimum", "Parameter 1 maximum", "Fit k min (Å⁻¹)", "Fit k max (Å⁻¹)", "Fit R min (Å)", "Fit R max (Å)", "Fit k taper dk (Å⁻¹)", "Fit k window", "Fit k-weight"])
+      expect(screen.getByRole("button", { name: `About ${name}` })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "About Path 1 ΔR (Å)" }))
+    expect(screen.getByRole("tooltip")).toHaveTextContent("R_eff + ΔR")
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue(initialValue)
+    expect(screen.getByRole("checkbox", { name: "Include path 1" })).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(calls)
+    view.rerender(panel(false))
+    expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Path 1 ΔR (Å)")).toHaveValue("del_r")
+  })
+
   it("replacing with a generated path already in the model keeps its edits and drops parameters only removed paths used", async () => {
     // Replace reset kept paths to default expressions and left del_r2 behind,
     // a parameter no remaining path used, to be fitted against nothing.
@@ -190,6 +215,8 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("10")
     expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeEnabled()
     expect(onPathsChange.mock.calls.at(-1)?.[0].map((item: { filename: string }) => item.filename)).toEqual(setup.example.paths.map(item => item.filename))
+    expect(onPathsChange.mock.calls.at(-1)?.[0].map((item: ArtemisInspectedPath) => item.metadata.sourceCif)).toEqual(
+      setup.example.paths.map(() => ({ sha256: setup.example.cif_sha256, label: "Cuprite · AMCSD 0015851", siteIndex: 1, attachmentId: setup.attachmentId })))
     expect(onFitResult.mock.calls.every(([result]) => result === null)).toBe(true)
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(api).not.toHaveBeenCalled()
@@ -262,9 +289,11 @@ describe("ArtemisFittingPanel", () => {
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(4)
     for (const [index, source] of example().paths.entries()) {
-      expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).not.toBeVisible()
+      expect(screen.getByLabelText(`Path ${index + 1} S₀²`)).toBeVisible()
       expect(screen.getByText(source.filename)).toBeVisible()
     }
+    fireEvent.click(screen.getByRole("button", { name: "Collapse all path details" }))
+    for (const index of [1, 2, 3, 4]) expect(screen.getByLabelText(`Path ${index} S₀²`)).not.toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "Expand all path details" }))
     for (const index of [1, 2, 3, 4]) expect(screen.getByLabelText(`Path ${index} S₀²`)).toBeVisible()
     expect(api).not.toHaveBeenCalled()
@@ -296,6 +325,79 @@ describe("ArtemisFittingPanel", () => {
     // The status text renders in the commit that sets the result; onFitResult runs in that
     // commit's passive effect, which can flush after findByText has already resolved.
     await waitFor(() => expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } }))
+  })
+
+  it("offers CN while paths are collapsed and saves a normalized CN model without changing other paths", async () => {
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getByRole("button", { name: "Collapse path 1 details" }))
+    expect(screen.getByLabelText("Path 1 S₀²")).not.toBeVisible()
+    const control = screen.getAllByText("Set / fit coordination number", { exact: true })[0]
+    expect(control).toBeVisible()
+    fireEvent.click(control)
+    expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue("12")
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue("")
+    fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("S₀²")
+    expect(screen.getByLabelText("Path 1 S₀²")).toHaveValue("amp")
+    expect(screen.getByLabelText("Path 1 coordination number")).toBeDisabled()
+    fireEvent.click(screen.getByLabelText("Path 1 fit coordination number"))
+    expect(screen.getByLabelText("Path 1 coordination number")).toBeEnabled()
+    fireEvent.change(screen.getByLabelText("Path 1 coordination number"), { target: { value: "10" } })
+    fireEvent.click(screen.getByLabelText("Path 1 fit coordination number"))
+    expect(screen.getByLabelText("Path 1 coordination number")).toBeDisabled()
+    expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue("10")
+    fireEvent.change(screen.getByLabelText("Path 1 fixed S₀²"), { target: { value: "0.85" } })
+    fireEvent.change(screen.getByLabelText("Path 1 coordination maximum"), { target: { value: "12" } })
+    fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
+    expect(screen.getByLabelText("Path 1 S₀²")).toHaveValue("s02_1 * cn_1 / degen")
+    expect(screen.getByLabelText("Path 2 S₀²")).toHaveValue("amp")
+    expect(screen.getByLabelText("Parameter 1 kind")).toHaveValue("guess")
+    expect(screen.getByRole("status")).toHaveTextContent("cn_1 (Guess)")
+    expect(screen.getByText(/CN parameter:/)).toHaveTextContent("cn_1 · fit from 10")
+    expect(screen.getByRole("button", { name: "Apply coordination number for path 1" })).toBeDisabled()
+    await runFit()
+    const request = submittedModel()
+    expect(request.parameters).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "cn_1", kind: "guess", value: "10", min: "0", max: "12" }),
+      expect.objectContaining({ name: "s02_1", kind: "set", value: "0.85" }),
+      expect.objectContaining({ name: "amp", kind: "guess", value: "1" }),
+    ]))
+    expect(request.paths[0].metadata.degen).toBe(12)
+    expect(request.paths[0].content).toBe(example().paths[0].content)
+    expect(request.paths.slice(1).every(path => path.s02 === "amp")).toBe(true)
+  })
+
+  it("can hold CN fixed, requires path inclusion, and restores CN controls from the saved model", async () => {
+    const first = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    fireEvent.click(screen.getByLabelText("Path 1 fit coordination number"))
+    fireEvent.change(screen.getByLabelText("Path 1 coordination number"), { target: { value: "8" } })
+    fireEvent.change(screen.getByLabelText("Path 1 fixed S₀²"), { target: { value: "0.9" } })
+    expect(screen.queryByLabelText("Path 1 coordination maximum")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText("Include path 1"))
+    expect(screen.getByRole("button", { name: "Apply coordination number for path 1" })).toBeDisabled()
+    fireEvent.click(screen.getByLabelText("Include path 1"))
+    fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
+    await runFit()
+    const model = submittedModel()
+    expect(model.parameters.find(parameter => parameter.name === "cn_1")).toMatchObject({ kind: "set", value: "8" })
+    first.unmount()
+    render(<ArtemisFittingPanel projectId="reopened" version={4} group={{ ...group(), artemis: { schema_version: 1, model, history: [], current_input_sha256: null } }} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue("8")
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue("0.9")
+    expect(screen.getByLabelText("Path 1 fit coordination number")).not.toBeChecked()
+  })
+
+  it("offers CN only for single scattering and uses an existing fixed amplitude as its initial value", () => {
+    const setup = preparedExample()
+    setup.example.paths[1].metadata.nleg = 3
+    setup.example.parameters[0] = { ...setup.example.parameters[0], kind: "set", value: 0.82 }
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup} onProjectChange={acceptProject} />)
+    expect(screen.getAllByText("Set / fit coordination number", { exact: true })).toHaveLength(3)
+    expect(screen.queryByLabelText("Path 2 coordination number")).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue("0.82")
   })
 
   it("compares the fitted model on the fast backend, and withdraws the comparison when the model changes", async () => {
@@ -933,5 +1035,189 @@ describe("automatic model persistence", () => {
     expect(api.mock.calls[1][1]).toMatchObject({ version: 6 })
     expect(finished).toBe(true)
     expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.6")
+  })
+})
+
+describe("copy fit transforms to marked groups", () => {
+  function markedModel(id: string, value = "0.65"): AthenaGroup {
+    const item = persistedGroup(value)
+    item.id = id
+    item.label = `${id} foil`
+    item.marked = true
+    item.artemis!.model.paths[0].label = `${id} first shell`
+    item.artemis!.history[0].id = `${id}-fit`
+    return item
+  }
+
+  function workspace(initialGroups = [
+    { ...persistedGroup(), marked: true }, markedModel("iron"), { ...group("zinc"), marked: true }, group("gold"),
+  ]) {
+    let server: AthenaProject = { ...attachedProject(5), groups: initialGroups }
+    let current = server
+    let actions: ArtemisModelActions | null = null
+    const save = async (url: string, body: unknown) => {
+      if (url === "/fast-fit/status") return { available: false }
+      const { model, version } = body as { model: ArtemisModelDraft; version: number }
+      const id = url.split("/").at(-2)
+      expect(version).toBe(server.version)
+      server = { ...server, version: version + 1, groups: server.groups.map(item => item.id === id ? {
+        ...item, artemis: { schema_version: 1, model, history: item.artemis?.history ?? [], current_input_sha256: item.artemis?.current_input_sha256 ?? null },
+      } : item) }
+      return server
+    }
+    api.mockImplementation(save)
+    function Harness() {
+      const [project, setProject] = useState(server)
+      const [activeId, setActiveId] = useState("copper")
+      return <>{project.groups.map(item => <button key={item.id} onClick={() => setActiveId(item.id)}>Select {item.id}</button>)}
+        <ArtemisFittingPanel projectId="p" version={project.version} groups={project.groups} group={project.groups.find(item => item.id === activeId)}
+          onProjectChange={next => { current = next; setProject(next) }} onActionsChange={value => { actions = value }} /></>
+    }
+    render(<Harness />)
+    return { project: () => current, flush: () => actions!.flush(), save }
+  }
+
+  const copySection = "Apply fit range & transform to marked groups"
+  const select = (id: string) => fireEvent.click(screen.getByRole("button", { name: `Select ${id}` }))
+  const modelSaves = () => api.mock.calls.filter(([url]) => url.endsWith("/model"))
+
+  it("copies the live whole transform to every other marked group and saves serially after switching spectra", async () => {
+    const target = markedModel("iron")
+    const originalPaths = structuredClone(target.artemis!.model.paths)
+    const originalParameters = structuredClone(target.artemis!.model.parameters)
+    const originalHistory = structuredClone(target.artemis!.history)
+    const state = workspace([{ ...persistedGroup(), marked: true }, target, { ...group("zinc"), marked: true }, group("gold")])
+    fireEvent.change(screen.getByLabelText("k min (Å⁻¹)"), { target: { value: "4" } })
+    fireEvent.change(screen.getByLabelText("k max (Å⁻¹)"), { target: { value: "15" } })
+    fireEvent.change(screen.getByLabelText("R min (Å)"), { target: { value: "1.4" } })
+    fireEvent.change(screen.getByLabelText("R max (Å)"), { target: { value: "3.8" } })
+    fireEvent.change(screen.getByLabelText("k taper dk (Å⁻¹)"), { target: { value: "2" } })
+    fireEvent.change(screen.getByLabelText("Fit k window"), { target: { value: "kaiser" } })
+    fireEvent.click(screen.getByRole("button", { name: "k space" }))
+    fireEvent.click(screen.getByLabelText("Fit k-weight 0"))
+    fireEvent.click(screen.getByLabelText("Fit k-weight 2"))
+    fireEvent.contextMenu(screen.getByText("Fit range & transform", { exact: true }))
+    fireEvent.click(screen.getByRole("menuitem", { name: copySection }))
+    select("iron")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("4")
+    expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("15")
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("0.65")
+    expect(screen.getByLabelText("Path 1 label")).toHaveValue("iron first shell")
+    select("zinc")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("4")
+    expect(screen.queryByLabelText("Path 1 label")).not.toBeInTheDocument()
+    await act(async () => state.flush())
+    expect(modelSaves().map(([url, body]) => [url.split("/").at(-2), (body as { version: number }).version])).toEqual([
+      ["copper", 5], ["iron", 6], ["zinc", 7],
+    ])
+    const [source, iron, zinc, gold] = state.project().groups
+    expect(source.artemis!.model.transform).toMatchObject({ fitspace: "k", kmin: "4", kmax: "15", rmin: "1.4", rmax: "3.8", dk: "2", window: "kaiser", kweight: [1, 3] })
+    expect(iron.artemis!.model.transform).toEqual(source.artemis!.model.transform)
+    expect(zinc.artemis!.model.transform).toEqual(source.artemis!.model.transform)
+    expect(iron.artemis!.model.paths).toEqual(originalPaths)
+    expect(iron.artemis!.model.parameters).toEqual(originalParameters)
+    expect(iron.artemis!.history).toEqual(originalHistory)
+    expect(zinc.artemis!.model.paths).toEqual([])
+    expect(zinc.artemis!.model.parameters[0].id).not.toBe(source.artemis!.model.parameters[0].id)
+    expect(zinc.artemis!.history).toEqual([])
+    expect(gold.artemis).toBeUndefined()
+  })
+
+  it("copies one field while retaining a target's other settings, unfinished parameter, path edits, and saved history", async () => {
+    const target = markedModel("iron")
+    target.artemis!.model.transform = { ...target.artemis!.model.transform, kmin: "2", kmax: "18", rmin: "1.5", rmax: "4", window: "parzen", kweight: [2] }
+    const originalHistory = structuredClone(target.artemis!.history)
+    const state = workspace([{ ...persistedGroup(), marked: true }, target])
+    select("iron")
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "-" } })
+    fireEvent.change(screen.getByLabelText("Path 1 label"), { target: { value: "Unfinished target model" } })
+    fireEvent.change(screen.getByLabelText("k max (Å⁻¹)"), { target: { value: "17" } })
+    select("copper")
+    fireEvent.change(screen.getByLabelText("k min (Å⁻¹)"), { target: { value: "5" } })
+    fireEvent.contextMenu(screen.getByLabelText("k min (Å⁻¹)"))
+    expect(screen.getByRole("menuitem", { name: copySection })).toBeEnabled()
+    fireEvent.click(screen.getByRole("menuitem", { name: "Apply k min (Å⁻¹) to marked groups" }))
+    select("iron")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("5")
+    expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("17")
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue("-")
+    expect(screen.getByLabelText("Path 1 label")).toHaveValue("Unfinished target model")
+    await act(async () => state.flush())
+    const saved = state.project().groups[1].artemis!
+    expect(saved.model.transform).toEqual({ ...target.artemis!.model.transform, kmin: "5", kmax: "17" })
+    expect(saved.model.parameters[0].value).toBe("-")
+    expect(saved.model.paths[0].label).toBe("Unfinished target model")
+    expect(saved.history).toEqual(originalHistory)
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/groups/copper/model"))).toHaveLength(1)
+  })
+
+  it("rejects a field that would invalidate any target before changing any marked group", async () => {
+    const valid = markedModel("iron")
+    const invalid = markedModel("zinc")
+    invalid.artemis!.model.transform.kmax = "4"
+    const state = workspace([{ ...persistedGroup(), marked: true }, valid, invalid])
+    fireEvent.change(screen.getByLabelText("k min (Å⁻¹)"), { target: { value: "5" } })
+    fireEvent.contextMenu(screen.getByLabelText("k min (Å⁻¹)"))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Apply k min (Å⁻¹) to marked groups" }))
+    expect(screen.getByRole("alert")).toHaveTextContent(/k range/i)
+    select("iron")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("3")
+    select("zinc")
+    expect(screen.getByLabelText("k min (Å⁻¹)")).toHaveValue("3")
+    expect(screen.getByLabelText("k max (Å⁻¹)")).toHaveValue("4")
+    await act(async () => state.flush())
+    expect(modelSaves().map(([url]) => url)).toEqual(["/projects/p/groups/copper/model"])
+    expect(state.project().groups[1].artemis).toEqual(valid.artemis)
+    expect(state.project().groups[2].artemis).toEqual(invalid.artemis)
+  })
+
+  it("disables copying without another marked group and closes the accessible menu with Escape", () => {
+    const source = { ...persistedGroup(), marked: true }
+    const view = render(<ArtemisFittingPanel projectId="p" version={5} group={source} groups={[source, group("iron")]} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getByRole("button", { name: "Fit range & transform actions" }))
+    expect(screen.getByRole("menuitem", { name: copySection })).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" })
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    view.rerender(<ArtemisFittingPanel projectId="p" version={5} group={source} groups={[source, markedModel("iron")]} pending onProjectChange={acceptProject} />)
+    expect(screen.getByRole("button", { name: "Fit range & transform actions" })).toBeDisabled()
+    fireEvent.contextMenu(screen.getByText("Fit range & transform", { exact: true }))
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(modelSaves()).toHaveLength(0)
+  })
+
+  it("refuses copying after switching spectra while another group's fit is still running", async () => {
+    const source = { ...persistedGroup(), marked: true }
+    source.artemis!.model.transform.kmin = "2"
+    const iron = markedModel("iron")
+    const state = workspace([source, iron])
+    const fitting = deferred<ReturnType<typeof savedFit>>()
+    api.mockImplementation((url, body) => url.endsWith("/fit-saved") ? fitting.promise : state.save(url, body))
+    fireEvent.click(screen.getByRole("button", { name: "Run EXAFS fit" }))
+    await waitFor(() => expect(api.mock.calls.some(([url]) => url.endsWith("/fit-saved"))).toBe(true))
+    const fitBody = api.mock.calls.find(([url]) => url.endsWith("/fit-saved"))![1]
+    select("iron")
+    fireEvent.contextMenu(screen.getByLabelText("k min (Å⁻¹)"))
+    fireEvent.click(screen.getByRole("menuitem", { name: "Apply k min (Å⁻¹) to marked groups" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Wait for the current fit or project operation to finish before copying settings.")
+    expect(modelSaves()).toHaveLength(0)
+    const saved = savedFit(fitBody, fitResult({ version: 5 }))
+    saved.project.groups.push(iron)
+    await act(async () => fitting.resolve(saved))
+    expect(state.project().groups[0].artemis!.model.transform.kmin).toBe("2")
+    expect(modelSaves()).toHaveLength(0)
+  })
+
+  it.each([
+    ["k min (Å⁻¹)", "k min (Å⁻¹)"], ["k max (Å⁻¹)", "k max (Å⁻¹)"], ["R min (Å)", "R min (Å)"],
+    ["R max (Å)", "R max (Å)"], ["k taper dk (Å⁻¹)", "k taper dk (Å⁻¹)"],
+    ["Fit k window", "k window"], ["Fit space", "Fit space"], ["Fit k-weight", "Fit k-weight"],
+  ])("offers a single-field action for %s beside the whole transform action", (controlLabel, menuLabel) => {
+    workspace()
+    fireEvent.contextMenu(screen.getByLabelText(controlLabel, { exact: true }))
+    expect(screen.getByRole("menuitem", { name: `Apply ${menuLabel} to marked groups` })).toBeEnabled()
+    expect(screen.getByRole("menuitem", { name: copySection })).toBeEnabled()
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" })
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument()
+    expect(modelSaves()).toHaveLength(0)
   })
 })

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { validArtemisResult, type ArtemisFitRequest, type ArtemisFitResult } from "@/lib/artemis"
 import { fastEngineStatus, formatSeconds, judgeFits, runFastFit, SAME_FIT_TOLERANCE, type FitVerdict } from "@/lib/artemis-fast"
+import { SectionHelp } from "./section-help"
 import styles from "./artemis-fast-fit.module.css"
 
 const seconds = (value: number | undefined, absent = "not recorded") => value === undefined ? absent : formatSeconds(value)
@@ -78,7 +79,7 @@ export function ArtemisFastFitComparison({ projectId, groupId, request, referenc
   const time = engines?.map(result => result.metadata?.seconds ?? {})
   if (!installed) return null
   return <div className={styles.panel}>
-    <h4>Fast fit backend</h4>
+    <h4>Fast fit backend<SectionHelp label="Fast fit comparison">Repeat the current reference fit with the differentiable backend using the same model and data. This comparison is not saved to the project; review agreement, convergence and uncertainties together.</SectionHelp></h4>
     <button type="button" disabled={disabled || busy || !request || !reference} onClick={() => void compare()}>
       {busy ? "Refitting…" : "Refit on the fast backend"}
     </button>
@@ -91,16 +92,16 @@ export function ArtemisFastFitComparison({ projectId, groupId, request, referenc
         <caption>Same model and data. Reference: {engines[0].metadata?.engine ?? "larch.feffit"}; fast: {engines[1].metadata?.engine ?? "unknown engine"}.</caption>
         <thead><tr><th scope="col"><span className={styles.hidden}>Quantity</span></th><th scope="col">Reference</th><th scope="col">Fast</th></tr></thead>
         <tbody>
-          <tr><th scope="row">Converged</th>{engines.map((result, i) => <td key={i} className={result.success ? undefined : styles.bad}>{result.success ? "yes" : `no — ${result.message}`}</td>)}</tr>
-          <tr><th scope="row">Uncertainties</th>{engines.map((result, i) => <td key={i} className={result.statistics.errorbars ? undefined : styles.bad}>{result.statistics.errorbars ? "estimated" : "not available"}</td>)}</tr>
-          <tr><th scope="row">Residual evaluations</th>{engines.map((result, i) => <td key={i}>{result.statistics.nfev}</td>)}</tr>
-          <tr><th scope="row">χ²</th>{engines.map((result, i) => <td key={i}>{result.statistics.chi_square.toPrecision(6)}</td>)}</tr>
-          <tr><th scope="row">R-factor</th>{engines.map((result, i) => <td key={i}>{result.statistics.r_factor.toPrecision(4)}</td>)}</tr>
-          <tr><th scope="row">Optimizer loop</th>{time.map((value, i) => <td key={i}>{seconds(value.optimizer)}</td>)}</tr>
-          <tr><th scope="row">Compilation</th><td>none</td><td>{seconds(time[1].compile)}</td></tr>
-          <tr><th scope="row">Whole fit call</th>{time.map((value, i) => <td key={i}>{seconds(value.fit)}</td>)}</tr>
-          <tr><th scope="row">Server total</th>{time.map((value, i) => <td key={i}>{seconds(value.total)}</td>)}</tr>
-          <tr><th scope="row">Browser round trip</th><td>not timed</td><td>{formatSeconds(fast.seconds)}</td></tr>
+          <tr><th scope="row" aria-label="Converged">Converged<SectionHelp label="Fast fit Converged">Whether the optimizer stopped successfully. Convergence alone does not establish that the structural model is correct.</SectionHelp></th>{engines.map((result, i) => <td key={i} className={result.success ? undefined : styles.bad}>{result.success ? "yes" : `no — ${result.message}`}</td>)}</tr>
+          <tr><th scope="row" aria-label="Uncertainties">Uncertainties<SectionHelp label="Fast fit Uncertainties">Whether parameter standard errors could be estimated. Strong correlations or values at bounds can make those uncertainties unreliable.</SectionHelp></th>{engines.map((result, i) => <td key={i} className={result.statistics.errorbars ? undefined : styles.bad}>{result.statistics.errorbars ? "estimated" : "not available"}</td>)}</tr>
+          <tr><th scope="row" aria-label="Residual evaluations">Residual evaluations<SectionHelp label="Fast fit Residual evaluations">Number of residual-function evaluations reported by each engine. Derivative methods differ, so counts alone do not measure speed.</SectionHelp></th>{engines.map((result, i) => <td key={i}>{result.statistics.nfev}</td>)}</tr>
+          <tr><th scope="row" aria-label="χ²">χ²<SectionHelp label="Fast fit χ²">Sum of squared noise-weighted residuals. Compare engines using the same data, transform and noise estimate.</SectionHelp></th>{engines.map((result, i) => <td key={i}>{result.statistics.chi_square.toPrecision(6)}</td>)}</tr>
+          <tr><th scope="row" aria-label="R-factor">R-factor<SectionHelp label="Fast fit R-factor">Residual power relative to data power in the fit. Lower values indicate closer agreement, but do not by themselves validate the model.</SectionHelp></th>{engines.map((result, i) => <td key={i}>{result.statistics.r_factor.toPrecision(4)}</td>)}</tr>
+          <tr><th scope="row" aria-label="Optimizer loop">Optimizer loop<SectionHelp label="Fast fit Optimizer loop">Time spent iterating the optimizer, excluding any separately reported compilation stage.</SectionHelp></th>{time.map((value, i) => <td key={i}>{seconds(value.optimizer)}</td>)}</tr>
+          <tr><th scope="row" aria-label="Compilation">Compilation<SectionHelp label="Fast fit Compilation">Time compiling the differentiable fit model. It can dominate a first run and may be reused on later matching calls.</SectionHelp></th><td>none</td><td>{seconds(time[1].compile)}</td></tr>
+          <tr><th scope="row" aria-label="Whole fit call">Whole fit call<SectionHelp label="Fast fit Whole fit call">Time for the server-side fit call, including its setup and any compilation recorded by the engine.</SectionHelp></th>{time.map((value, i) => <td key={i}>{seconds(value.fit)}</td>)}</tr>
+          <tr><th scope="row" aria-label="Server total">Server total<SectionHelp label="Fast fit Server total">Total processing time reported by the server, including work around the fit call.</SectionHelp></th>{time.map((value, i) => <td key={i}>{seconds(value.total)}</td>)}</tr>
+          <tr><th scope="row" aria-label="Browser round trip">Browser round trip<SectionHelp label="Fast fit Browser round trip">Elapsed time from requesting the fast fit to receiving its response, including network and server processing.</SectionHelp></th><td>not timed</td><td>{formatSeconds(fast.seconds)}</td></tr>
         </tbody>
       </table></div>
       <p className={verdict.kind === "same" ? undefined : styles.caution}>{verdictText(verdict)}</p>

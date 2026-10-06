@@ -35,6 +35,6 @@ export function AthenaReaderPreview({ value, required, reviewed, onReviewed, dis
     {error && <p role="alert" className="ath-error">{error}</p>}
     {open && <p className="ath-hint">{value.points.toLocaleString()} source points.</p>}
     {required && <label className="ath-check"><input type="checkbox" disabled={disabled || !ready} checked={reviewed}
-      onChange={e => { onReviewed(e.target.checked); setOpen(!e.target.checked) }} />I reviewed the I0 correction for this file</label>}
+      onChange={e => { onReviewed(e.target.checked); setOpen(!e.target.checked) }} />I reviewed the I0 correction for this file <SectionHelp label="I reviewed the I0 correction for this file">Confirm after inspecting the correction curve and its fit regions for this specific file. The import stays paused until the required review is complete.</SectionHelp></label>}
   </section>
 }

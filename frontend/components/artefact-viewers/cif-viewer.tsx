@@ -6,7 +6,7 @@ import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS, type CifVector } from "@/lib/cif-viewer"
 import { clearCifHover, createCifRenderer } from "@/lib/cif-renderer"
-import { cifAtomStyle, CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS } from "@/lib/cif-viewer-style"
+import { cifAtomStyle, cifElementColor, CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS } from "@/lib/cif-viewer-style"
 import { firstShellAtoms, isShellAtom } from "@/lib/first-shell"
 import { useFirstShell, type FirstShellState } from "@/lib/use-first-shell"
 import { FirstShellSummary } from "../first-shell-summary"
@@ -17,10 +17,13 @@ import { AtomLegend } from "../atom-legend"
 import { LocalStructureControls } from "../local-structure-controls"
 import { StructureDisplayLegend } from "../structure-display-legend"
 import { ViewerPanel } from "./viewer-panel"
+import { ResizablePlotCard } from "./athena-plot-card"
 import { ClusterCoordination } from "./cluster-coordination"
 import styles from "./cif-viewer.module.css"
 
 const point = ([x, y, z]: [number, number, number]) => ({ x, y, z })
+const CENTER_RADIUS = 0.5
+const FIRST_SHELL_RADIUS = 0.42
 
 function CellRepeatInput({ axis, value, onChange }: { axis: string; value: number; onChange: (value: number) => void }) {
   const [draft, setDraft] = useState<string | null>(null)
@@ -78,6 +81,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
   const [cell, setCell] = useState(false)
   const [coordinationPanel, setCoordinationPanel] = useState<"unopened" | "open" | "closed">("unopened")
   const coordinationId = useId()
+  const plotId = useId()
   const centerSites = useMemo(() => structure.sites.filter((site, index, all) => all.findIndex(other => other.index === site.index) === index), [structure.sites])
   const geometryMode = mode === "cell" ? "cell" : "cluster"
   const baseGeometry = useMemo(() => buildCifGeometry(structure, { siteIndex: center, radius, mode: geometryMode, cellRepeats }),
@@ -95,6 +99,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     return absorber ? { ...baseGeometry, atoms: [absorber, ...shellAtoms], truncated: false, warnings: [] } : baseGeometry
   }, [baseGeometry, mode, shell, shellAtoms, radial, radialAtoms, shellVisibility, radialKey])
   const elements = useMemo(() => [...new Set(geometry.atoms.map(atom => atom.element))].sort(), [geometry])
+  const centerAtom = geometry.atoms.find(atom => atom.isAbsorber)
   const visibleCount = geometry.atoms.filter(atom => !hidden.includes(atom.element)).length
   const coordinationUnavailable = mode !== "cluster" ? "Switch to Local cluster to calculate coordination numbers."
     : geometry.truncated ? "Reduce the display radius to calculate coordination numbers for a complete cluster."
@@ -174,19 +179,24 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
           for (const neighbor of atom.bonds ?? []) addBond(atom.index ?? -1, neighbor)
         }
       }
+      // Keep the selected site's element color in every view. Role highlights
+      // must not make a Cu center look like S in the element legend.
+      geometry.atoms.forEach((atom, index) => {
+        if (atom.isAbsorber && !hidden.includes(atom.element)) {
+          instance.addStyle({ index }, { sphere: { color: cifElementColor(elements.indexOf(atom.element)), radius: CENTER_RADIUS } })
+        }
+      })
       if (mode === "radial" && radial) {
         geometry.atoms.forEach((atom, index) => {
           if (hidden.includes(atom.element)) return
           const member = radialAtoms.find(neighbor => isShellAtom(atom, [neighbor]))
-          if (atom.isAbsorber) instance.addStyle({ index }, { sphere: { color: "#f59e0b", radius: 0.45 } })
-          else if (member) instance.addStyle({ index }, { sphere: { color: shellColor(member.shellIndex), radius: CIF_SPHERE_RADIUS } })
+          if (!atom.isAbsorber && member) instance.addStyle({ index }, { sphere: { color: shellColor(member.shellIndex), radius: CIF_SPHERE_RADIUS } })
         })
       } else if (shell && (highlightShell || mode === "shell")) {
         geometry.atoms.forEach((atom, index) => {
           if (hidden.includes(atom.element)) return
-          if (atom.isAbsorber) instance.addStyle({ index }, { sphere: { color: "#f59e0b", radius: 0.45 } })
-          else if (isShellAtom(atom, shellAtoms)) {
-            instance.addStyle({ index }, { sphere: { color: "#06b6d4", radius: CIF_SPHERE_RADIUS } })
+          if (!atom.isAbsorber && isShellAtom(atom, shellAtoms)) {
+            instance.addStyle({ index }, { sphere: { color: cifElementColor(elements.indexOf(atom.element)), radius: FIRST_SHELL_RADIUS } })
             if (bonds && mode === "shell") addBond(geometry.atoms.findIndex(candidate => candidate.isAbsorber), index, "#06b6d4")
           }
         })
@@ -220,36 +230,41 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
       onClick={() => setCoordinationPanel(previous => previous === "open" ? "closed" : "open")}>Coordination numbers</button>
     {resetButton}
   </div>
-  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. Amber marks the absorber; cyan marks CrystalNN neighbors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
-  const content = <>
+  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. The largest sphere marks the center; larger neighboring spheres mark CrystalNN first-shell atoms, keeping their element colors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
+  const content = <><ResizablePlotCard className={styles.resizeCard} storageKey="artemis.cif.height.v1"
+    defaultHeight={310} minHeight={250} plotSelector="[data-cif-plot]" resizeLabel="Resize CIF structure height" controlsId={plotId}>
     {structureControls}
     <div className={styles.canvas}>
-      <div ref={container} className={styles.surface} role="img" onMouseLeave={clearHover} onPointerDown={clearHover} aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
+      <div id={plotId} data-cif-plot ref={container} className={styles.surface} role="img" onMouseLeave={clearHover} onPointerDown={clearHover} aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
       {ready && !error && geometry.atoms.length > 0 && geometry.lattice && structure.sites.length > 0 && <div className={styles.legendCorner}>
-        {mode === "radial" ? <div className={styles.options} aria-label="Visible CIF elements">{elements.map(element => <label key={element}><input type="checkbox" checked={!hidden.includes(element)} onChange={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])} />{element}</label>)}</div> : <AtomLegend elements={elements} hiddenElements={hidden}
+        {mode === "radial" ? <div className={styles.options} aria-label="Visible CIF elements"><SectionHelp label="Visible CIF elements">Toggle an element to show or hide its atoms. Hidden atoms remain part of the coordination and shell calculations.</SectionHelp>{elements.map(element => <label key={element}><input type="checkbox" checked={!hidden.includes(element)} onChange={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])} />{element}</label>)}</div> : <AtomLegend elements={elements} hiddenElements={hidden}
           onToggle={element => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}
           ariaLabel="Visible CIF elements" />}
         <StructureDisplayLegend bonds={bonds} onBondsChange={setBonds}
           unitCell={{ checked: cell || mode === "cell", disabled: mode === "cell", onChange: setCell }} />
       </div>}
+      {ready && !error && centerAtom && <span className={styles.centerLabel}>Center: {centerAtom.element} · site {centerAtom.siteIndex}{hidden.includes(centerAtom.element) ? " (hidden)" : ""}</span>}
       {!geometry.atoms.length ? <p className={styles.overlay}>{mode === "radial" && radialState.loading ? "Calculating periodic radial shells…" : "A 3D preview is unavailable for this CIF."}</p>
         : error ? <div className={styles.overlay} role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>Retry 3D viewer</button></div>
         : !ready ? <p className={styles.overlay} role="status">Loading 3D structure…</p> : null}
     </div>
     {geometry.lattice && structure.sites.length > 0 && <>
       <div className={styles.controls}>
-        <label>View<select aria-label="CIF view mode" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="cluster">Local cluster</option><option value="cell">Unit cell</option><option value="shell" disabled={!shell}>CrystalNN first shell</option><option value="radial" disabled={!radial}>Radial shells</option></select></label>
-        <label>Center site<select aria-label="CIF center site" value={center} onChange={event => { const site = Number(event.target.value); setCenter({ key: centerKey, site }); onSiteChange?.(site) }}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
-        {shell && mode !== "radial" && <label><input type="checkbox" aria-label="Highlight CrystalNN first shell" checked={highlightShell || mode === "shell"} disabled={mode === "shell"} onChange={event => setHighlightShell(event.target.checked)} />First shell</label>}
+        <label><span>View<SectionHelp label="CIF view mode">Local cluster shows atoms within the display radius. Unit cell shows repeated crystallographic cells. CrystalNN first shell uses its periodic neighbor analysis; Radial shells groups neighbors by distance.</SectionHelp></span><select aria-label="CIF view mode" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="cluster">Local cluster</option><option value="cell">Unit cell</option><option value="shell" disabled={!shell}>CrystalNN first shell</option><option value="radial" disabled={!radial}>Radial shells</option></select></label>
+        <label><span>Center site<SectionHelp label="CIF center site">Choose the crystallographic site at the center of the structure and neighbor analysis. Sites of the same element can have different local environments.</SectionHelp></span><select aria-label="CIF center site" value={center} onChange={event => { const site = Number(event.target.value); setCenter({ key: centerKey, site }); onSiteChange?.(site) }}>{centerSites.map(site => <option key={site.index} value={site.index}>{site.species} · site {site.index}</option>)}</select></label>
+        {shell && mode !== "radial" && <label><input type="checkbox" aria-label="Highlight CrystalNN first shell" checked={highlightShell || mode === "shell"} disabled={mode === "shell"} onChange={event => setHighlightShell(event.target.checked)} />First shell<SectionHelp label="Highlight first shell">Enlarge neighbors assigned by CrystalNN while keeping their element colors. The first-shell view always shows them; hiding or highlighting atoms does not change shell membership.</SectionHelp></label>}
       </div>
       <LocalStructureControls radius={radius} min={CIF_VIEWER_MIN_RADIUS} max={CIF_VIEWER_MAX_RADIUS} onRadiusChange={setRadius}
         radiusAriaLabel="CIF display radius" bonds={bonds} onBondsChange={setBonds}
         extentControl={mode === "radial" ? <span>Selected radial shells · search to {radialState.settings.radius} Å</span> : mode === "shell" && shell ? <span>Complete first shell · {shell.coordination_number} neighbors</span> : mode === "cell" ? <div className={styles.cellRepeats} role="group" aria-label="Unit cell repetitions">
-          <span>Unit cell repeats</span>
+          <span>Unit cell repeats<SectionHelp label="Unit cell repeats">Repeat the cell along lattice vectors a, b, and c. Each value is a whole number from 1 to {CIF_VIEWER_MAX_CELL_REPEATS}; repetitions change the display only.</SectionHelp></span>
           <div className={styles.cellAxes}>{["a", "b", "c"].map((axis, index) => <CellRepeatInput key={axis} axis={axis}
             value={cellRepeats[index]} onChange={repeat => setCellRepeats(previous => previous.map((count, i) => i === index ? repeat : count) as CifVector)} />)}</div>
         </div> : undefined}
         showBondsControl={false} atomCount={visibleCount} />
+    </>}
+  </ResizablePlotCard>
+    {geometry.lattice && structure.sites.length > 0 && <>
       <div className={styles.help}><FirstShellSummary state={{ ...shellState, shell }} /></div>
       <details className={styles.help} open={mode === "radial" ? true : undefined}><summary>Radial shell ranges & display</summary>
         <RadialShellPanel state={{ ...radialState, data: radial }} selected={visibleShells} onToggle={index => {

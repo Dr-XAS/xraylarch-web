@@ -5,6 +5,9 @@
 .attachedList li + li { border-top: 1px solid var(--ath-line, #dce5dc); }
 .attachmentInfo { display: flex; flex: 1 1 100px; flex-direction: column; gap: 3px; min-width: 0; }
 .attachedActions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.renameEditor { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: flex-end; gap: 6px; min-width: 0; }
+.renameEditor label { display: flex; flex: 1 1 140px; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--text-label); color: var(--ath-muted, #647669); }
+.renameEditor input { width: 100%; min-width: 0; }
 .panel button.removeButton { min-height: 32px; padding: 5px 9px; border-color: var(--ath-error-line, #e9c8b4); background: var(--ath-error-bg, #fff1ec); color: var(--ath-error-ink, #9c3425); }
 .panel button.removeButton:not(:disabled):hover { border-color: var(--ath-error-ink, #9c3425); background: var(--ath-error-bg, #fff1ec); }
 .removeButton svg { flex-shrink: 0; }
@@ -43,7 +46,7 @@
 .panel button.result[aria-pressed=true] { border-color: var(--ath-primary, #268553); background: var(--ath-canvas, #f5f8f5); }
 .structure { margin-top: 0; padding-top: 0; }
 .structure h4 { font-size: var(--text-section); font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; line-height: var(--leading-heading); }
-.structure h4 span { display: block; color: var(--ath-muted, #647669); font-size: var(--text-caption); margin-top: 4px; }
+.structure h4 > span:not([data-section-help]) { display: block; color: var(--ath-muted, #647669); font-size: var(--text-caption); margin-top: 4px; }
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .textDetails { margin: 9px 0; font-size: var(--text-label); }
 .textDetails summary { cursor: pointer; margin: 6px 0; font-size: var(--text-label); }
@@ -71,3 +74,5 @@
 
 .feffLauncher { margin-bottom: 8px; }
 .feffContent { grid-template-columns: minmax(0, 1fr); }
+
+.simulation { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--ath-line); border-radius: 6px; }
