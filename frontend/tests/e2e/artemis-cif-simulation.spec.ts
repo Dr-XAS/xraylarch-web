@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 import { readFile } from "node:fs/promises"
 
-test("an uploaded CIF simulates and exports EXAFS in an empty project", async ({ page }) => {
+test("an uploaded CIF simulates, exports, and adds theory EXAFS to an empty project", async ({ page }) => {
   test.setTimeout(180_000)
   const errors: string[] = []
   page.on("pageerror", error => errors.push(error.message))
@@ -29,11 +29,14 @@ test("an uploaded CIF simulates and exports EXAFS in an empty project", async ({
   await dialog.getByRole("button", { name: "Run FEFF calculation", exact: true }).click()
   const simulate = dialog.getByRole("button", { name: "Run EXAFS simulation", exact: true })
   await expect(simulate).toBeEnabled({ timeout: 60_000 })
+  await expect(dialog.getByLabel("Simulation S₀²", { exact: true })).toHaveValue("0.85")
+  await expect(dialog.getByRole("button", { name: "Add to data list", exact: true })).toHaveCount(0)
   const responsePromise = page.waitForResponse(response => response.url().endsWith("/simulate"))
   await simulate.click()
   const response = await responsePromise
   expect(response.ok()).toBe(true)
   const result = await response.json()
+  expect(result.simulation.request.s02).toBe(0.85)
   expect(result.source.provenance.cif).toBe(cif)
   expect(result.k.chi).toHaveLength(401)
   await expect(dialog.getByText(/Simulation complete · 1 path ·/)).toBeVisible()
@@ -55,7 +58,31 @@ test("an uploaded CIF simulates and exports EXAFS in an empty project", async ({
   expect(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true)
   await dialog.getByLabel("Simulation σ² (Å²)", { exact: true }).fill("0.007")
   await expect(dialog.getByRole("button", { name: "Download simulation JSON", exact: true })).toHaveCount(0)
-  const project = await page.request.get(`/api/backend/api/athena/projects/${attached.id}`)
+  await expect(dialog.getByRole("button", { name: "Add to data list", exact: true })).toHaveCount(0)
+  const project = await page.request.get(`/api/backend/api/athena/projects/${attached.id}?view=summary`)
   expect((await project.json()).groups).toEqual([])
+  await dialog.getByLabel("Simulation σ² (Å²)", { exact: true }).fill("0.003")
+  await simulate.click()
+  const add = dialog.getByRole("button", { name: "Add to data list", exact: true })
+  await expect(add).toBeEnabled()
+  const addition = page.waitForResponse(response => response.url().endsWith("/simulation") && response.request().method() === "POST")
+  await add.click()
+  const additionResponse = await addition
+  expect(additionResponse.ok()).toBe(true)
+  const added = await additionResponse.json()
+  expect(added.groups).toHaveLength(1)
+  const theory = added.groups[0]
+  expect(theory.data_type).toBe("chi")
+  expect(theory.source.tags).toEqual(["theory"])
+  expect(theory.energy).toEqual(result.k.x)
+  expect(theory.mu).toEqual(result.k.chi)
+  expect(theory.parameters.kweight).toBe(2)
+  expect(theory.source.feff.provenance.cif).toBe(cif)
+  expect(theory.source.simulation.request.s02).toBe(0.85)
+  await expect(page.locator('#athena-data-groups [data-tag="theory"]')).toHaveText("theory")
+  await page.reload()
+  await expect(page.locator('#athena-data-groups [data-tag="theory"]')).toHaveText("theory")
+  const reopened = await page.request.get(`/api/backend/api/athena/projects/${attached.id}?view=summary`)
+  expect((await reopened.json()).groups).toHaveLength(1)
   expect(errors).toEqual([])
 })

@@ -49,7 +49,15 @@
     ".next-cif-removal-e2e/types/**/*.ts",
     ".next-cif-removal-e2e/dev/types/**/*.ts",
     ".next-cif-removal-e2e-mounted/types/**/*.ts",
-    ".next-cif-removal-e2e-mounted/dev/types/**/*.ts"
+    ".next-cif-removal-e2e-mounted/dev/types/**/*.ts",
+    ".next-e2e-copy-transform/types/**/*.ts",
+    ".next-e2e-copy-transform/dev/types/**/*.ts",
+    ".next-resize-e2e/types/**/*.ts",
+    ".next-resize-e2e/dev/types/**/*.ts",
+    ".next-cif-center/types/**/*.ts",
+    ".next-cif-center/dev/types/**/*.ts",
+    ".next-validation-simulation/types/**/*.ts",
+    ".next-validation-simulation/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

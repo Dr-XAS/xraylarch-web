@@ -1017,6 +1017,26 @@ describe("AthenaWorkbench menu command search", () => {
 })
 
 describe("AthenaWorkbench measurement mode tags", () => {
+  it("shows persisted theory tags without treating measured chi data or malformed tags as theory", async () => {
+    const theory = group("theory", "Simulated copper")
+    theory.data_type = "chi"
+    theory.source = { tags: ["theory"], simulation: { kind: "cif-exafs" } }
+    const measured = group("measured", "Measured chi")
+    measured.data_type = "chi"
+    const malformed = group("malformed", "Malformed tag")
+    malformed.source = { tags: "theory" }
+    const differentlyNamed = group("different", "Different tag")
+    differentlyNamed.source = { tags: ["Theory", "theoretical"] }
+    await openSaved(projectFixture({ groups: [theory, measured, malformed, differentlyNamed] }))
+
+    const theoryTag = within(screen.getByRole("button", { name: /^Simulated copper/ })).getByText("theory")
+    expect(theoryTag).toHaveAttribute("data-tag", "theory")
+    expect(theoryTag).toHaveAttribute("title", "Theoretical spectrum")
+    for (const label of ["Measured chi", "Malformed tag", "Different tag"])
+      expect(within(screen.getByRole("button", { name: new RegExp(`^${label}`) })).queryByText("theory")).toBeNull()
+    expect(api).toHaveBeenCalledOnce()
+  })
+
   it("labels imported measurement modes and references without guessing direct signals", async () => {
     const transmission = group("transmission", "Transmission scan")
     transmission.source = { mapping: { mode: "transmission" } }
@@ -1240,8 +1260,11 @@ describe("AthenaWorkbench data group sorting", () => {
     expect(api).toHaveBeenCalledTimes(1)
   })
 
-  it("sorts by trans, fluo, ref, and untagged while treating linked and dual-tag spectra as references", async () => {
+  it("sorts by trans, fluo, ref, theory, and untagged while treating linked and dual-tag spectra as references", async () => {
     const plain = group("plain", "Plain derived")
+    const theory = group("theory", "Theoretical spectrum")
+    theory.data_type = "chi"
+    theory.source = { tags: ["theory"] }
     const linked = group("linked", "Linked reference")
     const fluo = group("fluo", "Fluorescence")
     fluo.source = { mapping: { mode: "fluorescence" } }
@@ -1252,11 +1275,12 @@ describe("AthenaWorkbench data group sorting", () => {
     const sample = group("sample", "Sample")
     sample.source = { mapping: { mode: "transmission" } }
     sample.reference_id = linked.id
-    await openSaved(projectFixture({ groups: [plain, linked, fluo, transRef, trans, sample] }))
+    await openSaved(projectFixture({ groups: [plain, theory, linked, fluo, transRef, trans, sample] }))
 
     fireEvent.change(screen.getByRole("combobox", { name: "Sort spectra" }), { target: { value: "tag" } })
 
-    expect(listedGroupIds()).toEqual(["trans", "sample", "fluo", "linked", "trans-ref", "plain"])
+    expect(listedGroupIds()).toEqual(["trans", "sample", "fluo", "linked", "trans-ref", "theory", "plain"])
+    expect(screen.getByText(/Tag order is trans, fluo, ref, theory, then untagged/)).toBeInTheDocument()
     expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("trans")).toBeVisible()
     expect(within(screen.getByRole("button", { name: /^Transmission reference/ })).getByText("ref")).toBeVisible()
     expect(within(screen.getByRole("button", { name: /^Linked reference/ })).getByText("ref · 1")).toBeVisible()

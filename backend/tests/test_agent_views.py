@@ -1,10 +1,12 @@
 """Projections that let a caller read a project without loading its arrays."""
+import copy
 import json
 
 import pytest
 from fastapi.testclient import TestClient
 
 from xraylarch_web.config import Settings
+from xraylarch_web.agent_views import group_summary
 from xraylarch_web.main import create_app
 
 
@@ -57,6 +59,20 @@ def test_summary_is_a_fraction_of_the_full_record(client, example):
     assert full_bytes > 300_000, "the copper example should still be the large payload"
     assert summary_bytes < full_bytes / 100
     assert summary_bytes / len(summary["groups"]) < 700
+
+
+def test_summary_tags_cannot_leak_imported_arrays_or_arbitrary_metadata(example):
+    group = copy.deepcopy(example["groups"][0])
+    baseline = group_summary(group)
+    arbitrary = [list(range(20_000)), {"text": "oversized" * 10_000}, "unsupported"]
+    for source_tags in (arbitrary, "theory", {"theory": arbitrary}, None):
+        group["source"]["tags"] = source_tags
+        assert group_summary(group) == baseline
+    group["source"]["tags"] = [*arbitrary, "theory"]
+    compact = group_summary(group)
+    assert compact == baseline | {"tags": ["theory"]}
+    assert len(json.dumps(compact)) < len(json.dumps(baseline)) + 24
+    assert not [path for path, length in numeric_runs(compact) if length > 2]
 
 
 def test_summary_reports_what_processing_resolved(client, example):

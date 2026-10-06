@@ -135,11 +135,16 @@ def group_summary(group: dict) -> dict:
     result = group.get("result") or {}
     effective = result.get("effective") or {}
     identity = group["source"].get("edge_identity") or {}
+    # Source metadata from imported projects is unrestricted JSON. Only the
+    # supported tag belongs in this compact view; arbitrary tags can be arrays.
+    source_tags = group["source"].get("tags")
+    theory_tags = {"tags": ["theory"]} if isinstance(source_tags, list) and "theory" in source_tags else {}
     axis, span, shift = _range(group)
     return {
         "id": group["id"],
         "label": group["label"],
         "data_type": group["data_type"],
+        **theory_tags,
         # Two groups read from one file are the same measurement, which no
         # number in this summary can say on its own.
         "file": group["source"].get("filename"),

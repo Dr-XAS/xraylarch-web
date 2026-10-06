@@ -872,7 +872,7 @@ def build_artemis_router(store) -> APIRouter:
     jobs = FeffJobs(store.settings.data_root, store=store)
 
     from .artemis_simulation import register_simulation_route
-    register_simulation_route(router, jobs)
+    register_simulation_route(router, jobs, store)
 
     def _run_fit(ident: str, group_id: str, request: FitRouteRequest, view: str, backend):
         project = store.load(ident)

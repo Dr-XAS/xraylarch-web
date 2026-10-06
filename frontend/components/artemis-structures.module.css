@@ -45,6 +45,9 @@
 .result span, .result small { color: var(--ath-muted, #647669); font-size: var(--text-caption); }
 .panel button.result[aria-pressed=true] { border-color: var(--ath-primary, #268553); background: var(--ath-canvas, #f5f8f5); }
 .structure { margin-top: 0; padding-top: 0; }
+.structureHeader { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 8px 12px; }
+.structureHeader > h4 { flex: 1 1 140px; min-width: 0; }
+.structureActions { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 .structure h4 { font-size: var(--text-section); font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; line-height: var(--leading-heading); }
 .structure h4 > span:not([data-section-help]) { display: block; color: var(--ath-muted, #647669); font-size: var(--text-caption); margin-top: 4px; }
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
@@ -74,5 +77,4 @@
 
 .feffLauncher { margin-bottom: 8px; }
 .feffContent { grid-template-columns: minmax(0, 1fr); }
-
 .simulation { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--ath-line); border-radius: 6px; }

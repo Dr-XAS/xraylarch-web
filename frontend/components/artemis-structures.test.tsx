@@ -6,7 +6,8 @@ import { useState, type ComponentProps } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
 import type { ArtemisFeffJob, ArtemisFeffRequest, ArtemisGeneratedPath, ArtemisStructure, ArtemisStructureAttachment } from "@/lib/artemis-structures"
-import type { AthenaProject } from "@/lib/athena"
+import type { AthenaGroup, AthenaProject } from "@/lib/athena"
+import { simulationFixture, simulationJob } from "@/tests/fixtures/artemis-simulation"
 import type { FirstShell } from "@/lib/first-shell"
 import { ArtemisStructures } from "./artemis-structures"
 import { radialFixture } from "@/tests/fixtures/radial-shells"
@@ -19,6 +20,7 @@ vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
   CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} data-structure-id={structure.id} data-provider={structure.provider ?? "amcsd"} />,
 }))
+vi.mock("./artefact-viewers/artemis-simulation-viewer", () => ({ ArtemisSimulationViewer: () => <div data-testid="simulation-result" /> }))
 const api = vi.mocked(artemisApi)
 const request: ArtemisFeffRequest = { project_id: "p", attachment_id: "cif1", version: 2, absorber: "Cu", edge: "K", site_index: 3, cluster_radius: 5, path_radius: 4, max_legs: 4, max_paths: 60 }
 let savedAttachments: ArtemisStructureAttachment[] = []
@@ -122,6 +124,40 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
+  it("adds the completed theory spectrum using the settled project version and receives the updated list", async () => {
+    const preparation = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn(), onProjectChange = vi.fn()
+    const generated = job("complete", { paths: simulationJob.paths, total_paths: 1 })
+    const simulation = simulationFixture()
+    simulation.simulation.feff_job_id = generated.id
+    simulation.source.request = generated.request
+    simulation.source.provenance = generated.provenance
+    const group: AthenaGroup = { id: "theory1", label: "Copper theory", data_type: "chi", energy: simulation.k.x, mu: simulation.k.chi,
+      source: { tags: ["theory"] }, marked: true, frozen: false, multiplier: 1, offset: 0, notes: "", reference_id: null,
+      parameters: {} as AthenaGroup["parameters"], result: null, processing_error: null }
+    const defaultApi = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal, options) => {
+      if (url === "/feff/jobs") return { ...generated, request: body as ArtemisFeffRequest }
+      if (url.endsWith("/simulate")) return simulation
+      if (url === "/projects/p/simulation") return { ...project(), version: 8, groups: [group], last_operation: { action: "simulation", skipped_group_ids: [], simulation: { group_id: group.id } } }
+      return defaultApi(url, body, signal, options)
+    })
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange}
+      prepareMutation={vi.fn().mockResolvedValueOnce({ version: 1, finish: () => {} }).mockImplementationOnce(() => preparation.promise)} />)
+    fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
+    await findAndSelect(); await generate()
+    await click("Run EXAFS simulation")
+    await screen.findByTestId("simulation-result")
+    await click("Add to data list")
+    expect(screen.getByRole("button", { name: "Close FEFF paths" })).toBeDisabled()
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/simulation"))).toHaveLength(0)
+    await act(async () => preparation.resolve({ version: 7, finish }))
+    await screen.findByRole("button", { name: "Added to data list" })
+    expect(api).toHaveBeenCalledWith("/projects/p/simulation", { version: 7, feff_job_id: generated.id, simulation: simulation.simulation.request }, undefined, { idempotencyKey: expect.any(String) })
+    expect(onProjectChange).toHaveBeenLastCalledWith(expect.objectContaining({ version: 8, groups: [group] }))
+    expect(finish).toHaveBeenCalledOnce()
+    expect(screen.getByRole("button", { name: "Close FEFF paths" })).toBeEnabled()
+  })
   it("renames only the chosen CIF and retains the generated paths and source metadata", async () => {
     const original = attachment()
     savedAttachments = [original, { ...attachment(), id: "cif2", amcsd_id: 13089, structure: structure({ id: 13089 }) }]

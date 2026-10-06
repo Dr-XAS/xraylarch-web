@@ -114,7 +114,9 @@ without requiring a measured spectrum. Choose an absorbing site and edge, run
 FEFF, then sum all available paths or the selected paths with explicit S₀²,
 σ², ΔE₀ and ΔR. View χ(k) and |χ(R)|, download CSV curves, or export simulation
 JSON containing the exact CIF, FEFF input, path files, parameters and results.
-The shared σ² is an assumption; inequivalent sites are not averaged automatically.
+S₀² defaults to 0.85. After simulation, **Add to data list** saves χ(k) with a
+**theory** tag, its Fourier parameters, and the exact CIF/FEFF sources in the
+project. The shared σ² is an assumption; inequivalent sites are not averaged automatically.
 
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.

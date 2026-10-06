@@ -12,7 +12,8 @@ import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
 import { FeffPathShellLabel } from "./feff-path-shell-label"
 import { ArtemisSimulation } from "./artemis-simulation"
-import type { AthenaProject, EdgePair } from "@/lib/athena"
+import { isTheoryGroup, type AthenaProject, type EdgePair } from "@/lib/athena"
+import type { SimulationResult } from "@/lib/artemis-simulation"
 import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import {
@@ -103,6 +104,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const [added, setAdded] = useState<string[]>([])
   const [addingPaths, setAddingPaths] = useState(false)
   const addingPathsRef = useRef(false)
+  const [addingSpectrum, setAddingSpectrum] = useState(false)
+  const addingSpectrumRef = useRef(false)
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [pollRevision, setPollRevision] = useState(0)
@@ -122,7 +125,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const currentProject = useRef(projectId)
   currentProject.current = projectId
   const attachPending = busy === "attach"
-  const mutationPending = attachPending || removingId !== null || savingName
+  const mutationPending = attachPending || removingId !== null || savingName || addingSpectrum
   const controlsDisabled = disabled || mutationPending || addingPaths
   const addedIds = existingPaths === undefined ? added : job?.paths.filter(path => existingPaths.some(existing => existing.filename === path.filename && existing.content === path.content)).map(path => path.id) ?? []
   // Replace swaps the whole model, so its selection may fill the model and may
@@ -130,6 +133,30 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const canReplace = !!existingPaths?.length
   const selectionLimit = canReplace ? availableSlots + existingPaths!.length : availableSlots
   const newSelected = selected.filter(id => !addedIds.includes(id))
+
+  async function addSimulationToDataList(result: SimulationResult, idempotencyKey: string) {
+    if (!projectId || version === undefined || !projectCallback.current || controlsDisabled || addingSpectrumRef.current) throw new Error("Wait for the current project changes to finish before adding this spectrum.")
+    const requestProject = projectId, receiveProject = projectCallback.current
+    let mutation: { version: number; finish: () => void } | undefined
+    addingSpectrumRef.current = true
+    setAddingSpectrum(true)
+    try {
+      mutation = prepareMutation ? await prepareMutation() : { version, finish: () => {} }
+      if (currentProject.current !== requestProject) throw new Error("The current project changed. Simulate again in the intended project.")
+      const response = await artemisApi<AthenaProject>(`/projects/${encodeURIComponent(requestProject)}/simulation`, {
+        version: mutation.version, feff_job_id: result.simulation.feff_job_id, simulation: result.simulation.request,
+      }, undefined, { idempotencyKey })
+      const group = response.groups?.find(item => item.id === response.last_operation?.simulation?.group_id)
+      if (response.id !== requestProject || response.version < mutation.version || !group || group.data_type !== "chi" || !isTheoryGroup(group) ||
+        JSON.stringify(group.energy) !== JSON.stringify(result.k.x) || JSON.stringify(group.mu) !== JSON.stringify(result.k.chi))
+        throw new Error("The saved spectrum does not match this simulation. Refresh the project before retrying.")
+      receiveProject(response)
+    } finally {
+      mutation?.finish()
+      addingSpectrumRef.current = false
+      if (currentProject.current === requestProject) setAddingSpectrum(false)
+    }
+  }
 
   function openDialog(mode: "structure" | "feff" = "structure") {
     setRenaming(null)
@@ -260,6 +287,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     setRemovingId(null)
     setRenaming(null)
     setSavingName(false)
+    setAddingSpectrum(false)
     renamePending.current = false
     setError("")
     setNotice("")
@@ -635,11 +663,13 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       {dialogMode === "structure" && !structure && busy !== "structure" && <p className={styles.placeholder}>Upload a CIF, select a search result, or open a CIF already attached to this project.</p>}
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
       {structure && (dialogMode === "structure" || attachmentId) && <div className={styles.structure}>
+        <div className={styles.structureHeader}>
         <h4>{attachments.find(item => item.id === attachmentId)?.label || structure.mineral || structure.formula}{structure.title && <SectionHelp label="CIF citation">{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</SectionHelp>} <span>{structureLabel(structure)}</span></h4>
+        {dialogMode === "structure" && <div className={styles.structureActions}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={() => void attachStructure()}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button>{attachmentId && structure.supported && <button type="button" disabled={controlsDisabled} onClick={openFeffDialog}>Simulate EXAFS from this CIF</button>}<SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>}
+        </div>
         {structure.provider === "materials_project" && <p className={styles.help}>DFT-relaxed structure · <a href={`https://materialsproject.org/materials/${encodeURIComponent(structure.id)}`} target="_blank" rel="noreferrer">View on Materials Project</a><br />Database version: {structure.provenance?.database_version ?? "unavailable"}. Saved CIFs retain the retrieved geometry.</p>}
         {open && <div ref={viewerAnchor}><CifViewer key={`${structure.provider ?? "amcsd"}:${structure.id}`} structure={structure} selectedSite={site ? Number(site) : undefined} analysis={shellState} radialAnalysis={radialState} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
-        {dialogMode === "structure" && <div className={styles.toolbar}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={() => void attachStructure()}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button>{attachmentId && structure.supported && <button type="button" disabled={controlsDisabled} onClick={openFeffDialog}>Simulate EXAFS from this CIF</button>}<SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>}
         <details className={styles.textDetails}><summary>View CIF</summary><pre>{structure.cif}</pre></details>
         {structure.warnings.map((warning, i) => <p className={styles.warning} key={i}>{warning}</p>)}
         {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : dialogMode === "feff" && <>
@@ -668,7 +698,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
         {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`${job.provenance.structure.provider === "uploaded" ? job.provenance.structure.filename?.replace(/\.cif$/i, "") : `${job.provenance.structure.provider === "materials_project" ? "" : "amcsd-"}${job.provenance.structure.id}`}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
-          <ArtemisSimulation key={job.id} job={job} selectedIds={selected} disabled={controlsDisabled} />
+          <ArtemisSimulation key={job.id} job={job} selectedIds={selected} disabled={controlsDisabled}
+            onAddToDataList={projectId && version !== undefined && onProjectChange ? addSimulationToDataList : undefined} />
           <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"}{job.truncated ? ` of ${job.total_paths}` : ""} · {availableSlots} open slot{availableSlots === 1 ? "" : "s"}{canReplace ? ` · a replacement can hold up to ${selectionLimit}` : ""}<SectionHelp label="Generated FEFF paths">Select the paths to add. {job.truncated && "Increase Maximum paths to include more. "}Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</SectionHelp></p>
           <button type="button" disabled={controlsDisabled || !shellPaths.some(id => canReplace || !addedIds.includes(id))} onClick={() => {
             // With a model to replace, the shell may include paths already in

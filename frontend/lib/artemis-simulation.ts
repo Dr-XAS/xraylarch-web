@@ -19,7 +19,7 @@ export interface SimulationResult extends ArtemisPreview {
   }
   source: Pick<ArtemisFeffJob, "request" | "provenance"> & { paths: { id: string; filename: string; content: string }[] }
 }
-export const simulationDefaults = { s02: "1", sigma2: "0.003", e0: "0", deltar: "0", kmin: "3", kmax: "12", dk: "2" }
+export const simulationDefaults = { s02: "0.85", sigma2: "0.003", e0: "0", deltar: "0", kmin: "3", kmax: "12", dk: "2" }
 export type SimulationFields = typeof simulationDefaults
 
 export function simulationRequest(fields: SimulationFields, weight: number, window: ArtemisTransform["window"], pathIds: string[] | null): SimulationRequest {

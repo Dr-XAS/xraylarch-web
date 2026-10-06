@@ -1,6 +1,9 @@
 """CIF forward simulation is a native FEFF sum, not a fit to invented data."""
 import copy
+import hashlib
+import json
 import time
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -10,8 +13,10 @@ from larch.xafs import feffpath, ff2chi, find_exe, xftf
 from pydantic import ValidationError
 
 from xraylarch_web import artemis
-from xraylarch_web.artemis_simulation import SimulationRequest, simulate_job
+from xraylarch_web.artemis_simulation import AddSimulationRequest, SimulationRequest, add_simulation, simulate_job
+from xraylarch_web.artemis_attachments import structure_attachment
 from xraylarch_web.artemis_structures import structure_details
+from xraylarch_web.athena import AthenaStore, Command
 from xraylarch_web.config import Settings
 from xraylarch_web.errors import WebInputError
 from xraylarch_web.main import create_app
@@ -58,7 +63,7 @@ def test_all_paths_can_exceed_fit_limit_and_scale_linearly(job):
     result = simulate_job(job, SimulationRequest())
     single = simulate_job(job, SimulationRequest(path_ids=["p0"], s02=0.5))
     assert len(result["paths"]) == 30
-    np.testing.assert_allclose(result["k"]["chi"], np.array(single["k"]["chi"]) * 60, atol=1e-12)
+    np.testing.assert_allclose(result["k"]["chi"], np.array(single["k"]["chi"]) * 51, atol=1e-12)
     assert "Only 1 of 30" in single["warnings"][0]
 
 
@@ -72,6 +77,7 @@ def test_invalid_requests(body):
 
 def test_partial_transform_keeps_simulation_defaults():
     request = SimulationRequest(transform={"kmax": 14})
+    assert request.s02 == 0.85
     assert request.transform.kweight == [2]
     assert request.transform.kmin == 3
 
@@ -124,3 +130,138 @@ def test_uploaded_cif_simulates_without_a_measured_group_and_does_not_mutate_pro
         assert client.post(url, json={"path_ids": []}).status_code == 422
         assert client.post("/api/artemis/feff/jobs/invalid/simulate", json={}).status_code == 400
         assert client.post(f"/api/artemis/feff/jobs/{'0' * 32}/simulate", json={}).status_code == 400
+
+
+@pytest.fixture
+def owned_simulation(tmp_path, job):
+    store = AthenaStore(Settings(data_root=tmp_path))
+    original = store.create()
+    attachment = structure_attachment(cif=job["provenance"]["cif"], filename="cuprite.cif")
+    project = copy.deepcopy(original)
+    project["artemis_structures"] = [attachment]
+    project = store.save(project, original, "Attached theory source")
+    job["request"].update(project_id=project["id"], version=project["version"], attachment_id=attachment["id"])
+    job["provenance"].update(project_id=project["id"], attachment_id=attachment["id"],
+                              source_revision=project["version"], cif_sha256=attachment["sha256"])
+    return store, SimpleNamespace(get=lambda ident: copy.deepcopy(job)), project, job
+
+
+def addition(project, job, **values):
+    return AddSimulationRequest(version=project["version"], feff_job_id=job["id"],
+                                simulation=SimulationRequest(**values))
+
+
+def test_addition_keeps_unweighted_chi_exact_transform_and_provenance(owned_simulation):
+    store, jobs, original, job = owned_simulation
+    request = addition(original, job, s02=0.82, sigma2=0.006, e0=2.5, deltar=0.01,
+                       path_ids=[job["paths"][0]["id"]], transform=dict(kmin=2, kmax=14, kweight=[1], dk=3, window="parzen"))
+    displayed = simulate_job(job, request.simulation)
+    saved = add_simulation(store, jobs, original["id"], request)
+    assert saved["version"] == original["version"] + 1
+    assert len(saved["groups"]) == 1
+    group = saved["groups"][0]
+    assert group["data_type"] == "chi" and group["marked"] is True
+    assert group["processing_error"] is None
+    assert group["source"]["tags"] == ["theory"]
+    assert group["source"]["simulation"] == displayed["simulation"]
+    assert group["source"]["feff"] == displayed["source"]
+    assert group["source"]["edge_identity"] == dict(element="Cu", edge="K", origin="selected")
+    assert group["energy"] == displayed["k"]["x"]
+    assert group["mu"] == displayed["k"]["chi"]
+    np.testing.assert_allclose(group["result"]["arrays"]["chi"], displayed["k"]["chi"], atol=1e-12)
+    np.testing.assert_allclose(group["result"]["arrays"]["weighted_chi"], displayed["k"]["total"], atol=1e-12)
+    np.testing.assert_allclose(group["result"]["arrays"]["chir_re"], displayed["r"]["total_re"], atol=1e-12)
+    assert group["parameters"]["kmax"] == 14 and group["parameters"]["kweight"] == 1
+    assert group["parameters"]["dk"] == 3 and group["parameters"]["window"] == "parzen"
+    assert any("Only 1" in warning for warning in group["result"]["warnings"])
+    assert saved["last_operation"]["simulation"]["group_id"] == group["id"]
+    assert store.load(original["id"])["groups"][0] == group
+
+
+@pytest.mark.parametrize("format", ["json", "prj"])
+def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation, format):
+    store, jobs, original, job = owned_simulation
+    saved = add_simulation(store, jobs, original["id"], addition(original, job))
+    group = saved["groups"][0]
+    payload = json.dumps(saved).encode() if format == "json" else store.export_project(saved["id"], format="prj")
+    if format == "prj":
+        assert payload[:2] == b"\x1f\x8b"
+    imported = store.create()
+    restored = store.restore(imported["id"], imported["version"], payload, f"theory.{format}")
+    reopened = AthenaStore(store.settings).load(restored["id"])["groups"][0]
+    assert reopened["source"]["tags"] == ["theory"]
+    assert reopened["source"]["simulation"] == group["source"]["simulation"]
+    assert reopened["source"]["feff"] == group["source"]["feff"]
+    assert reopened["mu"] == group["mu"] and reopened["parameters"] == group["parameters"]
+    assert reopened["processing_error"] is None
+
+
+def test_addition_is_undoable_and_redoable(owned_simulation):
+    store, jobs, original, job = owned_simulation
+    saved = add_simulation(store, jobs, original["id"], addition(original, job))
+    group = saved["groups"][0]
+    undone = store.command(original["id"], Command(version=saved["version"], action="undo", group_ids=[], options={}))
+    assert undone["groups"] == [] and undone["artemis_structures"] == original["artemis_structures"]
+    redone = store.command(original["id"], Command(version=undone["version"], action="redo", group_ids=[], options={}))
+    assert redone["groups"][0] == group
+
+
+def test_addition_retries_once_and_rejects_reused_key_with_other_inputs(owned_simulation):
+    store, jobs, original, job = owned_simulation
+    request = addition(original, job)
+    saved = add_simulation(store, jobs, original["id"], request, idempotency_key="lost-response")
+    jobs.get = lambda ident: pytest.fail("An idempotent replay must not need a retained FEFF job")
+    replay = add_simulation(store, jobs, original["id"], request, idempotency_key="lost-response")
+    assert replay["version"] == saved["version"] and len(replay["groups"]) == 1
+    assert replay["last_operation"]["idempotent_replay"]["action"] == "simulation"
+    assert replay["last_operation"]["idempotent_replay"]["version_after"] == saved["version"]
+    assert replay["last_operation"]["simulation"]["group_id"] == saved["groups"][0]["id"]
+    with pytest.raises(WebInputError, match="different simulation inputs"):
+        add_simulation(store, jobs, original["id"], addition(original, job, s02=0.5), idempotency_key="lost-response")
+    key_hash = hashlib.sha256(b"lost-response").hexdigest()
+    store.storage.path(original["id"], f"simulation-add-{key_hash}.json").unlink()
+    recovered = add_simulation(store, jobs, original["id"], request, idempotency_key="lost-response")
+    assert recovered["last_operation"]["idempotent_replay"]["action"] == "simulation" and len(recovered["groups"]) == 1
+
+
+@pytest.mark.parametrize("failure", ["stale", "other-project", "removed-cif", "different-cif", "running", "integration"])
+def test_invalid_additions_do_not_change_project(owned_simulation, failure):
+    store, jobs, original, job = owned_simulation
+    request = addition(original, job)
+    if failure == "stale":
+        request.version -= 1
+    elif failure == "other-project":
+        job["provenance"]["project_id"] = "other"
+    elif failure == "removed-cif":
+        original["artemis_structures"] = []
+    elif failure == "different-cif":
+        job["provenance"]["cif"] += "\n# changed"
+    elif failure == "running":
+        job["status"] = "running"
+    elif failure == "integration":
+        original["integration"] = True
+    store.storage.write_json(original["id"], "project.json", original)
+    before = store.load(original["id"])
+    with pytest.raises(WebInputError):
+        add_simulation(store, jobs, original["id"], request)
+    assert store.load(original["id"]) == before
+
+
+def test_addition_route_summary_and_validation(owned_simulation, monkeypatch):
+    from xraylarch_web.artemis_structures import FeffJobs
+    store, jobs, original, job = owned_simulation
+    monkeypatch.setattr(FeffJobs, "get", lambda self, ident: jobs.get(ident))
+    with TestClient(create_app(store.settings)) as client:
+        url = f"/api/artemis/projects/{original['id']}/simulation"
+        response = client.post(url + "?view=summary", json=addition(original, job).model_dump(),
+                               headers={"Idempotency-Key": "http-add"})
+        assert response.status_code == 200, response.text
+        project = response.json()
+        assert project["groups"][0]["data_type"] == "chi" and project["groups"][0]["tags"] == ["theory"]
+        assert "energy" not in project["groups"][0]
+        stale = client.post(url, json=addition(original, job).model_dump())
+        assert stale.status_code == 409, stale.text
+        invalid = client.post(url, json=addition(original, job).model_dump() | {"label": "  "})
+        assert invalid.status_code == 422, invalid.text
+        invalid = client.post(url, json=addition(original, job).model_dump() | {"feff_job_id": "../bad"})
+        assert invalid.status_code == 422, invalid.text

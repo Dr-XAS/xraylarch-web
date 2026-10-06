@@ -102,7 +102,7 @@ Simulation sums all available paths by default (up to 100), independently of the
 existing fit-selection limit. Review any warning that the FEFF job returned only
 part of its generated paths; increase Maximum paths and recalculate if needed.
 
-The default shared parameters are S₀² = 1, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
+The default shared parameters are S₀² = 0.85, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
 σ² is an explicit disorder assumption, not calculated from CIF displacement
 factors or temperature. Native FEFF degeneracies are retained. The result is for
 one selected absorbing site; crystallographic multiplicity is not applied again,
@@ -119,17 +119,26 @@ distances. Changing simulation inputs hides the old result until recalculation.
 weighted display curve. **Download χ(R) CSV** includes magnitude, real and
 imaginary components. **Download simulation JSON** retains all curves, the
 original CIF, FEFF input, selected path files, assumptions and parameters.
-Simulation does not create a measured group or save a fit; use these downloads
-to retain the result. Attached CIFs remain part of Save project.
+After simulation, **Add to data list** saves its unweighted χ(k) as a project
+group with a **theory** tag. It uses the simulation's Fourier parameters and
+retains the exact CIF, FEFF input, path files, assumptions and parameters with
+the group. Mark it to compare it with other groups in the multiple-spectra
+viewer. Save project retains the spectrum and its sources; Undo removes the
+addition. Simulation previews save nothing until this action is chosen.
 
 The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
-example, `{"s02": 1, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
+example, `{"s02": 0.85, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
 for all available paths or supply a nonempty list of IDs from the completed job.
 `transform` accepts the existing Fourier fields with one `kweight` value, such as
 `[2]`. Full responses include raw `k.chi`, weighted `k.total`, complex R curves,
 and source files. `?view=summary` elides arrays and omits source files. FEFF jobs
 expire after 24 hours; export the full result to preserve its inputs.
 `GET /api/artemis/capabilities/simulation` describes all fields and defaults.
+`POST /api/artemis/projects/{project_id}/simulation` adds the completed result
+with `{version, feff_job_id, simulation}`; `simulation` is the captured
+`result.simulation.request`. It checks the project version and attached CIF,
+supports `Idempotency-Key` for retries, and returns the updated project with
+`last_operation.simulation.group_id`. The saved spectrum survives FEFF job expiry.
 
 ### Attach and calculate paths
 

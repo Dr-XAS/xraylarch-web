@@ -164,11 +164,11 @@ export function artemisModelKey(model: ArtemisModelDraft) {
   return JSON.stringify(sorted(content))
 }
 
-export async function artemisApi<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
+export async function artemisApi<T>(path: string, body?: unknown, signal?: AbortSignal, options?: { idempotencyKey?: string }): Promise<T> {
   const response = await fetch(`/api/backend/api/artemis${path}`, {
     signal,
     method: body === undefined ? "GET" : "POST",
-    ...(body === undefined ? {} : { headers: { "content-type": "application/json" }, body: JSON.stringify(body) }),
+    ...(body === undefined ? {} : { headers: { "content-type": "application/json", ...(options?.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}) }, body: JSON.stringify(body) }),
   })
   const data = await response.json().catch(() => undefined)
   if (!response.ok) throw decodeApiError(response.status, data)

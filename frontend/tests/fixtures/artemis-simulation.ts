@@ -10,7 +10,7 @@ export const simulationJob: ArtemisFeffJob = {
 }
 export function simulationFixture(): SimulationResult {
   const request = simulationRequest(simulationDefaults, 2, "hanning", null)
-  return { paths: simulationJob.paths.map(path => ({ ...path, label: path.filename, values: { s02: 1, sigma2: 0.003, e0: 0, deltar: 0 },
+  return { paths: simulationJob.paths.map(path => ({ ...path, label: path.filename, values: { s02: request.s02, sigma2: 0.003, e0: 0, deltar: 0 },
     k: { chi: [0, 0.2, 0.4] }, r: { mag: [0.3, 0.4], re: [0.3, 0.4], im: [0, 0] }, metrics: { amplitude: 0.4, r_at_amplitude: 2, window_area: 0.2, chi_k_peak: 0.4 } })),
     warnings: [], transform: request.transform, k: { x: [0, 1, 2], chi: [0.125, 0.2, 0.1], weight: 2, total: [0, 0.2, 0.4] },
     r: { x: [0, 2], total_mag: [0.3, 0.4], total_re: [0.3, 0.4], total_im: [0, 0] },
