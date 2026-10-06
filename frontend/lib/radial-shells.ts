@@ -55,7 +55,7 @@ export function groupRadialPaths<T extends { id: string; metadata: ArtemisPathMe
   for (const path of paths) {
     const neighbor = structure && analysis ? radialPathNeighbor(path.metadata, structure, analysis) : undefined
     const key = neighbor ? String(neighbor.shell_index) : path.metadata.nleg > 2 ? "multiple" : "unmatched"
-    if (!groups.has(key)) groups.set(key, { key, label: key === "multiple" ? "Multiple scattering" : "Unmatched paths", paths: [] })
+    if (!groups.has(key)) groups.set(key, { key, label: key === "multiple" ? "Multiple scattering" : "Unmatched", paths: [] })
     groups.get(key)!.paths.push(path)
   }
   return [...groups.values()].filter(group => group.paths.length > 0)
