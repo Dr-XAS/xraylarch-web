@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import errno
+import hashlib
 import json
 import math
 import os
@@ -210,6 +211,8 @@ def _describe_structure(output, cif):
         output["elements"] = sorted(cluster.atom_sites)
         output["cell"] = dict(zip(("a", "b", "c", "alpha", "beta", "gamma"),
                                  [float(value) for value in cluster.struct.lattice.parameters]))
+        if output.get("provider") == "uploaded":
+            output["formula"] = cluster.struct.composition.reduced_formula
         for index, (site, multiplicity, wyckoff) in enumerate(cluster.unique_sites, 1):
             for species, occupancy in site.species.items():
                 x, y, z = (float(value) for value in site.frac_coords)
@@ -261,6 +264,43 @@ def snapshot_details(details):
         return output
 
 
+def uploaded_structure_details(cif, filename):
+    """Read one user-supplied structure, preserving the exact uploaded text."""
+    from pymatgen.io.cif import CifParser
+    from .artemis_attachments import validate_cif_text
+
+    try:
+        validate_cif_text(cif)
+        blocks = CifParser.from_str(cif).as_dict()
+    except Exception:
+        _fail("The uploaded file could not be read as CIF text.", "cif")
+    if len(blocks) != 1:
+        _fail("Upload a CIF containing exactly one data block. Split multiple structures into separate CIF files.", "cif")
+    block = next(iter(blocks.values()))
+
+    def value(*keys):
+        for key in keys:
+            text = block.get(key)
+            if isinstance(text, list):
+                text = "; ".join(str(item) for item in text)
+            if text and text not in ("?", "."):
+                return str(text)
+        return ""
+
+    year = value("_journal_year")
+    details = snapshot_details(dict(
+        id="cif-" + hashlib.sha256(cif.encode("utf-8")).hexdigest(), provider="uploaded",
+        filename=filename, source=filename, cif=cif,
+        mineral=value("_chemical_name_mineral", "_chemical_name_common", "_chemical_name_systematic") or filename,
+        formula="", space_group=value("_space_group_name_H-M_alt", "_symmetry_space_group_name_H-M"),
+        authors=value("_publ_author_name"), year=int(year) if re.fullmatch(r"\d{4}", year) else None,
+        journal=value("_journal_name_full"), title=value("_publ_section_title"),
+    ))
+    if not details["sites"] or not details["cell"]:
+        _fail("The uploaded CIF does not contain a readable periodic crystal structure with atomic sites.", "cif")
+    return details
+
+
 class FeffJobRequest(StrictModel):
     amcsd_id: int | None = Field(default=None, gt=0, le=99_999_999)
     project_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{16,128}$")
@@ -305,6 +345,7 @@ def _prepare_input(request: FeffJobRequest, details: dict):
                           absorber_site=request.site_index, cluster_size=request.cluster_radius,
                           version8=True, with_h=False, rng_seed=0,
                           extra_titles=[f"Materials Project {details['id']} (DFT-relaxed)" if details.get("provider") == "materials_project"
+                                        else f"Uploaded CIF {details['filename']}" if details.get("provider") == "uploaded"
                                         else f"AMCSD structure {details['id']}"])
     text = re.sub(r"(?m)^RPATH\s+.*$", f"RPATH     {request.path_radius:.3f}", text)
     text = re.sub(r"(?m)^NLEG\s+.*$", f"NLEG      {request.max_legs}", text)

@@ -72,6 +72,15 @@ async function generate() {
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
 
+function cifFile(name = "my-copper.cif", text = structure().cif) {
+  const file = new File([text], name, { type: "chemical/x-cif" })
+  Object.defineProperty(file, "text", { configurable: true, value: async () => text })
+  return file
+}
+async function chooseCif(file: File, inDialog = true) {
+  await act(async () => { fireEvent.change(screen.getByLabelText(inDialog ? "Upload CIF file in dialog" : "Upload CIF file"), { target: { files: [file] } }) })
+}
+
 beforeEach(() => {
   api.mockReset()
   firstShell.shell = null
@@ -88,6 +97,12 @@ beforeEach(() => {
       return project()
     }
     if (url.includes("/projects/") && url.endsWith("/structures")) {
+      if (body && (body as { provider?: string }).provider === "uploaded") {
+        const upload = body as { filename: string; cif: string }
+        savedAttachments = [{ id: "upload1", provider: "uploaded", sha256: "upload-hash", attached_at: "2026-10-06T00:00:00Z", structure: structure({ id: "cif-upload-hash", provider: "uploaded", filename: upload.filename, cif: upload.cif }) }]
+        savedVersion = 2
+        return project()
+      }
       if (body) { savedAttachments = [attachment()]; savedVersion = 2; return project() }
       return { project_id: "p", version: savedVersion, structures: savedAttachments }
     }
@@ -100,6 +115,69 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe("ArtemisStructures", () => {
+  it("uploads and displays a custom CIF, then generates FEFF from its saved attachment", async () => {
+    const onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" spectrumEdge={{ element: "Cu", edge: "K" }} availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />)
+    expect(screen.getByRole("button", { name: "Upload CIF" })).toBeEnabled()
+    const file = cifFile()
+    await chooseCif(file, false)
+    expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, provider: "uploaded", filename: file.name, cif: structure().cif })
+    expect(screen.getByRole("dialog", { name: "Crystal structures" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
+    expect(screen.getAllByText("Uploaded CIF · my-copper.cif").length).toBeGreaterThan(0)
+    expect(onViewStructure).toHaveBeenCalledWith("upload1", 3)
+    await openFeff()
+    await click("Run FEFF calculation")
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ project_id: "p", attachment_id: "upload1", version: 2, absorber: "Cu", site_index: 3 }), expect.any(AbortSignal))
+  })
+
+  it("rejects oversized CIFs before sending and allows a subsequent upload", async () => {
+    setup()
+    await chooseCif(cifFile("large.cif", "x".repeat(500_001)))
+    expect(screen.getByRole("alert")).toHaveTextContent("at most 500 KB")
+    expect(api.mock.calls.filter(([url, body]) => url === "/projects/p/structures" && body)).toHaveLength(0)
+    await chooseCif(cifFile())
+    expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("shows backend validation errors and permits retrying the same file", async () => {
+    setup()
+    await act(async () => {})
+    api.mockRejectedValueOnce(new Error("The uploaded CIF does not contain a readable periodic crystal structure with atomic sites."))
+    const file = cifFile()
+    await chooseCif(file)
+    expect(screen.getByRole("alert")).toHaveTextContent("readable periodic crystal structure")
+    expect(within(screen.getByRole("dialog", { name: "Crystal structures" })).getByRole("button", { name: "Upload CIF" })).toBeEnabled()
+    await chooseCif(file)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+  })
+
+  it("does not submit an upload whose project context changed while reading the file", async () => {
+    const props = { contextKey: "p:cu", availableSlots: 24, onAddPaths: addPathsMock() }
+    const view = render(<Harness {...props} />)
+    const text = deferred<string>()
+    const file = cifFile()
+    Object.defineProperty(file, "text", { value: () => text.promise })
+    await chooseCif(file, false)
+    view.rerender(<Harness {...props} contextKey="p:other" />)
+    await act(async () => { text.resolve(structure().cif) })
+    expect(api.mock.calls.filter(([url, body]) => url === "/projects/p/structures" && body)).toHaveLength(0)
+  })
+
+  it("waits for pending model edits before uploading at the resulting project version", async () => {
+    const pending = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} prepareMutation={() => pending.promise} />)
+    await chooseCif(cifFile(), false)
+    expect(screen.getByRole("button", { name: "Search / attach CIF" })).toBeDisabled()
+    expect(api.mock.calls.filter(([url, body]) => url === "/projects/p/structures" && body)).toHaveLength(0)
+    await act(async () => { pending.resolve({ version: 2, finish }) })
+    expect(api).toHaveBeenCalledWith("/projects/p/structures", expect.objectContaining({ version: 2, provider: "uploaded" }))
+    expect(finish).toHaveBeenCalledOnce()
+  })
+
   it("searches, attaches and generates paths with Materials Project identity", async () => {
     const mp = structure({ id: "mp-aaaaaaft", provider: "materials_project", mineral: "Cu", formula: "Cu",
       provenance: { database_version: "2026.04.13", retrieved_at: "2026-10-02T00:00:00Z", task_id: "task-Cu", structure_type: "dft_relaxed" } })
@@ -633,7 +711,7 @@ describe("ArtemisStructures", () => {
     savedAttachments = []
     await click("Search / attach CIF")
     expect(screen.queryByRole("button", { name: "Open attached Copper CIF" })).not.toBeInTheDocument()
-    expect(screen.getByText("Select a search result or open a CIF already attached to this project.")).toBeVisible()
+    expect(screen.getByText("Upload a CIF, select a search result, or open a CIF already attached to this project.")).toBeVisible()
     expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
   })
 

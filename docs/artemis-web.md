@@ -85,6 +85,16 @@ the trimmed 2021-05-16 release. The application does not implicitly download or
 replace this database. A missing entry in this snapshot does not establish that
 the structure is absent from AMCSD.
 
+Choose **Upload CIF** in **Crystal structures** or its search dialog to attach
+your own `.cif` file (up to 500 KB, one data block per file). The upload is
+validated and attached directly, then opens in the structure viewer. The
+project retains the exact CIF text, original filename, and SHA-256 checksum
+through reloads and JSON/PRJ exchange. Identical text is attached only once;
+different files with the same filename remain separate snapshots. Invalid CIFs
+leave the project unchanged. Readable disordered structures are retained with
+warnings, but FEFF requires an ordered structure. The existing project limit
+of 20 CIFs and 4 MB of structure attachments applies to uploads too.
+
 Open **Search / attach CIF** from **Crystal structures** in the fitting panel. Search by mineral, formula, or AMCSD ID,
 optionally adding a **Contains element** filter. Text searches use literal
 substrings of mineral names, formulas, and publication titles; a numeric query
@@ -578,7 +588,7 @@ Structure search and calculation use:
 | `GET /api/artemis/structures?q=...&element=...&limit=...` | Search AMCSD by default; add `provider=materials_project` for MP. `element` is one optional symbol and `limit` is 1–50. |
 | `GET /api/artemis/structures/{id}` | Retrieve CIF text, citation, lattice parameters, native site indices, and supported/unsupported status. MP IDs require `provider=materials_project`. |
 | `GET /api/artemis/projects/{id}/structures` | List the current project's saved CIF snapshots and project version. |
-| `POST /api/artemis/projects/{id}/structures` | Attach using `{version, amcsd_id}` or `{version, provider: "materials_project", material_id}`; return the updated project. |
+| `POST /api/artemis/projects/{id}/structures` | Attach using `{version, amcsd_id}`, `{version, provider: "materials_project", material_id}`, or `{version, provider: "uploaded", filename, cif}` with full CIF text; return the updated project. |
 | `POST /api/artemis/feff/jobs` | Start an isolated FEFF8L job; returns HTTP 202 and its job ID. |
 | `GET /api/artemis/feff/jobs/{id}` | Poll `running`, `complete`, or `failed` status, log, input provenance, and generated paths. |
 
@@ -668,7 +678,7 @@ ranges, weights, and interpretation*. The whole suite runs in about 3.5 s.
 
 ## Scope beyond this iteration
 
-Future work includes arbitrary external CIF/Atoms input, disordered structures
+Future work includes Atoms input, disordered structures
 and automatic averaging over absorber sites, desktop Artemis project interchange,
 simultaneous multi-dataset fits, q-space and wavelet fitting,
 background co-refinement, additional cumulants, dynamical-matrix/trajectory disorder inputs,

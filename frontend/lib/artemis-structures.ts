@@ -2,7 +2,8 @@ import type { ArtemisInspectedPath } from "./artemis"
 
 export interface ArtemisStructureSummary {
   id: number | string
-  provider?: "amcsd" | "materials_project"
+  provider?: "amcsd" | "materials_project" | "uploaded"
+  filename?: string
   source?: string
   provenance?: { database_version: string | null; retrieved_at: string; task_id: string | null; structure_type: "dft_relaxed" }
   mineral: string
@@ -44,7 +45,7 @@ export interface ArtemisFeffRequest {
 }
 export interface ArtemisStructureAttachment {
   id: string
-  provider?: "amcsd" | "materials_project"
+  provider?: "amcsd" | "materials_project" | "uploaded"
   amcsd_id?: number
   material_id?: string
   attached_at: string
@@ -73,6 +74,7 @@ export interface ArtemisFeffJob {
 export interface ArtemisGeneratedPath extends ArtemisInspectedPath { label: string }
 
 export function structureLabel(structure: ArtemisStructureSummary) {
+  if (structure.provider === "uploaded") return `Uploaded CIF · ${structure.filename}`
   return structure.provider === "materials_project" ? `Materials Project ${structure.id}` : `AMCSD ${String(structure.id).padStart(7, "0")}`
 }
 
