@@ -3,11 +3,18 @@
 import { Download, FileJson, FileText, TriangleAlert } from "lucide-react"
 import type { ArtemisFitResult } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
+import { correlationHealth, independentPointsHealth, parameterHealth, rFactorHealth, type FitHealth } from "@/lib/artemis-fit-health"
 import { SectionHelp } from "../section-help"
 import styles from "./artemis-fit-report.module.css"
 
 const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value)
 const kindLabels = { guess: "Varied", set: "Fixed", def: "Derived" }
+const healthLabels = { good: "In range", caution: "Borderline", bad: "Out of range", railed: "Railed on bound", neutral: "Not assessed" }
+
+function healthAttributes(health: FitHealth) {
+  const description = `${healthLabels[health.state]}: ${health.reason}`
+  return { "data-health": health.state, title: description, "aria-description": description }
+}
 
 // Match the report summary's bound check in backend/xraylarch_web/agent_fit.py.
 function parameterBound(parameter: ArtemisFitResult["parameters"][number]) {
@@ -20,6 +27,8 @@ function parameterBound(parameter: ArtemisFitResult["parameters"][number]) {
 
 export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
   const { statistics: stats, transform } = result
+  const informationHealth = independentPointsHealth(stats.n_independent, stats.n_varys)
+  const fitPaths = result.request?.paths.filter(path => result.paths.some(fitted => fitted.id === path.id))
   const correlations = result.correlations.filter(pair => finite(pair.value)).slice().sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
   const strongCorrelations = correlations.filter(pair => Math.abs(pair.value) >= 0.9)
   const reviewNotes: string[] = []
@@ -42,11 +51,11 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
     <dl className={styles.metrics}>
       <div className={styles.primaryMetric} data-review={finite(stats.r_factor) && stats.r_factor > 0.05}>
         <dt>R factor<SectionHelp label="R factor">Normalized squared residual in the fit space. Lower values indicate closer agreement; a small R factor alone does not validate the model.</SectionHelp></dt>
-        <dd>{format(stats.r_factor, 5)}</dd><span className={styles.metricHint}>Model–data agreement</span>
+        <dd {...healthAttributes(rFactorHealth(stats.r_factor))}>{format(stats.r_factor, 5)}</dd><span className={styles.metricHint}>Model–data agreement</span>
       </div>
       <div><dt>Reduced χ²<SectionHelp label="Reduced chi square">Chi square scaled by the fit's degrees of freedom. Its size depends on the noise estimate as well as the residual.</SectionHelp></dt><dd>{format(stats.reduced_chi_square, 5)}</dd><span className={styles.metricHint}>Depends on noise estimate</span></div>
-      <div><dt>Free parameters</dt><dd>{format(stats.n_varys)}</dd><span className={styles.metricHint}>Varied in this fit</span></div>
-      <div><dt>Independent points<SectionHelp label="Independent points">The information available over the fit range. This is different from the number of sampled data points.</SectionHelp></dt><dd>{format(stats.n_independent, 4)}</dd><span className={styles.metricHint}>Available information</span></div>
+      <div><dt>Free parameters</dt><dd {...healthAttributes(informationHealth)}>{format(stats.n_varys)}</dd><span className={styles.metricHint}>Varied in this fit</span></div>
+      <div><dt>Independent points<SectionHelp label="Independent points">The information available over the fit range. This is different from the number of sampled data points.</SectionHelp></dt><dd {...healthAttributes(informationHealth)}>{format(stats.n_independent, 4)}</dd><span className={styles.metricHint}>Available information</span></div>
       <div><dt>Noise ε(k)<SectionHelp label="Noise estimate">χ² and the uncertainties are measured against this noise ε(k), estimated from the high-R part of the transform. Two fits are only comparable on χ² when they share that scale.</SectionHelp></dt><dd>{format(stats.epsilon_k)}</dd><span className={styles.metricHint}>Scale of χ² and uncertainties</span></div>
     </dl>
 
@@ -61,7 +70,7 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
         <thead><tr><th scope="col">Parameter</th><th scope="col">Value ± uncertainty</th><th scope="col">Initial value</th><th scope="col">Treatment</th></tr></thead>
         <tbody>{result.parameters.map(parameter => <tr key={parameter.name}>
           <th scope="row"><code>{parameter.name}</code>{parameter.expression && <span className={styles.expression}>{parameter.expression}</span>}</th>
-          <td><span className={styles.value}>{format(parameter.value, 7)}</span><span className={styles.uncertainty}>{parameter.kind === "set" ? " —" : stats.errorbars && finite(parameter.stderr) ? ` ± ${format(parameter.stderr, 3)}` : " ± Unavailable"}</span></td>
+          <td {...healthAttributes(parameterHealth(parameter, { errorbars: stats.errorbars, paths: fitPaths }))}><span className={styles.value}>{format(parameter.value, 7)}</span><span className={styles.uncertainty}>{parameter.kind === "set" ? " —" : stats.errorbars && finite(parameter.stderr) ? ` ± ${format(parameter.stderr, 3)}` : " ± Unavailable"}</span></td>
           <td className={styles.secondary}>{format(parameter.initial, 7)}</td>
           <td><span className={styles.kind} data-kind={parameter.kind}>{kindLabels[parameter.kind]}</span>{parameterBound(parameter) && <span className={styles.bound}>At {parameterBound(parameter)} bound</span>}</td>
         </tr>)}</tbody>
@@ -100,7 +109,7 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
       {correlations.length ? <ul className={styles.correlationList}>{correlations.map(pair => <li key={`${pair.left}:${pair.right}`} data-strong={Math.abs(pair.value) >= 0.9}>
         <span className={styles.pair}><code>{pair.left}</code><span aria-hidden="true">↔</span><code>{pair.right}</code></span>
         <span className={styles.correlationBar} aria-hidden="true"><span style={{ width: `${Math.min(1, Math.abs(pair.value)) * 100}%` }} /></span>
-        <span className={styles.correlationValue}>{pair.value > 0 ? "+" : ""}{pair.value.toFixed(3)}</span>
+        <span className={styles.correlationValue} {...healthAttributes(correlationHealth(pair.value))}>{pair.value > 0 ? "+" : ""}{pair.value.toFixed(3)}</span>
         <span className={styles.correlationLabel}>{Math.abs(pair.value) >= 0.9 ? "Strong" : ""}</span>
       </li>)}</ul> : <p className={styles.note}>No parameter correlations were reported for this fit.</p>}
     </details>

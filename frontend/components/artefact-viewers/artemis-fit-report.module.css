@@ -72,3 +72,11 @@
 @container (max-width: 650px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settings { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 500px) { .report thead th { white-space: normal; } .uncertainty { display: block; margin-top: 2px; } }
 @container (max-width: 380px) { .correlationList li { grid-template-columns: minmax(85px, 1fr) minmax(30px, .6fr) 48px; gap: 6px; } .correlationLabel { grid-column: 1 / -1; } .correlationLabel:empty { display: none; } .metrics > div { padding: 8px; } .report th, .report td { padding: 8px 6px; } }
+
+/* Dr.XAS fit-health colors on the existing values; no spacing or layout changes. */
+.report [data-health=good] { color: var(--ath-success-ink, hsl(142 72% 29%)); background: var(--ath-success-bg, hsl(142 72% 29% / .15)); }
+.report [data-health=caution] { color: var(--ath-warning-ink, hsl(26 90% 37%)); background: var(--ath-warning-bg, hsl(26 90% 37% / .15)); }
+.report [data-health=bad] { color: var(--ath-error-ink, hsl(0 72% 46%)); background: var(--ath-error-bg, hsl(0 72% 46% / .15)); }
+.report [data-health=railed] { color: #1e293b; background: #e4e7ec; }
+:global(html[data-theme="dark"]) .report [data-health=railed] { color: #f1f5f9; background: #334155; }
+.report [data-health]:not([data-health=neutral]) .uncertainty { color: inherit; opacity: .75; }
