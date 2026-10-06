@@ -416,7 +416,23 @@ the measured energy axis. For a single-scattering path, `reff + deltar` is the
 fitted interatomic distance. For multiple scattering it is the effective
 half-path length; it must not be labeled as an individual bond distance.
 
-FEFF degeneracy is retained from the uploaded file. Larch's amplitude contains
+Each single-scattering path offers **Set / fit coordination number**, visible
+even when its path details are collapsed. Enter CN (initially the FEFF degeneracy)
+and a calibrated **Fixed S₀²**, choose **Fit CN** or uncheck it to hold CN fixed,
+and optionally set a CN maximum. **Apply CN and sync** creates a `cn_*` Guess/Set
+parameter, a fixed `s02_*` parameter, and the normalized amplitude expression
+`s02_* * cn_* / degen`. A fitted CN has a lower bound of zero; its maximum is
+unbounded unless specified. Review values and bounds in **Parameters**. Reapplying
+after changing helper values creates fresh parameters and resets a fitted CN's
+minimum to zero; edit existing constraints directly in **Parameters**.
+The helper replaces this path's amplitude expression and previews unused
+parameters that sync will remove. Other included paths keep their expressions
+and shared parameters. It creates distinct names, so separate shells are not
+silently coupled. Existing fixed or numeric S₀² is prefilled; a free amplitude
+is not treated as calibrated. Multiple-scattering degeneracy is not a neighbor
+count, so those paths retain the expression editor without this CN shortcut.
+
+FEFF degeneracy is retained from the uploaded file and labeled **FEFF N**. Larch's amplitude contains
 the product `degen * s02`; the web does not replace degeneracy with an independently
 varied coordination number. To fit a coordination number `coord` with a known
 amplitude reduction factor `amp`, an appropriate path expression is

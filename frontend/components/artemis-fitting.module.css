@@ -50,6 +50,10 @@
 .disorder > .check, .disorder > .fullField { margin-top: 8px; }
 .disorder > summary:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
 .disorderExpression { overflow-wrap: anywhere; }
+.coordination { margin-top: 6px; }
+.coordination > summary { cursor: pointer; color: var(--ath-primary, #268553); font-size: var(--text-label); overflow-wrap: anywhere; }
+.coordination > summary:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+.coordination > .fullField { margin-top: 8px; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0; }
 .grid label, .parameterValues label, .fullField { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label); color: var(--ath-muted, #647669); min-width: 0; }
 .grid .fullField { grid-column: 1 / -1; }

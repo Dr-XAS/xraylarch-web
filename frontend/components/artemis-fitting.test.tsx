@@ -300,6 +300,72 @@ describe("ArtemisFittingPanel", () => {
     await waitFor(() => expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } }))
   })
 
+  it("offers CN while paths are collapsed and saves a normalized CN model without changing other paths", async () => {
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    expect(screen.getByLabelText("Path 1 S₀²")).not.toBeVisible()
+    const control = screen.getAllByText("Set / fit coordination number", { exact: true })[0]
+    expect(control).toBeVisible()
+    fireEvent.click(control)
+    expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue("12")
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue("")
+    fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("S₀²")
+    expect(screen.getByLabelText("Path 1 S₀²")).toHaveValue("amp")
+    fireEvent.change(screen.getByLabelText("Path 1 coordination number"), { target: { value: "10" } })
+    fireEvent.change(screen.getByLabelText("Path 1 fixed S₀²"), { target: { value: "0.85" } })
+    fireEvent.change(screen.getByLabelText("Path 1 coordination maximum"), { target: { value: "12" } })
+    fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
+    expect(screen.getByLabelText("Path 1 S₀²")).toHaveValue("s02_1 * cn_1 / degen")
+    expect(screen.getByLabelText("Path 2 S₀²")).toHaveValue("amp")
+    expect(screen.getByLabelText("Parameter 1 kind")).toHaveValue("guess")
+    expect(screen.getByRole("status")).toHaveTextContent("cn_1 (Guess)")
+    expect(screen.getByText(/CN parameter:/)).toHaveTextContent("cn_1 · fit from 10")
+    expect(screen.getByRole("button", { name: "Apply coordination number for path 1" })).toBeDisabled()
+    await runFit()
+    const request = submittedModel()
+    expect(request.parameters).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "cn_1", kind: "guess", value: "10", min: "0", max: "12" }),
+      expect.objectContaining({ name: "s02_1", kind: "set", value: "0.85" }),
+      expect.objectContaining({ name: "amp", kind: "guess", value: "1" }),
+    ]))
+    expect(request.paths[0].metadata.degen).toBe(12)
+    expect(request.paths[0].content).toBe(example().paths[0].content)
+    expect(request.paths.slice(1).every(path => path.s02 === "amp")).toBe(true)
+  })
+
+  it("can hold CN fixed, requires path inclusion, and restores CN controls from the saved model", async () => {
+    const first = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    fireEvent.change(screen.getByLabelText("Path 1 coordination number"), { target: { value: "8" } })
+    fireEvent.change(screen.getByLabelText("Path 1 fixed S₀²"), { target: { value: "0.9" } })
+    fireEvent.click(screen.getByLabelText("Path 1 fit coordination number"))
+    expect(screen.queryByLabelText("Path 1 coordination maximum")).not.toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText("Include path 1"))
+    expect(screen.getByRole("button", { name: "Apply coordination number for path 1" })).toBeDisabled()
+    fireEvent.click(screen.getByLabelText("Include path 1"))
+    fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
+    await runFit()
+    const model = submittedModel()
+    expect(model.parameters.find(parameter => parameter.name === "cn_1")).toMatchObject({ kind: "set", value: "8" })
+    first.unmount()
+    render(<ArtemisFittingPanel projectId="reopened" version={4} group={{ ...group(), artemis: { schema_version: 1, model, history: [], current_input_sha256: null } }} onProjectChange={acceptProject} />)
+    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue("8")
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue("0.9")
+    expect(screen.getByLabelText("Path 1 fit coordination number")).not.toBeChecked()
+  })
+
+  it("offers CN only for single scattering and uses an existing fixed amplitude as its initial value", () => {
+    const setup = preparedExample()
+    setup.example.paths[1].metadata.nleg = 3
+    setup.example.parameters[0] = { ...setup.example.parameters[0], kind: "set", value: 0.82 }
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup} onProjectChange={acceptProject} />)
+    expect(screen.getAllByText("Set / fit coordination number", { exact: true })).toHaveLength(3)
+    expect(screen.queryByLabelText("Path 2 coordination number")).not.toBeInTheDocument()
+    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue("0.82")
+  })
+
   it("compares the fitted model on the fast backend, and withdraws the comparison when the model changes", async () => {
     // The comparison is only meaningful while both backends answer the same
     // question, so it is offered after a fit and withdrawn on the next edit.

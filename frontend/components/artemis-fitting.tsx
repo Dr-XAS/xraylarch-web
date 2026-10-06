@@ -14,6 +14,8 @@ import type { ArtemisPreviewRequest } from "@/lib/artemis-path-preview"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { planDisorderInsertion, type DisorderOptions } from "@/lib/artemis-disorder"
 import { ArtemisDisorderControl } from "./artemis-disorder"
+import { planCoordinationInsertion, type CoordinationOptions } from "@/lib/artemis-coordination"
+import { ArtemisCoordinationControl } from "./artemis-coordination"
 import { ArtemisModelAutosave, type ArtemisSaveStatus } from "@/lib/artemis-model-autosave"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
@@ -431,6 +433,15 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
   function editPath(id: string, field: keyof ArtemisPath, value: string | boolean) {
     edit(previous => ({ ...previous, paths: previous.paths.map(path => path.id === id ? { ...path, [field]: value } : path) }))
   }
+  function insertCoordination(pathId: string, options: CoordinationOptions) {
+    try {
+      const insertion = planCoordinationInsertion(draft, pathId, options)
+      const removed = new Set(insertion.removed)
+      edit(previous => ({ ...previous, paths: insertion.paths,
+        parameters: [...previous.parameters.filter(parameter => !removed.has(parameter.name.trim())), ...insertion.added.map(parameterDraft)] }))
+      setNotice(`Coordination number: ${insertion.coordinationName} (${options.refine ? "Guess" : "Set"}); ${insertion.amplitudeName} is fixed. Values and bounds are editable in Parameters.`)
+    } catch (error) { setError(errorText(error)) }
+  }
   function insertDisorder(pathId: string, options: DisorderOptions) {
     try {
       const insertion = planDisorderInsertion(draft, pathId, options)
@@ -650,7 +661,7 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
     {({ structures, feff }) => <>
     <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">{structures}</FittingSection>
     <FittingSection title="FEFF paths" icon={FeffScatteringIcon} summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}
-      help={<><p>N is fixed by FEFF; the amplitude is N × S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
+      help={<><p>FEFF N is the path degeneracy from the file. Use Set / fit coordination number on a single-scattering path to define CN with fixed S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
         {radialContext && <p>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>}</>}>
       {feff}
       {radialContext ? <>
@@ -692,15 +703,17 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
           <button type="button" aria-label={`Remove path ${i + 1}`} title={`Remove ${path.filename}`} onClick={() => edit(previous => ({ ...previous, paths: previous.paths.filter(item => item.id !== path.id) }))}><Trash2 size={13} /></button>
         </div>
         {path.label && path.label !== path.filename && <p className={styles.pathLabel} title={path.label}>{path.label}</p>}
-        <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
+        <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · FEFF N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
         {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
         {member && <p className={styles.metadata}>{member.element} pair {member.group_id}</p>}
+        {path.metadata.nleg === 2 && <ArtemisCoordinationControl index={i + 1} path={path} parameters={draft.parameters}
+          onPreview={options => planCoordinationInsertion(draft, path.id, options)} onApply={options => insertCoordination(path.id, options)} />}
         {/* Keep the inputs mounted so folding a path preserves edits and native undo. */}
         <div id={detailsId} className={styles.pathDetails} hidden={!expanded}>
         <label className={styles.fullField}>Path label<input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
-            ["s02", "S₀²", "Amplitude factor; FEFF degeneracy N is already included."],
+            ["s02", "S₀²", "Amplitude expression; FEFF N is already included. Use Set / fit coordination number above to create a CN parameter."],
             ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Athena edge energy."],
             ["deltar", "ΔR (Å)", "Change in the FEFF effective half-path length."],
             ["sigma2", "σ² (Å²)", "Mean-square relative displacement."],
