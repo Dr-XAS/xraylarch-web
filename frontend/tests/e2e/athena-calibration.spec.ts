@@ -50,7 +50,8 @@ test('Cu import figure, four calibration displays, raw/SG smoothing, zero crossi
   test.setTimeout(150000);await page.setViewportSize({width:1500,height:1040})
   const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
   const initial=await load(page),dialog=await open(page)
-  await expect(dialog.getByLabel('Calibrate to · eV',{exact:true})).toHaveValue('8979')
+  await expect(dialog.getByLabel('Calibrate to · eV',{exact:true})).toHaveValue('8980.48')
+  await expect(dialog.getByRole('link',{name:'Kraft et al. (1996), Table I, E₁'})).toHaveAttribute('href','https://doi.org/10.1063/1.1146657')
   for(const display of ['mu','norm','derivative','second']){
     await dialog.getByLabel('Calibration display',{exact:true}).selectOption(display)
     const preview=await review(page,dialog);expect(preview.options.display).toBe(display)

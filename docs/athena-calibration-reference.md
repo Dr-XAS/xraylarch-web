@@ -11,6 +11,32 @@ refit the calibrated normalization overlay after total-shift rounding.
 
 ## Primary source and numerical contract
 
+### Preferred calibration energies
+
+For element/edge pairs listed in **Table I, E₁**, the calibration target defaults
+to the metal-foil measurements of S. Kraft, J. Stümpel, P. Becker and U. Kuetgens,
+*High resolution x-ray absorption spectroscopy with absolute energy calibration
+for the determination of absorption edge energies*, **Rev. Sci. Instrum. 67,
+681–687 (1996)**, [doi:10.1063/1.1146657](https://doi.org/10.1063/1.1146657).
+The table is on p. 686. E₁ contains this paper's measurements; E₂ contains older
+comparison values and is not used. Cu K therefore defaults to **8980.48 eV**,
+Fe K to **7110.75 eV**, and Pt L3 to **11562.76 eV**.
+
+The paper defines the edge position as the **lowest-energy inflection point**
+of a metal-foil absorption spectrum (Section IV). Choose the corresponding
+observed reference feature; these values do not prescribe a compound's E0.
+The panel displays the reference energy, citation, DOI link, and convention.
+All 31 listed K/L edges are included. Unlisted element/edge pairs fall back to
+XrayDB/Elam, labeled as a fallback. An explicit target always takes precedence.
+
+The preview and command's `last_operation.calibration` carry `calibration_target`
+as the recommended reference with its source; `options.target` records the actual
+target, which may be entered manually. Preview's existing `atomic_target` still
+reports the XrayDB atomic value. General atomic E0 selection, edge inference,
+import policy, and native explicit-target calibration calculations are unchanged.
+
+### Native calculation methods
+
 The reference is Demeter revision
 `06afc8da08a5a7d5a26ee14992170fcf5dc67406`. Source hashes are in
 [the primary catalog](athena-primary-sources.json) and the
@@ -138,8 +164,9 @@ visually inspected. Final suite totals are in [verification](athena-verification
   repairs, degree reduction and complete native normalization/flattening
   dispatch remain open. Invalid recalculation still clears processed results
   and reports an error rather than retaining an old curve.
-- Atomic targets use XrayDB/Elam. Native Athena uses its configurable
-  `Xray::Absorption` resource; other table selections are not reproduced here.
+- Calibration defaults prioritize Kraft et al. Table I E₁, with XrayDB/Elam for
+  unlisted edges. Native Athena uses its configurable `Xray::Absorption` resource;
+  this preferred calibration table is a deliberate web-specific choice.
 - The native zero search has boundary/zero-plateau quirks. The web uses the
   bounded [E0 implementation](../backend/xraylarch_web/athena_e0.py); the measured cases agree,
   but this is not blanket equivalence for pathological derivative arrays.

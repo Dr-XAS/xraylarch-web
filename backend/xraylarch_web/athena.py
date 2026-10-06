@@ -2911,6 +2911,7 @@ class AthenaStore:
 
     def _calibration_results(self, project, request: Command, *, find_zero=False):
         from .athena_calibration import CalibrationOptions, calibration_curve, calibration_shift, shifted_axis, zero_crossing
+        from .athena_calibration_references import calibration_target
         from .athena_e0 import atomic_edge
         from .athena_science import _edge, normalization_adjustments
         if request.action != 'calibrate' or len(request.group_ids) != 1:
@@ -2932,10 +2933,12 @@ class AthenaStore:
         if not x[0] <= observed <= x[-1]:
             fail('Choose the observed reference inside the displayed energy range.')
         atom = None
+        reference = None
         identity = _source_edge_identity(parent['source'])
         if identity:
             atom = atomic_edge(identity['element'], identity['edge'])
-        target = choice.target if choice.target is not None else atom['energy'] if atom else observed
+            reference = calibration_target(identity['element'], identity['edge'])
+        target = choice.target if choice.target is not None else reference['energy'] if reference else observed
         zero = zero_crossing(parent, observed) if find_zero else None
         choice = choice.model_copy(update=dict(observed=observed if zero is None else zero, target=target))
         curve = calibration_curve(parent, choice)
@@ -2960,7 +2963,7 @@ class AthenaStore:
             options=choice.model_dump(exclude_none=True), requested_options=request.options,
             curve=curve, energy_shift=shift, shift_delta=shift-parent['parameters']['energy_shift'],
             actual_reference=choice.observed + shift-parent['parameters']['energy_shift'],
-            atomic_target=atom, zero_crossing=zero, changes=changes, processing_errors=errors,
+            atomic_target=atom, calibration_target=reference, zero_crossing=zero, changes=changes, processing_errors=errors,
             normalization_limits=limits, calibrated_curve=calibrated_curve)
 
     def preview_calibration(self, ident, request: Command, *, find_zero=False):
@@ -3758,7 +3761,7 @@ class AthenaStore:
                     calibrated, preview = self._calibration_results(p, request)
                     p['groups'] = calibrated['groups']
                     operation_details = {'calibration': {key: preview[key] for key in
-                        ('group_id', 'options', 'energy_shift', 'shift_delta', 'actual_reference', 'changes', 'processing_errors')}}
+                        ('group_id', 'options', 'energy_shift', 'shift_delta', 'actual_reference', 'calibration_target', 'changes', 'processing_errors')}}
                 # The older path needs reference_id. Without it, a body the preview
                 # accepted would fail here as a missing group, so it goes to the
                 # same model the preview validated.
