@@ -331,12 +331,12 @@ def test_the_status_route_says_whether_the_engine_is_available(client):
     assert response.status_code == 200, response.text
     status = response.json()
     assert status["available"] is True
-    assert status["engine"] == "xasforward.exafs_paths+jax"
+    assert status["engine"] == "diffexafs_core.pathsum+jax"
 
 
 def test_the_report_names_the_engine_and_its_timing(model, spectrum):
     fast = fast_fit_group(spectrum, FitRequest(**model))
-    assert fast["metadata"]["engine"] == "xasforward.exafs_paths+jax"
+    assert fast["metadata"]["engine"] == "diffexafs_core.pathsum+jax"
     assert "FAST FIT" in fast["report"]
     assert "parity" in fast["report"]
 

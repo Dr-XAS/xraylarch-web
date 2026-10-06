@@ -2,7 +2,7 @@ import { artemisApi, type ArtemisFitRequest, type ArtemisFitResult } from "./art
 
 /** Whether this server has the differentiable engine, asked once per page.
  *
- *  The engine is an optional install (jax and xasforward), absent from a
+ *  The engine is an optional install (jax and diffexafs-core), absent from a
  *  standard deployment; the panel hides itself rather than offer a button
  *  that can only fail. A failed request is not an answer, so it is not cached.
  */

@@ -294,7 +294,7 @@ the digest first: it usually answers what the arrays were wanted for.
   `cd frontend && npx playwright test tests/e2e/<spec> --reporter=line` (the
   config starts the backend and Next.js itself).
 - The fast EXAFS fit and the second XRF engine need optional packages (jax with
-  xasforward, and torch with mapstorch) that the release install leaves out.
+  diffexafs-core, and torch with mapstorch) that the release install leaves out.
   Their tests skip when a package is missing; keep it that way, and check a
   change with an environment built from `deploy/python-release-constraints.txt`
   as well as with the full one.

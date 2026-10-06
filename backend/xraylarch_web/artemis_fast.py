@@ -9,7 +9,7 @@ Jacobian from automatic differentiation, and the whole residual compiles once
 into fused machine code instead of being re-interpreted on every call.
 
 Nothing here is a different fit. The forward model is the FEFF path equation
-from the differentiable engine in ``xasforward.physics.exafs_paths``; the data,
+from the differentiable engine in ``diffexafs_core.pathsum``; the data,
 the FEFF path arrays, the Fourier window, the noise scale epsilon and the count
 of independent points all come from the very Larch objects the reference
 backend uses, so the two engines minimize the same function of the same
@@ -22,13 +22,9 @@ request into a :class:`ResidualSpec`, :func:`solve` turns a
 :class:`ResidualSpec` into parameters and a covariance matrix, and neither
 knows anything about EXAFS. :func:`fast_fit_group` is the only part that does.
 
-One correction is applied on the way into the engine. Larch computes the
-energy-to-wavenumber constant from the CODATA values shipped by scipy, while
-the engine hard-codes a literal from an earlier CODATA release; they differ by
-4.4e-8 relative. Left alone that limits agreement in chi(k) to ~8e-8 wherever
-E0 is refined. Because the constant enters only as the product ``e0 * ETOK``,
-scaling E0 by the ratio of the two constants reproduces Larch exactly, with no
-global state and no change to the gradients. See ``docs/artemis-web.md``.
+The engine receives Larch's own energy-to-wavenumber conversion constant via
+``ktoe``. This keeps both models on the same CODATA revision without rescaling
+E0 or changing global state. See ``docs/artemis-web.md``.
 """
 
 from __future__ import annotations
@@ -49,10 +45,10 @@ from .artemis import (_LARCH_LOCK, _CONSTANTS, _PATH_PARAMETERS, _initial_values
                       FitRequest, display_epsilon, fit_arrays, fit_inputs)
 from .errors import WebInputError
 
-ENGINE = "xasforward.exafs_paths+jax"
+ENGINE = "diffexafs_core.pathsum+jax"
 
-# The engine is a research package rather than a PyPI release, so the app has to
-# work without it. Import once, remember why it failed, and let the route turn
+# The engine is optional, so the app has to work without it.
+# Import once, remember why it failed, and let the route turn
 # the failure into an orderly "not available here" instead of a 500.
 _IMPORT_ERROR: str | None = None
 try:  # pragma: no cover - exercised by whether the import succeeds
@@ -60,7 +56,7 @@ try:  # pragma: no cover - exercised by whether the import succeeds
 
     jax.config.update("jax_enable_x64", True)
     import jax.numpy as jnp
-    from xasforward.physics.exafs_paths import feff_path_chi
+    from diffexafs_core.pathsum import feff_path_chi
 except Exception as exc:  # pragma: no cover - depends on the environment
     jax = jnp = feff_path_chi = None
     _IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
@@ -88,7 +84,7 @@ def _require_engine() -> None:
             "The fast fitting backend is not installed in this deployment.",
             fields=("engine",),
             recovery="Use the default Larch backend, or install the differentiable EXAFS engine "
-                     "(jax and xasforward) and restart the server.")
+                     "(jax and diffexafs-core) and restart the server.")
 
 
 # ---------------------------------------------------------------------------
@@ -325,14 +321,6 @@ def _realimag(values):
     return jnp.stack([jnp.real(values), jnp.imag(values)], axis=-1).ravel()
 
 
-def _energy_scale() -> float:
-    """Ratio that makes the engine's ``e0 * ETOK`` use Larch's CODATA constant."""
-    from larch.xafs.xafsutils import ETOK as larch_etok
-    from xasforward.physics.exafs_paths.formula import ETOK as engine_etok
-
-    return float(larch_etok / engine_etok)
-
-
 def build_residual_spec(dataset, transform, path_arrays, trees, parameters) -> ResidualSpec:
     """Translate a prepared Larch dataset into a differentiable residual.
 
@@ -343,7 +331,8 @@ def build_residual_spec(dataset, transform, path_arrays, trees, parameters) -> R
     backends comparable rather than merely similar.
     """
     _require_engine()
-    energy_scale = _energy_scale()
+    from larch.xafs.xafsutils import KTOE
+
     model_k = np.asarray(dataset.model.k, dtype=float)
     nk = len(model_k)
     chi_data = jnp.asarray(np.asarray(dataset._chi, dtype=float))
@@ -397,10 +386,10 @@ def build_residual_spec(dataset, transform, path_arrays, trees, parameters) -> R
                 real_p=record["real_p"], mean_free_path=record["lam"],
                 reff=record["reff"], degen=record["degen"],
                 S02=_jax_evaluate(tree["s02"], local),
-                e0=_jax_evaluate(tree["e0"], local) * energy_scale,
+                e0=_jax_evaluate(tree["e0"], local),
                 deltar=_jax_evaluate(tree["deltar"], local),
                 sigma2=_jax_evaluate(tree["sigma2"], local),
-                interp="cubic", larch_zero_fix=True)
+                interp="cubic", larch_zero_fix=True, ktoe=KTOE)
         return total
 
     def transform_difference(diff):

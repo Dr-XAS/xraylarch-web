@@ -231,28 +231,24 @@ fit), and whatever the chosen engine does not model is printed above the
 quality checks. The exported group's metadata carries `engine` and
 `engine_notes`, so a saved extraction records which model made it.
 
-Installing it: from the MapsTorch checkout, not from PyPI.
+Install MapsTorch 0.0.2 from PyPI through the shared optional-engine requirements.
+After installing `backend/requirements.txt`, run from `backend/`:
 
 ```
-pip install --no-deps <MapsTorch checkout>
-pip install "setuptools<81"
+pip install -r requirements-engines.txt \
+    -c ../deploy/python-release-constraints.txt --find-links <wheel-folder>
 ```
 
-Version 0.0.1 on PyPI is too old for this engine on two counts. It imports
-`pkg_resources` at module scope, which setuptools 81 and later no longer
-provide — hence the pin, which the checkout needs too. And its `elastic_peak`
-and `compton_peak` subtract a scalar incident energy from the channel axis,
-so a batch of points does not broadcast: every spectrum in this engine's
-batched solve raises a shape error. The checkout also carries
-`FWHM_FANO_COEFF`, which the width law here reads. Both failures are covered,
-by `the_scatter_peaks_follow_the_incident_energy` and
+The folder supplies the `diffexafs-core==0.1.0` wheel for the optional EXAFS
+engine installed by the same file; that package is not on PyPI. The requirements
+select CPU-only PyTorch via the PyTorch CPU index and CPU JAX, leaving the
+standard deployment unchanged. Restart the server after installation.
+
+MapsTorch 0.0.2 supports batched scatter peaks and NumPy 2 without the old
+`--no-deps` workaround. Its core dependencies no longer include the notebook
+and plotting applications. The engine's scatter-peak broadcasting and shared
+calibration are checked by `the_scatter_peaks_follow_the_incident_energy` and
 `a_line_lands_where_the_shared_calibration_says_it_does`.
-
-`--no-deps` is deliberate: MapsTorch declares `numpy<2.0.0`, and Larch
-requires `numpy>=2.2`. The engine runs correctly under numpy 2 — the whole
-suite below passes there — so the declared pin is the thing to skip, not
-Larch's requirement. Installing MapsTorch with its dependencies downgrades
-numpy and breaks Larch.
 
 Nothing else in the app depends on it, and a server without it is fully
 functional.
