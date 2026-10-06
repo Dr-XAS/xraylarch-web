@@ -259,7 +259,8 @@ profile this deployment runs under.
 still accepts `drxas|goldendale` — but no deployment currently uses it. It
 validates only a `3001` frontend and `8001` backend, for a host whose
 production pair is intentionally absent while its dev pair remains active.
-Either profile changes no XrayLarch listener, release, data, or
+Selecting it means setting `XRAYLARCH_WEB_SIBLING_PROFILE=goldendale` for
+deploy, health, and checker commands. Either profile changes no XrayLarch listener, release, data, or
 process-identity contract.
 
 ## Deployment watcher
