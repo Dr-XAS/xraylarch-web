@@ -3514,6 +3514,18 @@ class AthenaStore:
             result.setdefault("warnings", []).extend(window_warnings)
             result["labels"] = [g["label"] for g in groups]
             return self._persist_analysis(ident, {"kind": request.action, "project_version": p["version"], "group_ids": request.group_ids, "options": opts, "result": result})
+        allowed = {"lcf": ("array", "xmin", "xmax", "sum_to_one", "nonnegative"), "pca": ("array", "xmin", "xmax"),
+                   "peaks": ("array", "xmin", "xmax", "peaks", "background", "max_nfev")}.get(request.action)
+        if allowed is None:
+            fail("Unknown analysis.")
+        # The saved request sits beside the fit, so a dropped or truthy-string
+        # option would record one model and run another.
+        if unknown := sorted(set(o) - set(allowed)):
+            fail(f"Unsupported {request.action} options: {', '.join(map(str, unknown))}. Use {', '.join(allowed)}.")
+        constraints = {key: o.get(key, True) for key in ("sum_to_one", "nonnegative")}
+        for key, value in constraints.items():
+            if not isinstance(value, bool):
+                fail(f"{key} must be true or false.")
         def spectrum(g):
             if not g["result"]:
                 fail("Process each selected group before analysis.")
@@ -3532,7 +3544,7 @@ class AthenaStore:
             if len(spectra) < 3:
                 fail("Select a target followed by at least two standards.")
             result = linear_combination(*spectra[0], spectra[1:], xmin, xmax,
-                         sum_to_one=bool(o.get("sum_to_one", True)), nonnegative=bool(o.get("nonnegative", True)))
+                                        **constraints)
             result["labels"] = [g["label"] for g in groups[1:]]
         elif request.action == "pca":
             result = principal_components(spectra, xmin, xmax)
@@ -3541,8 +3553,6 @@ class AthenaStore:
             from .athena_operations import fit_peaks
             peak_options = {key: o[key] for key in ("peaks", "background", "max_nfev") if key in o}
             result = fit_peaks(*spectra[0], dict(peak_options, xmin=xmin, xmax=xmax))
-        else:
-            fail("Unknown analysis.")
         return self._persist_analysis(ident, {"kind": request.action, "project_version": p["version"], "group_ids": request.group_ids,
                 "options": o, "result": result})
 

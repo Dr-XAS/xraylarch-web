@@ -332,6 +332,42 @@ def test_analysis_routes_persist_reports_without_changing_source_revision(client
     assert len({r["id"] for r in reports}) == 3
 
 
+@pytest.mark.parametrize("action, options, message", [
+    ("lcf", {"sum_to_one": "false"}, "sum_to_one must be true or false"),
+    ("lcf", {"nonnegative": "false"}, "nonnegative must be true or false"),
+    ("lcf", {"nonnegative": 0}, "nonnegative must be true or false"),
+    ("lcf", {"sum_to_1": False}, "Unsupported lcf options: sum_to_1"),
+    ("pca", {"sum_to_one": False}, "Unsupported pca options: sum_to_one"),
+    ("peaks", {"components": 2}, "Unsupported peaks options: components"),
+])
+def test_analysis_options_are_checked_before_fitting_a_different_model(client, xas_arrays, action, options, message):
+    # XAS-QA-004: "false" used to pass bool() as true, and misspelled
+    # constraints were dropped, so the saved request disagreed with the fit.
+    p = create(client)
+    x = xas_arrays[0]
+    first = 1 / (1 + np.exp(-(x - 8978) / 3))
+    second = 1 / (1 + np.exp(-(x - 8990) / 4))
+    for label, y in (("target", .6 * first + 1.4 * second), ("standard A", first), ("standard B", second)):
+        data = StringIO()
+        np.savetxt(data, np.column_stack((x, y)), header="energy mu")
+        inspected = client.post(f"/api/athena/projects/{p['id']}/inspect", files={"file": (label + ".dat", data.getvalue().encode())}).json()
+        p = client.post(f"/api/athena/projects/{p['id']}/import", json={"version": p["version"],
+            "upload_id": inspected["upload_id"], "energy_column": inspected["columns"][0]["column_id"],
+            "numerator": [inspected["columns"][1]["column_id"]], "data_type": "norm"}).json()
+    ids = [g["id"] for g in p["groups"]]
+    analyze = lambda options: client.post(f"/api/athena/projects/{p['id']}/analyze", json={"version": p["version"],
+        "action": action, "group_ids": ids[:1] if action == "peaks" else ids,
+        "options": {"array": "norm", "xmin": 8960, "xmax": 9020, **options}})
+    response = analyze(options)
+    assert response.status_code == 400, response.text
+    assert message in response.json()["error"]["message"]
+    assert client.get(f"/api/athena/projects/{p['id']}").json().get("analyses", []) == []
+    if action == "lcf":
+        unconstrained = analyze({"sum_to_one": False, "nonnegative": False})
+        assert unconstrained.status_code == 200, unconstrained.text
+        np.testing.assert_allclose(unconstrained.json()["result"]["weights"], [.6, 1.4], atol=1e-6)
+
+
 def test_bad_requests_and_stale_writes_return_actionable_errors(client):
     p = example(client)
     gid = p["groups"][0]["id"]
