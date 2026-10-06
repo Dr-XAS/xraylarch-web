@@ -71,3 +71,5 @@
 
 .feffLauncher { margin-bottom: 8px; }
 .feffContent { grid-template-columns: minmax(0, 1fr); }
+
+.simulation { display: grid; gap: 8px; min-width: 0; padding: 12px; border: 1px solid var(--ath-line); border-radius: 6px; }

@@ -101,6 +101,13 @@ automatically; the exported filename does not rename the saved project.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
+**Simulate EXAFS from CIF** uses the same attached structure and FEFF calculation
+without requiring a measured spectrum. Choose an absorbing site and edge, run
+FEFF, then sum all available paths or the selected paths with explicit S₀²,
+σ², ΔE₀ and ΔR. View χ(k) and |χ(R)|, download CSV curves, or export simulation
+JSON containing the exact CIF, FEFF input, path files, parameters and results.
+The shared σ² is an assumption; inequivalent sites are not averaged automatically.
+
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.
 Both panels can stay open together and keep independent plot spaces, ranges,

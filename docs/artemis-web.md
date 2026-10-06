@@ -89,6 +89,50 @@ before **Show paths** is available.
 
 ## Crystal structures and FEFF calculations
 
+### Simulate EXAFS from a CIF
+
+An empty project is sufficient. Open **EXAFS fitting → Crystal structures →
+Upload CIF**, then **Simulate EXAFS from this CIF**. A saved structure can also be
+opened with **Simulate EXAFS from CIF** in the FEFF paths section. Choose the
+absorbing element, absorption edge and inequivalent site, and run FEFF. The
+**Simulate EXAFS** controls appear when the calculation completes.
+
+Simulation sums all available paths by default (up to 100), independently of the
+24-path fit-model limit. **Selected paths** uses the checkboxes below, with their
+existing fit-selection limit. Review any warning that the FEFF job returned only
+part of its generated paths; increase Maximum paths and recalculate if needed.
+
+The default shared parameters are S₀² = 1, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
+σ² is an explicit disorder assumption, not calculated from CIF displacement
+factors or temperature. Native FEFF degeneracies are retained. The result is for
+one selected absorbing site; crystallographic multiplicity is not applied again,
+and inequivalent sites are not population averaged. Shared parameters are a
+simple forward model; use the fitting model for path-specific expressions.
+
+χ(k) is calculated on a 0.05 Å⁻¹ grid through the common FEFF support (at most
+20 Å⁻¹). The Fourier defaults are k = 3–12 Å⁻¹, k-weight 2, a Hanning window and
+dk = 2 Å⁻¹. These are simulation controls, independent of any measured group's
+processing. |χ(R)| is not phase corrected, so its peak positions are not bond
+distances. Changing simulation inputs hides the old result until recalculation.
+
+**Download χ(k) CSV** includes unweighted χ(k), including its k=0 value, and the
+weighted display curve. **Download χ(R) CSV** includes magnitude, real and
+imaginary components. **Download simulation JSON** retains all curves, the
+original CIF, FEFF input, selected path files, assumptions and parameters.
+Simulation does not create a measured group or save a fit; use these downloads
+to retain the result. Attached CIFs remain part of Save project.
+
+The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
+example, `{"s02": 1, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
+for all available paths or supply a nonempty list of IDs from the completed job.
+`transform` accepts the existing Fourier fields with one `kweight` value, such as
+`[2]`. Full responses include raw `k.chi`, weighted `k.total`, complex R curves,
+and source files. `?view=summary` elides arrays and omits source files. FEFF jobs
+expire after 24 hours; export the full result to preserve its inputs.
+`GET /api/artemis/capabilities/simulation` describes all fields and defaults.
+
+### Attach and calculate paths
+
 The structure workflow uses the local AMCSD database packaged with Larixite.
 This is a curated snapshot rather than a live search of the full online AMCSD:
 the installed `amcsd_cif1.db` contains 9,275 structures and identifies itself as
