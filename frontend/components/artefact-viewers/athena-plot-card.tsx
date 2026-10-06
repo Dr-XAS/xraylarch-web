@@ -6,8 +6,8 @@ export const athenaPlotHeightKey = "athena.plot.height.v1"
 const minimumHeight = 280
 const maximumHeight = 1600
 
-function clampHeight(height: number) {
-  return Math.min(maximumHeight, Math.max(minimumHeight, Math.round(height)))
+function clampHeight(height: number, minimum: number) {
+  return Math.min(maximumHeight, Math.max(minimum, Math.round(height)))
 }
 
 function saveHeight(storageKey: string, height: number | null) {
@@ -23,17 +23,19 @@ interface Props {
   storageKey?: string
   plotSelector?: string
   defaultHeight?: number
+  minHeight?: number
   resizeLabel?: string
   controlsId?: string
 }
 
 export function ResizablePlotCard({
   children, className = "", storageKey = athenaPlotHeightKey, plotSelector = ".ath-plot, .ath-no-plot",
-  defaultHeight = 380, resizeLabel = "Resize spectrum plot height", controlsId = "athena-spectrum-viewer",
+  defaultHeight = 380, minHeight = minimumHeight, resizeLabel = "Resize spectrum plot height", controlsId = "athena-spectrum-viewer",
 }: Props) {
   const cardRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; startY: number; startHeight: number; preferred: number | null } | null>(null)
   const heightRef = useRef<number | null>(null)
+  const previousHeight = useRef<number | null>(null)
   const [height, setHeight] = useState<number | null>(null)
   const [measuredHeight, setMeasuredHeight] = useState(defaultHeight)
   const [dragging, setDragging] = useState(false)
@@ -43,7 +45,7 @@ export function ResizablePlotCard({
   }
 
   function resize(next: number | null, persist = false) {
-    const fitted = next === null ? null : clampHeight(next)
+    const fitted = next === null ? null : clampHeight(next, minHeight)
     heightRef.current = fitted
     setHeight(fitted)
     if (persist) saveHeight(storageKey, fitted)
@@ -80,7 +82,7 @@ export function ResizablePlotCard({
     switch (event.key) {
       case "ArrowUp": next = plotHeight() - step; break
       case "ArrowDown": next = plotHeight() + step; break
-      case "Home": next = minimumHeight; break
+      case "Home": next = minHeight; break
       case "End": next = maximumHeight; break
       case "Enter": case " ": event.preventDefault(); reset(); return
       default: return
@@ -104,9 +106,11 @@ export function ResizablePlotCard({
       observer?.disconnect()
       window.removeEventListener("resize", measure)
     }
-  }, [storageKey, plotSelector, defaultHeight])
+  }, [storageKey, plotSelector, defaultHeight, minHeight])
 
   useEffect(() => {
+    if (previousHeight.current === height) return
+    previousHeight.current = height
     // react-plotly's resize handler listens to the window, not its container.
     const frame = window.requestAnimationFrame(() => window.dispatchEvent(new Event("resize")))
     return () => window.cancelAnimationFrame(frame)
@@ -147,14 +151,14 @@ export function ResizablePlotCard({
       window.removeEventListener("pointercancel", cancel)
       window.removeEventListener("keydown", escape)
     }
-  }, [dragging, storageKey, plotSelector, defaultHeight])
+  }, [dragging, storageKey, plotSelector, defaultHeight, minHeight])
 
   const style = height === null ? undefined : { "--ath-plot-height": `${height}px` } as CSSProperties
   return <div ref={cardRef} className={`ath-plot-card ${className}`.trim()} style={style} data-plot-resizing={dragging || undefined} data-plot-height={height ?? undefined}>
     {children}
     <div className="ath-plot-height-resizer" role="separator" tabIndex={0}
       aria-label={resizeLabel} aria-controls={controlsId} aria-orientation="horizontal"
-      aria-valuemin={minimumHeight} aria-valuemax={maximumHeight} aria-valuenow={height ?? measuredHeight}
+      aria-valuemin={minHeight} aria-valuemax={maximumHeight} aria-valuenow={height ?? measuredHeight}
       aria-valuetext={`${height ?? measuredHeight} pixels`}
       title="Drag up or down to resize the plot. Use Up/Down arrows for precise control; double-click or press Enter to reset."
       onPointerDown={beginResize} onLostPointerCapture={event => finishResize(event.pointerId)}

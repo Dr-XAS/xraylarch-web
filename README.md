@@ -119,8 +119,11 @@ separately shows the fitted μ₀(E) background when available.
 Each normalization-line toggle also marks its interval's start and end on
 μ(E). Hover a marker to see its energy and offset from E₀.
 
-Drag the handle below the spectrum to resize its height; double-click it to
-restore the default. **Show legend** toggles the single-column legend on the
+Drag the handle below any artifact viewer to resize its plot or 3D structure;
+double-click it to restore the default. Each viewer remembers its own height,
+including CIF previews, FEFF structures, path contributions, and simulations.
+The focused handle also supports Up/Down arrows and Enter to reset.
+**Show legend** toggles the single-column legend on the
 right. The **k-weight** selector above the viewer controls the k, R,
 back-transform, and wavelet views together. **Auto** uses each spectrum’s
 processed weight; choosing 0–4 updates the display without changing saved

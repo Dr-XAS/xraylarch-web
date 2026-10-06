@@ -59,7 +59,8 @@
 .choice button { border: 0; border-left: 1px solid var(--ath-line); background: var(--ath-surface); color: var(--ath-primary); padding: 5px 9px; font: inherit; font-size: var(--text-caption); cursor: pointer; }
 .choice button:first-child { border-left: 0; }
 .choice button[aria-pressed=true] { background: color-mix(in srgb, var(--ath-primary) 8%, var(--ath-surface)); color: var(--ath-ink); font-weight: 600; }
-.contributionPlot { height: 330px; margin-top: 10px; }
+.contributionCard { margin-top: 10px; }
+.contributionPlot { height: var(--ath-plot-height, 330px); }
 .filters { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 14px; margin-top: 10px; }
 .filters label { display: inline-flex; flex-direction: column; gap: 4px; color: var(--ath-muted); font-size: var(--text-caption); }
 .filters input { width: 90px; }
@@ -72,7 +73,7 @@
 @container (max-width: 650px) { .facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @container (max-width: 450px) {
   .content { padding: 12px; }
-  .sceneCanvas.sceneCanvas { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: 250px auto; }
+  .sceneCanvas.sceneCanvas { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--ath-plot-height, 250px) auto; }
   .pathLegend { grid-column: 1; grid-row: 2; justify-self: start; margin: 0 10px 10px; padding: 6px 8px; }
   .legendItems { max-height: 150px; }
 }

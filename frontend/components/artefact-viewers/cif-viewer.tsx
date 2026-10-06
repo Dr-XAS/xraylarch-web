@@ -17,6 +17,7 @@ import { AtomLegend } from "../atom-legend"
 import { LocalStructureControls } from "../local-structure-controls"
 import { StructureDisplayLegend } from "../structure-display-legend"
 import { ViewerPanel } from "./viewer-panel"
+import { ResizablePlotCard } from "./athena-plot-card"
 import { ClusterCoordination } from "./cluster-coordination"
 import styles from "./cif-viewer.module.css"
 
@@ -80,6 +81,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
   const [cell, setCell] = useState(false)
   const [coordinationPanel, setCoordinationPanel] = useState<"unopened" | "open" | "closed">("unopened")
   const coordinationId = useId()
+  const plotId = useId()
   const centerSites = useMemo(() => structure.sites.filter((site, index, all) => all.findIndex(other => other.index === site.index) === index), [structure.sites])
   const geometryMode = mode === "cell" ? "cell" : "cluster"
   const baseGeometry = useMemo(() => buildCifGeometry(structure, { siteIndex: center, radius, mode: geometryMode, cellRepeats }),
@@ -229,10 +231,11 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     {resetButton}
   </div>
   const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. The largest sphere marks the center; larger neighboring spheres mark CrystalNN first-shell atoms, keeping their element colors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
-  const content = <>
+  const content = <ResizablePlotCard className={styles.resizeCard} storageKey="artemis.cif.height.v1"
+    defaultHeight={310} minHeight={250} plotSelector="[data-cif-plot]" resizeLabel="Resize CIF structure height" controlsId={plotId}>
     {structureControls}
     <div className={styles.canvas}>
-      <div ref={container} className={styles.surface} role="img" onMouseLeave={clearHover} onPointerDown={clearHover} aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
+      <div id={plotId} data-cif-plot ref={container} className={styles.surface} role="img" onMouseLeave={clearHover} onPointerDown={clearHover} aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
       {ready && !error && geometry.atoms.length > 0 && geometry.lattice && structure.sites.length > 0 && <div className={styles.legendCorner}>
         {mode === "radial" ? <div className={styles.options} aria-label="Visible CIF elements">{elements.map(element => <label key={element}><input type="checkbox" checked={!hidden.includes(element)} onChange={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])} />{element}</label>)}</div> : <AtomLegend elements={elements} hiddenElements={hidden}
           onToggle={element => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}
@@ -271,7 +274,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     {coordinationPanel !== "unopened" && <div id={coordinationId} hidden={coordinationPanel !== "open"}>
       <ClusterCoordination geometry={geometry} unavailableReason={coordinationUnavailable} />
     </div>}
-  </>
+  </ResizablePlotCard>
   return collapsible
     ? <ViewerPanel title="CIF structure viewer" viewerId="cif" help={viewerHelp} actions={actions} className={styles.docked}>{content}</ViewerPanel>
     : <section className={styles.viewer} aria-label="CIF structure viewer">

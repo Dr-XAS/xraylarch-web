@@ -1,7 +1,7 @@
 "use client"
 
 import { SectionHelp } from "../section-help"
-import { useMemo, useState } from "react"
+import { useId, useMemo, useState } from "react"
 import type { ArtemisPath } from "@/lib/artemis"
 import { format } from "@/lib/artemis-fit-utils"
 import {
@@ -18,6 +18,7 @@ import { groupFeffPathSources } from "@/lib/feff-path-sources"
 import { resolveFeffStructureContext, type FeffContextAtom } from "@/lib/feff-structure-context"
 import { FeffPathScene } from "../feff-path-scene"
 import { ViewerPanel } from "./viewer-panel"
+import { ResizablePlotCard } from "./athena-plot-card"
 import styles from "./feff-path-viewer.module.css"
 import structureStyles from "./cif-viewer.module.css"
 
@@ -104,6 +105,7 @@ function PathContributions({ state, rows, shown, filter, onFilter, sort, onSort,
   const [space, setSpace] = useState<"k" | "r">("r")
   const [component, setComponent] = useState<"mag" | "re" | "im">("mag")
   const [plotError, setPlotError] = useState(false)
+  const plotId = useId()
   const preview = state.preview
   const curves = useMemo(() => {
     if (!preview) return null
@@ -160,7 +162,9 @@ function PathContributions({ state, rows, shown, filter, onFilter, sort, onSort,
       {state.error && <p className={styles.empty} role="alert">{state.error} <button type="button" onClick={state.retry}>Retry</button></p>}
       {preview?.warnings.map(warning => <p className={styles.note} key={warning}>{warning}</p>)}
       {curves && (plotError ? <p className={styles.empty} role="alert">Could not render the contribution plot. The table below still lists each path’s size.</p>
-        : <div className={styles.contributionPlot}><Plot data={traces}
+        : <ResizablePlotCard className={styles.contributionCard} storageKey="artemis.feff.contributions.height.v1"
+          defaultHeight={330} plotSelector="[data-feff-contributions-plot]" resizeLabel="Resize FEFF path contributions plot height" controlsId={plotId}>
+          <div id={plotId} data-feff-contributions-plot className={styles.contributionPlot}><Plot data={traces}
           layout={{ autosize: true, margin: { l: 62, r: 18, t: 14, b: 50 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
             font: { color: "#52665b" },
             xaxis: { title: { text: space === "k" ? "k (Å⁻¹)" : "R (Å, not phase corrected)" }, gridcolor: "#e6ece4",
@@ -172,7 +176,8 @@ function PathContributions({ state, rows, shown, filter, onFilter, sort, onSort,
             shapes: transform ? [{ type: "rect", xref: "x", yref: "paper", x0: space === "k" ? transform.kmin : transform.rmin,
               x1: space === "k" ? transform.kmax : transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }] : [],
           }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `feff-path-contributions-${space}`, scale: 2 } }}
-          useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} /></div>)}
+          useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} /></div>
+        </ResizablePlotCard>)}
       {preview && <p className={styles.note}>Starting values only: no fit has been run and no measured spectrum is used. The shaded band is the fit range. Magnitudes do not add — the complex contributions are summed before the magnitude is taken, so the sum can be smaller than a single path.{scoped ? " Contributions cover only the selected source." : ""}{curves?.partial ? ` While a filter hides paths, the solid sum covers only the paths shown and the dashed curve includes all paths in ${scoped ? "the selected source" : "the starting model"}.` : ""}</p>}
     </>}
     <div className={styles.filters} role="group" aria-label="Path filters">

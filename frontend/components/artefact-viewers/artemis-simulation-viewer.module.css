@@ -1,0 +1,3 @@
+.plot { height: var(--ath-plot-height, 390px); min-width: 0; background: var(--ath-surface); overflow: hidden; }
+.controls { padding: 8px 12px; }
+@media (max-width: 780px) { .plot { height: var(--ath-plot-height, 340px); } }
