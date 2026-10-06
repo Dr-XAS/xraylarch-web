@@ -439,7 +439,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     const name = attachmentName(attachment)
     return <button type="button" className={styles.removeButton} disabled={controlsDisabled || version === undefined || !onProjectChange}
       aria-label={`Remove ${name} CIF from project`} title="Remove this CIF from the project. Existing FEFF paths are kept; Undo restores the CIF."
-      onClick={() => void removeAttachment(attachment)}><Trash2 size={14} aria-hidden="true" />{removingId === attachment.id ? "Removing CIF…" : "Remove CIF"}</button>
+      onClick={() => void removeAttachment(attachment)}><Trash2 size={14} aria-hidden="true" /><span className={styles.actionLabel}>{removingId === attachment.id ? "Removing CIF…" : "Remove CIF"}</span></button>
   }
   async function renameAttachment(attachment: ArtemisStructureAttachment) {
     const label = renaming?.name.trim()
@@ -481,13 +481,13 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     }
   }
   function renameButton(attachment: ArtemisStructureAttachment, location: "list" | "dialog") {
-    return <button type="button" disabled={controlsDisabled || version === undefined || !onProjectChange}
-      aria-label={`Rename ${attachmentName(attachment)} CIF`} onClick={() => {
+    return <button type="button" className={styles.renameButton} disabled={controlsDisabled || version === undefined || !onProjectChange}
+      title={`Rename ${attachmentName(attachment)} CIF`} aria-label={`Rename ${attachmentName(attachment)} CIF`} onClick={() => {
         setRenaming({ id: attachment.id, name: attachmentName(attachment), location })
         setDialogMode("structure")
         setError("")
         setNotice("")
-      }}><Pencil size={14} aria-hidden="true" />Rename</button>
+      }}><Pencil size={14} aria-hidden="true" /><span className={styles.actionLabel}>Rename</span></button>
   }
   function renameEditor(attachment: ArtemisStructureAttachment, location: "list" | "dialog") {
     if (renaming?.id !== attachment.id || renaming.location !== location) return null
@@ -653,7 +653,17 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
         </button>)}
         {search.source && <p className={styles.source}>{search.source}</p>}
       </div>}
-      {attachments.length > 0 && <div className={styles.savedStructures}><h4>Attached to this project</h4>{attachments.map(item => <div key={item.id} className={styles.savedStructureRow}><button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${attachmentName(item)} CIF`}><strong>{attachmentName(item)}</strong><small>{structureLabel(item.structure)} · Saved CIF</small></button>{renameButton(item, "dialog")}{removeButton(item)}{renameEditor(item, "dialog")}</div>)}</div>}
+      {attachments.length > 0 && <div className={styles.savedStructures}>
+        <h4>Attached to this project</h4>
+        {attachments.map(item => <div key={item.id} className={styles.savedStructureRow}>
+          <button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${attachmentName(item)} CIF`}>
+            <strong>{attachmentName(item)}</strong>
+            <small title={`${structureLabel(item.structure)} · Saved CIF`}>{structureLabel(item.structure)} · Saved CIF</small>
+          </button>
+          <div className={styles.savedStructureActions}>{renameButton(item, "dialog")}{removeButton(item)}</div>
+          {renameEditor(item, "dialog")}
+        </div>)}
+      </div>}
       </div>}
       <div className={styles.detailColumn}>
       {dialogMode === "feff" && <>
