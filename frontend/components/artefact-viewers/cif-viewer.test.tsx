@@ -39,7 +39,12 @@ const loseContext = vi.fn()
 async function ready() {
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
   const instance = renderers.at(-1)!
-  await waitFor(() => expect(instance.addModel).toHaveBeenCalled())
+  // The structure is drawn in an effect after the render that enables the
+  // button; under a loaded full run assertions landed before the first draw.
+  await waitFor(() => {
+    expect(instance.addModel).toHaveBeenCalled()
+    expect(instance.render).toHaveBeenCalled()
+  })
   return instance
 }
 function atoms(instance: Renderer) {

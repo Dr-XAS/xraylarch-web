@@ -172,6 +172,28 @@ def _x11a_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]
     return ('energy', *detectors), rows
 
 
+def _looks_like_observation(line: str, width: int) -> bool:
+    """Say whether a header line cannot be told apart from a data row.
+
+    A line above the separator that could be a row of data -- moved there,
+    or truncated, or with one field corrupted -- must not be swallowed as
+    header text, because a header line is dropped and a reader that drops
+    observations is worse than one that refuses the file. So a line counts
+    as an observation when it has one field per column label, when every
+    field is a number, or when it merely opens with two of them.
+
+    What is left is prose that happens to start with a number: '3000 x 806'
+    in the APS 10-BM sample description, where a single number is followed
+    by a word. One leading number is a measurement someone wrote down; two
+    in a row are a row of data.
+    """
+    words = line.split()
+    if not words or not _can_be_float(words[0]):
+        return False
+    return (len(words) == width or all(_can_be_float(word) for word in words)
+            or (len(words) > 1 and _can_be_float(words[1])))
+
+
 def _beamline_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], ...]] | None:
     """Locate XDAC/MRCAT tables without guessing where observations start.
 
@@ -184,8 +206,9 @@ def _beamline_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], 
     Our boundary is deliberately stricter than Larch's reverse scan, which
     can discard damaged first/middle observations as header text. Once
     labels are consumed, every nonblank line is a data row, including text
-    or comments that Larch might otherwise treat as a header/footer. A
-    numeric-leading row before the boundary is ambiguous and rejected.
+    or comments that Larch might otherwise treat as a header/footer. Before
+    the boundary, a line shaped like an observation is rejected rather than
+    hidden, as _looks_like_observation describes.
     Metadata is not rewritten: read_ascii still receives the original file,
     and ParsedUpload.source_bytes retains its complete original header.
     """
@@ -218,10 +241,10 @@ def _beamline_table(text: str) -> tuple[tuple[str, ...], tuple[tuple[str, ...], 
     boundary = next((i for i, line in enumerate(lines[1:], 1) if "-------" in line), None)
     if boundary is None or not _XDAC_SEPARATOR.fullmatch(lines[boundary]) or boundary + 1 >= len(lines):
         raise malformed_header()
-    if any(_can_be_float(line.split()[0]) for line in lines[1:boundary]):
-        raise malformed_header()
     labels = tuple(lines[boundary + 1].split())
     if not labels or not all(_XDAC_LABEL.fullmatch(label) and not _can_be_float(label) for label in labels):
+        raise malformed_header()
+    if any(_looks_like_observation(line, len(labels)) for line in lines[1:boundary]):
         raise malformed_header()
     rows = tuple(tuple(line.split()) for line in lines[boundary + 2:])
     if not rows:
@@ -238,7 +261,15 @@ def _validate_tabular_text(
     *,
     max_points: int,
     max_columns: int,
-) -> None:
+) -> int | None:
+    """Check every data row; return the number of a truncated last row.
+
+    An interrupted scan leaves its last row short. That row is reported
+    (by its one-based data-row number) for the caller to drop with a warning;
+    a short or damaged row anywhere else still refuses the file, because a
+    reader that silently loses interior observations is worse than one that
+    refuses. Non-finite values are left to the columns that use them.
+    """
     try:
         text = data.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -259,7 +290,7 @@ def _validate_tabular_text(
         )
     rows = beamline[1] if beamline is not None else _tabular_rows(text, suffix)
     point_count = 0
-    for fields in rows:
+    for position, fields in enumerate(rows):
         values: list[float] = []
         numeric = bool(fields)
         numeric_fields = 0
@@ -270,13 +301,6 @@ def _validate_tabular_text(
                 numeric = False
                 continue
             numeric_fields += 1
-            if not np.isfinite(value):
-                raise WebInputError(
-                    "upload_nonfinite",
-                    "The upload contains non-finite numeric values.",
-                    ("file",),
-                    "Remove non-finite rows and upload the data again.",
-                )
             values.append(value)
         numeric = bool(fields) and numeric_fields == len(fields)
 
@@ -299,9 +323,16 @@ def _validate_tabular_text(
                     "Choose a table with fewer columns.",
                 )
         elif not numeric or len(values) != expected_fields:
+            # Interrupted, not damaged: the final row stops early, and every
+            # field it did write but the last (perhaps cut mid-number) reads.
+            if (position == len(rows) - 1 and point_count and 0 < len(fields) < expected_fields
+                    and all(_can_be_float(field) for field in fields[:-1]) and _can_be_float(fields[0])):
+                return point_count + 1
             raise WebInputError(
                 "upload_malformed_rows",
-                "The upload contains a malformed or inconsistent data row.",
+                "The upload contains a malformed or inconsistent data row: " + (
+                    f"data row {point_count + 1} has {len(fields)} fields; the table has {expected_fields} columns."
+                    if numeric else f"data row {point_count + 1} is not all numbers."),
                 ("file",),
                 "Repair the tabular rows and upload the data again.",
             )
@@ -314,6 +345,14 @@ def _validate_tabular_text(
                 ("file",),
                 "Choose a spectrum with fewer data points.",
             )
+
+
+def _without_last_line(data: bytes) -> bytes:
+    """The upload without its last nonblank line, line endings kept."""
+    lines = data.splitlines(keepends=True)
+    while lines and not lines[-1].strip():
+        lines.pop()
+    return b"".join(lines[:-1])
 
 
 def _has_data_lines(data: bytes) -> bool:
@@ -393,16 +432,17 @@ def parse_upload(
     first_line = data.removeprefix(b'\xef\xbb\xbf').split(b'\n', 1)[0]
     is_xdi = re.match(rb'^\s*#\s*XDI/\S+(?:\s|$)', first_line) is not None
     parser_suffix = '.xdi' if is_xdi else suffix if suffix in {".xdi", ".csv"} else ".dat"
-    _validate_tabular_text(
+    truncated = _validate_tabular_text(
         data,
         parser_suffix,
         max_points=max_points,
         max_columns=max_columns,
     )
+    readable = _without_last_line(data) if truncated else data
     try:
         with tempfile.TemporaryDirectory(prefix="xraylarch-upload-") as temp_dir:
             temp_path = Path(temp_dir) / display_name
-            temp_path.write_bytes(data)
+            temp_path.write_bytes(readable)
             group = _read_group(temp_path, parser_suffix)
             numeric_arrays = _numeric_arrays(group)
     except WebInputError:
@@ -416,7 +456,7 @@ def parse_upload(
         ) from exc
 
     if not numeric_arrays:
-        if not _has_data_lines(data):
+        if not _has_data_lines(readable):
             raise WebInputError(
                 "upload_empty",
                 "The upload contains no data rows.",
@@ -456,14 +496,19 @@ def parse_upload(
     columns: list[ColumnInfo] = []
     arrays: dict[str, np.ndarray] = {}
     issues: list[FieldIssue] = []
+    warnings = []
+    if truncated:
+        warnings.append(f"The last data row ({truncated}) is incomplete, as an interrupted scan leaves it; "
+                        "it was left out and the other rows were read.")
     for index, (name, unit, array) in enumerate(numeric_arrays):
-        if not np.isfinite(array).all():
-            raise WebInputError(
-                "upload_nonfinite",
-                f"Column '{name}' contains non-finite values.",
-                (name,),
-                "Remove non-finite rows and upload the data again.",
-            )
+        # A non-finite value only matters in a column the import uses; the
+        # column arithmetic drops (and names) those rows, or refuses.
+        nonfinite = int(np.sum(~np.isfinite(array)))
+        if nonfinite:
+            rows = np.flatnonzero(~np.isfinite(array))
+            shown = ", ".join(str(int(row) + 1) for row in rows[:5]) + (" ..." if nonfinite > 5 else "")
+            warnings.append(f"Column '{name}' has {nonfinite} non-finite values (data rows {shown}); "
+                            "if it is selected, those rows are left out.")
         column_id = f"column_{index + 1:04d}"
         columns.append(
             ColumnInfo(
@@ -473,7 +518,7 @@ def parse_upload(
                 numeric=True,
                 unit=unit,
                 role_hint=_role_hint(name),
-                preview=tuple(float(value) for value in array[:5]),
+                preview=tuple(float(value) if np.isfinite(value) else None for value in array[:5]),
             )
         )
         arrays[column_id] = array
@@ -488,6 +533,7 @@ def parse_upload(
     )
     if energy_key is not None:
         energy = arrays[energy_key]
+        energy = energy[np.isfinite(energy)]
         if energy.size > 1 and np.any(np.diff(energy) <= 0):
             issues.append(
                 _issue(
@@ -498,7 +544,6 @@ def parse_upload(
                 )
             )
 
-    warnings = []
     xdi_metadata = None
     if parser_suffix == '.xdi':
         from .athena_xdi import from_larch

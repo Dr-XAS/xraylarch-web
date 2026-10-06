@@ -91,6 +91,18 @@ def test_apsgse_old(fname='APS13ID_2008.dat'):
     assert(labels[2]  == 'i0')
     assert(labels[3]  == 'i1')
 
+def test_aps12bm_label_with_two_underscores_or_no_number_keeps_its_column():
+    # 'pref, suff = word.split("_")' raised on '5_I0_corr', failing the read,
+    # and a label written without its number was dropped, shifting every
+    # later label one column to the left.
+    from larch.io.xafs_beamlines import APS12BM_BeamlineData
+    header = ['#C exafs_region 50 275 225 1 0 0 0',
+              '#C 1_Energy (keV) 2_sec 3_I0 4_I0_corr It 6_If']
+    bldat = APS12BM_BeamlineData(header)
+    assert bldat.get_array_labels() == ['energy', 'sec', 'i0', 'i0_corr', 'it', 'if']
+    assert bldat.energy_units == 'keV'
+
+
 def test_aps12bm(fname='APS12BM_2019.dat'):
     bldat, labels = _tester(fname)
     assert('12bm' in bldat.name.lower())

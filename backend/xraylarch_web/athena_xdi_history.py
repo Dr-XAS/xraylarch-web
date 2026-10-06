@@ -89,6 +89,7 @@ def operation_description(operation, details):
         'deconvolve': ('Deconvolved normalized data', 0),
         'self_absorption': ('Corrected fluorescence self-absorption', 0),
         'dispersive': ('Calibrated dispersive energy scale', 0),
+        'xrf_xas': ('Extracted fluorescence XAS by fitting the XRF spectrum', 0),
     }.get(operation, (operation.replace('_', ' ').capitalize(), 0))
 
 

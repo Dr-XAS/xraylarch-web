@@ -77,9 +77,12 @@ export function VersionBadge() {
 
   const tooltip = `Built ${BUILD.date}${BUILD.fullSha ? ` · ${BUILD.fullSha}` : ""}`
 
-  return (
-    <>
-      <style>{`
+  // The CSS goes in as raw HTML. As a text child it is escaped on the way out,
+  // so the served sheet carries &quot; where the font list needs a quote -- the
+  // fallback fonts are then unusable, and hydration finds a text node it did
+  // not write and discards the whole root, which costs every page its
+  // server-rendered first paint.
+  const css = `
         .portable-version-badge {
           position: fixed;
           right: 0.6rem;
@@ -116,7 +119,11 @@ export function VersionBadge() {
             position: absolute;
           }
         }
-      `}</style>
+      `
+
+  return (
+    <>
+      <style dangerouslySetInnerHTML={{ __html: css }} />
       <div
         className="portable-version-badge"
         title={tooltip}

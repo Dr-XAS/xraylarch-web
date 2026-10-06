@@ -17,6 +17,7 @@ from xraylarch_web.athena_science import (
     ScientificError,
     align_shift,
     calibrate_shift,
+    combination_search,
     combine_spectra,
     linear_combination,
     merge_spectra,
@@ -958,6 +959,161 @@ def test_single_component_and_zero_target(combination_fixture):
     assert result["rfactor"] == 0
     with pytest.raises(ScientificError, match="undefined"):
         linear_combination(x, np.zeros_like(x), [(x, a)], -4, 4)
+
+
+@pytest.fixture
+def noisy_mixture():
+    """Three separable edges mixed in known proportions, plus white noise.
+
+    The noise level is the point: it fixes the residual variance the reported
+    standard errors have to come from.
+    """
+    noise = 2e-3
+    x = np.linspace(8950.0, 9050.0, 401)
+    references = [1 / (1 + np.exp(-(x - centre) / width))
+                  for centre, width in ((8978.0, 3.0), (8990.0, 4.0), (9005.0, 2.0))]
+    truth = np.array([0.3, 0.5, 0.2])
+    y = sum(w * r for w, r in zip(truth, references)) + np.random.default_rng(0).normal(0, noise, x.size)
+    return x, y, [(x, r) for r in references], truth, noise
+
+
+def test_unconstrained_weight_errors_match_the_closed_form_covariance(noisy_mixture):
+    """Catches a wrong denominator (N instead of N-p) or an unscaled covariance."""
+    x, y, references, _, _ = noisy_mixture
+    result = linear_combination(x, y, references, 8950, 9050, sum_to_one=False, nonnegative=False)
+    design = np.column_stack([np.interp(result["x"], rx, ry) for rx, ry in references])
+    observed = np.asarray(result["observed"])
+    weights = np.linalg.lstsq(design, observed, rcond=None)[0]
+    residual = observed - design @ weights
+    expected = (residual @ residual) / (observed.size - 3) * np.linalg.inv(design.T @ design)
+    np.testing.assert_allclose(result["weight_stderr"], np.sqrt(np.diag(expected)), rtol=1e-8)
+    assert result["degrees_of_freedom"] == observed.size - 3
+
+
+def test_reduced_chisqr_recovers_the_injected_noise(noisy_mixture):
+    """Catches a reduced chi-square left in the internally rescaled units."""
+    x, y, references, truth, noise = noisy_mixture
+    result = linear_combination(x, y, references, 8950, 9050)
+    np.testing.assert_allclose(result["weights"], truth, atol=5e-4)
+    assert np.sqrt(result["reduced_chisqr"]) == pytest.approx(noise, rel=0.05)
+    assert result["chisqr"] == pytest.approx(result["reduced_chisqr"] * result["degrees_of_freedom"])
+
+
+def test_sum_to_one_errors_are_independent_of_which_weight_is_eliminated(noisy_mixture):
+    """Catches an eliminated weight whose variance ignores the covariance terms."""
+    x, y, references, _, _ = noisy_mixture
+    forward = linear_combination(x, y, references, 8950, 9050, sum_to_one=True, nonnegative=False)
+    reversed_order = linear_combination(x, y, references[::-1], 8950, 9050, sum_to_one=True, nonnegative=False)
+    np.testing.assert_allclose(forward["weight_stderr"], reversed_order["weight_stderr"][::-1], rtol=1e-6)
+    assert forward["degrees_of_freedom"] == len(forward["x"]) - 2
+
+
+def test_a_standard_pinned_at_zero_reports_no_standard_error(combination_fixture):
+    """Catches treating a weight held on its bound as a free fitted parameter."""
+    x, a, b = combination_fixture
+    decoy = np.exp(-((x - 4.0) / 0.3) ** 2)
+    y = 0.25 * a + 0.75 * b + np.random.default_rng(0).normal(0, 2e-3, x.size)
+    result = linear_combination(x, y, [(x, a), (x, b), (x, decoy)], -4, 4, sum_to_one=False)
+    np.testing.assert_allclose(result["weights"], [0.25, 0.75, 0], atol=2e-3)
+    pinned = [weight <= science.LCF_WEIGHT_FLOOR for weight in result["weights"]]
+    assert pinned == [False, False, True]
+    for held, stderr in zip(pinned, result["weight_stderr"]):
+        assert (stderr is None) == held
+    assert result["degrees_of_freedom"] == len(result["x"]) - 2
+    json.dumps(result, allow_nan=False)
+
+
+def test_a_single_surviving_standard_has_no_freedom_under_sum_to_one(combination_fixture):
+    x, a, b = combination_fixture
+    result = linear_combination(x, a, [(x, a), (x, b)], -4, 4)
+    assert result["weights"][0] == pytest.approx(1)
+    assert result["weight_stderr"] == [0.0, None]
+
+
+def test_near_collinear_standards_withhold_errors_instead_of_inventing_them(noisy_mixture):
+    """Catches finite but meaningless errors from inverting a singular Gram matrix.
+
+    Two standards that differ only by 1e-9 noise carry no information about how
+    the mixture divides between them, so any error bar on their weights is an
+    artefact of floating-point round-off in (D^T D)^-1 rather than a measurement.
+    """
+    x, y, references, _, _ = noisy_mixture
+    twin = references[0][1] + np.random.default_rng(1).normal(0, 1e-9, x.size)
+    result = linear_combination(x, y, [references[0], (x, twin), references[2]],
+                                8950, 9050, sum_to_one=False, nonnegative=False)
+    assert result["weight_stderr"] == [None, None, None]
+    assert "nearly linearly dependent" in result["weight_stderr_warning"]
+    # The fit itself is still reported: only the uncertainties are withheld. The twin
+    # stands in for the 8990 eV component, so the residual is larger than a true fit's.
+    assert result["rfactor"] < 0.02
+    assert all(np.isfinite(weight) for weight in result["weights"])
+    json.dumps(result, allow_nan=False)
+
+
+def test_well_conditioned_standards_still_report_errors(noisy_mixture):
+    """Catches a condition-number guard so tight that ordinary fits lose their errors."""
+    x, y, references, _, _ = noisy_mixture
+    result = linear_combination(x, y, references, 8950, 9050, sum_to_one=False, nonnegative=False)
+    assert result["weight_stderr_warning"] is None
+    assert all(stderr is not None and stderr > 0 for stderr in result["weight_stderr"])
+
+
+def test_combination_search_ranks_the_true_mixture_first(noisy_mixture):
+    """Catches a search that cannot separate the mixture from a decoy reference."""
+    x, y, references, truth, _ = noisy_mixture
+    decoy = (x, 1 / (1 + np.exp(-(x - 8955.0) / 1.0)))
+    result = combination_search(x, y, [*references, decoy], 8950, 9050, max_components=2, top=3)
+    best = result["combinations"][0]
+    assert 3 not in best["indices"]
+    assert result["tried"] == 4 + 6 and result["skipped"] == 0
+    assert [entry["rfactor"] for entry in result["combinations"]] == sorted(
+        entry["rfactor"] for entry in result["combinations"])
+    full = combination_search(x, y, [*references, decoy], 8950, 9050, min_components=3, max_components=3, top=1)
+    np.testing.assert_allclose(full["best"]["weights"], truth, atol=5e-4)
+    assert full["best"]["indices"] == [0, 1, 2]
+    json.dumps(result, allow_nan=False)
+
+
+def test_combination_search_lists_each_distinct_fit_once(combination_fixture):
+    """Catches a ranking cluttered with supersets whose extra standard is zero."""
+    x, a, b = combination_fixture
+    decoy = np.exp(-((x - 4.0) / 0.3) ** 2)
+    result = combination_search(x, 0.25 * a + 0.75 * b, [(x, a), (x, b), (x, decoy)], -4, 4, max_components=3)
+    surviving = [frozenset(i for i, w in zip(entry["indices"], entry["weights"]) if w > 1e-9)
+                 for entry in result["combinations"]]
+    assert len(surviving) == len(set(surviving))
+    assert result["combinations"][0]["indices"] == [0, 1]
+    np.testing.assert_allclose(result["combinations"][0]["weights"], [0.25, 0.75], atol=1e-7)
+
+
+def test_unconstrained_search_keeps_a_signed_mixture_instead_of_merging_it_away(combination_fixture):
+    """Catches the constrained-fit dedupe dropping a negative weight as if it were zero.
+
+    The target is exactly 1.5 a - 0.5 b. Without non-negativity that pair fits
+    it perfectly; reading the -0.5 as "not in the fit" filed the pair under {a}
+    and kept the worse single-standard fit in its place.
+    """
+    x, a, b = combination_fixture
+    result = combination_search(x, 1.5 * a - 0.5 * b, [(x, a), (x, b)], -4, 4,
+                                sum_to_one=True, nonnegative=False, max_components=2)
+    best = result["combinations"][0]
+    assert best["indices"] == [0, 1]
+    np.testing.assert_allclose(best["weights"], [1.5, -0.5], atol=1e-9)
+    assert best["rfactor"] < 1e-20
+    assert len(result["combinations"]) == 3
+
+
+def test_combination_search_refuses_an_unbounded_sweep_and_bad_sizes(combination_fixture):
+    x, a, b = combination_fixture
+    pool = [(x, a + i * b) for i in range(20)]
+    with pytest.raises(ScientificError, match="combinations exceeds"):
+        combination_search(x, a, pool, -4, 4, max_components=10)
+    with pytest.raises(ScientificError, match="min_components"):
+        combination_search(x, a, pool[:3], -4, 4, min_components=3, max_components=2)
+    with pytest.raises(ScientificError, match="exceeds the 3 references"):
+        combination_search(x, a, pool[:3], -4, 4, max_components=4)
+    with pytest.raises(ScientificError, match="whole number"):
+        combination_search(x, a, pool[:3], -4, 4, max_components=2.5)
 
 
 def test_pca_svd_reconstruction_and_rank_one_variation(combination_fixture):

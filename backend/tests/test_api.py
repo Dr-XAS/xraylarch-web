@@ -257,7 +257,7 @@ def test_inspection_rejects_malformed_middle_row_without_reinterpreting_table(
         assert response.json() == {
             "error": {
                 "code": "upload_malformed_rows",
-                "message": "The upload contains a malformed or inconsistent data row.",
+                "message": "The upload contains a malformed or inconsistent data row: data row 3 is not all numbers.",
                 "fields": ["file"],
                 "recovery": "Repair the tabular rows and upload the data again.",
             }

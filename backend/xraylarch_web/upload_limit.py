@@ -48,7 +48,8 @@ class UploadBodyLimitMiddleware:
         if len(parts) == 5 and parts[:3] == ["api", "athena", "projects"]:
             return parts[4] in {"inspect", "restore", "preview-project"}
         if len(parts) == 6 and parts[:3] == ["api", "athena", "projects"]:
-            return parts[4:] == ["dispersive", "inspect"]
+            return parts[4:] in (["dispersive", "inspect"], ["xrf-xas", "inspect"],
+                                 ["xrf-view", "inspect"])
         return parts in (
             ["api", "athena", "preferences", "plugins", "import"],
             ["api", "athena", "preferences", "dispersive", "import"],

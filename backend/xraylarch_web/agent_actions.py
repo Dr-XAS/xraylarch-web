@@ -338,6 +338,14 @@ ACTIONS: dict[str, Action] = {
                   creates=True,
                   options={"array": "'mu' | 'norm' | 'chi' — which array to add.",
                            "label": "str — name for the result."}),
+    "add_references": Action(
+        "Add bundled reference standards as new groups.",
+        "none", creates=True,
+        options={"library_ids": "list of 1-25 str — ids from the bundled reference "
+                                "library; a standard already in the project is skipped."},
+        note="Each standard arrives processed and carries its element and edge, "
+             "ready to be an LCF standard.",
+    ),
     "assign_reference": Action(
         "Point the selected groups at one shared reference spectrum.",
         "one+",
@@ -401,6 +409,9 @@ ANALYSES = {
     "pca": "Principal component analysis over the selected spectra.",
     "peaks": "Peak fitting over one spectrum.",
     "log_ratio": "Log-ratio / phase-difference analysis of two spectra.",
+    "lcf_search": "All combinations of the standards, ranked.",
+    "lcf_series": "LCF of each target against one set of standards.",
+    "peaks_series": "Peaks with shared centres or widths over spectra.",
 }
 
 

@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import copy
+import errno
 import json
 import math
 import os
+import platform
 import re
 import shutil
 import sqlite3
@@ -530,8 +532,18 @@ class FeffJobs:
     def _run_module(self, executable, directory, log, deadline):
         # Fixed packaged executables only, no shell and no global os.chdir.
         options = {"umask": 0o077} if os.name != "nt" else {}
-        process = subprocess.Popen([str(executable)], cwd=directory, stdout=log,
-                                   stderr=subprocess.STDOUT, **options)
+        try:
+            process = subprocess.Popen([str(executable)], cwd=directory, stdout=log,
+                                       stderr=subprocess.STDOUT, **options)
+        except OSError as exc:
+            if exc.errno == errno.ENOEXEC:
+                # The packaged FEFF8L is built for one processor family; on another
+                # (an x86-64 build on an ARM server) the kernel refuses to load it.
+                raise RuntimeError(
+                    f"The bundled FEFF8L executables cannot run on this server's processor ({platform.machine()}): "
+                    "they are built for another architecture. Generate paths on another machine and add the "
+                    "feffNNNN.dat files with Add feff*.dat.") from exc
+            raise
         try:
             while True:
                 remaining = deadline - time.monotonic()

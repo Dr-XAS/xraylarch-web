@@ -108,12 +108,85 @@ def test_large_preview_preserves_single_point_glitches_and_endpoints():
     assert trace["y"][trace["x"].index(87654)] == -200
 
 
-@pytest.mark.parametrize("bad", ["zero", "zero_numerator", "unknown", "reference", "duplicate", "overflow"])
+@pytest.mark.parametrize("bad", ["zero", "zero_numerator"])
+def test_zero_count_at_an_unsampled_row_is_dropped_and_named_in_preview_and_import(store, bad):
+    # Beam loss at one point used to refuse the file; dropping it is only
+    # acceptable when the user is told which row went, in the preview too.
+    x = np.linspace(8900, 9400, 10_000)
+    a, b = np.full(len(x), 2.), np.ones(len(x))
+    (b if bad == "zero" else a)[4567] = 0
+    p = store.create()
+    inspected, ids = upload(store, p, x, a=a, b=b)
+    request = ImportRequest(version=0, upload_id=inspected["upload_id"], energy_column=ids["energy"],
+        numerator=[ids["a"]], denominator=ids["b"], mode="transmission")
+    preview = store.preview_columns(p["id"], request)
+    assert any("Dropped 1 rows" in w and "4568" in w for w in preview["warnings"])
+    group = store.import_data(p["id"], request)["groups"][0]
+    assert len(group["energy"]) == len(x) - 1 and x[4567] not in group["energy"]
+    assert any("4568" in w for w in group["source"]["warnings"])
+
+
+@pytest.mark.parametrize("sort", [False, True])
+def test_repeated_energy_rows_are_averaged_before_the_ratio_instead_of_refusing_the_file(store, xas_arrays, sort):
+    # A scan that measures one energy twice used to be refused with "Use
+    # sorting at import", even with sorting on. Averaging counts first gives
+    # the count-weighted ratio: ln(mean I0 / mean It), not the mean of logs.
+    x, mu = xas_arrays
+    i0, it = np.full(len(x), 200.), 200 * np.exp(-mu)
+    x, i0, it = np.insert(x, 601, x[600]), np.insert(i0, 601, 600.), np.insert(it, 601, it[600])
+    i0[600] = 100.
+    take = slice(None, None, -1) if sort else slice(None)
+    p = store.create()
+    inspected, ids = upload(store, p, x[take], i0=i0[take], it=it[take])
+    request = ImportRequest(version=0, upload_id=inspected["upload_id"], energy_column=ids["energy"],
+        numerator=[ids["i0"]], denominator=ids["it"], mode="transmission", sort=sort)
+    group = store.import_data(p["id"], request)["groups"][0]
+    assert group["processing_error"] is None and len(group["energy"]) == len(x) - 1
+    at = group["energy"].index(x[600])
+    assert group["mu"][at] == pytest.approx(np.log(350. / it[600]))
+    assert any("Averaged 1 rows" in w for w in group["source"]["warnings"])
+    assert len(group["source"]["column_arrays"][ids["i0"]]) == len(group["energy"])
+    assert "row_order" not in group["source"]
+
+
+def test_energies_closer_than_larchs_limit_are_spread_with_a_warning_not_refused(store, xas_arrays):
+    x, mu = xas_arrays
+    x = x.copy(); x[601] = x[600] + 1e-4
+    g = store.make_group("close", x, mu)
+    assert g["processing_error"] is None
+    assert any("0.0005 eV" in w for w in g["result"]["warnings"])
+
+
+def test_a_reference_keeps_its_own_columns_not_a_second_copy_of_the_whole_table(store, xas_arrays):
+    # Copying unused columns into references needlessly consumes the project budget.
+    x, mu = xas_arrays
+    p = store.create()
+    extra = {f"det{i}": np.full(len(x), float(i)) for i in range(20)}
+    inspected, ids = upload(store, p, x, i0=np.full(len(x), 2.), it=2 * np.exp(-mu), iref=2 * np.exp(-2 * mu), **extra)
+    request = ImportRequest(version=0, upload_id=inspected["upload_id"], energy_column=ids["energy"],
+        numerator=[ids["i0"]], denominator=ids["it"], mode="transmission",
+        reference_numerator=ids["it"], reference_denominator=ids["iref"])
+    sample, reference = store.import_data(p["id"], request)["groups"]
+    assert len(sample["source"]["column_arrays"]) == 24
+    assert set(reference["source"]["column_arrays"]) == {ids["energy"], ids["it"], ids["iref"]}
+
+
+def test_monitor_dead_for_most_rows_still_refuses_and_names_rows(store):
+    x = np.linspace(8900, 9400, 100)
+    a, b = np.full(len(x), 2.), np.ones(len(x))
+    b[40:] = 0
+    p = store.create()
+    inspected, ids = upload(store, p, x, a=a, b=b)
+    request = ImportRequest(version=0, upload_id=inspected["upload_id"], energy_column=ids["energy"],
+        numerator=[ids["a"]], denominator=ids["b"], mode="transmission")
+    with pytest.raises(ValueError, match="60 of 100 rows.*41, 42"):
+        store.import_data(p["id"], request)
+
+
+@pytest.mark.parametrize("bad", ["unknown", "reference", "duplicate", "overflow"])
 def test_preview_and_import_reject_bad_arithmetic_even_at_unsampled_rows(store, bad):
     x = np.linspace(8900, 9400, 10_000)
     a, b = np.full(len(x), 2.), np.ones(len(x))
-    if bad == "zero": b[4567] = 0
-    if bad == "zero_numerator": a[4567] = 0
     if bad == "overflow": a[4567], b[4567] = 1e300, 1e-300
     p = store.create()
     inspected, ids = upload(store, p, x, a=a, b=b)
@@ -212,12 +285,14 @@ def test_separate_channels_keep_separate_reference_pairs_and_undo_as_one_import(
 
 def test_invalid_later_detector_leaves_all_groups_unimported(store, xas_arrays):
     x, mu = xas_arrays
-    bad = np.ones(len(x)); bad[100] = 0
+    # A later channel with no finite reading cannot be imported; the earlier,
+    # valid channel must not be imported alone.
+    bad = np.full(len(x), np.nan)
     p = store.create()
     inspected, ids = upload(store, p, x, a=np.exp(mu), b=bad, one=np.ones(len(x)))
     request = ImportRequest(version=0, upload_id=inspected['upload_id'], energy_column=ids['energy'],
         numerator=[ids['a'], ids['b']], denominator=ids['one'], mode='transmission', individual_channels=True)
-    with pytest.raises(ValueError, match='nonzero'):
+    with pytest.raises(ValueError, match='not a finite number|non-finite'):
         store.import_data(p['id'], request)
     assert store.load(p['id']) == p
 

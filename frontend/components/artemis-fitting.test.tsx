@@ -15,7 +15,11 @@ type PlotProps = { data: { x: number[]; y: number[]; name: string; visible?: boo
 const plot = vi.hoisted(() => vi.fn((_props: PlotProps) => <div data-testid="fit-plot" />))
 vi.mock("next/dynamic", () => ({ default: () => plot }))
 // Structure persistence and its modal lifecycle are covered in artemis-structures.test.tsx.
-vi.mock("./artemis-structures", () => ({ ArtemisStructures: ({ children }: { children?: (sections: { structures: ReactNode; feff: ReactNode }) => ReactNode }) => children?.({ structures: <div data-testid="structures-launcher" />, feff: <div data-testid="feff-launcher" /> }) ?? <div data-testid="structures-launcher" /> }))
+const structures = vi.hoisted(() => ({ props: null as null | { onAddPaths: (paths: (ArtemisInspectedPath & { label: string })[], replace?: boolean) => string | null } }))
+vi.mock("./artemis-structures", () => ({ ArtemisStructures: (props: NonNullable<typeof structures.props> & { children?: (sections: { structures: ReactNode; feff: ReactNode }) => ReactNode }) => {
+  structures.props = props
+  return props.children?.({ structures: <div data-testid="structures-launcher" />, feff: <div data-testid="feff-launcher" /> }) ?? <div data-testid="structures-launcher" />
+} }))
 vi.mock("@/lib/artemis", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/artemis")>(), artemisApi: vi.fn() }))
 vi.mock("@/lib/athena", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/athena")>(), athenaApi: vi.fn() }))
 const api = vi.mocked(artemisApi)
@@ -70,7 +74,7 @@ function preparedExample(): ArtemisExampleSetup {
 }
 function fitResult(overrides: Partial<ArtemisFitResult> = {}): ArtemisFitResult {
   return { project_id: "p", group_id: "copper", group_label: "copper foil", version: 4, success: true, message: "Fit succeeded.", report: "[[Fit Statistics]]\nR-factor = 0.003", warnings: [],
-    statistics: { n_varys: 4, n_independent: 12.5, n_data: 40, nfev: 25, chi_square: 50, reduced_chi_square: 5.8, r_factor: 0.003, aic: 20, bic: 25, errorbars: true },
+    statistics: { n_varys: 4, n_independent: 12.5, n_data: 40, nfev: 25, chi_square: 50, reduced_chi_square: 5.8, r_factor: 0.003, aic: 20, bic: 25, errorbars: true, epsilon_k: 0.0002 },
     parameters: example().parameters.map(parameter => ({ ...parameter, initial: parameter.value, stderr: 0.01 })),
     correlations: [{ left: "amp", right: "sig2", value: 0.9 }], paths: [{ id: "a", label: "Cu–Cu", filename: "feff0001.dat", metadata: path().metadata }],
     k: { x: [0, 3, 6, 9, 12, 15], data: [0, 2, -1, 1, -0.5, 0], model: [0, 1.9, -1.1, 1, -0.6, 0], residual: [0, 0.1, 0.1, 0, 0.1, 0], weight: 2 },
@@ -133,6 +137,41 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe("ArtemisFittingPanel", () => {
+  it("replacing with a generated path already in the model keeps its edits and drops parameters only removed paths used", async () => {
+    // Replace reset kept paths to default expressions and left del_r2 behind,
+    // a parameter no remaining path used, to be fitted against nothing.
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    await screen.findByLabelText("Path 4 S₀²")
+    fireEvent.change(screen.getByLabelText("Path 1 ΔR (Å)"), { target: { value: "del_r1" } })
+    fireEvent.change(screen.getByLabelText("Path 2 ΔR (Å)"), { target: { value: "del_r2" } })
+    fireEvent.click(screen.getByRole("button", { name: "Sync parameters" }))
+    const kept = { ...path("feff0001.dat", "Cuprite FEFF path 1"), label: "generated feff0001" }
+    let refused: string | null = "not called"
+    act(() => { refused = structures.props!.onAddPaths([kept], true) })
+    expect(refused).toBeNull()
+    expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(1)
+    expect(screen.getByLabelText("Path 1 ΔR (Å)")).toHaveValue("del_r1")
+    const names = screen.getAllByLabelText(/^Parameter \d+ name$/).map(input => (input as HTMLInputElement).value)
+    expect(names).toContain("del_r1")
+    expect(names).not.toContain("del_r2")
+    expect(screen.getByText("Removed parameters no remaining path uses: del_r, del_r2.")).toBeVisible()
+  })
+
+  it("includes a replacement path that was excluded before, so Replace never leaves zero included paths", async () => {
+    // Replace kept the existing path whole, enabled: false included, so the
+    // model it produced fitted nothing although the path was selected.
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    await screen.findByLabelText("Path 4 S₀²")
+    fireEvent.click(screen.getByRole("checkbox", { name: "Include path 1" }))
+    const kept = { ...path("feff0001.dat", "Cuprite FEFF path 1"), label: "generated first shell" }
+    let refused: string | null = "not called"
+    act(() => { refused = structures.props!.onAddPaths([kept], true) })
+    expect(refused).toBeNull()
+    expect(screen.getAllByRole("checkbox", { name: /^Include path \d+$/ })).toHaveLength(1)
+    expect(screen.getByRole("checkbox", { name: "Include path 1" })).toBeChecked()
+    expect(screen.getByRole("button", { name: "Run EXAFS fit" })).toBeEnabled()
+  })
+
   it("prepares the supplied Cu₂O model while the foil stays selected, without requests or fitting", () => {
     const setup = exampleSetup()
     const onFitResult = vi.fn()
@@ -257,6 +296,20 @@ describe("ArtemisFittingPanel", () => {
     // The status text renders in the commit that sets the result; onFitResult runs in that
     // commit's passive effect, which can flush after findByText has already resolved.
     await waitFor(() => expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } }))
+  })
+
+  it("compares the fitted model on the fast backend, and withdraws the comparison when the model changes", async () => {
+    // The comparison is only meaningful while both backends answer the same
+    // question, so it is offered after a fit and withdrawn on the next edit.
+    render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    await screen.findByLabelText("Path 4 S₀²")
+    expect(screen.getByRole("button", { name: "Refit on the fast backend" })).toBeDisabled()
+    await runFit()
+    fireEvent.click(screen.getByRole("button", { name: "Refit on the fast backend" }))
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/projects/p/groups/copper/fit/fast",
+      expect.objectContaining({ version: 4 }), expect.any(AbortSignal)))
+    fireEvent.change(screen.getByLabelText("Parameter 1 value"), { target: { value: "0.5" } })
+    expect(screen.getByRole("button", { name: "Refit on the fast backend" })).toBeDisabled()
   })
 
   it("saves Set and Def draft text with editable bounds", async () => {
@@ -635,7 +688,8 @@ describe("ArtemisFitResultViewer", () => {
   it("shows complex residual magnitude, switches real/k views, and does not mutate cached data", () => {
     const result = fitResult()
     render(<ArtemisFitResultViewer result={result} group={group()} />)
-    expect(plot.mock.calls.at(-1)?.[0].data[2]).toMatchObject({ name: "Residual", visible: "legendonly" })
+    // Hidden in the legend, a poor fit's residual went unseen on the demo screenshot.
+    expect(plot.mock.calls.at(-1)?.[0].data[2]).toMatchObject({ name: "Residual", visible: true })
     expect(plot.mock.calls.at(-1)?.[0].data[2].y).toEqual(result.r.residual_mag)
     expect(screen.getByText(/Residual is \|FT\(data − model\)\|/)).toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Real" }))

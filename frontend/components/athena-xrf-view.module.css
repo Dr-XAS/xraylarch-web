@@ -1,0 +1,12 @@
+.layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.3fr); align-items: start; gap: 16px; }
+.controls { border: 0; padding: 0; margin: 0; min-width: 0; }
+.previews { min-width: 0; position: sticky; top: 0; align-self: start; max-height: calc(88vh - 118px); overflow-y: auto; }
+.plot { height: clamp(190px,27vh,280px); width: 100%; min-width: 0; background: var(--ath-surface); border: 1px solid var(--ath-line); border-radius: 6px; overflow: hidden; }
+.map { height: clamp(240px,36vh,420px); width: 100%; min-width: 0; background: var(--ath-surface); border: 1px solid var(--ath-line); border-radius: 6px; overflow: hidden; }
+.elements { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0 10px; }
+.display { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 6px 0 10px; }
+.slider { display: block; margin: 2px 0 10px; font-size: var(--text-label); }
+.slider input { width: 100%; }
+.controls h3, .previews h3 { font-size: var(--text-section); overflow-wrap: anywhere; line-height: var(--leading-heading); margin: 12px 0 8px; }
+.previews h3:first-child { margin-top: 0; }
+@media (max-width: 750px) { .layout { grid-template-columns: minmax(0,1fr); } .previews { position: static; max-height: none; overflow: visible; } .plot { height: 300px; } .map { height: 320px; } }

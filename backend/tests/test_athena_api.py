@@ -332,6 +332,125 @@ def test_analysis_routes_persist_reports_without_changing_source_revision(client
     assert len({r["id"] for r in reports}) == 3
 
 
+def mixture_project(client, x, mixture, references):
+    """Import a target spectrum followed by its candidate references."""
+    p = create(client)
+    for label, y in (("target", mixture), *references):
+        data = StringIO()
+        np.savetxt(data, np.column_stack((x, y)), header="energy mu")
+        inspected = client.post(f"/api/athena/projects/{p['id']}/inspect",
+                                files={"file": (label + ".dat", data.getvalue().encode())}).json()
+        response = client.post(f"/api/athena/projects/{p['id']}/import", json={"version": p["version"],
+            "upload_id": inspected["upload_id"], "energy_column": inspected["columns"][0]["column_id"],
+            "numerator": [inspected["columns"][1]["column_id"]], "data_type": "norm"})
+        assert response.status_code == 200, response.text
+        p = response.json()
+    return p
+
+
+def test_combination_search_route_picks_the_right_references_with_errors(client, xas_arrays):
+    """Catches a search route that cannot reject a reference absent from the mixture."""
+    x = xas_arrays[0]
+    edges = {name: 1 / (1 + np.exp(-(x - centre) / width)) for name, centre, width in
+             (("A", 8978, 3.0), ("B", 8990, 4.0), ("C", 9005, 2.0), ("decoy", 8955, 1.0))}
+    mixture = .3 * edges["A"] + .7 * edges["B"] + np.random.default_rng(0).normal(0, 2e-3, x.size)
+    p = mixture_project(client, x, mixture, list(edges.items()))
+    ids = [g["id"] for g in p["groups"]]
+    response = client.post(f"/api/athena/projects/{p['id']}/analyze", json={
+        "version": p["version"], "action": "lcf_search", "group_ids": ids,
+        "options": {"xmin": 8960, "xmax": 9020, "array": "norm", "max_components": 2, "top": 3}})
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["labels"] == ["A.dat", "B.dat", "C.dat", "decoy.dat"]
+    best = result["combinations"][0]
+    assert [result["labels"][i] for i in best["indices"]] == ["A.dat", "B.dat"]
+    np.testing.assert_allclose(best["weights"], [.3, .7], atol=5e-3)
+    assert all(stderr is not None and 0 < stderr < .05 for stderr in best["weight_stderr"])
+    assert result["tried"] == 4 + 6 and result["skipped"] == 0
+    assert [entry["rfactor"] for entry in result["combinations"]] == sorted(
+        entry["rfactor"] for entry in result["combinations"])
+    np.testing.assert_allclose(result["best"]["weights"], best["weights"])
+    assert len(result["best"]["fit"]) == len(result["best"]["x"])
+    assert client.get(f"/api/athena/projects/{p['id']}").json()["analyses"][-1]["kind"] == "lcf_search"
+
+
+def test_series_lcf_tracks_known_weights_scan_by_scan_and_names_a_scan_it_cannot_fit(client, xas_arrays):
+    """An operando series against fixed end members, with one short scan in it.
+
+    The weights of A move 0.2 -> 0.5 -> 0.8 through the series and each row must
+    recover its own; the short scan keeps its row with the reason rather than
+    failing the series, and a group ticked as both target and standard is refused.
+    """
+    x = xas_arrays[0]
+    a, b = (1 / (1 + np.exp(-(x - centre) / width)) for centre, width in ((8978, 3.0), (8990, 4.0)))
+    targets = [(f"scan {i}", w * a + (1 - w) * b) for i, w in enumerate((0.2, 0.5, 0.8), start=1)]
+    p = mixture_project(client, x, a, [("B", b), *targets])
+    short = x < 8990
+    data = StringIO()
+    np.savetxt(data, np.column_stack((x[short], (0.5 * a + 0.5 * b)[short])), header="energy mu")
+    inspected = client.post(f"/api/athena/projects/{p['id']}/inspect", files={"file": ("short.dat", data.getvalue().encode())}).json()
+    p = client.post(f"/api/athena/projects/{p['id']}/import", json={"version": p["version"],
+        "upload_id": inspected["upload_id"], "energy_column": inspected["columns"][0]["column_id"],
+        "numerator": [inspected["columns"][1]["column_id"]], "data_type": "norm"}).json()
+    ids = [g["id"] for g in p["groups"]]
+    standards, scans = ids[:2], ids[2:]
+    request = {"version": p["version"], "action": "lcf_series", "group_ids": scans,
+               "options": {"xmin": 8960, "xmax": 9020, "array": "norm", "standards": standards}}
+    response = client.post(f"/api/athena/projects/{p['id']}/analyze", json=request)
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["labels"] == ["target.dat", "B.dat"]
+    rows = result["targets"]
+    assert [row["label"] for row in rows] == ["scan 1.dat", "scan 2.dat", "scan 3.dat", "short.dat"]
+    for row, weight in zip(rows, (0.2, 0.5, 0.8)):
+        np.testing.assert_allclose(row["weights"], [weight, 1 - weight], atol=1e-6)
+        assert len(row["residual"]) == len(row["x"])
+    assert "error" in rows[3] and rows[3]["error"].startswith("short.dat:")
+    both = dict(request, group_ids=[*scans, standards[0]])
+    response = client.post(f"/api/athena/projects/{p['id']}/analyze", json=both)
+    assert response.status_code == 400
+    assert "both a target and a standard" in response.json()["error"]["message"]
+
+
+def test_a_series_step_sits_at_each_spectrum_own_e0(client, xas_arrays):
+    """One step centre for a heating series misplaced the edge for most scans.
+
+    Two spectra whose edges sit 4 eV apart: with ``center: "e0"`` each step is
+    placed at that spectrum's own E0, as found on import.
+    """
+    x = xas_arrays[0]
+    spectra = [(f"edge {shift}", 1 / (1 + np.exp(-(x - 8980 - shift) / 2.0))
+                + 0.05 * np.exp(-((x - 8970 - shift) / 1.2) ** 2 / 2)) for shift in (0, 4)]
+    p = mixture_project(client, x, spectra[0][1], [spectra[1]])
+    ids = [g["id"] for g in p["groups"]]
+    e0s = [g["result"]["effective"]["e0"] for g in p["groups"]]
+    assert abs(e0s[1] - e0s[0] - 4) < 0.5
+    response = client.post(f"/api/athena/projects/{p['id']}/analyze", json={
+        "version": p["version"], "action": "peaks_series", "group_ids": ids,
+        "options": {"array": "norm", "xmin": 8960, "xmax": 8978, "share": {"center": False, "sigma": True},
+                    "peaks": [{"center": 8971, "sigma": 1.2, "amplitude": 0.1}],
+                    "background": {"step": {"form": "arctan", "center": "e0", "sigma": 2}}}})
+    assert response.status_code == 200, response.text
+    assert response.json()["result"]["details"]["step_centers"] == pytest.approx(e0s)
+
+
+def test_combination_search_route_reports_an_actionable_refusal(client, xas_arrays):
+    x = xas_arrays[0]
+    edge = 1 / (1 + np.exp(-(x - 8978) / 3))
+    p = mixture_project(client, x, edge, [("A", edge), ("B", edge * 2)])
+    ids = [g["id"] for g in p["groups"]]
+    response = client.post(f"/api/athena/projects/{p['id']}/analyze", json={
+        "version": p["version"], "action": "lcf_search", "group_ids": ids[:2],
+        "options": {"xmin": 8960, "xmax": 9020, "array": "norm"}})
+    assert response.status_code == 400
+    assert "at least two references" in response.json()["error"]["message"]
+    response = client.post(f"/api/athena/projects/{p['id']}/analyze", json={
+        "version": p["version"], "action": "lcf_search", "group_ids": ids,
+        "options": {"xmin": 8960, "xmax": 9020, "array": "norm", "max_components": 5}})
+    assert response.status_code == 400
+    assert "exceeds the 2 references" in response.json()["error"]["message"]
+
+
 @pytest.mark.parametrize("action, options, message", [
     ("lcf", {"sum_to_one": "false"}, "sum_to_one must be true or false"),
     ("lcf", {"nonnegative": "false"}, "nonnegative must be true or false"),
@@ -339,6 +458,8 @@ def test_analysis_routes_persist_reports_without_changing_source_revision(client
     ("lcf", {"sum_to_1": False}, "Unsupported lcf options: sum_to_1"),
     ("pca", {"sum_to_one": False}, "Unsupported pca options: sum_to_one"),
     ("peaks", {"components": 2}, "Unsupported peaks options: components"),
+    ("lcf_search", {"nonnegative": "false"}, "nonnegative must be true or false"),
+    ("peaks_series", {"components": 2}, "Unsupported peaks_series options: components"),
 ])
 def test_analysis_options_are_checked_before_fitting_a_different_model(client, xas_arrays, action, options, message):
     # XAS-QA-004: "false" used to pass bool() as true, and misspelled

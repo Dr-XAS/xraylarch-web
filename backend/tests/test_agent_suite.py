@@ -115,12 +115,14 @@ def test_t4_fails_the_default_merge_that_drops_the_short_scan(http, run):
 
 def test_t5_passes_a_fit_because_a_fit_saves_nothing(http, run):
     example = http.get("/api/artemis/examples/cuprite").json()
-    paths = [{"id": f"p{index}", "filename": path["filename"], "content": path["content"]}
-             for index, path in enumerate(example["paths"], start=1)]
+    first = {"id": "p1", "filename": example["paths"][0]["filename"],
+             "content": example["paths"][0]["content"], **example["path_parameters"][0]}
+    # Only the parameters the first path uses; the others would be unused guesses.
+    parameters = [row for row in example["parameters"] if row["name"] in first.values()]
     fitted = http.post(f"/api/artemis/projects/{run['project_id']}/groups/{run['groups'][FOILS[0]]}/fit",
                        params={"view": "summary"},
-                       json={"version": run["version"], "parameters": example["parameters"],
-                             "paths": paths[:1], "transform": example["transform"]})
+                       json={"version": run["version"], "parameters": parameters,
+                             "paths": [first], "transform": example["transform"]})
     assert fitted.status_code == 200, fitted.text
     assert failed(check(http, "T5", run)) == []
     ok(http, run, "parameters", [FOILS[0]], kmax=18)

@@ -8,6 +8,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 
+def pytest_configure(config):
+    # CI runs these in their own job, so the main release job keeps its time.
+    config.addinivalue_line("markers", "xrf_slow: XRF extraction tests that run full calibrations")
+
+
 @pytest.fixture
 def sample_xmu_bytes() -> bytes:
     return (Path(__file__).parent / "fixtures" / "cu_rt01.xmu").read_bytes()

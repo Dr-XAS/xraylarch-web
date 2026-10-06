@@ -53,8 +53,10 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const spacing = validSpacing ? Number(offsetText) : automaticSpacing
   const traces = series ? curves.map(curve => {
     const offset = offsetPlot ? -curve.tier * spacing : 0
+    // The residual is drawn by default: a misfit is the first thing a reader of
+    // an EXAFS fit should be able to see, not something to find in the legend.
     return { type: "scatter", mode: "lines", name: curve.name, x: series.x.slice(), y: curve.y.map(value => value + offset),
-      visible: curve.name === "Residual" ? "legendonly" : true,
+      visible: true,
       customdata: curve.y.map(value => [value, offset]),
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }

@@ -17,6 +17,8 @@ interface Props {
   onShowGridChange?: (show: boolean) => void; onShowDataPointsChange?: (show: boolean) => void; onOptionsMenuOpen?: () => void
   colorSettings?: PlotColorSettings
   analysis: Analysis | null; analysisVisible: boolean; range: [number | null, number | null]
+  // The series-LCF target whose fit is drawn: one observed curve, its fit and residual.
+  seriesTarget?: string
   picking?: boolean; onPickX?: (x: number, space: Space) => void
 }
 type PlotOptionsEvent = MouseEvent<HTMLDivElement> | KeyboardEvent<HTMLDivElement>
@@ -53,7 +55,7 @@ function signalAtEnergy(energy: number[], mu: number[], target: number) {
   return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colorSettings = defaultPlotColors, analysis, analysisVisible, range, picking = false, onPickX }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colorSettings = defaultPlotColors, analysis, analysisVisible, range, picking = false, onPickX, seriesTarget }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
   const [optionsMenu, setOptionsMenu] = useState<PlotOptionsMenu | null>(null)
@@ -164,11 +166,40 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     if (compareK) yTitle = `${kTitle}, Re[χ(q)]`
     if (analysis && analysisVisible) {
       data.length = 0
-      const result = analysis.result
+      // A combination search keeps the winning fit's arrays under `best`.
+      const result = (analysis.kind === "lcf_search" ? analysis.result.best ?? {} : analysis.result) as Record<string, unknown>
       if (analysis.kind === "pca") {
         const variances = (result.explained_variance_ratio ?? []) as number[]
         data.push({ x: variances.map((_, i) => i + 1), y: variances.map(v => v * 100), type: "bar", marker: { color: "#16736b" }, name: "Explained variance" })
         xTitle = "Principal component"; yTitle = "Explained variance (%)"
+      } else if (analysis.kind === "lcf_series") {
+        // Each target is its own fit: draw one, with its residual. Overlaying
+        // every target gave dozens of curves and no residual to judge.
+        const rows = ((result.targets ?? []) as Record<string, unknown>[]).filter(row => Array.isArray(row.x))
+        const row = rows.find(r => r.group_id === seriesTarget) ?? rows[0]
+        if (row) {
+          const x = row.x as number[], label = String(row.label ?? "")
+          add(x, (row.observed ?? []) as number[], `Observed · ${label}`, "#16736b", "solid", true)
+          add(x, (row.fit ?? []) as number[], `Fit · ${label}`, "#c37b38", "dash")
+          add(x, (row.residual ?? []) as number[], `Residual · ${label}`, "#7470b0")
+        }
+        xTitle = analysis.options.array === "chi" || analysis.options.array === "weighted_chi" ? "k (Å⁻¹)" : "Energy (eV)"
+        yTitle = "Signal / fit"
+      } else if (analysis.kind === "peaks_series") {
+        // One fit over several spectra: each keeps its own curve, and the
+        // colours separate the spectra rather than observed from fit.
+        const rows = (result.spectra ?? []) as Record<string, unknown>[]
+        const fitted = rows.filter(row => Array.isArray(row.x))
+        const names = (result.labels ?? []) as string[]
+        const seriesColors = spectrumColors(fitted.length, { palette, reversed, vmin, vmax })
+        fitted.forEach((spectrum, index) => {
+          const label = names[index] ?? `Spectrum ${index + 1}`
+          const x = (spectrum.x ?? []) as number[]
+          add(x, (spectrum.observed ?? []) as number[], `Observed · ${label}`, seriesColors[index], "solid", true)
+          add(x, (spectrum.fit ?? []) as number[], `Fit · ${label}`, seriesColors[index], "dash")
+        })
+        xTitle = analysis.options.array === "chi" || analysis.options.array === "weighted_chi" ? "k (Å⁻¹)" : "Energy (eV)"
+        yTitle = "Signal / fit"
       } else if (analysis.kind === "log_ratio") {
         add(result.k as number[], result.log_amplitude_ratio as number[], "ln(A target / A reference)", "#16736b")
         const phase = add(result.k as number[], result.phase_difference as number[], "Phase difference (rad)", "#c37b38")
@@ -184,7 +215,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       }
     }
     return { data, xTitle, yTitle }
-  }, [groups, activeId, space, energyMode, background, showWindow, component, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, vmin, vmax, analysis, analysisVisible])
+  }, [groups, activeId, space, energyMode, background, showWindow, component, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, vmin, vmax, analysis, analysisVisible, seriesTarget])
   const hasData = data.some(d => (d.x as number[])?.length)
   useEffect(() => {
     const element = plotRef.current

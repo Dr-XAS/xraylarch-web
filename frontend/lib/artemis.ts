@@ -52,6 +52,8 @@ export interface ArtemisExample {
   cif_sha256: string
   feff_input: string
   paths: ArtemisInspectedPath[]
+  /** Each path's S₀², ΔE₀, ΔR and σ² expressions, in the order of `paths`. */
+  path_parameters?: Pick<ArtemisPath, "s02" | "e0" | "deltar" | "sigma2">[]
   parameters: ArtemisParameter[]
   transform: ArtemisTransform
   description: string
@@ -91,6 +93,10 @@ export interface ArtemisFitResult {
     n_varys: number; n_independent: number; n_data: number; nfev: number
     chi_square: number; reduced_chi_square: number; r_factor: number
     aic: number; bic: number; errorbars: boolean
+    /** Uncertainty in chi(k) the fit was weighted by; chi-square scales with 1/epsilon_k². Fits saved before it was reported lack it. */
+    epsilon_k?: number
+    /** Fast backend only: rank and condition number of the column-scaled Jacobian at the solution. */
+    jacobian_rank?: number; jacobian_condition?: number | null
   }
   parameters: (ArtemisParameter & { initial: number; stderr: number | null })[]
   correlations: { left: string; right: string; value: number }[]
@@ -109,6 +115,20 @@ export interface ArtemisFitResult {
     data_im: number[]; model_im: number[]; residual_im: number[]
   }
   transform: ArtemisTransform
+  /** How this fit was produced. Older saved results carry only some of these fields. */
+  metadata?: {
+    engine: string
+    /** Fast backend only: largest absolute difference from Larch's own residual at the fitted
+     *  parameters. Order 1e-13 means the two forward models are the same function. */
+    engine_parity?: number
+    /** Server-side seconds, the same phases for both engines: `total` is the whole fit on the
+     *  server, `fit` the fit call (set-up, minimization, uncertainties, output arrays), and
+     *  `optimizer` the minimization loop alone. `compile` is the fast backend's per-request JAX
+     *  compilation. Fits saved before these phases existed carry only `solve`, which is not
+     *  comparable between engines and is not shown. */
+    seconds?: { total?: number; fit?: number; optimizer?: number; compile?: number; covariance?: number; solve?: number }
+    [key: string]: unknown
+  }
 }
 
 export type ArtemisParameterDraft = Omit<ArtemisParameter, "value" | "min" | "max"> & { value: string; min: string; max: string; id: string }

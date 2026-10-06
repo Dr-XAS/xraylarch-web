@@ -57,13 +57,29 @@ def test_measured_x11a_all_observations_labels_units_and_source_bytes():
 
 
 @pytest.mark.parametrize('position', [12, 250, 623])
-@pytest.mark.parametrize('bad', [b'8999 bad 10 20', b'8999 10 20', b'# damaged observation', b'8999 nan 10 20'])
+@pytest.mark.parametrize('bad', [b'8999 bad 10 20', b'8999 10 20', b'# damaged observation'])
 def test_x11a_never_drops_damaged_first_middle_or_final_observations(position, bad):
+    if position == 623 and bad == b'8999 10 20':
+        pytest.skip('an interrupted final row is dropped by name; see the test below')
     lines = (FIXTURES/'demeter-x11a-cu.012').read_bytes().splitlines()
     lines[position] = bad
     with pytest.raises(WebInputError) as exc:
         parse_upload(b'\n'.join(lines), 'cu.012')
-    assert exc.value.code in ['upload_malformed_rows', 'upload_nonfinite']
+    assert exc.value.code == 'upload_malformed_rows'
+
+
+def test_x11a_interrupted_final_row_is_named_and_a_nan_observation_is_kept_for_its_column():
+    lines = (FIXTURES/'demeter-x11a-cu.012').read_bytes().splitlines()
+    whole = parse_upload(b'\n'.join(lines), 'cu.012')
+    lines[623] = b'8999 10 20'
+    cut = parse_upload(b'\n'.join(lines), 'cu.012')
+    assert cut.row_count == whole.row_count - 1
+    assert any('incomplete' in w and f'({whole.row_count})' in w for w in cut.warnings)
+    lines = (FIXTURES/'demeter-x11a-cu.012').read_bytes().splitlines()
+    lines[250] = b'8999 nan 10 20'
+    kept = parse_upload(b'\n'.join(lines), 'cu.012')
+    assert kept.row_count == whole.row_count
+    assert any('non-finite' in w for w in kept.warnings)
 
 
 @pytest.mark.parametrize('old,new', [(b'DETECTORS', b'MISSING'), (b'OFFSETS', b'UNKNOWN'),
@@ -115,13 +131,16 @@ def test_real_preview_edits_processing_and_project_round_trips(tmp_path, filenam
         np.testing.assert_array_equal(restored['groups'][0]['mu'], group['mu'])
 
 
-def test_mx_quickscan_preview_keeps_duplicate_energies_and_metadata(tmp_path):
+def test_mx_quickscan_preview_averages_duplicate_energies_and_keeps_metadata(tmp_path):
+    # This quick scan repeats energies; it used to preview with the repeats and
+    # then refuse to import. Rows at one energy are now averaged, and said so.
     s = AthenaStore(Settings(data_root=tmp_path)); p = s.create()
     i = s.inspect(p['id'], (FIXTURES/'demeter-uhup.101').read_bytes(), 'uhup.101')
     q = ImportRequest(version=0, upload_id=i['upload_id'], **i['athena_suggestion'])
     preview = s.preview_columns(p['id'], q)
     x = preview['traces'][0]['x']
-    assert len(x) == i['row_count'] and len(set(x)) < len(x)
+    assert len(x) < i['row_count'] and len(set(x)) == len(x)
+    assert any('repeat an energy' in w for w in preview['warnings'])
     assert i['beamline_metadata']['attributes']['beamline']['name'] == '10ID'
     assert 'column' not in i['beamline_metadata']['attributes']  # Native MX early exit.
 

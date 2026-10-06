@@ -13,7 +13,8 @@ from larch.xafs import feffit, feffit_dataset, feffit_transform, feffpath, ff2ch
 from pydantic import ValidationError
 
 from xraylarch_web import artemis, artemis_structures
-from xraylarch_web.artemis import FitRequest, FitTransform, PathInput, copper_example, fit_group, inspect_path
+from xraylarch_web.artemis import (FitRequest, FitTransform, PathInput, PathPreviewRequest, copper_example,
+                                   fit_group, inspect_path, preview_paths)
 from xraylarch_web.athena import AthenaStore
 from xraylarch_web.config import Settings
 from xraylarch_web.errors import WebInputError
@@ -173,6 +174,38 @@ def test_nonuniform_input_matches_independent_native_larch_pipeline(model, spect
     np.testing.assert_allclose(actual["paths"][0]["r"]["im"], native_dataset.pathlist[0].chir.imag, atol=1e-12)
 
 
+def test_chi_imported_from_above_k_zero_is_not_extended_by_its_first_point(model, spectrum):
+    # The fitting grid starts at k = 0 whatever the data does. Interpolating onto
+    # it holds the first measured point flat across the unmeasured stretch, and
+    # when the window taper reaches down there the fit answers to that fabricated
+    # plateau: on CoO it moved the fitted amplitude by 1.7%.
+    floor = 2.8  # above kmin - dk/2 = 2.5, so the taper does sit on the gap
+    arrays = spectrum["result"]["arrays"]
+    k, chi = np.asarray(arrays["k"]), np.asarray(arrays["chi"])
+    assert abs(np.interp(floor, k, chi)) > 1e-3, "the first surviving point must carry real signal"
+    truncated = copy.deepcopy(spectrum)
+    truncated["result"]["arrays"] = dict(k=k[k >= floor].tolist(), chi=chi[k >= floor].tolist())
+    data = artemis._processed_data(truncated, FitTransform(**model["transform"]))
+    assert not data.chi[data.k < floor].any()
+    # Zero-padding the same spectrum by hand must therefore change nothing.
+    padded = copy.deepcopy(spectrum)
+    padded["result"]["arrays"] = dict(k=data.k.tolist(), chi=data.chi.tolist())
+    for row, expected in zip(fit_group(truncated, FitRequest(**model))["parameters"],
+                             fit_group(padded, FitRequest(**model))["parameters"]):
+        assert row["value"] == pytest.approx(expected["value"], rel=1e-12, abs=1e-14)
+
+
+@pytest.mark.parametrize("weights,warned", [([2], False), ([1, 2, 3], True)])
+def test_only_a_multiple_weight_fit_says_the_curves_show_one_weight(model, spectrum, weights, warned):
+    # A fit over several k weights minimizes all of them, but the curves can only
+    # be drawn at one. Saying nothing invites reading the plotted residual as the
+    # whole residual.
+    model["transform"]["kweight"] = weights
+    result = fit_group(spectrum, FitRequest(**model))
+    assert result["k"]["weight"] == weights[0]
+    assert any("k weight" in notice for notice in result["warnings"]) == warned
+
+
 @pytest.mark.parametrize("expression", ["__import__('os').getcwd()", "amp.real", "amp[0]", "[amp]", "unknown_name", "2 ** amp", "2 ** 100", "exp(10000)", "1 / 0", "1e309", "lambda: amp"])
 def test_expression_allowlist_rejects_unsafe_undefined_or_nonfinite(model, spectrum, expression):
     model["paths"][0]["s02"] = expression
@@ -266,6 +299,118 @@ def test_inspect_real_feff_metadata_and_invalid_files():
         inspect_path(PathInput(filename="feff0001.dat", content="1 2 3\n4 5 6\n"))
 
 
+def preview_request(model, **overrides):
+    return PathPreviewRequest(parameters=model["parameters"], paths=model["paths"],
+                              transform=model["transform"], **overrides)
+
+
+def test_preview_draws_the_same_curve_the_fit_later_draws(model, spectrum):
+    # The viewer's promise is that a path previewed before a fit and the same
+    # path after it differ only by the parameter values. Fit first, then preview
+    # at the fitted values and require the two to be the same arrays.
+    model["transform"]["kweight"] = [2]
+    model["paths"][0]["s02"] = "0.65 * amp"
+    model["paths"].append(model["paths"][0] | dict(id="cu2", s02="0.35 * amp", deltar="del_r + 0.11", sigma2="sig2 + 0.003"))
+    fit = fit_group(spectrum, FitRequest(**model))
+    assert fit["success"]
+    fitted = {row["name"]: row["value"] for row in fit["parameters"]}
+    held = [dict(name=name, kind="set", value=value) for name, value in fitted.items()]
+    preview = preview_paths(preview_request(model | {"parameters": held}))
+    assert [path["id"] for path in preview["paths"]] == ["cu1", "cu2"]
+    overlap = len(fit["k"]["x"])
+    assert len(preview["k"]["x"]) >= overlap
+    np.testing.assert_allclose(preview["k"]["x"][:overlap], fit["k"]["x"], atol=1e-12)
+    for before, after in zip(preview["paths"], fit["paths"]):
+        assert before["values"] == pytest.approx(after["values"], rel=1e-9)
+        np.testing.assert_allclose(before["k"]["chi"][:overlap], after["k"]["chi"], atol=1e-10)
+        for component in ("mag", "re", "im"):
+            np.testing.assert_allclose(before["r"][component], after["r"][component], atol=1e-10)
+    np.testing.assert_allclose(preview["r"]["total_re"], fit["r"]["model_re"], atol=1e-10)
+    np.testing.assert_allclose(preview["r"]["total_im"], fit["r"]["model_im"], atol=1e-10)
+
+
+def test_preview_sorting_metrics_describe_the_curves_they_summarise(model):
+    model["transform"].update(kweight=[2], rmin=1.4, rmax=3.0, kmin=3, kmax=12)
+    model["paths"].append(model["paths"][0] | dict(id="far", deltar="del_r + 1.2", sigma2="sig2 + 0.01"))
+    preview = preview_paths(preview_request(model))
+    r, k, weight = np.asarray(preview["r"]["x"]), np.asarray(preview["k"]["x"]), preview["k"]["weight"]
+    window = (r >= 1.4) & (r <= 3.0)
+    inside = (k >= 3) & (k <= 12)
+    for path in preview["paths"]:
+        magnitude = np.asarray(path["r"]["mag"])
+        metrics = path["metrics"]
+        assert metrics["amplitude"] == pytest.approx(magnitude.max())
+        assert metrics["r_at_amplitude"] == pytest.approx(r[np.argmax(magnitude)])
+        assert metrics["window_area"] == pytest.approx(np.trapezoid(magnitude[window], r[window]))
+        assert metrics["chi_k_peak"] == pytest.approx(np.abs(np.asarray(path["k"]["chi"])[inside]).max())
+        np.testing.assert_allclose(magnitude, np.hypot(path["r"]["re"], path["r"]["im"]), atol=1e-12)
+    near, far = preview["paths"]
+    # The displaced, more disordered path peaks further out and contributes less.
+    assert far["metrics"]["r_at_amplitude"] > near["metrics"]["r_at_amplitude"] + 1
+    assert far["metrics"]["window_area"] < near["metrics"]["window_area"]
+    assert far["metadata"]["reff"] == near["metadata"]["reff"]
+    assert far["values"]["deltar"] == pytest.approx(near["values"]["deltar"] + 1.2)
+
+
+def test_preview_honours_disabled_paths_and_rejects_unusable_models(model):
+    model["paths"].append(model["paths"][0] | dict(id="off", enabled=False, s02="15 * amp"))
+    preview = preview_paths(preview_request(model))
+    assert [path["id"] for path in preview["paths"]] == ["cu1"]
+    np.testing.assert_allclose(preview["k"]["total"], preview["paths"][0]["k"]["chi"], atol=1e-12)
+    for change in ("none_enabled", "duplicate_id", "unknown_name", "negative_sigma"):
+        broken = copy.deepcopy(model)
+        if change == "none_enabled":
+            for path in broken["paths"]:
+                path["enabled"] = False
+        if change == "duplicate_id":
+            broken["paths"][1]["id"] = "cu1"
+        if change == "unknown_name":
+            broken["paths"][0]["s02"] = "not_declared"
+        if change == "negative_sigma":
+            broken["parameters"] = [dict(name="sig2", kind="set", value=-0.01) if item["name"] == "sig2" else item
+                                    for item in broken["parameters"]]
+        with pytest.raises(WebInputError):
+            preview_paths(preview_request(broken))
+
+
+def test_preview_warns_when_the_feff_grid_stops_short_of_the_fit_range(model):
+    model["transform"]["kmax"] = 12
+    assert not preview_paths(preview_request(model))["warnings"]
+    truncated = copy.deepcopy(model)
+    lines = truncated["paths"][0]["content"].splitlines()
+    header = next(index for index, line in enumerate(lines) if "real[2*phc]" in line)
+    truncated["paths"][0]["content"] = "\n".join(
+        lines[:header + 1] + [line for line in lines[header + 1:] if float(line.split()[0]) <= 9.5])
+    preview = preview_paths(preview_request(truncated))
+    assert any("below the fit's kmax" in warning for warning in preview["warnings"])
+    assert max(preview["k"]["x"]) < 12
+
+
+def test_paths_for_another_absorber_are_refused_and_an_unrecorded_identity_is_named(model, spectrum):
+    """A Cu K path on a Mn K spectrum used to fit without complaint."""
+    manganese = copy.deepcopy(spectrum) | dict(source=dict(edge_identity=dict(element="Mn", edge="K", origin="inferred")))
+    with pytest.raises(WebInputError, match="calculated for Cu K, but the selected spectrum is Mn K"):
+        fit_group(manganese, FitRequest(**model))
+    copper = copy.deepcopy(spectrum) | dict(source=dict(edge_identity=dict(element="Cu", edge="K", origin="inferred")))
+    assert not any("could not be checked" in warning for warning in fit_group(copper, FitRequest(**model))["warnings"])
+    unrecorded = fit_group(spectrum, FitRequest(**model))
+    assert any("no recorded element and edge" in warning for warning in unrecorded["warnings"])
+
+
+def test_preview_says_when_its_grid_stops_short_of_a_long_fit_range(model):
+    """The preview grid stops at 20 Å⁻¹; a 22 Å⁻¹ fit range was drawn without a word."""
+    model["transform"].update(kmax=22)
+    lines = model["paths"][0]["content"].splitlines()
+    header = next(index for index, line in enumerate(lines) if "real[2*phc]" in line)
+    # Extend the path past 22 Å⁻¹ so the FEFF grid is not what stops it.
+    last = lines[-1].split()
+    extra = [" ".join([f"{k:.4f}"] + last[1:]) for k in np.arange(float(last[0]) + 0.5, 24, 0.5)]
+    model["paths"][0]["content"] = "\n".join(lines[:header + 1] + lines[header + 1:] + extra)
+    preview = preview_paths(preview_request(model))
+    assert any("preview stops at 20" in warning for warning in preview["warnings"])
+    assert max(preview["k"]["x"]) == pytest.approx(20)
+
+
 def test_fit_transform_and_example_default_to_all_weights(model):
     assert FitTransform().kweight == [0, 1, 2, 3]
     assert model["transform"]["kweight"] == [0, 1, 2, 3]
@@ -334,6 +479,29 @@ def test_cuprite_example_has_matching_cif_and_first_four_generated_paths(client)
             for path in example["paths"]] == [(1.8412, 2, 2), (3.0066, 12, 2), (3.3445, 12, 3), (3.5256, 6, 2)]
     assert example["transform"]["rmax"] == 4
     assert client.get("/api/artemis/examples/copper").status_code == 404
+
+
+def test_cuprite_example_model_fits_its_bundled_standard_without_a_shared_shell_compromise(tmp_path):
+    """Check the bundled recipe: separate Cu-O parameters and kweight [2]."""
+    from xraylarch_web.athena import Command
+
+    store = AthenaStore(Settings(data_root=tmp_path))
+    project = store.create()
+    project = store.command(project["id"], Command(version=project["version"], action="example", group_ids=[], options={}))
+    standard = next(g for g in project["groups"] if g["label"].startswith("Cu₂O"))
+    example = artemis.cuprite_example()
+    paths = [{key: value for key, value in path.items() if key != "metadata"}
+             | expressions | {"id": f"p{index}", "label": path["filename"]}
+             for index, (path, expressions) in enumerate(zip(example["paths"], example["path_parameters"]), start=1)]
+    result = fit_group(standard, FitRequest(version=0, parameters=example["parameters"], paths=paths,
+                                            transform=example["transform"]))
+    assert result["success"] and result["statistics"]["errorbars"]
+    assert result["statistics"]["r_factor"] < 0.07
+    assert result["k"]["weight"] == 2
+    fitted = {row["name"]: row["value"] for row in result["parameters"]}
+    # Cu–O in cuprite is 1.849 Å; FEFF's Reff is 1.8412 Å.
+    assert abs(fitted["del_r_o"]) < 0.03
+    assert fitted["sig2_o"] < fitted["sig2_cu"]
 
 
 def test_cuprite_example_rejects_mismatched_bundled_cif(client, monkeypatch):

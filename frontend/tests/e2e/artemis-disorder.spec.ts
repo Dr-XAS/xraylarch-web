@@ -14,7 +14,8 @@ test("inserts, saves, reopens and fits Einstein and Debye path models", async ({
   await page.getByText("Insert Debye–Waller factor", { exact: true }).first().click()
   await page.getByRole("button", { name: "Apply σ² model and sync", exact: true }).first().click()
   await expect(page.getByRole("region", { name: "Artemis EXAFS fitting setup", exact: true }).getByRole("alert")).toContainText("Sample temperature")
-  await expect(page.getByLabel("Path 1 σ² (Å²)", { exact: true })).toHaveValue("sig2")
+  // The Cu₂O example gives its Cu–O first shell its own disorder parameter.
+  await expect(page.getByLabel("Path 1 σ² (Å²)", { exact: true })).toHaveValue("sig2_o")
   await page.getByLabel("Path 1 sample temperature (K)", { exact: true }).fill("300")
   await page.getByLabel("Path 1 add static disorder", { exact: true }).check()
   await page.getByLabel("Path 1 static disorder (Å²)", { exact: true }).fill("0.001")

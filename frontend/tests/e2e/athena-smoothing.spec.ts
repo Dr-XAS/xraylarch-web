@@ -83,8 +83,8 @@ test('measured Cu live columns, four smoothing algorithms, E/k/R, history, undo 
   const metadata = page.getByRole('dialog', {name: 'File metadata', exact: true})
   await expect(metadata.getByRole('region', {name: 'Acquisition and processing history'})).toContainText('Smoothed data by three-point filter (11 repetitions)')
   await metadata.getByRole('button', {name: 'Close metadata', exact: true}).click()
-  await page.getByRole('button', {name: 'Undo', exact: true}).click(); await expect(page.getByRole('heading', {name: 'Data groups 4', exact: true})).toBeVisible()
-  await page.getByRole('button', {name: 'Redo', exact: true}).click(); await expect(page.getByRole('heading', {name: 'Data groups 5', exact: true})).toBeVisible()
+  await page.getByRole('button', {name: 'Undo', exact: true}).click(); await expect(page.getByRole('heading', { name: /^Data groups 4\b/ })).toBeVisible()
+  await page.getByRole('button', {name: 'Redo', exact: true}).click(); await expect(page.getByRole('heading', { name: /^Data groups 5\b/ })).toBeVisible()
   const downloading = page.waitForEvent('download'); await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath('Cu-smoothed-native.prj'); await (await downloading).saveAs(path)
   writeFileSync(path, gunzipSync(readFileSync(path)).toString('utf8').split('\n').filter(line => !line.startsWith('# Athena-Web ')).join('\n'))
@@ -129,7 +129,7 @@ test('mobile Gaussian preview, native width reset and stale-save recovery preser
   await page.reload(); const reopened = await open(page)
   await configure(page, reopened, {method: 'gaussian', window: 8, sigma: 0})
   await reopened.getByRole('button', {name: 'Make smoothed group', exact: true}).click()
-  await expect(reopened).toHaveCount(0); await expect(page.getByRole('heading', {name: 'Data groups 2', exact: true})).toBeVisible()
+  await expect(reopened).toHaveCount(0); await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
 })
 
 for (const width of [1500, 390]) {

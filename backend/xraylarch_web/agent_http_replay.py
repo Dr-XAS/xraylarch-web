@@ -300,6 +300,9 @@ def replay_http(http, records: list[dict], setup_records: list[dict], *, setup_s
                              == (prepared.project_id, ids[fit.group(2)], version),
                              "replayed fit response identity disagrees with its request")
                     actual_science = fit_science(actual, body)
+                    # Older summaries omitted the measured noise; compare it when recorded.
+                    if "epsilon_k" not in expected_science["statistics"]:
+                        actual_science["statistics"].pop("epsilon_k", None)
                     delta = differences(expected_science, actual_science)
                     step.update(expected=expected_science, actual=actual_science, differences=delta)
                     report["fits"] += 1

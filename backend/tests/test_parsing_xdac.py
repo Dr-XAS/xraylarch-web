@@ -99,17 +99,30 @@ def test_xdac_boundary_allows_blank_lines_and_crlf_as_larch_does():
     '# damaged observation', 'E0= 7112.00', '-------',
 ])
 def test_every_row_after_labels_is_strict_even_first_and_last(index, row):
+    if index == 2 and row == '6911.98862 41410.4000':
+        pytest.skip('an interrupted final row is dropped by name; see the test below')
     rows = list(ROWS)
     rows[index] = row
     assert_error(upload(rows))
 
 
+def test_xdac_interrupted_final_row_is_dropped_by_name():
+    rows = list(ROWS)
+    rows[2] = '6911.98862 41410.4000'
+    parsed = parse_upload(upload(rows), 'scan.dat')
+    assert parsed.row_count == 2
+    assert any('last data row (3) is incomplete' in w for w in parsed.warnings)
+
+
 @pytest.mark.parametrize("index", [0, 1, 2])
 @pytest.mark.parametrize("value", ['nan', 'inf', '-inf', '1e999'])
-def test_xdac_nonfinite_observations_are_rejected(index, value):
+def test_xdac_nonfinite_observations_are_kept_and_named_for_their_column(index, value):
+    # Refused whole files before; now the import of that column drops the row.
     rows = list(ROWS)
     rows[index] = f'6911.98862 {value} 39622.2000'
-    assert_error(upload(rows), 'upload_nonfinite')
+    parsed = parse_upload(upload(rows), 'scan.dat')
+    assert parsed.row_count == 3
+    assert any(f'1 non-finite values (data rows {index + 1})' in w for w in parsed.warnings)
 
 
 @pytest.mark.parametrize("header", [

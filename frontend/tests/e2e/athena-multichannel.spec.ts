@@ -143,7 +143,7 @@ for (const reader of ['X23A2MultiChannel','10BMMultiChannel']) {
       expect(restored.groups[i+3].source).toEqual(project.groups[i].source)
       expect(restored.groups[i+3].result.arrays).toEqual(project.groups[i].result.arrays)
     }
-    await page.reload(); await expect(page.getByRole('heading', { name: 'Data groups 6', exact: true })).toBeVisible()
+    await page.reload(); await expect(page.getByRole('heading', { name: /^Data groups 6\b/ })).toBeVisible()
     expect(errors).toEqual([])
   })
 }

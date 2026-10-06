@@ -332,18 +332,20 @@ def test_fluorescence_sums_selected_detector_channels_before_division(store, xas
     assert p["groups"][0]["processing_error"] is None
 
 
-@pytest.mark.parametrize("invalid", ["zero_denominator", "zero_numerator", "duplicate_numerator", "bad_reference"])
+@pytest.mark.parametrize("invalid", ["dead_denominator", "dead_numerator", "duplicate_numerator", "dead_reference"])
 def test_invalid_detector_mapping_leaves_project_unchanged(store, xas_arrays, invalid):
+    # One zero point is dropped by name (see test_athena_columns); a channel
+    # dead for most of the scan must still refuse, leaving nothing behind.
     x, y = xas_arrays
     p = store.create()
     i0, it = np.ones_like(x), np.exp(-y)
     ir = it * np.exp(-0.5 * y)
-    if invalid == "zero_denominator":
-        it[50] = 0
-    elif invalid == "zero_numerator":
-        i0[50] = 0
-    elif invalid == "bad_reference":
-        ir[50] = 0
+    if invalid == "dead_denominator":
+        it[50:] = 0
+    elif invalid == "dead_numerator":
+        i0[50:] = 0
+    elif invalid == "dead_reference":
+        ir[50:] = 0
     inspection, ids = inspect_columns(store, p, energy=x, i0=i0, it=it, ir=ir)
     selected = [ids["i0"]] * (2 if invalid == "duplicate_numerator" else 1)
     with pytest.raises(WebInputError):
@@ -468,7 +470,12 @@ def test_example_import_uses_measured_copper_files_and_processes_all_groups(stor
     assert seed["example"]["cif_sha256"] == attachment["sha256"]
     assert [path["filename"] for path in seed["example"]["paths"]] == [
         "feff0001.dat", "feff0002.dat", "feff0003.dat", "feff0004.dat"]
-    assert len(seed["example"]["parameters"]) == 4
+    # Every name a path expression uses is declared, and nothing declared is
+    # unused: the seeded editor must be fittable as delivered.
+    declared = {parameter["name"] for parameter in seed["example"]["parameters"]}
+    used = {expression for path in seed["example"]["path_parameters"] for expression in path.values()}
+    assert len(seed["example"]["path_parameters"]) == len(seed["example"]["paths"])
+    assert used == declared
     assert seed["example"]["transform"]["rmin"] == 1
     assert store.load(p["id"])["last_operation"]["artemis_example"] == seed
     undone = command(store, p, "undo")

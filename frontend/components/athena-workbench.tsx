@@ -12,6 +12,8 @@ import type { InspectionResponse, ScanInspectionResponse } from "@/lib/contracts
 import { spectrumColors as plotSpectrumColors } from "@/lib/athena-plot-colors"
 import { parameterHelp, additionalParameterHelp } from "@/lib/athena-parameter-help"
 import { ParameterHelp } from "./parameter-help"
+import { LcfWeights, LcfSearchSummary, LcfSeriesSummary, PeakSummary, PeakSeriesSummary, ReferenceSuggestions, suggestionsMatch } from "./athena-analysis-summary"
+import { lcfSeriesTrend, peakSeriesTrend, SeriesTrend } from "./athena-series-trend"
 import { InstructionVisibility, SectionHelp } from "./section-help"
 import { ThemeSelector } from "./theme-selector"
 import { DrXasLogo } from "./drxas-logo"
@@ -29,6 +31,7 @@ import { AthenaParameterTabs, type ParameterTab } from "./athena-parameter-tabs"
 import { ArtemisFittingPanel, type ArtemisFitResult, type ArtemisModelActions } from "./artemis-fitting"
 import { downloadLarixSession } from "@/lib/artemis-export"
 import { validCupriteExample, type ArtemisExampleSetup } from "@/lib/artemis"
+import type { ArtemisPreviewRequest } from "@/lib/artemis-path-preview"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import { ProjectCifViewer } from "./artefact-viewers/project-cif-viewer"
 import { FeffPathViewer, type FeffPathSummary } from "./artefact-viewers/feff-path-viewer"
@@ -42,7 +45,8 @@ import { AthenaReimportColumns } from "./athena-reimport-columns"
 import { AthenaImportProgress, type ImportProgress } from "./athena-import-progress"
 import { AthenaScanSelection } from './athena-scan-selection'
 import { AthenaArchiveSelection, type ArchiveInspection } from './athena-archive-selection'
-import { columnPayload, initialColumnMapping, reuseColumnMapping, defaultPreprocessing, defaultRebin, lastImportedSample, type ColumnMapping } from "@/lib/athena-import"
+import { labelParts } from "@/lib/athena-labels"
+import { batchExclusions, columnPayload, initialColumnMapping, reuseColumnMapping, reuseProblem, defaultPreprocessing, defaultRebin, lastImportedSample, type ColumnMapping } from "@/lib/athena-import"
 import { isAthenaProjectFile } from "@/lib/athena-file-types"
 import { EdgePolicyDialog, edgePolicyDescription, useEdgePolicy } from "./athena-edge-policy"
 import { EdgeIdentityDialog, edgeIdentityDescription } from "./athena-edge-identity"
@@ -51,6 +55,7 @@ import { AthenaDatatype } from './athena-datatype'
 import { AthenaReferencePicker } from './athena-reference-picker'
 import { AthenaPluginRegistry } from './athena-plugin-registry'
 import { AthenaBeamlineMetadata, AthenaBeamlinePreferences } from './athena-beamline-metadata'
+import { AthenaSupportedFormats } from './athena-supported-formats'
 import { AthenaXDIControls } from './athena-xdi-controls'
 import { AthenaDataExport } from './athena-data-export'
 import { AthenaParameterReport } from './athena-parameter-report'
@@ -59,6 +64,7 @@ import { AthenaContextReport } from './athena-context-report'
 import { AthenaSpecialPlot, athenaSpecialPlotLabels, type AthenaSpecialPlotKind } from './athena-special-plot'
 import { contextValues, groupImportance, groupPixelRatio, nativeRanges, type ContextTarget, type ContextReportKind, type NativeField, type NativeSection } from './athena-native-context'
 import { AthenaMEE } from './athena-mee'
+import { AthenaSelfAbsorption } from './athena-self-absorption'
 import { AthenaSmoothing, type SmoothingDraft } from './athena-smoothing'
 import { AthenaConvolution, type ConvolutionDraft } from './athena-convolution'
 import { AthenaPointEdit, type PointEditDraft } from './athena-point-edit'
@@ -69,7 +75,10 @@ import { AthenaDiagnosticPlot } from './athena-diagnostic-plot'
 import { AthenaMerge, type MergeDraft } from './athena-merge'
 import { AthenaRebin } from './athena-rebin'
 import { AthenaDispersive } from './athena-dispersive'
+import { AthenaXrfXas } from './athena-xrf-xas'
+import { AthenaXrfView } from './athena-xrf-view'
 import { RebinDefaultsControls, useRebinDefaults } from './athena-rebin-defaults'
+import { commonSupport, peakStart } from "@/lib/peak-start"
 import { ReportBugDialog } from './report-bug-dialog'
 import type { ReportProjectState } from '@/lib/bug-report'
 import "@/app/athena-controls.css"
@@ -121,6 +130,17 @@ function sameParameterValue(left: Parameters, right: Parameters, key: keyof Para
   const value = (recipe: Parameters) => key === "fnorm" && recipe[key] === undefined ? false : recipe[key]
   return value(left) === value(right)
 }
+// The full name is the tooltip and the accessible name; the visible one
+// shortens its middle. (Split parts are flex items, which a browser reads with
+// a space between them, so they are hidden from assistive technology.)
+function GroupLabel({ label }: { label: string }) {
+  const { head, tail } = labelParts(label)
+  if (!tail) return <strong title={label}>{label}</strong>
+  // A derived suffix (" · Mn fluorescence · window sum") is what tells two
+  // groups apart, so it wraps onto the next line rather than being clipped.
+  return <strong title={label}><span className="ath-sr-only">{label}</span><span className="ath-group-label" data-wrap={tail.startsWith(" · ") || undefined} aria-hidden="true"><span>{head}</span><span>{tail}</span></span></strong>
+}
+
 function sameParameters(left: Parameters, right: Parameters) {
   const keys = new Set([...Object.keys(left), ...Object.keys(right)] as (keyof Parameters)[])
   return [...keys].every(key => sameParameterValue(left, right, key))
@@ -150,7 +170,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
+type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "xrf_xas" | "xrf_view" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
 const mainMenuNames = ["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"] as const
 type MainMenuName = typeof mainMenuNames[number]
 type MenuCommand = {
@@ -166,14 +186,14 @@ type MenuCommand = {
   href?: string
 }
 const toolTitles: Record<string, string> = { calibrate: "Calibrate energy", align: "Align scans", merge: "Merge marked groups", sum: "Sum marked groups", difference: "Difference spectrum", smooth: "Smooth data", deglitch: "Deglitch data", truncate: "Truncate data", rebin: "Rebin data", convolve: "Convolve data", deconvolve: "Deconvolve data", self_absorption: "Fluorescence self-absorption", dispersive: "Dispersive energy calibration", lcf: "Linear combination fitting", pca: "Principal component analysis", peaks: "XANES peak fitting", metadata: "Group information" }
-Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series" })
+Object.assign(toolTitles, { multi_electron: "Multi-electron excitation", log_ratio: "Log-ratio & phase difference", copy_series: "Copy parameter series", xrf_xas: "Fluorescence XAS from XRF fit", xrf_view: "Raw XRF spectra and maps", lcf_search: "Combination search", lcf_series: "Series LCF", peaks_series: "Peak series fit" })
 const toolHelp: Record<string, string> = {
   "sum": "Add marked spectra over their common range. Signed coefficients are used unchanged, so negative values subtract a spectrum. A new group is created. Undo is available from the project toolbar.",
   "deconvolve": "Remove instrumental broadening over the selected energy interval using Larch’s deconvolution. The input is normalized first. This can amplify noise; inspect the derived spectrum.",
   "self_absorption": "Larch’s thick, homogeneous sample approximation for fluorescence self-absorption. Provide composition and geometry appropriate to your measurement. The derived group contains the corrected normalized signal.",
   "copy_series": "Make a series of independent copies to explore how one parameter affects the result.",
   "log_ratio": "Compare amplitudes and phases of a common isolated shell. Set identical E₀, k windows, R windows, and k-weights on both groups before running this analysis. Fits report effective target-minus-reference cumulants. Different scattering species, inconsistent calibration, or overlapping shells invalidate this interpretation.",
-  "peaks": "Fit one or more positive peaks with a linear background. Amplitude is integrated area; sigma is the line-shape width."
+  "peaks": "Fit one or more positive peaks over a background. Amplitude is integrated area; sigma is the line-shape width. A pre-edge peak on a rising edge needs the step: a straight line alone bends into the onset and takes peak area with it."
 }
 
 const modalOperations: Partial<Record<Exclude<ModalName, null>, readonly string[]>> = {
@@ -181,8 +201,9 @@ const modalOperations: Partial<Record<Exclude<ModalName, null>, readonly string[
   align: ["preview", "align"], merge: ["preview", "merge"], merge_plot: ["plot"], diagnostic_plot: ["plot"],
   sum: ["sum"], difference: ["preview", "difference"], smooth: ["preview", "smooth"],
   deglitch: ["preview", "deglitch"], truncate: ["preview", "truncate"], rebin: ["preview", "rebin"],
-  convolve: ["preview", "convolve"], deconvolve: ["deconvolve"], self_absorption: ["self_absorption"],
-  dispersive: ["upload", "preview", "import"], lcf: ["analyze"], pca: ["analyze"], peaks: ["analyze"],
+  convolve: ["preview", "convolve"], deconvolve: ["deconvolve"], self_absorption: ["preview", "self_absorption"],
+  dispersive: ["upload", "preview", "import"], xrf_xas: ["upload", "preview", "import"],
+  xrf_view: ["upload", "preview"], lcf: ["analyze"], pca: ["analyze"], peaks: ["analyze"],
   metadata: ["metadata"], multi_electron: ["preview", "multi_electron"], log_ratio: ["analyze"],
   copy_series: ["copy_series"], groups: ["metadata"],
   group_folder: ["project"], reference: ["assign_reference"],
@@ -411,7 +432,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     return () => window.removeEventListener("beforeunload", warn)
   }, [artemisSavePending])
   const [cupriteExample, setCupriteExample] = useState<ArtemisExampleSetup>()
-  const [feffPathState, setFeffPathState] = useState<{ projectId: string; groupId: string; paths: FeffPathSummary[] } | null>(null)
+  const [feffPathState, setFeffPathState] = useState<{ projectId: string; groupId: string; paths: FeffPathSummary[]; model: ArtemisPreviewRequest | null } | null>(null)
   const [cifSelection, setCifSelection] = useState<{ projectId?: string; attachmentId: string; siteIndex?: number } | null>(null)
   const [shownViewers, setShownViewers] = useState<Set<ViewerId>>(() => new Set(viewerIds))
   const [viewerSort, setViewerSort] = useState<ViewerSort>("default")
@@ -439,6 +460,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [projectPreview, setProjectPreview] = useState<ProjectPreview | null>(null)
   const [reuseMapping, setReuseMapping] = useState<boolean | null>(null)
   const [batchImportNotice, setBatchImportNotice] = useState('')
+  const [batchLeftOut, setBatchLeftOut] = useState<{ files: ImportFile[]; left: { name: string; reason: string }[] } | null>(null)
   const [batchProgress, setBatchProgress] = useState<ImportProgress | null>(null)
   const [reviewedUploadId, setReviewedUploadId] = useState<string | null>(null)
   const [mappingState, setMapping] = useState<ColumnMapping>({ energy_column: "", numerator: [] as string[], denominator: "", mode: "mu", units: "eV", data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false })
@@ -460,7 +482,18 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const [parameterKey, setParameterKey] = useState<keyof Parameters>("rbkg")
   const [parameterTarget, setParameterTarget] = useState<"current" | "marked" | "all">("marked")
   const [fitSelection, setFitSelection] = useState<string[]>([])
+  // Series LCF: the scans fitted one by one against the standards in fitSelection.
+  const [lcfTargets, setLcfTargets] = useState<string[]>([])
   const [peaks, setPeaks] = useState<{center: number; sigma: number; amplitude: number; kind: string}[]>([])
+  const [peakRestored, setPeakRestored] = useState(false)
+  // The series-LCF target drawn in the fit view; null follows the current spectrum.
+  const [lcfPlotTarget, setLcfPlotTarget] = useState<string | null>(null)
+  const peakDraft = useRef<{ projectId: string; options: typeof options; peaks: typeof peaks; fitSelection: string[] } | null>(null)
+  useEffect(() => {
+    if (modal === "peaks" && project) peakDraft.current = { projectId: project.id, options, peaks, fitSelection }
+  }, [modal, options, peaks, fitSelection, project])
+  const [suggestions, setSuggestions] = useState<Record<string, unknown> | null>(null)
+  const [suggestionPicks, setSuggestionPicks] = useState<string[]>([])
   const [combineWeights, setCombineWeights] = useState<Record<string, number | null>>({})
   const [combineArray, setCombineArray] = useState<"" | "mu" | "norm" | "chi">("")
   const [pick, setPick] = useState<PlotPick | null>(null)
@@ -517,14 +550,14 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     viewerClock.current = Math.max(Date.now(), viewerClock.current + 1)
     setViewerActivity(previous => ({ ...previous, [key]: { ...previous[key], [id]: viewerClock.current } }))
   }
-  function receiveFeffPaths(paths: FeffPathSummary[], projectId?: string, groupId?: string) {
+  function receiveFeffPaths(paths: FeffPathSummary[], model: ArtemisPreviewRequest | null, projectId?: string, groupId?: string) {
     if (!projectId || !groupId || projectRef.current?.id !== projectId) return
     const key = JSON.stringify([projectId, groupId])
     const ids = paths.map(path => path.id).join("\u0000")
     const previous = feffPathIds.current.get(key)
     if (previous !== undefined && previous !== ids && paths.length > 0) recordViewerActivity("feff", projectId, groupId)
     feffPathIds.current.set(key, ids)
-    setFeffPathState({ projectId, groupId, paths })
+    setFeffPathState({ projectId, groupId, paths, model })
   }
   function receiveFitResult(result: ArtemisFitResult | null) {
     setArtemisResult(result)
@@ -565,7 +598,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     viewerPreference.current = { sort: "custom", order }
     writeViewerOrderPreference("custom", order)
   }
-  const currentFeffPaths = feffPathState && feffPathState.projectId === project?.id && feffPathState.groupId === active?.id ? feffPathState.paths : []
+  const currentFeff = feffPathState && feffPathState.projectId === project?.id && feffPathState.groupId === active?.id ? feffPathState : null
+  const currentFeffPaths = currentFeff?.paths ?? []
   const marked = useMemo(() => project?.groups.filter(g => g.marked) ?? [], [project?.groups])
   const linkedReferenceIds = useMemo(() => new Set(project?.groups.map(group => group.reference_id).filter((id): id is string => !!id) ?? []), [project?.groups])
   const groupById = useMemo(() => new Map(project?.groups.map(group => [group.id, group]) ?? []), [project?.groups])
@@ -1081,6 +1115,16 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   function closePluginRegistry() {
     if (!registryPending) { setError(""); setModal(registryReturn.current) }
   }
+  /** A peak's starting centre, width and area, read from the current group's signal in a window. */
+  function estimatedPeak(xmin: number, xmax: number, array: string, members: string[] = []) {
+    const axis = array === "chi" || array === "weighted_chi" ? "k" : "energy"
+    const arrays = active?.result?.arrays
+    const x = arrays?.[axis]
+    const y = arrays?.[array]
+    // A series fit refuses a centre that any member did not measure.
+    const others = members.map(id => project?.groups.find(g => g.id === id)?.result?.arrays?.[axis]).filter((v): v is number[] => !!v)
+    return x && y && x.length === y.length ? peakStart(x, y, xmin, xmax, others.length ? commonSupport([x, ...others], xmin, xmax) : undefined) : null
+  }
   function reportProjectState(): ReportProjectState {
     return {
       schema_version: 1,
@@ -1098,10 +1142,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const rangeUnit = ["lcf", "pca", "peaks"].includes(modal ?? "") && options.array === "chi" ? "Å⁻¹" : "eV"
   // LCF, PCA and peak fitting read xmin/xmax in the chosen signal's space:
   // the current transform's k range for χ(k), energies around E₀ otherwise.
-  function analysisRange(array: unknown) {
+  // Peak fitting opens on the pre-edge, below the edge it climbs toward; every
+  // other tool keeps Athena's E₀ − 20 to E₀ + 80 window.
+  function analysisRange(array: unknown, tool = modal) {
     const effective = active?.result?.effective, e0 = Number(effective?.e0 ?? 0)
     if (array === "chi") return { xmin: Number(effective?.kmin ?? 3), xmax: Number(effective?.kmax ?? 12) }
-    return { xmin: e0 ? e0 - 20 : 0, xmax: e0 ? e0 + 80 : 100 }
+    if (!e0) return { xmin: 0, xmax: 100 }
+    return tool === "peaks" ? { xmin: Math.round(e0 - 20), xmax: Math.round(e0) } : { xmin: e0 - 20, xmax: e0 + 80 }
   }
   function openTool(name: ModalName) {
     if (!canOpen(name) || (name !== "learn" && parameterActionBlocked())) return
@@ -1109,17 +1156,31 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if (name === "merge") setMergeInitialArray(undefined)
     setMenu(""); setError(""); setModal(name)
     const e0 = Number(active?.result?.effective.e0 ?? 0)
+    const { xmin, xmax } = analysisRange("norm", name)
     setOptions({ reference_id: project?.groups.find(g => g.id !== active?.id)?.id ?? "", target: Math.round(e0), observed: e0 - (active?.parameters.energy_shift ?? 0),
-      ...analysisRange("norm"), window: 7, order: 2, width: 1,
+      xmin, xmax, window: 7, order: 2, width: 1, peak_background: "line", step_center: e0 ? Math.round(e0 * 10) / 10 : 0, step_sigma: 2, step_vary: false, step_at_e0: true,
       kind: "gaussian", formula: "Fe2O3", element: "Fe", edge: "K", angle_in: 45, angle_out: 45,
       e0, pre_step: 5, xanes_step: .5, exafs_step: .05, xanes_start: -30, xanes_end: 30,
       offset: 0, linear: 1, quadratic: 0, array: "norm", sum_to_one: true, nonnegative: true,
       center: e0, sigma: 2, amplitude: .05, use_reference: false, shift: 100,
       edge_step: Number(active?.result?.effective.edge_step ?? 1), method: "arctangent",
       kmin: 3, kmax: Math.min(12, Number(active?.result?.effective.kmax ?? 12)), phase_offset: 0,
-      fit_cumulants: true, max_cumulant: 4, parameter: "rbkg", start: .8, stop: 1.2, count: 3 })
-    setPeaks([{center: e0 + 5, sigma: 2, amplitude: 1, kind: "gaussian"}])
+      fit_cumulants: true, max_cumulant: 4, parameter: "rbkg", start: .8, stop: 1.2, count: 3,
+      search: false, min_components: 1, max_components: 3,
+      series: false, share_center: true, share_sigma: true })
+    setPeaks([{ ...(estimatedPeak(xmin, xmax, "norm") ?? { center: e0 - 10, sigma: 1, amplitude: 0.05 }), kind: "gaussian" }])
     setFitSelection([...(active ? [active.id] : []), ...marked.filter(g => g.id !== active?.id).map(g => g.id)])
+    // A peak fit is built up over several runs (one scan, then a series, then
+    // other sharing); reopening keeps the window, peaks, sharing and spectra.
+    const draft = peakDraft.current
+    setPeakRestored(name === "peaks" && draft?.projectId === project?.id)
+    if (name === "peaks" && draft && draft.projectId === project?.id) {
+      setOptions(o => ({ ...o, ...draft.options }))
+      setPeaks(draft.peaks)
+      setFitSelection(draft.fitSelection.filter(id => project?.groups.some(g => g.id === id)))
+    }
+    setLcfTargets(active ? [active.id] : [])
+    setSuggestions(null); setSuggestionPicks([])
     if (name === "merge" || name === "sum") {
       setCombineWeights(Object.fromEntries(marked.map(g => [g.id, 1])))
       setCombineArray("")
@@ -1420,7 +1481,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       setMapping(shared)
       if (inspect.file_plugin?.review_required) setBatchImportNotice('Batch import paused: this file requires a separate reader review. Your shared parameters are ready below.')
     } else {
-      if (reuseMapping && reuseFrom) setBatchImportNotice('Batch import paused: selected columns are missing or have moved. Review the parameters for this file before continuing.')
+      if (reuseMapping && reuseFrom) setBatchImportNotice(`Batch import paused: ${reuseProblem(reuseFrom.inspection, inspect, reuseFrom.mapping) ?? 'selected columns are missing or have moved.'} Review the columns for this file; importing it continues the batch with the columns you choose here.`)
       setMapping(m => initialColumnMapping(inspect, m, true, resetReference))
       // Last accepted column choices precede personal grid defaults in Athena.
       // Adopting even an equal grid prevents a late defaults response replacing it.
@@ -1428,8 +1489,18 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     }
     return inspect
   }
-  async function queueFiles(incoming: ImportFile[]) {
-    if (!canOpen("import") || !incoming.length || parameterActionBlocked()) return
+  // In a batch of dozens of scans, a refusal must say which scan it was.
+  async function namingFile<T>(name: string, work: Promise<T>): Promise<T> {
+    try { return await work } catch (e) {
+      if (e instanceof Error && !(e instanceof ApiRequestError && e.code === "stale_revision") && !e.message.startsWith(name + ": ")) e.message = `${name}: ${e.message}`
+      throw e
+    }
+  }
+  async function queueFiles(selection: ImportFile[], includeAll = false) {
+    if (!canOpen("import") || !selection.length || parameterActionBlocked()) return
+    const excluded = includeAll ? new Map<number, string>() : batchExclusions(selection.map(file => file.name))
+    const incoming = selection.filter((_, index) => !excluded.has(index))
+    setBatchLeftOut(excluded.size ? { files: selection, left: [...excluded].map(([index, reason]) => ({ name: selection[index].name, reason })) } : null)
     setReuseMapping(null)
     setBatchImportNotice('')
     inspectionReuseRef.current = undefined
@@ -1450,7 +1521,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     setMapping(m => ({ ...m, is_reference: false, preprocessing: { ...(m.preprocessing ?? defaultPreprocessing), mark: false },
       ...(m.rebin ? { rebin: { ...m.rebin, enabled: false } } : {}) }))
     setModal("import"); setFiles(incoming)
-    await task("Inspecting " + incoming[0].name, async () => { await inspectFile(incoming[0], undefined, incoming) })
+    await task("Inspecting " + incoming[0].name, async () => { await namingFile(incoming[0].name, inspectFile(incoming[0], undefined, incoming)) })
   }
   async function importUpload(projectId: string, body: { upload_id: string } & Record<string, unknown>) {
     const keys = importKeys.current
@@ -1483,7 +1554,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       }
       try {
         progress(inspection.display_name, 'importing')
-        imported(await importUpload(current.id, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspection.upload_id, ...(readerReviewed ? { reader_reviewed: true } : {}) }), inspection.display_name)
+        imported(await namingFile(inspection.display_name, importUpload(current.id, { ...columnPayload(mapping), edge_policy, version: current.version, upload_id: inspection.upload_id, ...(readerReviewed ? { reader_reviewed: true } : {}) })), inspection.display_name)
         let remaining = files.slice(1); setFiles(remaining)
         pendingCount = remaining.length
         while (remaining.length) {
@@ -1492,11 +1563,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
             return
           }
           progress(remaining[0].name, 'inspecting')
-          const inspected = await inspectFile(remaining[0], sharedImport, remaining)
+          const inspected = await namingFile(remaining[0].name, inspectFile(remaining[0], sharedImport, remaining))
           const shared = inspected && reuseMapping ? reuseColumnMapping(inspection, inspected, mapping) : null
           if (!inspected || !shared || inspected.file_plugin?.review_required) return
           progress(inspected.display_name, 'importing')
-          imported(await importUpload(current.id, { ...columnPayload(shared), edge_policy, version: current.version, upload_id: inspected.upload_id }), inspected.display_name)
+          imported(await namingFile(inspected.display_name, importUpload(current.id, { ...columnPayload(shared), edge_policy, version: current.version, upload_id: inspected.upload_id })), inspected.display_name)
           remaining = remaining.slice(1); setFiles(remaining)
           pendingCount = remaining.length
         }
@@ -1551,15 +1622,40 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     setFiles(pending); setInspection(null)
     if (!pending.length) { setError(''); return }
     if (isProjectCandidate(pending[0])) await queueFiles(pending)
-    else await task('Inspecting ' + pending[0].name, async () => { await inspectFile(pending[0], inspectionReuseRef.current, pending) })
+    else await task('Inspecting ' + pending[0].name, async () => { await namingFile(pending[0].name, inspectFile(pending[0], inspectionReuseRef.current, pending)) })
   }
   function importPolicyNotice() {
     return <section className="ath-import-policy" aria-label="Import batch edge policy">
       <p>Next batch:<SectionHelp label="Import edge policy">Only subsequent raw-file imports use enforcement; χ(k) ignores it and project restores are unchanged. Choosing new files starts a new batch with the current policy.</SectionHelp> <strong>{edgePolicyDescription(edgePolicy)}</strong>. {edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</p>
       {!!files.length && <p>This batch: <strong>{edgePolicyDescription(batchEdgePolicy)}</strong><SectionHelp label="Current import batch">This snapshot covers every sample, including retries. Reference identity follows the Same element option; its E₀ is found independently.</SectionHelp></p>}
 
+      {batchLeftOut && <div className="ath-warning" role="status" aria-label="Files left out of this batch"><p>Left out of this batch: {batchLeftOut.left.map(item => `${item.name} (${item.reason})`).join('; ')}.</p><button disabled={!!busy} onClick={() => { void queueFiles(batchLeftOut.files, true) }}>Include them</button></div>}
       {!inspection && !scanSelection && !archiveSelection && !!files.length && <div className="ath-modal-actions"><button disabled={!!busy} onClick={() => { void task("Inspecting " + files[0].name, async () => { await inspectFile(files[0], inspectionReuseRef.current, files, inspectionResetReferenceRef.current) }) }}>Retry file inspection</button><button disabled={!!busy} onClick={() => { void skipImportFile() }}>Skip this file</button></div>}
     </section>
+  }
+  /** Rank the bundled standards for the current group, without changing it. */
+  async function suggestReferences() {
+    if (!active) return
+    await task("Suggesting standards", async () => {
+      const p = projectRef.current!
+      // The ranking must answer the question the fit will ask: the same signal
+      // over the same window the dialog will fit.
+      const result = await athenaApi<Analysis>(`/projects/${p.id}/analyze`, {
+        version: p.version, action: "lcf_suggest", group_ids: [active.id],
+        options: { array: options.array, xmin: options.xmin, xmax: options.xmax, top: 12 } })
+      setSuggestions(result.result); setSuggestionPicks([])
+    })
+  }
+  /** Copy the ticked standards into the project and tick them for the fit. */
+  async function addSuggestedReferences() {
+    if (!suggestionPicks.length) return
+    await task("Adding standards", async () => {
+      const before = new Set(projectRef.current?.groups.map(group => group.id) ?? [])
+      const next = await command("add_references", [], { library_ids: suggestionPicks })
+      const added = next.groups.filter(group => !before.has(group.id)).map(group => group.id)
+      setFitSelection(selection => [...selection, ...added.filter(id => !selection.includes(id))])
+      setSuggestions(null); setSuggestionPicks([])
+    })
   }
   async function runTool() {
     if (!modal || !active || parameterActionBlocked()) return
@@ -1568,9 +1664,23 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         const p = projectRef.current!
         const opts: Record<string, unknown> = { array: options.array, xmin: options.xmin, xmax: options.xmax }
         if (modal === "lcf") Object.assign(opts, { sum_to_one: options.sum_to_one, nonnegative: options.nonnegative })
+        if (modal === "lcf" && options.search && !options.lcf_series) Object.assign(opts, { min_components: options.min_components, max_components: options.max_components, top: 12 })
+        const lcfSeries = modal === "lcf" && Boolean(options.lcf_series)
+        if (lcfSeries) {
+          // A group ticked as a target is shown greyed out in the standards list,
+          // and is not sent as a standard.
+          opts.standards = fitSelection.filter(id => !lcfTargets.includes(id))
+          if (!lcfTargets.length) throw new Error("Tick at least one target scan for the series.")
+        }
         if (modal === "peaks") opts.peaks = peaks
+        if (modal === "peaks" && options.peak_background !== "line") {
+          opts.background = { step: { form: options.peak_background, center: options.step_at_e0 ? "e0" : options.step_center, sigma: options.step_sigma, vary: Boolean(options.step_vary) } }
+        }
+        if (modal === "peaks" && options.series) opts.share = { center: Boolean(options.share_center), sigma: Boolean(options.share_sigma) }
         if (modal === "log_ratio") Object.assign(opts, { kmin: options.kmin, kmax: options.kmax, phase_offset: options.phase_offset, fit_cumulants: true, max_cumulant: options.max_cumulant })
-        const result = await athenaApi<Analysis>(`/projects/${p.id}/analyze`, { version: p.version, action: modal, group_ids: modal === "peaks" ? [active.id] : modal === "log_ratio" ? [active.id, options.reference_id] : fitSelection, options: opts })
+        const series = modal === "peaks" && Boolean(options.series)
+        const action = lcfSeries ? "lcf_series" : modal === "lcf" && options.search ? "lcf_search" : series ? "peaks_series" : modal
+        const result = await athenaApi<Analysis>(`/projects/${p.id}/analyze`, { version: p.version, action, group_ids: lcfSeries ? p.groups.filter(g => lcfTargets.includes(g.id)).map(g => g.id) : modal === "peaks" ? (series ? fitSelection : [active.id]) : modal === "log_ratio" ? [active.id, options.reference_id] : fitSelection, options: opts })
         setShownViewers(previous => new Set([...previous, "single"]))
         setAnalysis(result); setAnalysisVisible(true)
         const updated = { ...p, analyses: [...(p.analyses ?? []), result].slice(-50) }
@@ -1588,7 +1698,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         }
         const keys: Record<string, string[]> = { calibrate: ["target", "observed"], align: ["reference_id", "xmin", "xmax", "use_reference"],
           merge: [], sum: [], smooth: ["window", "order"], deglitch: ["xmin", "xmax"], truncate: ["xmin", "xmax"],
-          convolve: ["form", "width"], deconvolve: ["form", "width", "xmin", "xmax"], self_absorption: ["formula", "element", "edge", "angle_in", "angle_out"], dispersive: ["offset", "linear", "quadratic"],
+          convolve: ["form", "width"], deconvolve: ["form", "width", "xmin", "xmax"], dispersive: ["offset", "linear", "quadratic"],
           multi_electron: ["method", "e0", "shift", "amplitude", "width", "edge_step"], copy_series: ["parameter", "start", "stop", "count"] }
         if (keys[modal]) opts = Object.fromEntries(keys[modal].map(key => [key, opts[key]]))
         if (modal === "merge" || modal === "sum") {
@@ -1601,7 +1711,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         }
         const previousIds = new Set(projectRef.current?.groups.map(group => group.id) ?? [])
         const next = await command(modal, ids, opts)
-        if (["merge", "sum", "difference", "smooth", "deglitch", "truncate", "rebin", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"].includes(modal)) {
+        if (["merge", "sum", "difference", "smooth", "deglitch", "truncate", "rebin", "convolve", "deconvolve", "dispersive", "multi_electron", "copy_series"].includes(modal)) {
           setActiveId(next.groups.filter(group => !previousIds.has(group.id)).at(-1)?.id ?? active.id)
         }
       }
@@ -2006,10 +2116,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     if ("folderId" in target) moveSpectraIntoFolder(drag.ids, target.folderId)
     else moveGroupTo(drag.id, target, drag.ids)
   }
-  const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "multi_electron", "copy_series"] as const satisfies readonly Exclude<ModalName, null>[]
+  const toolsMenu = ["calibrate", "align", "merge", "difference", "sum", "rebin", "deglitch", "truncate", "smooth", "convolve", "deconvolve", "self_absorption", "dispersive", "xrf_xas", "xrf_view", "multi_electron", "copy_series"] as const satisfies readonly Exclude<ModalName, null>[]
   const analysisMenu = ["lcf", "pca", "peaks", "log_ratio"] as const satisfies readonly Exclude<ModalName, null>[]
   const canOpenTool = (tool: ModalName) => {
-    if (integrated && (tool === "merge" || tool === "dispersive")) return false
+    if (integrated && (tool === "merge" || tool === "dispersive" || tool === "xrf_xas" || tool === "xrf_view")) return false
     return canOpen(tool)
   }
   const download = async (path: string, filename: string, filenameOverride = false) => {
@@ -2073,9 +2183,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const menuCommands: MenuCommand[] = [
     { id: "file-export-columns", menu: "File", label: "Export column data…", keywords: "download save csv text", disabled: !project || !active || !!busy || parameterUpdatePending || !canOpen("data_export"), icon: <Download size={15} />, action: () => openTool("data_export") },
     { id: "file-save-marked", menu: "File", label: "Save marked project (.prj)", keywords: "download export selected groups", disabled: !marked.length || !!busy || parameterUpdatePending, visible: !!project && can("export"), icon: <Download size={15} />, action: () => openProjectSave("prj", true) },
-    { id: "file-new", menu: "File", label: "New project", keywords: "create reset workspace", disabled: !!busy || parameterUpdatePending, visible: !integrated, icon: <Plus size={15} />, action: () => { setMenu(""); void task("Creating project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi("/projects", {})); setDrafts({}) }) } },
+    { id: "file-new", menu: "File", label: "New project", keywords: "create reset workspace", disabled: !!busy || parameterUpdatePending, visible: !integrated, icon: <Plus size={15} />, action: () => { setMenu(""); void task("Creating project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi("/projects", {})); setDrafts({}); setParameterTab("processing") }) } },
     { id: "file-import", menu: "File", label: "Import data…", keywords: "upload add spectra files", disabled: !project || !!busy || parameterUpdatePending, visible: can("upload"), icon: <Upload size={15} />, action: () => { setMenu(""); setModal("import") } },
-    { id: "file-open", menu: "File", label: "Open project…", keywords: "load recent workspace", disabled: !!busy || parameterUpdatePending, visible: !integrated, icon: <FolderOpen size={15} />, action: () => openTool("open") },
+    { id: "file-open", menu: "File", label: "Open project…", keywords: "load recent workspace", disabled: !project || !!busy || parameterUpdatePending, visible: !integrated, icon: <FolderOpen size={15} />, action: () => openTool("open") },
     { id: "file-save-athena", menu: "File", label: "Save Athena project (.prj)", keywords: "download export", disabled: !!busy || parameterUpdatePending, visible: !!project && can("export"), section: 1, icon: <Download size={15} />, action: () => openProjectSave() },
     { id: "file-save-web", menu: "File", label: "Save complete web project", keywords: "download export json", disabled: !!busy || parameterUpdatePending, visible: !!project && can("export"), section: 1, icon: <Download size={15} />, action: () => openProjectSave("json") },
     { id: "file-export-larix", menu: "File", label: "Export Larix session (.larix)", keywords: "larch desktop exafs model current spectrum", disabled: !active || !!busy || parameterUpdatePending || !artemisActions?.canExportModel, visible: !!project && !integrated, section: 1, icon: <Download size={15} />, action: () => void exportLarix() },
@@ -2110,7 +2220,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     { id: "plot-diagnostic", menu: "Plot", label: "Diagnostic plots…", keywords: "chart inspect", disabled: !active || !!busy || parameterUpdatePending || !canOpen("diagnostic_plot"), action: () => openTool("diagnostic_plot") },
     { id: "plot-merge-spread", menu: "Plot", label: "Saved merge spread…", keywords: "chart standard deviation", disabled: !active || !hasSavedMerge(active) || !!busy || parameterUpdatePending || !canOpen("merge_plot"), action: () => openTool("merge_plot") },
 
-    ...toolsMenu.map(tool => ({ id: `process-${tool}`, menu: "Process" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: (tool === "dispersive" ? !project : !active) || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
+    ...toolsMenu.map(tool => ({ id: `process-${tool}`, menu: "Process" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: (tool === "dispersive" || tool === "xrf_xas" || tool === "xrf_view" ? !project : !active) || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
     ...analysisMenu.map(tool => ({ id: `analysis-${tool}`, menu: "Analysis" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: !active || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
 
     { id: "help-learn", menu: "Help", label: "Learn Athena", keywords: "documentation guide tutorial", disabled: false, icon: <BookOpen size={15} />, action: () => openTool("learn") },
@@ -2184,7 +2294,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       if (event.key === "Escape" && groupDragRef.current?.id === group.id) { event.preventDefault(); cancelGroupDrag(); return }
       if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return
       event.preventDefault(); cancelGroupDrag(); moveGroupBy(group.id, event.key === "ArrowUp" ? -1 : 1)
-    }}><GripVertical size={14} /></button><input aria-label={`Mark ${group.label}`} type="checkbox" checked={group.marked} disabled={!!busy || parameterUpdatePending || !canCommand("metadata")} onChange={event => markSpectra([group.id], event.target.checked)} /><button className="ath-group-select" disabled={!!busy} aria-pressed={moveSelection.has(group.id)} aria-describedby="ath-group-multiselect-help" onClick={event => selectGroupForMove(event, group)} onPointerDown={event => beginGroupDrag(event, group)} onPointerMove={updateGroupDrag} onPointerUp={finishGroupDrag} onPointerCancel={cancelGroupDrag} onLostPointerCapture={event => { if (groupDragRef.current?.pointerId === event.pointerId) cancelGroupDrag() }}><span className="ath-swatch" style={{ background: spectrumColors.get(group.id) ?? "var(--ath-line)" }} /><span><strong>{group.label}</strong><small>{isDifferenceGroup(group) ? (group.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(group)} · {group.energy.length.toLocaleString()} points{group.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" data-tag={measurementMode} title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{isReference && <span className="ath-measurement-tag" data-tag="ref" title={consumers.length ? `Reference for ${consumers.map(sample => sample.label).join(", ")}` : "Reference"}>ref{consumers.length > 0 ? ` · ${consumers.length}` : ""}</span>}{group.frozen && <LockKeyhole size={12} />}{drafts[group.id] && !sameParameters(drafts[group.id], group.parameters) && <i title={autoApplyPlans[group.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[group.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button>
+    }}><GripVertical size={14} /></button><input aria-label={`Mark ${group.label}`} type="checkbox" checked={group.marked} disabled={!!busy || parameterUpdatePending || !canCommand("metadata")} onChange={event => markSpectra([group.id], event.target.checked)} /><button className="ath-group-select" disabled={!!busy} aria-pressed={moveSelection.has(group.id)} aria-describedby="ath-group-multiselect-help" onClick={event => selectGroupForMove(event, group)} onPointerDown={event => beginGroupDrag(event, group)} onPointerMove={updateGroupDrag} onPointerUp={finishGroupDrag} onPointerCancel={cancelGroupDrag} onLostPointerCapture={event => { if (groupDragRef.current?.pointerId === event.pointerId) cancelGroupDrag() }}><span className="ath-swatch" style={{ background: spectrumColors.get(group.id) ?? "var(--ath-line)" }} /><span><GroupLabel label={group.label} /><small>{isDifferenceGroup(group) ? (group.data_type === "chi" ? "Δχ(k)" : "Difference (E)") : dataTypeLabel(group)} · {group.energy.length.toLocaleString()} points{group.processing_error ? " · needs processing" : ""}</small></span>{measurementMode && <span className="ath-measurement-tag" data-tag={measurementMode} title={measurementMode === "trans" ? "Transmission" : "Fluorescence"}>{measurementMode}</span>}{isReference && <span className="ath-measurement-tag" data-tag="ref" title={consumers.length ? `Reference for ${consumers.map(sample => sample.label).join(", ")}` : "Reference"}>ref{consumers.length > 0 ? ` · ${consumers.length}` : ""}</span>}{group.frozen && <LockKeyhole size={12} />}{drafts[group.id] && !sameParameters(drafts[group.id], group.parameters) && <i title={autoApplyPlans[group.id]?.status === "failed" ? "Automatic processing failed" : autoApplyPlans[group.id] ? "Pending automatic processing" : "Draft parameter values"} className="ath-dirty-dot" />}</button>
       {!reference && canAssignReference && <button type="button" className="ath-reference-edit" aria-label={`Assign reference for ${group.label}`} title="Assign reference foil" disabled={!!busy || parameterUpdatePending} onClick={() => openReferencePicker([group.id])}><Link2 size={14} /></button>}
       {reference && <div className="ath-reference-branch" role="group" aria-label={`Reference for ${group.label}`}>
         <button type="button" className="ath-reference-link" disabled={!!busy} aria-label={`View reference ${reference.label} for ${group.label}`} title={`View ${reference.label}`} onClick={() => viewReference(reference)}><Link2 size={12} aria-hidden="true" /><span className="ath-reference-kind">ref</span><span className="ath-reference-name">{reference.label}</span></button>
@@ -2227,11 +2337,15 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
 
   const shortcutSettings = ["i0", "e00", "normscaled", "biquad"].includes(specialPlot) ? multipleSpectra : singleSpectrum
 
+  const lcfPlotRows = analysis?.kind === "lcf_series"
+    ? ((analysis.result.targets ?? []) as { group_id: string; label: string; x?: number[] }[]).filter(row => Array.isArray(row.x)) : []
+  const lcfPlotted = lcfPlotRows.find(row => row.group_id === lcfPlotTarget) ?? lcfPlotRows.find(row => row.group_id === active?.id) ?? lcfPlotRows[0]
   function renderSpectrumViewer(viewer: "single" | "multiple") {
     const state = viewer === "single" ? singleSpectrum : multipleSpectra
     return <AthenaSpectrumViewer viewer={viewer} state={state}
       weightedPlot={viewer === "single" ? singleWeightedPlot : multipleWeightedPlot}
       active={active} analysis={analysis} analysisVisible={viewer === "single" && analysisVisible}
+      seriesTarget={lcfPlotted ? { id: lcfPlotted.group_id, label: lcfPlotted.label } : undefined}
       savedKWeight={savedKWeight(viewer === "single" ? singleGroups : marked)} canChangeKWeight={can("plot")} draftE0={draftE0}
       onChangeSpace={space => { if (viewer === "single") changeSpace(space); else { state.setSpace(space); state.setRange([null, null]) } }}
       onSpecialPlot={canOpen("special_plot") ? space => specialPlotShortcut(space, state.plotScope) : undefined}
@@ -2267,7 +2381,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
           {!integrated && <div className="ath-example-details"><small id="ath-copper-example-hint">{readyCupriteExample ? "Cu₂O EXAFS example added" : "Includes shared foil + Cu₂O EXAFS"}</small>
           </div>}
         </div>
-        <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>
+        <div className="ath-sidebar-actions" role="group" aria-label="Project actions">{!integrated && <button type="button" disabled={!project || !!busy || parameterUpdatePending} onClick={() => openTool("open")}><FolderOpen size={15} />Open project</button>}<button type="button" onClick={() => openTool("journal")} disabled={!project || !!busy || parameterUpdatePending || !can("project")} aria-label="Project journal"><FileText size={15} /></button></div>
         <label className="ath-search"><Search size={14} /><input aria-label="Search groups" placeholder="Find a spectrum…" value={search} onChange={e => { cancelGroupDrag(); setSearch(e.target.value) }} /></label>
         <div className="ath-group-sort-row"><label><ArrowUpDown size={13} aria-hidden="true" /><span>Sort</span><select aria-label="Sort spectra" aria-describedby="ath-group-sort-help" value={groupSort} onChange={event => changeGroupSort(event.target.value as GroupSort)}><option value="manual">Manual order</option><option value="added">Added order</option><option value="name">Name A–Z</option><option value="tag">Tag type</option></select></label><span id="ath-group-sort-help" className="ath-sr-only">Sorting changes only the view and keeps folders together. Added order is when each spectrum was added to or created in the project. Tag order is trans, fluo, ref, then untagged. Switch to Manual order to reorder spectra.</span></div>
         <div className="ath-mark-toolbar"><label><input type="checkbox" aria-label="Mark all groups" disabled={!project?.groups.length || !!busy || !canCommand("metadata")} checked={!!project?.groups.length && marked.length === project.groups.length} onChange={e => markSpectra(project!.groups.map(g => g.id), e.target.checked)} />{marked.length} marked</label><button type="button" aria-label="Assign reference foil" title="Assign a reference to selected or marked spectra" disabled={!project?.groups.length || !!busy || parameterUpdatePending || !canOpen("reference")} onClick={() => openReferencePicker()}><Link2 size={13} />Ref</button><span className="ath-group-list-tools"><button type="button" aria-label="Create empty group" title="Create an empty group" disabled={!project || !!busy || parameterUpdatePending || !can("project")} onClick={() => createGroupFolder()}><FolderPlus size={13} />Group</button><span className="ath-reorder-hint" id="ath-group-reorder-help" title={groupSort === "manual" ? undefined : "Switch to Manual order to reorder spectra"}>{groupSort === "manual" ? <><GripVertical size={12} />Drag to reorder<span className="ath-sr-only"> within the same group, or drag into another group. Use the Up and Down arrow keys for precise movement.</span></> : <><ArrowUpDown size={12} />Sorted view<span className="ath-sr-only">. Switch to Manual order to reorder spectra.</span></>}</span></span><span className="ath-sr-only" aria-live="polite">{reorderAnnouncement}</span></div>
@@ -2293,13 +2407,13 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         {active && <section className="ath-group-identity" aria-label="Current absorber and edge"><span onContextMenu={event => showContext(event, { kind: "section", section: "group" })}>Absorber / edge: <strong>{edgeIdentityDescription(active)}</strong></span><button disabled={active.frozen || !!busy || !canOpen("edge_identity")} onClick={openEdgeIdentity}>Edit absorber and edge…</button></section>}
         {renderSpectrumViewer("single")}
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
-        {analysis && <section className="ath-analysis-result"><header><h3 aria-label={toolTitles[analysis.kind]}>{toolTitles[analysis.kind]}{analysis.kind === "log_ratio" && <SectionHelp label="Log-ratio results">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</SectionHelp>}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <div className="ath-weights">{(analysis.result.weights as number[] ?? []).map((weight, i) => <div key={i}><span>{(analysis.result.labels as string[])[i]}</span><strong>{(weight * 100).toFixed(2)}%</strong></div>)}<p>R-factor: {Number(analysis.result.rfactor).toPrecision(5)}</p></div>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <pre>{JSON.stringify(analysis.result.parameters, null, 2)}</pre>}{analysis.kind === "log_ratio" && <><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
+        {analysis && <section className="ath-analysis-result"><header><h3 aria-label={toolTitles[analysis.kind]}>{toolTitles[analysis.kind]}{analysis.kind === "log_ratio" && <SectionHelp label="Log-ratio results">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</SectionHelp>}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}{lcfPlotted && <label className="ath-field"><span>Plotted target</span><select aria-label="Plotted target" value={lcfPlotted.group_id} onChange={e => { setLcfPlotTarget(e.target.value); setAnalysisVisible(true) }}>{lcfPlotRows.map(row => <option key={row.group_id} value={row.group_id}>{row.label}</option>)}</select></label>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <LcfWeights result={analysis.result} />}{analysis.kind === "lcf_search" && <LcfSearchSummary result={analysis.result} />}{analysis.kind === "lcf_series" && <><LcfSeriesSummary result={analysis.result} /><SeriesTrend title="Series LCF trend" {...lcfSeriesTrend(analysis.result)} /></>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <PeakSummary result={analysis.result} unit={analysis.options.array === "chi" ? "Å⁻¹" : "eV"} />}{analysis.kind === "peaks_series" && <><PeakSeriesSummary result={analysis.result} unit={analysis.options.array === "chi" ? "Å⁻¹" : "eV"} /><SeriesTrend title="Peak series trend" {...peakSeriesTrend(analysis.result, analysis.options.array === "chi" ? "Å⁻¹" : "eV")} /></>}{analysis.kind === "log_ratio" && <><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
         </> : viewer === "multiple" ? renderSpectrumViewer("multiple") : viewer === "wavelet" ? <AthenaWavelet projectId={can("plot") ? project?.id : undefined} version={project?.version} dataVersion={plotDataVersion} group={active} kWeight={waveletKWeight} onKWeightChange={setWaveletKWeight} pending={!!dirty || !!activeAutoApplyPlan} onComplete={(projectId, groupId) => { if (projectRef.current?.id === projectId && active?.id === groupId) recordViewerActivity("wavelet", projectId, groupId, true) }} />
           : viewer === "cif" ? <ProjectCifViewer key={project?.id} attachments={project?.artemis_structures}
           selectedId={cifSelection?.projectId === project?.id ? cifSelection?.attachmentId : undefined}
           selectedSite={cifSelection?.projectId === project?.id ? cifSelection?.siteIndex : undefined}
           onSelect={(attachmentId, siteIndex) => setCifSelection({ projectId: project?.id, attachmentId, siteIndex })} />
-          : viewer === "feff" ? <FeffPathViewer paths={currentFeffPaths} groupLabel={active?.label} onOpenModel={openFittingFromResults} attachments={project?.artemis_structures} />
+          : viewer === "feff" ? <FeffPathViewer paths={currentFeffPaths} model={currentFeff?.model ?? null} groupLabel={active?.label} onOpenModel={openFittingFromResults} attachments={project?.artemis_structures} />
           : <ArtemisFitResultViewer projectId={can("plot") ? project?.id : undefined} version={project?.version} group={active} pending={!!busy || !!dirty || parameterUpdatePending} result={currentFitResult} />}
         </div>)}</div>
       </section>}
@@ -2344,6 +2458,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         defaultsControls={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />}
         saved={next => { accept(next); setMessage('Rebinned groups saved') }} />
     </Modal>}
+    {modal === 'self_absorption' && project && <Modal title="Fluorescence self-absorption" wide close={() => { if (!busy) setModal(null) }}>
+      <AthenaSelfAbsorption key={project.id} project={project} activeId={activeId} selectGroup={setActiveId} setBusy={setBusy} disabled={!!busy}
+        close={() => setModal(null)} saved={next => { const added = next.groups.find(g => !project.groups.some(old => old.id === g.id)); accept(next); if (added) setActiveId(added.id); setMessage('Corrected group saved') }} />
+    </Modal>}
     {modal === 'multi_electron' && project && <Modal title="Multi-electron excitation" wide close={() => { if (!busy) setModal(null) }}>
       <AthenaMEE key={project.id} project={project} activeId={activeId} selectGroup={setActiveId} setBusy={setBusy} disabled={!!busy}
         close={() => setModal(null)} saved={next => { const added = next.groups.find(g => !project.groups.some(old => old.id === g.id)); accept(next); if (added) setActiveId(added.id); setMessage('MEE-corrected group saved') }} />
@@ -2373,6 +2491,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     {modal === "merge" && project && <Modal title="Merge marked groups" wide close={() => { if (!busy) setModal(null) }}><AthenaMerge key={project.id} project={project} initialDraft={mergeDraft} initialArray={mergeInitialArray} rememberDraft={setMergeDraft} disabled={!!busy} setBusy={setBusy} saved={(next,id) => { accept(next); setActiveId(id); setMessage('Merged spectra saved') }} close={() => setModal(null)} /></Modal>}
     {modal === "align" && project && <Modal title="Align scans" wide close={() => { if (!busy) setModal(null) }}><AthenaAlignment key={`${project.id}:${activeId}`} project={project} activeId={activeId} selectGroup={setActiveId} initialDraft={alignmentDraft} rememberDraft={setAlignmentDraft} disabled={!!busy} setBusy={setBusy} saved={next => { accept(next); setMessage('Energy alignment saved') }} close={() => setModal(null)} /></Modal>}
     {modal === "dispersive" && project && <Modal title="Dispersive energy calibration" wide close={() => { if (!busy) setModal(null) }}><AthenaDispersive project={project} activeId={activeId} setBusy={setBusy} onSaved={next => { const added=next.groups.find(g=>!project.groups.some(old=>old.id===g.id)); accept(next); if(added)setActiveId(added.id) }} /></Modal>}
+    {modal === "xrf_xas" && project && <Modal title="Fluorescence XAS from XRF fit" wide close={() => { if (!busy) setModal(null) }}><AthenaXrfXas project={project} setBusy={setBusy} onSaved={next => { const added=next.groups.find(g=>!project.groups.some(old=>old.id===g.id)); accept(next); if(added)setActiveId(added.id) }} /></Modal>}
+    {modal === "xrf_view" && project && <Modal title="Raw XRF spectra and maps" wide close={() => { if (!busy) setModal(null) }}><AthenaXrfView project={project} setBusy={setBusy} /></Modal>}
     {modal === "beamline" && <Modal title="Beamline identification" close={() => setModal(null)}><div className="ath-modal-body"><AthenaBeamlinePreferences close={() => setModal(null)} /></div></Modal>}
     {modal === 'parameter_report' && project && <Modal title="Excel parameter report" wide close={() => { if (!busy) setModal(null) }}>
       <div className="ath-modal-body"><AthenaParameterReport key={`${project.id}:${reportScope}`} project={project} initialScope={reportScope}
@@ -2396,7 +2516,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       <label className="ath-field"><span>Group name</span><input autoFocus maxLength={100} value={groupFolderDraft.name} onChange={event => { setGroupFolderDraft(draft => ({ ...draft, name: event.target.value })); setGroupFolderError("") }} placeholder="e.g. Temperature series" /></label>
       <fieldset disabled={!!busy}><legend>Choose spectra<SectionHelp label="Choose spectra">Marked spectra are selected automatically. Selecting a spectrum from another group moves it here when you save.</SectionHelp></legend><div className="ath-group-folder-choices">{project.groups.map(group => {
         const currentFolder = groupFolderByGroupId.get(group.id)
-        return <label key={group.id}><input type="checkbox" checked={groupFolderDraft.groupIds.includes(group.id)} onChange={event => { setGroupFolderDraft(draft => ({ ...draft, groupIds: event.target.checked ? [...draft.groupIds, group.id] : draft.groupIds.filter(id => id !== group.id) })); setGroupFolderError("") }} /><span><strong>{group.label}</strong><small>{currentFolder && currentFolder.id !== groupFolderDraft.id ? `Currently in ${currentFolder.name}` : dataTypeLabel(group)}</small></span></label>
+        return <label key={group.id}><input type="checkbox" checked={groupFolderDraft.groupIds.includes(group.id)} onChange={event => { setGroupFolderDraft(draft => ({ ...draft, groupIds: event.target.checked ? [...draft.groupIds, group.id] : draft.groupIds.filter(id => id !== group.id) })); setGroupFolderError("") }} /><span><GroupLabel label={group.label} /><small>{currentFolder && currentFolder.id !== groupFolderDraft.id ? `Currently in ${currentFolder.name}` : dataTypeLabel(group)}</small></span></label>
       })}</div></fieldset>
       {(groupFolderError || error) && <p className="ath-error" role="alert">{groupFolderError || error}</p>}
       <div className="ath-modal-actions">{groupFolderDraft.id && <button type="button" className="ath-remove-folder" disabled={!!busy} onClick={removeGroupFolder}>Remove group · keep spectra</button>}<span className="ath-modal-spacer" /><button type="button" disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="ath-primary" disabled={!!busy}>Save group</button></div>
@@ -2439,18 +2559,17 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         onBusyChange={pending => setBusy(pending ? 'Updating import columns' : '')} close={() => setModal(null)}
         onApplied={updated => { accept(updated); setActiveId(reimportGroupId); setAnalysisVisible(false); setArtemisResult(null); setModal(null); setMessage('Import columns updated · Undo is available') }} /></div>
     </Modal>}
-    {modal === "import" && <Modal title="Import spectra" wide={!batchProgress} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{batchProgress ? <><AthenaImportProgress {...batchProgress} />{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</> : <>{importPolicyNotice()}<div className="ath-modal-actions ath-import-toolbar" aria-label="File import tools"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection?.file_plugin && <SectionHelp label="File plugin preview">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</SectionHelp>}{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0], undefined, files, false) }) }}>Reinspect selected file</button>}</div>{archiveSelection ? <AthenaArchiveSelection key={archiveSelection.upload_id} archive={archiveSelection} projectId={project!.id} busy={!!busy} onContinue={selected => { void reviewArchive(selected) }} onCancel={() => { setArchiveSelection(null); setInspection(null); setFiles([]) }} /> : scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files<SectionHelp label="Import data files">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</SectionHelp></strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj, ZIP · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label></> : <AthenaColumnSelection key={inspection.upload_id} initialReaderReviewed={reviewedUploadId === inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} batchNotice={batchImportNotice} chooseAnother={() => { setInspection(null); setFiles([]) }} importCurrent={reviewed => { void importCurrent(reviewed) }} />}</>}{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
-    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport initialFiles={projectFiles} initialPreview={projectPreview} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={(p, wholeProject) => { accept(p); if (wholeProject) resetViewerLayout(); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setProjectPreview(null); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} canRestore={can("restore")} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi(`/projects/${p.id}`)); resetViewerLayout(); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "import" && <Modal title="Import spectra" wide={!batchProgress} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body">{batchProgress ? <><AthenaImportProgress {...batchProgress} />{edgePolicy && <button onClick={stopEdgePolicy}>Stop enforcing element and edge</button>}</> : <>{importPolicyNotice()}<div className="ath-modal-actions ath-import-toolbar" aria-label="File import tools"><button type="button" disabled={!!busy} onClick={openPluginRegistry}>File plugins…</button>{inspection?.file_plugin && <SectionHelp label="File plugin preview">This preview uses the reader settings from the last inspection. After changing file plugins, reinspect the selected file to update its columns and preview.</SectionHelp>}{inspection && files[0] && !('inspection' in files[0]) && <button type="button" disabled={!!busy} onClick={() => { void task('Reinspecting ' + files[0].name, async () => { await inspectFile(files[0], undefined, files, false) }) }}>Reinspect selected file</button>}</div>{archiveSelection ? <AthenaArchiveSelection key={archiveSelection.upload_id} archive={archiveSelection} projectId={project!.id} busy={!!busy} onContinue={selected => { void reviewArchive(selected) }} onCancel={() => { setArchiveSelection(null); setInspection(null); setFiles([]) }} /> : scanSelection ? <AthenaScanSelection key={scanSelection.scans[0]?.upload_id} collection={scanSelection} projectId={project!.id} version={project!.version} busy={!!busy} onContinue={selected => { void reviewScans(selected) }} onCancel={() => { setScanSelection(null); setInspection(null); setFiles([]) }} /> : !inspection ? <><label className="ath-upload-zone"><Upload size={30} /><strong>Choose data files<SectionHelp label="Import data files">Athena projects open with a group preview and selection. You can also drop data files or projects onto the workbench.</SectionHelp></strong><span>ASCII, CSV, XDI, XMU, SPEC scans, Athena .prj, ZIP · multiple files supported</span><input ref={fileInput} type="file" multiple aria-label="Choose data files" disabled={!!busy || !project} onChange={e => { void queueFiles(Array.from(e.target.files ?? [])) }} /></label><AthenaSupportedFormats /></> : <AthenaColumnSelection key={inspection.upload_id} initialReaderReviewed={reviewedUploadId === inspection.upload_id} groups={project!.groups} projectId={project!.id} version={project!.version} inspection={inspection} mapping={mapping} setMapping={setImportMapping} rebinDefaults={<RebinDefaultsControls state={rebinDefaults} disabled={!!busy} />} busy={!!busy} remaining={files.length} reuseMapping={reuseMapping} setReuseMapping={setReuseMapping} batchNotice={batchImportNotice} error={error || undefined} chooseAnother={() => { setInspection(null); setFiles([]) }} skipFile={() => { void skipImportFile() }} importCurrent={reviewed => { void importCurrent(reviewed) }} />}</>}{error && (batchProgress || archiveSelection || scanSelection || !inspection) && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
+    {modal === "open" && <Modal title="Open a project" close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><AthenaProjectImport newProject={async () => { const created = await athenaApi<AthenaProject>("/projects", {}); accept(created); resetViewerLayout(); return created }} initialFiles={projectFiles} initialPreview={projectPreview} onRemainingFiles={incoming => { void queueFiles(incoming) }} getProject={() => projectRef.current} onImported={(p, wholeProject) => { accept(p); if (wholeProject) resetViewerLayout(); setActiveId(p.groups.at(-1)?.id ?? "") }} onComplete={() => { setProjectFiles([]); setProjectPreview(null); setModal(null); setMessage("Project import · complete") }} onBusyChange={setBusy} disabled={!!busy || !project} canRestore={can("restore")} /><h3>Recent local projects</h3><div className="ath-recent">{recent.map(p => <button key={p.id} disabled={!!busy} onClick={() => { void task("Opening project", async () => { await artemisActionsRef.current?.flush(); accept(await athenaApi(`/projects/${p.id}`)); resetViewerLayout(); setDrafts({}); setModal(null) }) }}><FolderOpen size={18} /><span><strong>{p.name}</strong><small>{p.count} groups · {new Date(p.updated).toLocaleString()}</small></span></button>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}</div></Modal>}
     {modal === "journal" && <Modal title="Project journal" close={() => setModal(null)}><div className="ath-modal-body"><label className="ath-field"><span>Project name</span><input value={projectName} onChange={e => setProjectName(e.target.value)} /></label><label className="ath-field"><span>Notes, observations, and analysis decisions</span><textarea rows={8} value={journal} onChange={e => setJournal(e.target.value)} placeholder="Record sample details, beamline conditions, and processing choices…" /></label><h3>Processing history</h3><div className="ath-history">{project?.history.slice().reverse().map((h, i) => <div key={i}><small>{new Date(h.time).toLocaleTimeString()}</small><span>{h.message}</span></div>)}</div>{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button className="ath-primary" disabled={!!busy} onClick={() => { void task("Saving journal", async () => { await command("project", [], { name: projectName, journal }); setModal(null) }) }}>Save journal</button></div></div></Modal>}
-    {modal && modal !== "difference" && modal !== "rebin" && modal !== "dispersive" && modal !== 'multi_electron' && modal !== 'smooth' && modal !== 'convolve' && modal !== 'deglitch' && modal !== 'truncate' && modal !== 'calibrate' && modal !== 'align' && modal !== 'merge' && toolTitles[modal] && <Modal title={toolTitles[modal]} help={toolHelp[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
+    {modal && modal !== "difference" && modal !== "rebin" && modal !== "dispersive" && modal !== "xrf_xas" && modal !== "xrf_view" && modal !== 'multi_electron' && modal !== 'self_absorption' && modal !== 'smooth' && modal !== 'convolve' && modal !== 'deglitch' && modal !== 'truncate' && modal !== 'calibrate' && modal !== 'align' && modal !== 'merge' && toolTitles[modal] && <Modal title={toolTitles[modal]} help={toolHelp[modal]} close={() => { if (!busy) setModal(null) }}><div className="ath-modal-body"><p className="ath-tool-target">Current group <strong>{active?.label}</strong></p>
       {modal === "metadata" ? <>{optionText("label", "Group label")}<label className="ath-field"><span>Notes</span><textarea rows={4} value={String(options.notes ?? "")} onChange={e => setOptions(o => ({ ...o, notes: e.target.value }))} /></label><h3><ContextLabel label="Plot parameters" open={event => showContext(event, { kind: "section", section: "plot" })}>Plot parameters</ContextLabel></h3><div className="ath-fields">{optionNumber("multiplier", "Plot multiplier")}{optionNumber("offset", "Plot offset")}{optionNumber("importance", "Importance")}</div><div className="ath-fields"><ContextLabel label="Element" open={event => showContext(event, { kind: "field", field: "element" })}>Element: {String(active?.result?.effective.element ?? "Unknown")}</ContextLabel><ContextLabel label="Edge" open={event => showContext(event, { kind: "field", field: "edge" })}>Edge: {String(active?.result?.effective.edge ?? "Unknown")}</ContextLabel></div><label className="ath-field"><span>Reference group<SectionHelp label="Reference group">Several spectra can share this reference. Changing it adopts the reference’s energy shift.</SectionHelp></span><select aria-label="Reference group" value={String(options.reference_id)} onChange={e => setOptions(o => ({ ...o, reference_id: e.target.value }))}><option value="">None</option>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><AthenaBeamlineMetadata value={active?.source?.beamline_metadata} /><AthenaBeamlineMetadata value={active?.source?.xdi_metadata} /><details><summary>Source metadata</summary><pre>{JSON.stringify(active?.source, null, 2)}</pre></details></> : <>
       {combining && <><label className="ath-field"><span>Signal to combine<SectionHelp label="Signal to combine">Original data keeps the existing signal and requires matching data types. Choose a common signal to combine different types. χ(k) requires processed EXAFS for every marked group and overlapping k ranges.</SectionHelp></span><select aria-label="Signal to combine" disabled={!!busy} value={combineArray} onChange={e => setCombineArray(e.target.value as typeof combineArray)}><option value="">Original data (same type)</option><option value="mu" disabled={!canCombineMu}>μ(E)</option><option value="norm" disabled={!canCombineNorm}>Normalized μ(E)</option><option value="chi" disabled={!canCombineChi}>χ(k)</option></select></label><div className="ath-fields">{marked.map(g => <label className="ath-field" key={g.id}><span>{"Coefficient"}: {g.label}</span><input type="number" step="any"  disabled={!!busy} value={combineWeights[g.id] ?? ""} onChange={e => setCombineWeights(weights => ({ ...weights, [g.id]: e.target.value === "" ? null : Number(e.target.value) }))} /></label>)}</div>{marked.length < 2 && <p className="ath-hint">Mark at least two groups to combine.</p>}</>}
       {["lcf", "pca", "peaks", "deconvolve"].includes(modal) && <div className="ath-fields">{optionNumber("xmin", "Range minimum", rangeUnit)}{optionNumber("xmax", "Range maximum", rangeUnit)}</div>}
       {modal === "deconvolve" && <><div className="ath-fields">{optionNumber("width", options.kind === "gaussian" ? "Gaussian sigma" : "Lorentzian HWHM", "eV")}<label className="ath-field"><span>Line shape</span><select value={String(options.kind)} onChange={e => setOptions(o => ({ ...o, kind: e.target.value }))}><option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option></select></label></div></>}
-      {modal === "self_absorption" && <><div className="ath-fields">{optionText("formula", "Sample formula")}{optionText("element", "Absorbing element")}{optionText("edge", "Absorption edge")}{optionNumber("angle_in", "Incident angle", "degrees")}{optionNumber("angle_out", "Exit angle", "degrees")}</div></>}
       {modal === "copy_series" && <><label className="ath-field"><span>Parameter</span><select value={String(options.parameter)} onChange={e => setOptions(o => ({...o, parameter:e.target.value}))}>{["rbkg", "e0", "kmin", "kmax", "dk", "rmin", "rmax", "energy_shift"].map(key => <option key={key}>{key}</option>)}</select></label><div className="ath-fields">{optionNumber("start", "Start value")}{optionNumber("stop", "End value")}{optionNumber("count", "Number of copies")}</div></>}
       {modal === "log_ratio" && <><label className="ath-field"><span>Reference spectrum</span><select aria-label="Reference spectrum" value={String(options.reference_id)} onChange={e => setOptions(o => ({...o, reference_id:e.target.value}))}>{project?.groups.filter(g => g.id !== active?.id).map(g => <option value={g.id} key={g.id}>{g.label}</option>)}</select></label><div className="ath-fields">{optionNumber("kmin", "Reliable k minimum", "Å⁻¹")}{optionNumber("kmax", "Reliable k maximum", "Å⁻¹")}{optionNumber("phase_offset", "Phase branch", "multiples of 2π")}<label className="ath-field"><span>Maximum cumulant</span><select value={Number(options.max_cumulant)} onChange={e => setOptions(o => ({...o, max_cumulant:Number(e.target.value)}))}>{[2,3,4].map(n => <option value={n} key={n}>{n}</option>)}</select></label></div></>}
-      {["lcf", "pca", "peaks"].includes(modal) && <><label className="ath-field"><span>Fit signal{modal !== "peaks" && <SectionHelp label="Fit groups">{modal === "lcf" ? "The current group is the target. Choose at least two standards below." : "Choose the spectra for a common-grid principal component analysis."}</SectionHelp>}</span><select aria-label="Fit signal" value={String(options.array)} onChange={e => { const array = e.target.value; setOptions(o => (array === "chi") === (o.array === "chi") ? { ...o, array } : { ...o, array, ...analysisRange(array) }) }}><option value="norm">Normalized μ(E)</option><option value="flat">Flattened μ(E)</option><option value="dmude">Derivative dμ/dE</option><option value="chi">χ(k) — range in Å⁻¹</option></select></label>{modal !== "peaks" && <><div className="ath-fit-groups">{project?.groups.filter(g => modal !== "lcf" || g.id !== active?.id).map(g => <label className="ath-check" key={g.id}><input type="checkbox" checked={fitSelection.includes(g.id)} onChange={e => setFitSelection(s => e.target.checked ? [...s, g.id] : s.filter(id => id !== g.id))} />{g.label}</label>)}</div></>}{modal === "lcf" && <div className="ath-fields">{["sum_to_one", "nonnegative"].map(key => <label className="ath-check" key={key}><input type="checkbox" checked={Boolean(options[key])} onChange={e => setOptions(o => ({ ...o, [key]: e.target.checked }))} />{key === "sum_to_one" ? "Weights sum to 1" : "Non-negative weights"}</label>)}</div>}{modal === "peaks" && <>{peaks.map((peak, index) => <div className="ath-peak-editor" key={index}><header><h3>Peak {index + 1}</h3><button aria-label={`Remove peak ${index + 1}`} disabled={peaks.length === 1} onClick={() => setPeaks(p => p.filter((_, i) => i !== index))}><X size={14} /></button></header><div className="ath-fields">{(["center", "sigma", "amplitude"] as const).map(key => <NumberField key={key} label={`Peak ${index + 1} ${key}`} value={peak[key]} onChange={v => setPeaks(p => p.map((item, i) => i === index ? {...item, [key]: v ?? 0} : item))} />)}<label className="ath-field" htmlFor={`ath-peak-shape-${index}`}><ContextLabel label={`Peak ${index + 1} shape`} open={event => showContext(event, { kind: "peak", index })}>Peak {index + 1} shape</ContextLabel><select id={`ath-peak-shape-${index}`} aria-label={`Peak ${index + 1} shape`} value={peak.kind} onChange={e => setPeaks(p => p.map((item, i) => i === index ? {...item, kind:e.target.value} : item))}><option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option><option value="voigt">Voigt</option></select></label></div></div>)}<button disabled={peaks.length >= 8} onClick={() => setPeaks(p => [...p, {center: Number(options.xmin) + (Number(options.xmax) - Number(options.xmin)) * .5, sigma: 2, amplitude: 1, kind:"gaussian"}])}><Plus size={14} />Add peak</button></>}</>}
+      {["lcf", "pca", "peaks"].includes(modal) && <><label className="ath-field"><span>Fit signal</span><select aria-label="Fit signal" value={String(options.array)} onChange={e => { const array = e.target.value; setOptions(o => (array === "chi") === (o.array === "chi") ? { ...o, array } : { ...o, array, ...analysisRange(array) }) }}><option value="norm">Normalized μ(E)</option><option value="flat">Flattened μ(E)</option><option value="dmude">Derivative dμ/dE</option><option value="chi">χ(k) — range in Å⁻¹</option></select></label>{modal === "lcf" && <div className="ath-fields"><label className="ath-check"><input type="checkbox" checked={Boolean(options.lcf_series)} onChange={e => setOptions(o => ({ ...o, lcf_series: e.target.checked }))} />Fit a series: each target against the same standards</label></div>}{modal === "lcf" && Boolean(options.lcf_series) && <><p className="ath-hint">Targets — each is fitted on its own, over the same window and with the same constraints, so its row is the single-target fit.</p><div className="ath-modal-actions"><button onClick={() => setLcfTargets(marked.map(g => g.id))}>Targets: all marked groups</button><button onClick={() => setLcfTargets([])}>Targets: none</button></div><div className="ath-fit-groups" role="group" aria-label="Series targets">{project?.groups.map(g => <label className="ath-check" key={g.id}><input type="checkbox" aria-label={`Target ${g.label}`} checked={lcfTargets.includes(g.id)} onChange={e => setLcfTargets(s => e.target.checked ? [...s, g.id] : s.filter(id => id !== g.id))} />{g.label}</label>)}</div></>}{(modal !== "peaks" || Boolean(options.series)) && <><p className="ath-hint">{modal === "lcf" ? Boolean(options.lcf_series) ? "Standards — the same set for every target. A group ticked as a target is greyed out here and is not used as a standard." : "The current group is the target. Choose at least two standards below." : modal === "peaks" ? "Choose at least two spectra to fit together. The shared peaks are fitted over the common energy range of all of them." : "Choose the spectra for a common-grid principal component analysis."}</p><div className="ath-fit-groups" role="group" aria-label={modal === "lcf" ? "Standards" : "Spectra"}>{project?.groups.filter(g => modal !== "lcf" || Boolean(options.lcf_series) || g.id !== active?.id).map(g => { const target = modal === "lcf" && Boolean(options.lcf_series) && lcfTargets.includes(g.id); return <label className="ath-check" key={g.id}><input type="checkbox" disabled={target} checked={!target && fitSelection.includes(g.id)} onChange={e => setFitSelection(s => e.target.checked ? [...s, g.id] : s.filter(id => id !== g.id))} />{g.label}{target ? " · target" : ""}</label> })}</div></>}{modal === "lcf" && <section className="ath-reference-suggestions"><div className="ath-modal-actions"><button disabled={!!busy || !active} onClick={() => { void suggestReferences() }}>Suggest standards from the library</button>{suggestions && suggestionsMatch(suggestions, options) && <button className="ath-primary" disabled={!!busy || !suggestionPicks.length} onClick={() => { void addSuggestedReferences() }}>Add {suggestionPicks.length || ""} selected to project</button>}</div>{suggestions && <ReferenceSuggestions result={suggestions} picked={suggestionPicks} onPick={setSuggestionPicks} stale={!suggestionsMatch(suggestions, options)} />}</section>}{modal === "lcf" && <div className="ath-fields">{["sum_to_one", "nonnegative"].map(key => <label className="ath-check" key={key}><input type="checkbox" checked={Boolean(options[key])} onChange={e => setOptions(o => ({ ...o, [key]: e.target.checked }))} />{key === "sum_to_one" ? "Weights sum to 1" : "Non-negative weights"}</label>)}{!options.lcf_series && <label className="ath-check"><input type="checkbox" checked={Boolean(options.search)} onChange={e => setOptions(o => ({ ...o, search: e.target.checked }))} />Fit every combination</label>}</div>}{modal === "lcf" && Boolean(options.search) && !options.lcf_series && <><div className="ath-fields">{optionNumber("min_components", "Fewest standards")}{optionNumber("max_components", "Most standards")}</div><p className="ath-hint">Every subset of the chosen standards within that size range is fitted and ranked by R-factor. R-factor always falls as standards are added, so compare the unweighted reduced χ² before preferring a larger combination.</p></>}{modal === "peaks" && <>{peakRestored && <div className="ath-modal-actions"><span className="ath-hint">Window, peaks, sharing and spectra are kept from the last peak fit in this project.</span><button onClick={() => { peakDraft.current = null; openTool("peaks") }}>Start over</button></div>}<div className="ath-fields"><label className="ath-field"><span>Background</span><select aria-label="Peak background" value={String(options.peak_background)} onChange={e => setOptions(o => ({ ...o, peak_background: e.target.value }))}><option value="line">Line</option><option value="arctan">Line + arctangent step</option><option value="erf">Line + error-function step</option></select></label>{options.peak_background !== "line" && <><label className="ath-check"><input type="checkbox" checked={Boolean(options.step_at_e0)} onChange={e => setOptions(o => ({ ...o, step_at_e0: e.target.checked }))} />Step at each spectrum&apos;s own E₀</label>{!options.step_at_e0 && optionNumber("step_center", "Step centre", "eV")}{optionNumber("step_sigma", "Step width", "eV")}<label className="ath-check"><input type="checkbox" checked={Boolean(options.step_vary)} onChange={e => setOptions(o => ({ ...o, step_vary: e.target.checked }))} />Refine step centre and width</label></>}</div>{options.peak_background !== "line" && <p className="ath-hint">By default the step sits at each spectrum&apos;s own E₀, which moves across a heating series. Held fixed, only its height is fitted, as in Athena; inside a narrow pre-edge window a free centre and width are rarely determined.</p>}<div className="ath-fields"><label className="ath-check"><input type="checkbox" checked={Boolean(options.series)} onChange={e => setOptions(o => ({ ...o, series: e.target.checked }))} />Fit a series with shared peaks</label>{Boolean(options.series) && ["share_center", "share_sigma"].map(key => <label className="ath-check" key={key}><input type="checkbox" checked={Boolean(options[key])} onChange={e => setOptions(o => ({ ...o, [key]: e.target.checked }))} />{key === "share_center" ? "Share peak centres" : "Share peak widths"}</label>)}</div>{Boolean(options.series) && <p className="ath-hint">A shared centre or width is fitted once over the whole series, while each spectrum keeps its own peak areas and background. Sharing assumes that quantity is the same in every spectrum — a chemical shift or calibration drift breaks it. The app also fits each spectrum on its own and reports whether the separate values agree under the chosen model; a disagreement there means the sharing is not supported, while agreement only means none was detected.</p>}{peaks.map((peak, index) => <div className="ath-peak-editor" key={index}><header><h3>Peak {index + 1}</h3><button aria-label={`Remove peak ${index + 1}`} disabled={peaks.length === 1} onClick={() => setPeaks(p => p.filter((_, i) => i !== index))}><X size={14} /></button></header><div className="ath-fields">{(["center", "sigma", "amplitude"] as const).map(key => <NumberField key={key} label={`Peak ${index + 1} ${key}`} value={peak[key]} onChange={v => setPeaks(p => p.map((item, i) => i === index ? {...item, [key]: v ?? 0} : item))} />)}<label className="ath-field" htmlFor={`ath-peak-shape-${index}`}><ContextLabel label={`Peak ${index + 1} shape`} open={event => showContext(event, { kind: "peak", index })}>Peak {index + 1} shape</ContextLabel><select id={`ath-peak-shape-${index}`} aria-label={`Peak ${index + 1} shape`} value={peak.kind} onChange={e => setPeaks(p => p.map((item, i) => i === index ? {...item, kind:e.target.value} : item))}><option value="gaussian">Gaussian</option><option value="lorentzian">Lorentzian</option><option value="voigt">Voigt</option></select></label></div></div>)}<div className="ath-modal-actions"><button onClick={() => { const start = estimatedPeak(Number(options.xmin), Number(options.xmax), String(options.array), options.series ? fitSelection : []); if (start) setPeaks(p => [{ ...p[0], ...start }, ...p.slice(1)]); else setError("Too few points in this range to estimate a peak; widen the range.") }}>Estimate peak 1 from the data</button><button disabled={peaks.length >= 8} onClick={() => setPeaks(p => { const start = estimatedPeak(Number(options.xmin), Number(options.xmax), String(options.array)); const span = Number(options.xmax) - Number(options.xmin); return [...p, {center: Number((Number(options.xmin) + span * .5).toFixed(2)), sigma: start?.sigma ?? Number((span / 20).toPrecision(3)), amplitude: start ? Number((start.amplitude / 2).toPrecision(3)) : 0.05, kind:"gaussian"}] })}><Plus size={14} />Add peak</button></div></>}</>}
       </>}{error && <div className="ath-error" role="alert">{error}</div>}<div className="ath-modal-actions"><button disabled={!!busy} onClick={() => setModal(null)}>Cancel</button><button className="ath-primary" disabled={!!busy || !active || (combining && !combinationReady)} onClick={() => { void runTool() }}>{busy ? "Working…" : modal === "metadata" ? "Save group" : ["lcf", "pca", "peaks", "log_ratio"].includes(modal) ? "Run analysis" : "Apply"}</button></div></div></Modal>}
   </main></InstructionVisibility>
 }

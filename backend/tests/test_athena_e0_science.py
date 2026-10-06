@@ -427,3 +427,14 @@ def test_measured_copper_returns_finite_source_backed_selection_without_mutation
     np.testing.assert_array_equal(x, before[0])
     np.testing.assert_array_equal(y, before[1])
     assert parameters.model_dump() == before[2]
+
+
+@pytest.mark.parametrize("points", [50, 60, 90])
+def test_a_one_point_glitch_on_a_short_scan_does_not_become_e0(points):
+    # Under 100 points E0 was the bare maximum of dmu/dE, so one bad reading
+    # in the pre-edge won over the edge; Larch's _finde0 rejects it.
+    from xraylarch_web.athena_science import _edge
+    x = np.linspace(6480., 6620., points)
+    y = 1 / (1 + np.exp(-(x - 6540.) / 2.))
+    y[points // 6] += 0.8
+    assert abs(_edge(x, y) - 6540.) < 3

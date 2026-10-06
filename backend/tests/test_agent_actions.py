@@ -44,8 +44,12 @@ def dispatched_actions() -> set[str]:
                              if isinstance(item, ast.Constant) and isinstance(item.value, str))
         if isinstance(node, ast.Assign) and any(
                 isinstance(t, ast.Name) and t.id == "allowed_options" for t in node.targets):
-            found.update(key.value for key in node.value.keys
-                         if isinstance(key, ast.Constant))
+            if isinstance(node.value, ast.DictComp):
+                # Built from a module-level table of action names.
+                found.update(getattr(athena, node.value.generators[0].iter.id))
+            else:
+                found.update(key.value for key in node.value.keys
+                             if isinstance(key, ast.Constant))
     return found
 
 
@@ -76,7 +80,9 @@ def test_the_index_is_cheap_enough_to_read_before_choosing():
     """The point of the split is that discovery costs less than the detail."""
     listing = index()
     assert len(listing["actions"]) == len(ACTIONS)
-    assert len(repr(listing)) < 8_000
+    # About 220 characters per action and analysis; 8,000 held 36 actions and
+    # four analyses before add_references and the three series analyses came in.
+    assert len(repr(listing)) < 8_500
 
     # Every index row must lead somewhere, or progressive disclosure is a lie.
     for row in listing["actions"]:

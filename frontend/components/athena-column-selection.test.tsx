@@ -67,7 +67,7 @@ it('limits replacement to one existing group while retaining column, signal and 
   expect(screen.queryByText('Reference channel & ordering')).not.toBeInTheDocument()
   expect(screen.queryByText('Preprocessing')).not.toBeInTheDocument()
   fireEvent.click(screen.getByLabelText('Numerator detA'))
-  fireEvent.click(screen.getByLabelText('Sort ascending by energy (duplicate energies still require repair)'))
+  fireEvent.click(screen.getByLabelText('Sort ascending by energy (rows at a repeated energy are averaged)'))
   expect(accepted()).toMatchObject({ numerator: ['c1', 'c3'], sort: true })
 })
 it('locks replacement controls and cancel while applying changes', () => {
@@ -446,4 +446,35 @@ it("suggests units for a new energy column and preserves a manual override while
   fireEvent.change(screen.getByLabelText("Energy column"), { target: { value: "c2" } })
   expect(accepted().units).toBe("eV")
   expect(screen.getByText(/could not be inferred/)).toBeInTheDocument()
+})
+const twentyBm = (measurement: object, suggestions: object) => ({ beamline_reader: { id: 'aps-20bm', name: '20-BM', facility: 'APS', beamline: '20-BM',
+  format: 'LabVIEW', evidence: 'header', confidence: 'beamline' as const, suggestions,
+  reference: { numerator: 'c2', denominator: 'c5', log: true, default: true },
+  measurement: { mode: 'transmission' as const, edge_energy: 8980, notes: [], contrast: {}, ...measurement } } })
+const sample = { energy_column: 'c0', numerator: ['c1'], denominator: 'c2', mode: 'transmission' as const, units: 'eV' as const, data_type: 'mu' as const }
+const foilColumns = { ...sample, numerator: ['c2'], denominator: 'c5' }
+it('imports nothing from a scan that may be a dilute sample or a foil until the user says which', () => {
+  // A marginal I0/It edge beside a clear foil edge used to be resolved by an
+  // absolute step floor that declared the sample position empty.
+  render(<Harness inspection={twentyBm({ ambiguous: true, contrast: { transmission: 10, reference: 550 } }, { transmission: sample, foil: foilColumns })}
+    initialMapping={{ ...initial, reference_numerator: 'c2', reference_denominator: 'c5' }} />)
+  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeDisabled()
+  fireEvent.click(screen.getByRole('radio', { name: /A foil scan: it\/ref as the spectrum/ }))
+  expect(accepted()).toMatchObject({ numerator: ['c2'], denominator: 'c5', mode: 'transmission', reference_numerator: '', reference_denominator: '' })
+  expect(screen.getByRole('button', { name: 'Import spectrum' })).toBeEnabled()
+  fireEvent.click(screen.getByRole('radio', { name: /A sample: I0\/It, with it\/ref as its reference/ }))
+  expect(accepted()).toMatchObject({ numerator: ['c1'], denominator: 'c2', reference_numerator: 'c2', reference_denominator: 'c5' })
+})
+it('names each channel’s own contrast on the sample-or-foil choice', () => {
+  // The only contrast shown was the transmission button's tooltip, which
+  // quotes I0/It (10) even after choosing the foil, whose edge is 550.
+  render(<Harness inspection={twentyBm({ ambiguous: true, contrast: { transmission: 10, reference: 550 } }, { transmission: sample, foil: foilColumns })}
+    initialMapping={{ ...initial, reference_numerator: 'c2', reference_denominator: 'c5' }} />)
+  expect(screen.getByRole('radio', { name: /^A sample: .* · I0\/It edge step 10 times its noise$/ })).toBeInTheDocument()
+  expect(screen.getByRole('radio', { name: /^A foil scan: .* · it\/ref edge step 550 times its noise$/ })).toBeInTheDocument()
+})
+it("reports the foil's own contrast on the offer that imports It/Iref as the spectrum", () => {
+  // The tooltip quoted the I0/It contrast (no edge) behind an It/Iref offer.
+  render(<Harness inspection={twentyBm({ foil_spectrum: true, contrast: { transmission: -1, reference: 550 } }, { transmission: foilColumns })} />)
+  expect(screen.getByRole('button', { name: /Use transmission columns/ })).toHaveAttribute('title', expect.stringMatching(/^it\/ref edge step 550 times/))
 })

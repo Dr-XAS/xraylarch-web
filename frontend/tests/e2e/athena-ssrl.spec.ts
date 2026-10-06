@@ -107,7 +107,7 @@ for (const name of ['SSRLA', 'SSRLB', 'SSRLmicro']) {
     expect(restored.groups[1].source).toEqual(group.source)
     expect(restored.groups[1].result.arrays).toEqual(group.result.arrays)
     await page.reload()
-    await expect(page.getByRole('heading', { name: 'Data groups 2', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
     expect(errors).toEqual([])
   })
 }

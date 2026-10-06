@@ -318,6 +318,27 @@ describe("backend proxy", () => {
     expect(headers.get("cookie")).toBeNull()
   })
 
+  // Each of these was shipped with a backend route, a panel that calls it and
+  // component tests that mock the call -- and no entry in the allowlist above,
+  // so in a browser the panel answered "The backend request could not be
+  // completed." and nothing else noticed. The failure this catches is a new
+  // endpoint reaching users through a proxy that does not forward it.
+  it.each([
+    ["GET", ["api", "athena", "formats"]],
+    ["POST", ["api", "athena", "projects", "p1", "xrf-view", "inspect"]],
+    ["POST", ["api", "athena", "projects", "p1", "xrf-view", "frame"]],
+    ["POST", ["api", "athena", "projects", "p1", "self-absorption", "preview"]],
+  ])("forwards %s %j, which a panel in the app calls", async (method, path) => {
+    const fetcher = vi.fn().mockResolvedValue(new Response("[]", { headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(`http://localhost/api/backend/${path.join("/")}`, {
+      method, ...(method === "POST" ? { body: "{}" } : {}),
+    })
+    const response = await (method === "GET" ? GET : POST)(request, { params: Promise.resolve({ path }) })
+    expect(response.status).toBe(200)
+    expect(fetcher.mock.calls[0][0].pathname).toBe(`/${path.join("/")}`)
+  })
+
   it("rejects paths outside the backend allowlist before fetching", async () => {
     const fetcher = vi.fn()
     vi.stubGlobal("fetch", fetcher)

@@ -175,7 +175,9 @@ def validate_result(value):
     from .artemis import FitTransform
     FitTransform.model_validate(value["transform"])
     statistics = value["statistics"]
-    if not isinstance(statistics, dict) or set(statistics) != {"n_varys", "n_independent", "n_data", "nfev", "chi_square", "reduced_chi_square", "r_factor", "aic", "bic", "errorbars"}:
+    required_statistics = {"n_varys", "n_independent", "n_data", "nfev", "chi_square", "reduced_chi_square", "r_factor", "aic", "bic", "errorbars"}
+    if (not isinstance(statistics, dict) or not required_statistics <= set(statistics)
+            or set(statistics) - required_statistics - {"epsilon_k"}):
         raise ValueError("Invalid saved fit statistics.")
     if type(statistics["errorbars"]) is not bool or any(type(v) not in (int, float) for k, v in statistics.items() if k != "errorbars"):
         raise ValueError("Invalid saved fit statistics.")

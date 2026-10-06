@@ -219,20 +219,24 @@ class APS12BM_BeamlineData(GenericBeamlineData):
         labelline = self.headerlines[-1].replace('#C', ' ').strip()
         words = labelline.split()
 
-        labels = []
+        # Labels are written 'N_name'. The number places the label: a name
+        # may itself contain '_' ('5_I0_corr'), and a word written without a
+        # number takes the next column rather than being dropped, which
+        # would shift every later label one column to the left.
+        numbered = {}
+        last = 0
         for word in words:
-            if '_' in word:
-                pref, suff = word.split('_')
-                isint = False
-                try:
-                    ipref = int(pref)
-                    isint = True
-                except ValueError:
-                    pass
-                if isint: labels.append(suff)
-            elif len(labels) == 1:
-                word = word.replace('(', '').replace(')', '')
-                self.energy_units = word
+            pref, sep, suff = word.partition('_')
+            if sep and pref.isdigit() and suff:
+                last = int(pref)
+                numbered[last] = suff
+            elif word.startswith('(') and word.endswith(')'):
+                if last == 1:
+                    self.energy_units = word[1:-1]
+            else:
+                last += 1
+                numbered[last] = word
+        labels = [numbered.get(i, f'col{i}') for i in range(1, max(numbered, default=0) + 1)]
         return self._set_labels(labels, ncolumns=ncolumns)
 
 

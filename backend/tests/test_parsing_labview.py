@@ -134,6 +134,8 @@ def test_fixed_width_incomplete_or_duplicate_legend_is_rejected(damage):
 @pytest.mark.parametrize("index", [0, 1, 2])
 @pytest.mark.parametrize("damage", ["text", "short", "extra", "comment"])
 def test_first_middle_and_last_damaged_observations_cannot_be_skipped(index, damage, scan_factory):
+    if index == 2 and damage == "short":
+        pytest.skip("an interrupted final row is dropped by name; see the test below")
     header, rows, _, _ = scan_factory()
     fields = rows[index].split()
     rows[index] = {
@@ -145,14 +147,30 @@ def test_first_middle_and_last_damaged_observations_cannot_be_skipped(index, dam
     assert_error(source(header, rows))
 
 
+@pytest.mark.parametrize("scan_factory", [make_scan, make_fixed_width_scan])
+def test_interrupted_final_row_is_dropped_by_name_and_earlier_rows_are_read(scan_factory):
+    # An aborted scan leaves its last row short; that used to refuse the file.
+    header, rows, labels, data = scan_factory()
+    rows[2] = " ".join(rows[2].split()[:5])
+    parsed = parse_upload(source(header, rows), "synthetic.0002")
+    assert parsed.row_count == 2
+    np.testing.assert_array_equal(np.array(list(parsed.arrays.values())).T, data[:2])
+    assert any("last data row (3) is incomplete" in w for w in parsed.warnings)
+
+
 @pytest.mark.parametrize("index", [0, 1, 2])
 @pytest.mark.parametrize("nonfinite", ["nan", "inf", "-inf", "1e999"])
-def test_nonfinite_values_in_high_columns_are_rejected(index, nonfinite):
-    header, rows, _, _ = make_scan()
+def test_nonfinite_values_in_high_columns_are_reported_not_fatal(index, nonfinite):
+    # A detector channel nobody imports must not refuse the scan; its column
+    # carries the non-finite value and a warning naming it and the row.
+    header, rows, labels, _ = make_scan()
     fields = rows[index].split()
     fields[-1] = nonfinite
     rows[index] = " ".join(fields)
-    assert_error(source(header, rows), "upload_nonfinite")
+    parsed = parse_upload(source(header, rows), "synthetic.0002")
+    last = parsed.arrays[parsed.columns[-1].column_id]
+    assert not np.isfinite(last[index]) and np.isfinite(np.delete(last, index)).all()
+    assert any(f"'{labels[-1]}' has 1 non-finite values (data rows {index + 1})" in w for w in parsed.warnings)
 
 
 @pytest.mark.parametrize("old,new", [

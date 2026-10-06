@@ -5,7 +5,8 @@ export interface ColumnInfo {
   numeric: boolean
   unit: string | null
   role_hint: string | null
-  preview: number[]
+  // null marks a non-finite value (NaN or infinity) in the file.
+  preview: (number | null)[]
 }
 
 export interface FieldIssue {
@@ -31,6 +32,26 @@ export interface InspectionResponse {
   issues: FieldIssue[]
   beamline_metadata?: Record<string, unknown>
   xdi_metadata?: Record<string, unknown>
+  // What the reader registry made of the file: which beamline wrote it, and
+  // which of its columns measure what. Absent when nothing recognized it.
+  beamline_reader?: {
+    id: string; name: string; facility: string; beamline: string; format: string; evidence: string
+    confidence: "beamline" | "format"
+    roles?: Record<string, string | string[]>
+    // One import suggestion per measurement the file supports, the reference
+    // channel to import beside it, and which measurement shows the edge.
+    // "foil" is offered only when the measurement is ambiguous: It/Iref as the spectrum.
+    suggestions?: Partial<Record<"mu" | "transmission" | "fluorescence" | "foil", NonNullable<InspectionResponse["athena_suggestion"]>>>
+    reference?: { numerator: string; denominator: string | null; log: boolean; default?: boolean }
+    measurement?: { mode: "mu" | "transmission" | "fluorescence" | null; edge_energy: number
+      contrast: Record<string, number | null>; notes: string[]
+      // A marginal I0/It edge beside a reference edge: the user says whether a sample or a foil was scanned.
+      ambiguous?: boolean
+      // The transmission suggestion is It/Iref, a foil in the reference position.
+      foil_spectrum?: boolean }
+    scan_e0?: number
+    scan_config?: Record<string, string>
+  }
   source_preview?: string
   source_preview_truncated?: boolean
   source_preview_format?: "hex"

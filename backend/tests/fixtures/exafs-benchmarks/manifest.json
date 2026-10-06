@@ -1,0 +1,1241 @@
+{
+ "datasets": [
+  {
+   "bounds": {
+    "amp": [
+     0.0,
+     5.0
+    ],
+    "deltar_shell_angstrom": [
+     -0.15,
+     0.15
+    ],
+    "e0_ev": [
+     -20.0,
+     20.0
+    ],
+    "sigma2_shell_angstrom2": [
+     1e-05,
+     0.04
+    ]
+   },
+   "chi": {
+    "file": "coo/chi.csv",
+    "sha256": "3d3ffe72a81ab1e4c31e5dcac872cbe4dd64ff547f183da9324c16331fbbae80"
+   },
+   "epsilon_k": 0.05240495957049177,
+   "feff": {
+    "code": "FEFF85L (Larch FEFFIT reference)",
+    "directory": "mp-19079-coo-co-k-rpath6-noscf"
+   },
+   "measurement": {
+    "database": "PFXAFS XAFS database",
+    "detail_url": "https://pfxafs.kek.jp/xafsdata/view.php?id=73",
+    "facility_and_beamline": "KEK IMSS PhotonFactory - BL12C",
+    "measurement_method": "Transmission mode STEP/QUICK Step Scan",
+    "monochromator": "Si(111) double crystal",
+    "sample": "CoO"
+   },
+   "models": [
+    {
+     "expected": {
+      "aic": 5.78911219910692,
+      "bic": 9.056613043553597,
+      "chi_square": 14.653522120874161,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 53,
+      "nvarys": 4,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 1.0870099856405173,
+        "value": 1.0232157281700236
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.12217670966181352,
+        "value": -0.07902723715173875
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 9.043804617780365,
+        "value": 9.808211522709442
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.02511824059388395,
+        "value": 0.017796771489948123
+       }
+      },
+      "reduced_chi_square": 1.1515982925367085,
+      "rfactor": 0.6720482940421338,
+      "success": true
+     },
+     "name": "first_shell",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ]
+     ],
+     "title": "first radial single-scattering shell"
+    },
+    {
+     "expected": {
+      "aic": -38.25958579103866,
+      "bic": -33.358334524368644,
+      "chi_square": 0.8283905393144365,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 80,
+      "nvarys": 6,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.1357653027302247,
+        "value": 0.9486717505934755
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.01996325693246559,
+        "value": -0.06324947890474919
+       },
+       "delr2": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.011440494562666145,
+        "value": -0.03086485603696229
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 1.2878279335573306,
+        "value": 11.832586394501753
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.0038606318435876947,
+        "value": 0.015535958514838638
+       },
+       "ss2": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.0014759749828208721,
+        "value": 0.010563676526696037
+       }
+      },
+      "reduced_chi_square": 0.07724275184995896,
+      "rfactor": 0.03799212531667431,
+      "success": true
+     },
+     "name": "first_second_ss",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       2
+      ]
+     ],
+     "title": "first plus second radial single-scattering shells"
+    }
+   ],
+   "name": "coo",
+   "paths": {
+    "feff0001.dat": {
+     "feff_directory": "mp-19079-coo-co-k-rpath6-noscf",
+     "file": "coo/feff0001.dat",
+     "sha256": "1cf6b8ec8a49d820bc2ee7589e6dac7ae79ca5f9f39e5542a75cac755f885aac",
+     "shell": "first_shell"
+    },
+    "feff0002.dat": {
+     "feff_directory": "mp-19079-coo-co-k-rpath6-noscf",
+     "file": "coo/feff0002.dat",
+     "sha256": "dbe1647b7c11771a21a3b370501200792344614ccc5ccde18876533b24b4e844",
+     "shell": "second_radial_group"
+    }
+   },
+   "title": "CoO, Co K edge",
+   "transform": {
+    "dk": 1.0,
+    "dr": 0.2,
+    "fitspace": "r",
+    "kmax": 12.0,
+    "kmin": 2.5,
+    "kstep": 0.05,
+    "kweight": 2,
+    "nfft": 2048,
+    "rmax": 3.6,
+    "rmin": 1.0,
+    "rwindow": "hanning",
+    "window": "hanning"
+   }
+  },
+  {
+   "bounds": {
+    "amp": [
+     0.0,
+     5.0
+    ],
+    "deltar_shell_angstrom": [
+     -0.15,
+     0.15
+    ],
+    "e0_ev": [
+     -20.0,
+     20.0
+    ],
+    "sigma2_shell_angstrom2": [
+     1e-05,
+     0.04
+    ]
+   },
+   "chi": {
+    "file": "fe2o3/chi.csv",
+    "sha256": "ee3c003be09ea3139e86d4e2919d8b0bd410573f21a7c9915cb882b6f977c720"
+   },
+   "epsilon_k": 0.045864784755815874,
+   "feff": {
+    "code": "FEFF85L (Larch FEFFIT reference)",
+    "directory": "cod-1011240-fe2o3-fe-k-rpath6-noscf"
+   },
+   "measurement": {
+    "database": "PFXAFS XAFS database",
+    "detail_url": "https://pfxafs.kek.jp/xafsdata/view.php?id=60",
+    "facility_and_beamline": "KEK IMSS PhotonFactory - BL9C",
+    "measurement_method": "Transmission mode STEP/QUICK Step Scan",
+    "monochromator": "Si(111) double crystal",
+    "sample": "a-Fe2O3"
+   },
+   "models": [
+    {
+     "expected": {
+      "aic": -0.30884588409974967,
+      "bic": 2.9586549603469265,
+      "chi_square": 10.176372652302135,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 46,
+      "nvarys": 4,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.33354359990199545,
+        "value": 0.5238965592664999
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.06547192500255733,
+        "value": -0.047290232486397965
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 6.133211464787147,
+        "value": 12.71355481671062
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.011906788971327721,
+        "value": 0.011091986727209452
+       }
+      },
+      "reduced_chi_square": 0.7997458408933898,
+      "rfactor": 0.4481130449488093,
+      "success": true
+     },
+     "name": "first_shell",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       1
+      ]
+     ],
+     "title": "first radial single-scattering shell group"
+    },
+    {
+     "expected": {
+      "aic": -10.418468165488132,
+      "bic": -5.517216898818116,
+      "chi_square": 4.37724345196122,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 109,
+      "nvarys": 6,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.2486443706966342,
+        "value": 0.6584621411513671
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.04633945401725699,
+        "value": -0.0025950084421166586
+       },
+       "delr2": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.026638012937019766,
+        "value": -0.0017641395611142918
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 3.3828598680457342,
+        "value": 16.273932943011374
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.008929191547188983,
+        "value": 0.016948032212695845
+       },
+       "ss2": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.0032675090155329604,
+        "value": 0.0018854377898728156
+       }
+      },
+      "reduced_chi_square": 0.4081532969057243,
+      "rfactor": 0.19275039925909573,
+      "success": true
+     },
+     "name": "first_second_ss",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       1
+      ],
+      [
+       "feff0005.dat",
+       2
+      ],
+      [
+       "feff0006.dat",
+       2
+      ]
+     ],
+     "title": "first plus second radial single-scattering shell groups"
+    }
+   ],
+   "name": "fe2o3",
+   "paths": {
+    "feff0001.dat": {
+     "feff_directory": "cod-1011240-fe2o3-fe-k-rpath6-noscf",
+     "file": "fe2o3/feff0001.dat",
+     "sha256": "7ad75f128dca83b48dc2dbe3ce85c54b4e72ea2081b5d3045af11767334b229b",
+     "shell": "first_shell"
+    },
+    "feff0002.dat": {
+     "feff_directory": "cod-1011240-fe2o3-fe-k-rpath6-noscf",
+     "file": "fe2o3/feff0002.dat",
+     "sha256": "0ac01841d911ad7d497e3f63a744a57ec84f6c0b8fb8534cb36931f4b8842f99",
+     "shell": "first_shell"
+    },
+    "feff0005.dat": {
+     "feff_directory": "cod-1011240-fe2o3-fe-k-rpath6-noscf",
+     "file": "fe2o3/feff0005.dat",
+     "sha256": "23d4a01899a6df22a6df904c73269d02f7436d4e15271aa0948bf6b6aa4df458",
+     "shell": "second_radial_group"
+    },
+    "feff0006.dat": {
+     "feff_directory": "cod-1011240-fe2o3-fe-k-rpath6-noscf",
+     "file": "fe2o3/feff0006.dat",
+     "sha256": "b3db5d5ab1fb25cbbd341e833481d3ae954975fe499af665a8a94bb80f82af4b",
+     "shell": "second_radial_group"
+    }
+   },
+   "title": "alpha-Fe2O3, Fe K edge",
+   "transform": {
+    "dk": 1.0,
+    "dr": 0.2,
+    "fitspace": "r",
+    "kmax": 12.0,
+    "kmin": 2.5,
+    "kstep": 0.05,
+    "kweight": 2,
+    "nfft": 2048,
+    "rmax": 3.6,
+    "rmin": 1.0,
+    "rwindow": "hanning",
+    "window": "hanning"
+   }
+  },
+  {
+   "bounds": {
+    "amp": [
+     0.0,
+     2.5
+    ],
+    "deltar_shell_angstrom": [
+     -0.08,
+     0.08
+    ],
+    "e0_ev": [
+     -15.0,
+     15.0
+    ],
+    "sigma2_shell_angstrom2": [
+     0.0001,
+     0.02
+    ]
+   },
+   "chi": {
+    "file": "ge_foil/chi.csv",
+    "sha256": "0e0cfc6c9e0212c8ee9b8b17150d5c0336204e1129275c174650aca541a1643b"
+   },
+   "epsilon_k": 0.018086455139184388,
+   "feff": {
+    "code": "FEFF85L (Larch FEFFIT reference)",
+    "directory": "mp-32-ge-k-rpath6-noscf"
+   },
+   "measurement": {
+    "authors": "Peter Blanchard, Miranda Vu, Joel Reid, Erika Bergen, Jeff Warner",
+    "beamline": "HXMA",
+    "compound": "Ge-Foil",
+    "date": "2007_12_01",
+    "detector": "Ionization chamber",
+    "doi": "https://doi.org/10.20383/103.01329",
+    "facility": "CLS",
+    "license": "CC BY 4.0",
+    "monochromator": "Si111, Si220",
+    "prep": "Foil",
+    "scan_mode": "Transmission",
+    "temperature": "77 K"
+   },
+   "models": [
+    {
+     "expected": {
+      "aic": 9.047307072148653,
+      "bic": 11.432528336768174,
+      "chi_square": 14.50336208883148,
+      "n_independent": 13.41408556116784,
+      "ndata": 196,
+      "nfev": 72,
+      "nvarys": 4,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 2.5,
+        "min": 0.0,
+        "stderr": 0.23808947500965408,
+        "value": 0.5639029689929577
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.08,
+        "min": -0.08,
+        "stderr": 0.02249154683218154,
+        "value": -0.007896439336388311
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 15.0,
+        "min": -15.0,
+        "stderr": 4.038703929510387,
+        "value": 13.730364869315906
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.02,
+        "min": 0.0001,
+        "stderr": 0.0038538716901806882,
+        "value": 0.0012183269688027156
+       }
+      },
+      "reduced_chi_square": 1.5406023234647874,
+      "rfactor": 0.09203337773448332,
+      "success": true
+     },
+     "name": "first_shell",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ]
+     ],
+     "title": "first shell only"
+    },
+    {
+     "expected": {
+      "aic": -6.2489331839241125,
+      "bic": -2.6711012869948316,
+      "chi_square": 3.4413872581678593,
+      "n_independent": 13.41408556116784,
+      "ndata": 196,
+      "nfev": 65,
+      "nvarys": 6,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 2.5,
+        "min": 0.0,
+        "stderr": 0.1416016447366033,
+        "value": 0.6666749750197571
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.08,
+        "min": -0.08,
+        "stderr": 0.010316655139796462,
+        "value": -0.02261109333256999
+       },
+       "delr2": {
+        "initial": 0.0,
+        "max": 0.08,
+        "min": -0.08,
+        "stderr": 0.02427005626036378,
+        "value": -0.005716348741821267
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 15.0,
+        "min": -15.0,
+        "stderr": 1.8048859552598597,
+        "value": 10.694161395024146
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.02,
+        "min": 0.0001,
+        "stderr": 0.0019668872787667086,
+        "value": 0.0031302603836219516
+       },
+       "ss2": {
+        "initial": 0.003,
+        "max": 0.02,
+        "min": 0.0001,
+        "stderr": 0.00286660012003161,
+        "value": 0.013450190399019173
+       }
+      },
+      "reduced_chi_square": 0.46416880811202627,
+      "rfactor": 0.021837867076730924,
+      "success": true
+     },
+     "name": "first_second_ss",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       2
+      ]
+     ],
+     "title": "first plus second single-scattering shells"
+    }
+   ],
+   "name": "ge_foil",
+   "paths": {
+    "feff0001.dat": {
+     "feff_directory": "mp-32-ge-k-rpath6-noscf",
+     "file": "ge_foil/feff0001.dat",
+     "sha256": "df2662e5ca3bcc1882067db97a38506b9f7be875d42c88460bdda8235e9f3aef",
+     "shell": null
+    },
+    "feff0002.dat": {
+     "feff_directory": "mp-32-ge-k-rpath6-noscf",
+     "file": "ge_foil/feff0002.dat",
+     "sha256": "bffc9827fc2b8de5065780eed1b155cac8ef0651095fea1dd09b1aa5d3e10eeb",
+     "shell": null
+    }
+   },
+   "title": "Ge foil at 77 K, Ge K edge, scan 1",
+   "transform": {
+    "dk": 1.0,
+    "dr": 0.2,
+    "fitspace": "r",
+    "kmax": 9.0,
+    "kmin": 2.5,
+    "kstep": 0.05,
+    "kweight": 2,
+    "nfft": 2048,
+    "rmax": 4.4,
+    "rmin": 1.4,
+    "rwindow": "hanning",
+    "window": "hanning"
+   }
+  },
+  {
+   "bounds": {
+    "amp": [
+     0.0,
+     2.5
+    ],
+    "deltar_shell_angstrom": [
+     -0.08,
+     0.08
+    ],
+    "e0_ev": [
+     -15.0,
+     15.0
+    ],
+    "sigma2_shell_angstrom2": [
+     0.0001,
+     0.02
+    ]
+   },
+   "chi": {
+    "file": "ge_foil_scan2/chi.csv",
+    "sha256": "0f27a88feed02bb9c985fc1ccba9dc2dbce2b8f450f5049f79f69f944c01b715"
+   },
+   "epsilon_k": 0.01794889453597777,
+   "feff": {
+    "code": "FEFF85L (Larch FEFFIT reference)",
+    "directory": "mp-32-ge-k-rpath6-noscf"
+   },
+   "measurement": {
+    "authors": "Peter Blanchard, Miranda Vu, Joel Reid, Erika Bergen, Jeff Warner",
+    "beamline": "HXMA",
+    "compound": "Ge-Foil",
+    "date": "2007_12_01",
+    "detector": "Ionization chamber",
+    "doi": "https://doi.org/10.20383/103.01329",
+    "facility": "CLS",
+    "license": "CC BY 4.0",
+    "monochromator": "Si111, Si220",
+    "prep": "Foil",
+    "scan_mode": "Transmission",
+    "temperature": "77 K"
+   },
+   "models": [
+    {
+     "expected": {
+      "aic": 9.0946415113622,
+      "bic": 11.47986277598172,
+      "chi_square": 14.554630673580697,
+      "n_independent": 13.41408556116784,
+      "ndata": 196,
+      "nfev": 67,
+      "nvarys": 4,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 2.5,
+        "min": 0.0,
+        "stderr": 0.23643128320469725,
+        "value": 0.5600876826461694
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.08,
+        "min": -0.08,
+        "stderr": 0.022498923080391208,
+        "value": -0.007849910479578281
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 15.0,
+        "min": -15.0,
+        "stderr": 4.038545630930679,
+        "value": 13.677012231123644
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.02,
+        "min": 0.0001,
+        "stderr": 0.0038467636646370034,
+        "value": 0.0011972993437808258
+       }
+      },
+      "reduced_chi_square": 1.5460482676742489,
+      "rfactor": 0.09184450718699402,
+      "success": true
+     },
+     "name": "first_shell",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ]
+     ],
+     "title": "first shell only"
+    },
+    {
+     "expected": {
+      "aic": -5.898002634470224,
+      "bic": -2.320170737540943,
+      "chi_square": 3.532606592740962,
+      "n_independent": 13.41408556116784,
+      "ndata": 196,
+      "nfev": 65,
+      "nvarys": 6,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 2.5,
+        "min": 0.0,
+        "stderr": 0.14225490289481885,
+        "value": 0.6623703567679169
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.08,
+        "min": -0.08,
+        "stderr": 0.010444090487970861,
+        "value": -0.022499439429095124
+       },
+       "delr2": {
+        "initial": 0.0,
+        "max": 0.08,
+        "min": -0.08,
+        "stderr": 0.024617544423833564,
+        "value": -0.005949635170439532
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 15.0,
+        "min": -15.0,
+        "stderr": 1.8285303570577762,
+        "value": 10.64898042588679
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.02,
+        "min": 0.0001,
+        "stderr": 0.001987954065722948,
+        "value": 0.0031094067801335037
+       },
+       "ss2": {
+        "initial": 0.003,
+        "max": 0.02,
+        "min": 0.0001,
+        "stderr": 0.002906086118354028,
+        "value": 0.013489941325989876
+       }
+      },
+      "reduced_chi_square": 0.47647232603349116,
+      "rfactor": 0.022291909624663746,
+      "success": true
+     },
+     "name": "first_second_ss",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       2
+      ]
+     ],
+     "title": "first plus second single-scattering shells"
+    }
+   ],
+   "name": "ge_foil_scan2",
+   "paths": {
+    "feff0001.dat": {
+     "feff_directory": "mp-32-ge-k-rpath6-noscf",
+     "file": "ge_foil_scan2/feff0001.dat",
+     "sha256": "df2662e5ca3bcc1882067db97a38506b9f7be875d42c88460bdda8235e9f3aef",
+     "shell": null
+    },
+    "feff0002.dat": {
+     "feff_directory": "mp-32-ge-k-rpath6-noscf",
+     "file": "ge_foil_scan2/feff0002.dat",
+     "sha256": "bffc9827fc2b8de5065780eed1b155cac8ef0651095fea1dd09b1aa5d3e10eeb",
+     "shell": null
+    }
+   },
+   "title": "Ge foil at 77 K, Ge K edge, scan 2",
+   "transform": {
+    "dk": 1.0,
+    "dr": 0.2,
+    "fitspace": "r",
+    "kmax": 9.0,
+    "kmin": 2.5,
+    "kstep": 0.05,
+    "kweight": 2,
+    "nfft": 2048,
+    "rmax": 4.4,
+    "rmin": 1.4,
+    "rwindow": "hanning",
+    "window": "hanning"
+   }
+  },
+  {
+   "bounds": {
+    "amp": [
+     0.0,
+     5.0
+    ],
+    "deltar_shell_angstrom": [
+     -0.15,
+     0.15
+    ],
+    "e0_ev": [
+     -20.0,
+     20.0
+    ],
+    "sigma2_shell_angstrom2": [
+     1e-05,
+     0.04
+    ]
+   },
+   "chi": {
+    "file": "nio/chi.csv",
+    "sha256": "ec7842f3e2ad9978dd34cc1ab0b827ae753fb121ae09080c373bc4f264dbdf05"
+   },
+   "epsilon_k": 0.06685820706906076,
+   "feff": {
+    "code": "FEFF85L (Larch FEFFIT reference)",
+    "directory": "mp-19009-nio-ni-k-rpath6-noscf"
+   },
+   "measurement": {
+    "database": "PFXAFS XAFS database",
+    "detail_url": "https://pfxafs.kek.jp/xafsdata/view.php?id=48",
+    "facility_and_beamline": "KEK IMSS PhotonFactory - BL12C",
+    "measurement_method": "Transmission mode STEP/QUICK Step Scan",
+    "monochromator": "Si(111) double crystal",
+    "sample": "NiO"
+   },
+   "models": [
+    {
+     "expected": {
+      "aic": 12.613074603204456,
+      "bic": 15.880575447651132,
+      "chi_square": 22.036549774337754,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 32,
+      "nvarys": 4,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.6409024499118174,
+        "value": 0.7880995960287493
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.08327486597111983,
+        "value": -0.018643817311393335
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 8.045546328746461,
+        "value": 11.212654028854114
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.012205401017268025,
+        "value": 0.004431618465073625
+       }
+      },
+      "reduced_chi_square": 1.7318193458334001,
+      "rfactor": 0.7315830845238711,
+      "success": true
+     },
+     "name": "first_shell",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ]
+     ],
+     "title": "first radial single-scattering shell"
+    },
+    {
+     "expected": {
+      "aic": -38.41910596744268,
+      "bic": -33.517854700772666,
+      "chi_square": 0.8205268225351616,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 72,
+      "nvarys": 6,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.11861464768139451,
+        "value": 1.0445972954839935
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.014531157205951882,
+        "value": -0.02326722755514357
+       },
+       "delr2": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.0080108855359126,
+        "value": -0.0054344212318037655
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 1.1175090002453103,
+        "value": 10.681116796003526
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.002391828605518116,
+        "value": 0.008261960194815733
+       },
+       "ss2": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.0009604848495648292,
+        "value": 0.0069786205446563665
+       }
+      },
+      "reduced_chi_square": 0.07650950455297441,
+      "rfactor": 0.02724035976193938,
+      "success": true
+     },
+     "name": "first_second_ss",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       2
+      ]
+     ],
+     "title": "first plus second radial single-scattering shells"
+    }
+   ],
+   "name": "nio",
+   "paths": {
+    "feff0001.dat": {
+     "feff_directory": "mp-19009-nio-ni-k-rpath6-noscf",
+     "file": "nio/feff0001.dat",
+     "sha256": "09c16404fe5ff38248696766a4d7790aa8e3201d70a1632f612fa7ab4cb2520b",
+     "shell": "first_shell"
+    },
+    "feff0002.dat": {
+     "feff_directory": "mp-19009-nio-ni-k-rpath6-noscf",
+     "file": "nio/feff0002.dat",
+     "sha256": "8bcbabfbfb7b98d762bfb2548a495e0f62d7ce09628cd09bed4d037fde172779",
+     "shell": "second_radial_group"
+    }
+   },
+   "title": "NiO, Ni K edge",
+   "transform": {
+    "dk": 1.0,
+    "dr": 0.2,
+    "fitspace": "r",
+    "kmax": 12.0,
+    "kmin": 2.5,
+    "kstep": 0.05,
+    "kweight": 2,
+    "nfft": 2048,
+    "rmax": 3.6,
+    "rmin": 1.0,
+    "rwindow": "hanning",
+    "window": "hanning"
+   }
+  },
+  {
+   "bounds": {
+    "amp": [
+     0.0,
+     5.0
+    ],
+    "deltar_shell_angstrom": [
+     -0.15,
+     0.15
+    ],
+    "e0_ev": [
+     -20.0,
+     20.0
+    ],
+    "sigma2_shell_angstrom2": [
+     1e-05,
+     0.04
+    ]
+   },
+   "chi": {
+    "file": "zno/chi.csv",
+    "sha256": "9765abdd64df5a296529a60462f5482e9a4784cedab83178c298857fc470454d"
+   },
+   "epsilon_k": 0.051051635974732244,
+   "feff": {
+    "code": "FEFF85L (Larch FEFFIT reference)",
+    "directory": "cod-1011258-zno-zn-k-rpath6-noscf"
+   },
+   "measurement": {
+    "database": "PFXAFS XAFS database",
+    "detail_url": "https://pfxafs.kek.jp/xafsdata/view.php?id=102",
+    "facility_and_beamline": "KEK IMSS PhotonFactory - BL9C",
+    "measurement_method": "Transmission mode STEP/QUICK Step Scan",
+    "monochromator": "Si(111) double crystal",
+    "sample": "ZnO"
+   },
+   "models": [
+    {
+     "expected": {
+      "aic": 3.2750780551709333,
+      "bic": 6.5425788996176095,
+      "chi_square": 12.608363491802598,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 41,
+      "nvarys": 4,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.648023104717142,
+        "value": 1.0704088349524783
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.06645384625097868,
+        "value": 0.003868859007118197
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 6.469955364274463,
+        "value": 9.689171302979318
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.010464079947818778,
+        "value": 0.007130474107978236
+       }
+      },
+      "reduced_chi_square": 0.9908723478950099,
+      "rfactor": 0.5489860785100266,
+      "success": true
+     },
+     "name": "first_shell",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       1
+      ],
+      [
+       "feff0003.dat",
+       1
+      ]
+     ],
+     "title": "first radial single-scattering shell group"
+    },
+    {
+     "expected": {
+      "aic": -27.013778739603822,
+      "bic": -22.112527472933806,
+      "chi_square": 1.6227856925074116,
+      "n_independent": 16.72450837747926,
+      "ndata": 170,
+      "nfev": 43,
+      "nvarys": 6,
+      "parameters": {
+       "amp": {
+        "initial": 0.8,
+        "max": 5.0,
+        "min": 0.0,
+        "stderr": 0.22516524326701373,
+        "value": 1.1845388048376466
+       },
+       "delr1": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.021130604195159493,
+        "value": 0.0028017455419532267
+       },
+       "delr2": {
+        "initial": 0.0,
+        "max": 0.15,
+        "min": -0.15,
+        "stderr": 0.01427871680421921,
+        "value": 0.021655530584464316
+       },
+       "enot": {
+        "initial": 0.0,
+        "max": 20.0,
+        "min": -20.0,
+        "stderr": 1.6189272236628645,
+        "value": 9.038158676822796
+       },
+       "ss1": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.0038880445296884426,
+        "value": 0.008850086945373752
+       },
+       "ss2": {
+        "initial": 0.003,
+        "max": 0.04,
+        "min": 1e-05,
+        "stderr": 0.0018439576994668308,
+        "value": 0.010703237207561977
+       }
+      },
+      "reduced_chi_square": 0.15131562542439253,
+      "rfactor": 0.0706583970370966,
+      "success": true
+     },
+     "name": "first_second_ss",
+     "paths": [
+      [
+       "feff0001.dat",
+       1
+      ],
+      [
+       "feff0002.dat",
+       1
+      ],
+      [
+       "feff0003.dat",
+       1
+      ],
+      [
+       "feff0004.dat",
+       2
+      ],
+      [
+       "feff0005.dat",
+       2
+      ],
+      [
+       "feff0006.dat",
+       2
+      ]
+     ],
+     "title": "first plus second radial single-scattering shell groups"
+    }
+   ],
+   "name": "zno",
+   "paths": {
+    "feff0001.dat": {
+     "feff_directory": "cod-1011258-zno-zn-k-rpath6-noscf",
+     "file": "zno/feff0001.dat",
+     "sha256": "45b8f8e88fcf01dc76f67871b3a65e6fb44f9552db3f86f98f704ea5e4f9110e",
+     "shell": "first_shell"
+    },
+    "feff0002.dat": {
+     "feff_directory": "cod-1011258-zno-zn-k-rpath6-noscf",
+     "file": "zno/feff0002.dat",
+     "sha256": "5ce55aefe49ba05ffdee6108bef198d7ccf75ae1503047a3789f97c712d37721",
+     "shell": "first_shell"
+    },
+    "feff0003.dat": {
+     "feff_directory": "cod-1011258-zno-zn-k-rpath6-noscf",
+     "file": "zno/feff0003.dat",
+     "sha256": "7e8bd1cd0b2b680a4f1c60a44f07b1cdfd8fb65637644c370799efa2ab55003f",
+     "shell": "first_shell"
+    },
+    "feff0004.dat": {
+     "feff_directory": "cod-1011258-zno-zn-k-rpath6-noscf",
+     "file": "zno/feff0004.dat",
+     "sha256": "96dccb8a724ef156f9b600ff78f755c02f710cfb4b25cfea59727527b6a73827",
+     "shell": "second_radial_group"
+    },
+    "feff0005.dat": {
+     "feff_directory": "cod-1011258-zno-zn-k-rpath6-noscf",
+     "file": "zno/feff0005.dat",
+     "sha256": "2a566fcf1da9348a82a6c6d2e266069b8f8f705cbb322d74911904ef199ea35b",
+     "shell": "second_radial_group"
+    },
+    "feff0006.dat": {
+     "feff_directory": "cod-1011258-zno-zn-k-rpath6-noscf",
+     "file": "zno/feff0006.dat",
+     "sha256": "4cf9f18d4a37c93510ad8cbbef8dd6feac84e4c52c4ed896a9da78c7c8d86567",
+     "shell": "second_radial_group"
+    }
+   },
+   "title": "ZnO, Zn K edge",
+   "transform": {
+    "dk": 1.0,
+    "dr": 0.2,
+    "fitspace": "r",
+    "kmax": 12.0,
+    "kmin": 2.5,
+    "kstep": 0.05,
+    "kweight": 2,
+    "nfft": 2048,
+    "rmax": 3.6,
+    "rmin": 1.0,
+    "rwindow": "hanning",
+    "window": "hanning"
+   }
+  }
+ ],
+ "description": "Public EXAFS benchmark spectra, their FEFF85L scattering paths, and the Larch feffit results the web fitting workflow is compared against.",
+ "note": "epsilon_k is the root-mean-square of chi(k) over the fit window, the uncertainty scale the reference fits were given. Fitted values, uncertainties and the R factor do not depend on it; chi-square, reduced chi-square, AIC and BIC scale with 1/epsilon_k**2.",
+ "source": {
+  "commit": "666aca6359cc99e18b3106f3038ae57fb3ef448a",
+  "larch_version": "2026.2.2",
+  "repository": "unpublished benchmark checkout"
+ }
+}

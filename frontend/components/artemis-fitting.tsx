@@ -10,6 +10,7 @@ import {
   artemisModelKey, type ArtemisModelDraft as Draft, type ArtemisParameterDraft as ParameterDraft, type ArtemisTransformDraft as TransformDraft,
 } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
+import type { ArtemisPreviewRequest } from "@/lib/artemis-path-preview"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { planDisorderInsertion, type DisorderOptions } from "@/lib/artemis-disorder"
 import { ArtemisDisorderControl } from "./artemis-disorder"
@@ -22,6 +23,7 @@ import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
 import { FeffPathShellLabel } from "./feff-path-shell-label"
 import { ArtemisStructures } from "./artemis-structures"
+import { ArtemisFastFitComparison } from "./artemis-fast-fit"
 import { currentEdgeIdentity } from "./athena-edge-identity"
 import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-viewer-icons"
 import { FitRangeIcon } from "./athena-parameter-icons"
@@ -52,7 +54,8 @@ interface PanelProps {
   groups?: AthenaGroup[]
   pending?: boolean
   onFitResult?: (result: ArtemisFitResult | null) => void
-  onPathsChange?: (paths: FeffPathSummary[], projectId?: string, groupId?: string) => void
+  /** `model` is null while the editor's numbers cannot be read, so the viewer offers no curves. */
+  onPathsChange?: (paths: FeffPathSummary[], model: ArtemisPreviewRequest | null, projectId?: string, groupId?: string) => void
   onProjectChange?: (project: AthenaProject) => void
   onViewStructure?: (attachmentId: string, siteIndex?: number) => void
   onDirtyChange?: (groupId: string, dirty: boolean) => void
@@ -83,7 +86,7 @@ function pathDraft(path: ArtemisInspectedPath): ArtemisPath {
 }
 function exampleDraft(example: ArtemisExample, revision = 0): Draft {
   const viewerCluster = parseFeffCluster(example.feff_input)
-  return { revision, paths: example.paths.map(path => ({ ...pathDraft(path),
+  return { revision, paths: example.paths.map((path, index) => ({ ...pathDraft(path), ...example.path_parameters?.[index],
     label: `Cuprite · AMCSD 0015851 · Cu site 1 · ${path.filename}`,
     metadata: viewerCluster ? { ...path.metadata, viewerCluster } : path.metadata })),
     parameters: example.parameters.map(parameterDraft), transform: transformDraft(example.transform) }
@@ -92,8 +95,9 @@ function numberValue(value: string, label: string) {
   if (!value.trim() || !Number.isFinite(Number(value))) throw new Error(`${label} must be a finite number.`)
   return Number(value)
 }
-function requestFromDraft(draft: Draft, version: number): ArtemisFitRequest {
-  if (!draft.paths.some(path => path.enabled)) throw new Error("Include at least one FEFF path before fitting.")
+/** Read the editor's text fields as numbers. Only the rules a model must obey to
+ *  be evaluated at all live here; the extra rules a fit needs are in requestFromDraft. */
+function modelFromDraft(draft: Draft): ArtemisPreviewRequest {
   const names = new Set<string>()
   const parameters = draft.parameters.map(parameter => {
     const name = parameter.name.trim()
@@ -108,7 +112,6 @@ function requestFromDraft(draft: Draft, version: number): ArtemisFitRequest {
     if (parameter.kind === "def" && !parameter.expression.trim()) throw new Error(`${name}: enter an expression for this Def parameter.`)
     return { name, kind: parameter.kind, value, min, max, expression: parameter.kind === "def" ? parameter.expression.trim() : "" }
   })
-  if (!parameters.some(parameter => parameter.kind === "guess")) throw new Error("Add at least one Guess parameter to refine.")
   const t = draft.transform
   const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
     kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
@@ -117,8 +120,14 @@ function requestFromDraft(draft: Draft, version: number): ArtemisFitRequest {
   if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
   if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
   if (!transform.kweight.length) throw new Error("Select at least one fit k-weight.")
-  return { version, parameters, transform, paths: draft.paths.map(path => ({ id: path.id, label: path.label,
+  return { parameters, transform, paths: draft.paths.map(path => ({ id: path.id, label: path.label,
     filename: path.filename, content: path.content, enabled: path.enabled, s02: path.s02, e0: path.e0, deltar: path.deltar, sigma2: path.sigma2 })) }
+}
+function requestFromDraft(draft: Draft, version: number): ArtemisFitRequest {
+  if (!draft.paths.some(path => path.enabled)) throw new Error("Include at least one FEFF path before fitting.")
+  const model = modelFromDraft(draft)
+  if (!model.parameters.some(parameter => parameter.kind === "guess")) throw new Error("Add at least one Guess parameter to refine.")
+  return { version, ...model }
 }
 function errorText(error: unknown) { return error instanceof Error ? error.message : "The request failed. Please try again." }
 function importRequest(text: string): ArtemisFitRequest {
@@ -332,8 +341,10 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
   }, [group?.id, busy, draft.paths.length, onEditorActions])
   useEffect(() => { onMutationPending(!!busy); return () => onMutationPending(false) }, [busy, onMutationPending])
   useEffect(() => {
-    callbacks.current.onPathsChange?.(draft.paths.map(({ id, label, filename, enabled, metadata }) => ({ id, label, filename, enabled, metadata })), projectId, group?.id)
-  }, [draft.paths, projectId, group?.id])
+    let model: ArtemisPreviewRequest | null = null
+    try { model = modelFromDraft(draft) } catch { /* An unfinished edit simply has no curves to draw yet. */ }
+    callbacks.current.onPathsChange?.(draft.paths.map(({ id, label, filename, enabled, metadata }) => ({ id, label, filename, enabled, metadata })), model, projectId, group?.id)
+  }, [draft.paths, draft.parameters, draft.transform, projectId, group?.id])
   useEffect(() => {
     controller.current?.abort()
     setBusy(null)
@@ -447,6 +458,15 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
     } catch (error) { if (!abort.signal.aborted) setError(errorText(error)) }
     finally { if (!abort.signal.aborted) setBusy(null) }
   }
+  // The results panel is beside or above this form, often off screen after a
+  // scroll down the paths: bring it into view once the fit lands.
+  // The viewers above it (FEFF paths, plots) are still growing when the fit
+  // lands, so a single scroll stops short: align again once they settle.
+  function showResults() {
+    const align = () => document.querySelector('section[aria-label="EXAFS fit results"]')?.scrollIntoView?.({ block: "start" })
+    window.requestAnimationFrame(align)
+    for (const delay of [400, 1200]) window.setTimeout(align, delay)
+  }
   async function fit() {
     if (reason || !projectId || !group || version === undefined || busy) return
     let request: ArtemisFitRequest
@@ -474,6 +494,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           setSelectedFitId(record.id)
           setResult({ revision: draft.revision, data: { ...record.result, request } })
           setNotice("Saved the model and fit result in this project.")
+          showResults()
         }
         return
       }
@@ -481,6 +502,7 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
       if (abort.signal.aborted || contextRef.current !== requestContext) return
       if (!validArtemisResult(response, projectId, group.id, mutationVersion)) throw new Error("The fit result does not match this spectrum or contains invalid curves. Try the fit again.")
       setResult({ revision: draft.revision, data: { ...response, request } })
+      showResults()
     } catch (error) { if (!await recoverConflict(error) && !abort.signal.aborted && contextRef.current === requestContext) setError(errorText(error)) }
     finally { mutation.finish(); if (!abort.signal.aborted) setBusy(null) }
   }
@@ -506,12 +528,27 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
 
   const disabled = !!busy || pending
   const freeCount = draft.parameters.filter(parameter => parameter.kind === "guess").length
+  // The fast backend refits exactly the model that produced the result on
+  // screen, so the comparison is offered only while the two still agree.
+  const shownArchive = currentResult?.archive
+  const fastRequest = useMemo(() => {
+    if (!currentResult || reason || !projectId || !group || version === undefined) return null
+    if (shownArchive?.stale || shownArchive?.modelChanged) return null
+    try { return requestFromDraft(draft, version) } catch { return null }
+  }, [currentResult, shownArchive, reason, projectId, group?.id, version, draft])
+  const fastBlocked = !currentResult ? "Run a fit first; this repeats the same model on the other backend."
+    : shownArchive?.stale ? "This saved fit used different processed data. Run the fit again before comparing backends."
+    : shownArchive?.modelChanged ? "The model in the editor differs from this fit. Use this fit’s model, or run a new fit, before comparing backends."
+    : fastRequest ? "" : "Finish the model before comparing backends."
   return <section className={styles.editor} aria-label="Artemis EXAFS fitting setup">
     <header className={styles.intro}><h3><FitCurvesIcon size={20} aria-hidden="true" />EXAFS fitting</h3></header>
     <div className={styles.actions}>
       {error && <p className={styles.error} role="alert">{error}</p>}
       <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
     </div>
+    {projectId && group && <ArtemisFastFitComparison key={`${shownArchive?.id ?? "local"}:${draft.revision}`}
+      projectId={projectId} groupId={group.id} request={fastRequest} reference={currentResult}
+      blocked={fastBlocked} disabled={disabled} />}
     {notice && <p className={styles.message} role="status">{notice}</p>}
     {busy && <p className={styles.message} role="status">{busy === "fit" ? "Fitting with Larch…" : busy === "upload" ? "Reading FEFF paths…" : "Saving project…"}</p>}
     {currentResult && <p className={styles.message} role="status">{currentResult.success ? "Fit completed. Results are in the plot panel." : `Fit did not converge: ${currentResult.message}`}</p>}
@@ -531,9 +568,25 @@ function FittingEditor({ projectId, version, group, pending = false, onFitResult
           <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
     </FittingSection>}
     <ArtemisStructures contextKey={`${projectId}:${group?.id}`} spectrumEdge={group ? currentEdgeIdentity(group) : null} projectId={projectId} version={version} onProjectChange={onProjectChange} prepareMutation={prepareMutation} onViewStructure={onViewStructure} onFirstShellChange={setShellSelection} onRadialContextChange={setRadialContext} disabled={disabled} existingPaths={draft.paths}
-      availableSlots={24 - draft.paths.length} onAddPaths={paths => {
+      availableSlots={24 - draft.paths.length} onAddPaths={(paths, replace) => {
         if (disabled) return "Wait for the current fit or file operation to finish before adding paths."
-        if (draft.paths.length + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
+        if ((replace ? 0 : draft.paths.length) + paths.length > 24) return "A model can contain up to 24 FEFF paths. Remove some existing paths first."
+        if (replace) {
+          // A generated path already in the model keeps its edited expressions
+          // and is included again, since Replace fits exactly the selection;
+          // parameters only the replaced paths used are dropped, and said so.
+          const same = (a: { filename: string; content: string }, b: { filename: string; content: string }) => a.filename === b.filename && a.content === b.content
+          const kept = draft.paths.filter(path => paths.some(item => same(item, path))).map(path => ({ ...path, enabled: true }))
+          const next = [...kept, ...paths.filter(item => !kept.some(path => same(item, path))).map(path => ({ ...pathDraft(path), label: path.label }))]
+          let plan: ReturnType<typeof planArtemisParameterSync>
+          try { plan = planArtemisParameterSync(draft.parameters, next) } catch (error) { return errorText(error) }
+          const removed = new Set(plan.removed)
+          const parameters = [...draft.parameters.filter(parameter => !removed.has(parameter.name.trim())), ...plan.added.map(parameterDraft)]
+          if (parameters.length > 32) return "These paths need more than the 32-parameter limit. Remove unused parameters first."
+          edit(previous => ({ ...previous, paths: next, parameters }))
+          setNotice(plan.removed.length ? `Removed parameters no remaining path uses: ${plan.removed.join(", ")}.` : "")
+          return null
+        }
         const missing = defaultParameters.filter(parameter => !draft.parameters.some(existing => existing.name.trim() === parameter.name))
         if (draft.parameters.length + missing.length > 32) return "Adding these paths requires the amp, del_e0, del_r, and sig2 parameters. Remove unused parameters to leave room within the 32-parameter limit."
         edit(previous => ({ ...previous, paths: [...previous.paths, ...paths.map(path => ({ ...pathDraft(path), label: path.label }))],

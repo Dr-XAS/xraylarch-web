@@ -435,7 +435,15 @@ class XRF_Model:
                                  sigma=sigma, step=step, tail=tail,
                                  beta=beta, gamma=gamma)
             comp *= amp * self.atten * self.count_time
-            comp += self.escape_amp * interp1d(energy-self.escape_energy, comp, energy)
+            if self.use_escape:
+                # Outside the recorded window there is no parent intensity for
+                # a photon to escape from, so the escape term is zero there.
+                # With the default fill of NaN it was instead undefined, and
+                # the line below then erased the component itself wherever the
+                # shifted axis left the window -- which, for a detector whose
+                # escape energy exceeds the window width, is everywhere.
+                comp = comp + self.escape_amp * interp1d(energy-self.escape_energy,
+                                                         comp, energy, fill_value=0.0)
             comp[np.where(np.isnan(comp))] = 0.0
             self.comps[elem.symbol] = comp
             self.eigenvalues[elem.symbol] = amp
@@ -456,7 +464,15 @@ class XRF_Model:
                             sigma=sigma, step=step, tail=tail, beta=beta,
                             gamma=gamma)
             comp *= amp * self.atten * self.count_time
-            comp += self.escape_amp * interp1d(energy-self.escape_energy, comp, energy)
+            if self.use_escape:
+                # Outside the recorded window there is no parent intensity for
+                # a photon to escape from, so the escape term is zero there.
+                # With the default fill of NaN it was instead undefined, and
+                # the line below then erased the component itself wherever the
+                # shifted axis left the window -- which, for a detector whose
+                # escape energy exceeds the window width, is everywhere.
+                comp = comp + self.escape_amp * interp1d(energy-self.escape_energy,
+                                                         comp, energy, fill_value=0.0)
             comp[np.where(np.isnan(comp))] = 0.0
             self.comps[p] = comp
             self.eigenvalues[p] = amp

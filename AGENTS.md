@@ -107,6 +107,8 @@ something else. `?view=parameters` and the digest report both side by side, and 
 prints `auto->25.019` when nothing was asked for and `18.000` when a value was honoured.
 Compare against the effective value.
 
+**XRF-made groups use edge-step units.** Their steps and fitted/window step ratio are about one by construction; recover raw yield scales from `source.extraction.raw_edge_steps`.
+
 **Ranges are on the shifted axis.** An energy range already has `energy_shift` folded
 in, and `energy_shift` is reported beside it.
 
@@ -211,8 +213,9 @@ A path is either a FEFF file, `{id, filename, content}`, or a path of a FEFF job
 by reference, `{id, feff_job, feff_path: "feff0001"}`. Paths come from:
 
 - `GET /api/artemis/examples/cuprite`: a complete body for the example's Cu₂O group.
-  Send its `paths` (each with an `id` added and `metadata` removed), `parameters` and
-  `transform`.
+  Send its `paths` (each with an `id` added, `metadata` removed, and the matching
+  entry of `path_parameters` merged in: the Cu–O first shell has its own `del_r_o`
+  and `sig2_o`), `parameters` and `transform`.
 - FEFF on a bundled structure. `GET /api/artemis/structures?q=copper&element=Cu`
   searches them, each result with its `cell` and `measured_at`: the temperature (K)
   and pressure (GPa) its title states, null where it states none. Pick an entry
@@ -271,3 +274,40 @@ Slack notification is off unless `XRAYLARCH_SLACK_BOT_TOKEN` and
 No arrays, from any view above. `GET .../groups/{gid}/export?space=E|k|R|q` returns a
 file, and `larchctl export` writes it to disk rather than into your context. Ask for
 the digest first: it usually answers what the arrays were wanted for.
+
+## Running the tests (for changing the code)
+
+- Backend: `cd backend && .venv/bin/python -m pytest -q tests` (the venv holds
+  this clone's Larch in editable mode). The whole suite, HTTP tests included,
+  takes several minutes.
+- In a worktree sharing a venv whose editable Larch points at another checkout,
+  run from `backend/` with `PYTHONPATH=..` and verify both `larch.__file__` and
+  `xraylarch_web.__file__`. This is required when testing changes to native Larch
+  as well as the web backend; otherwise the tests can silently mix checkouts.
+- Frontend: `cd frontend && npx vitest run`; browser walks:
+  `cd frontend && npx playwright test tests/e2e/<spec> --reporter=line` (the
+  config starts the backend and Next.js itself).
+- The fast EXAFS fit and the second XRF engine need optional packages (jax with
+  xasforward, and torch with mapstorch) that the release install leaves out.
+  Their tests skip when a package is missing; keep it that way, and check a
+  change with an environment built from `deploy/python-release-constraints.txt`
+  as well as with the full one.
+- The Larch XRF injection-recovery and engine tests must pass in both the
+  deployment-constrained and full environments. Do not relax their thresholds.
+  The optional-engine cross-response test
+  `test_athena_xrf_mapstorch.py::test_the_other_engines_spectra_are_fitted_back_to_the_injected_edge`
+  remains a documented failure; do not hide it or relax its threshold.
+- XRF handlers use at most eight detector workers by default; set
+  `XRAYLARCH_XRF_WORKERS=1` for serial execution. Eight workers retain about
+  2 GB resident memory after the first request; lower the setting (for example
+  to two) to reduce memory, or use one to avoid the pool. Compare serial and
+  parallel runs with the same native thread count (`OPENBLAS_NUM_THREADS=1`). Standalone
+  handler benchmarks need an `if __name__ == '__main__':` guard because workers
+  use spawn, not fork. The runtime/cache tests cover exact result reuse.
+- The FastAPI `TestClient` tests run an AnyIO blocking portal in a helper
+  thread, and stall before any response inside some restricted sandboxes. If
+  they stall, run one file with `-x` first to tell an environment that blocks
+  the portal thread from an application deadlock.
+- Never commit measured data from collaborators, numbers measured on them, or
+  screenshots of them. Tests and examples use the bundled reference spectra and
+  synthetic data.

@@ -66,8 +66,8 @@ test('official LaCoO3 PRJ, native reflection, E/k/R plots, curve picking, save a
   const response=await waiting;expect(response.ok()).toBe(true);const saved=await response.json() as AthenaProject
   expect(saved.groups.slice(0,2)).toEqual(project.groups);expect(saved.groups[2].mu).toEqual(nextPreview.results[0].corrected_mu)
   await expect(dialog).toHaveCount(0)
-  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 2',exact:true})).toBeVisible()
-  await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{name:'Data groups 3',exact:true})).toBeVisible()
+  await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{ name: /^Data groups 2\b/ })).toBeVisible()
+  await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{ name: /^Data groups 3\b/ })).toBeVisible()
   const download=page.waitForEvent('download');await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   await (await download).saveAs(info.outputPath('LaCoO3-corrected.prj'))
   expect(errors).toEqual([])
@@ -101,5 +101,5 @@ test('mobile arctangent clamps and a cross-window conflict cannot save an obsole
   await page.reload();const reopened=await open(page);await configure(page,reopened,'arctangent')
   const saved=page.waitForResponse(r=>r.url().endsWith('/command')&&r.request().postDataJSON().action==='multi_electron')
   await reopened.getByRole('button',{name:'Make group from MEE-corrected data',exact:true}).click()
-  expect((await saved).ok()).toBe(true);await expect(page.getByRole('heading',{name:'Data groups 3',exact:true})).toBeVisible()
+  expect((await saved).ok()).toBe(true);await expect(page.getByRole('heading',{ name: /^Data groups 3\b/ })).toBeVisible()
 })

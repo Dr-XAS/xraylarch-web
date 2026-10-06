@@ -11,6 +11,8 @@ import keyword
 import math
 import tempfile
 import threading
+import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Literal, Union
 
@@ -45,6 +47,7 @@ _RESERVED = set(_FUNCTIONS) | DISORDER_FUNCTIONS | set(_CONSTANTS) | _PATH_NAMES
 }
 _RESERVED.update(name for name in dir(ParameterGroup) if not name.startswith("_"))
 _PATH_PARAMETERS = ("s02", "e0", "deltar", "sigma2")
+PREVIEW_KMAX = 20.0
 
 
 def _fail(message: str, field: str = "fit"):
@@ -148,6 +151,18 @@ class FitTransform(StrictModel):
 class FitRequest(StrictModel):
     version: int = Field(ge=0)
     parameters: list[FitParameter] = Field(min_length=1, max_length=32)
+    paths: list[FitPath] = Field(min_length=1, max_length=24)
+    transform: FitTransform = Field(default_factory=FitTransform)
+
+
+class PathPreviewRequest(StrictModel):
+    """What each path would contribute at the current starting values, with no fit.
+
+    Every name a path expression uses must appear in `parameters`; nothing is
+    assumed, so the preview shows the model the user actually typed.
+    """
+
+    parameters: list[FitParameter] = Field(default_factory=list, max_length=32)
     paths: list[FitPath] = Field(min_length=1, max_length=24)
     transform: FitTransform = Field(default_factory=FitTransform)
 
@@ -267,16 +282,21 @@ def _evaluate(node: ast.AST, values: dict[str, float], field: str, *, path=None)
         _fail(f"{field}: the expression is not finite at the initial parameter values.", field)
 
 
-def _parameters(request: FitRequest):
-    definitions = {item.name: item for item in request.parameters}
-    if len(definitions) != len(request.parameters):
+def _initial_values(parameters: list[FitParameter]):
+    """Resolve every GDS name to its starting number, Def expressions included.
+
+    Returns the definitions by name, those numbers, the evaluation order, and
+    each Def's direct dependencies.
+    """
+    definitions = {item.name: item for item in parameters}
+    if len(definitions) != len(parameters):
         _fail("GDS parameter names must be unique.", "parameters")
     trees, dependencies = {}, {}
-    for item in request.parameters:
+    for item in parameters:
         if item.kind == "def":
             trees[item.name], dependencies[item.name] = _expression(item.expression, set(definitions), item.name)
-    values = {item.name: item.value for item in request.parameters if item.kind != "def"}
-    ordered = [item for item in request.parameters if item.kind != "def"]
+    values = {item.name: item.value for item in parameters if item.kind != "def"}
+    ordered = [item for item in parameters if item.kind != "def"]
     pending = set(trees)
     while pending:
         ready = [name for name in definitions if name in pending and dependencies[name] <= values.keys()]
@@ -286,16 +306,27 @@ def _parameters(request: FitRequest):
             values[name] = _evaluate(trees[name], values, name)
             ordered.append(definitions[name])
             pending.remove(name)
-    used: set[str] = set()
-    path_trees = {}
-    for path in request.paths:
+    return definitions, values, ordered, dependencies
+
+
+def _path_trees(paths: list[FitPath], names: set[str]):
+    """Parse the four path-parameter expressions of every enabled path."""
+    trees, used = {}, set()
+    for path in paths:
         if not path.enabled:
             continue
-        path_trees[path.id] = {}
+        trees[path.id] = {}
         for field in _PATH_PARAMETERS:
-            tree, references = _expression(getattr(path, field), set(definitions) | _PATH_NAMES, f"{path.label or path.id}.{field}", allow_disorder=field == "sigma2")
-            path_trees[path.id][field] = tree
+            tree, references = _expression(getattr(path, field), names | _PATH_NAMES, f"{path.label or path.id}.{field}",
+                                           allow_disorder=field == "sigma2")
+            trees[path.id][field] = tree
             used.update(references - _PATH_NAMES)
+    return trees, used
+
+
+def _parameters(request: FitRequest):
+    definitions, values, ordered, dependencies = _initial_values(request.parameters)
+    path_trees, used = _path_trees(request.paths, set(definitions))
     while True:
         expanded = used | set().union(*(dependencies.get(name, set()) for name in used))
         if expanded == used:
@@ -388,17 +419,33 @@ def cuprite_example() -> dict:
     paths = [inspect_path(PathInput(filename=f"feff{index:04d}.dat",
                                     content=resources[f"feff{index:04d}.dat"].decode("utf-8")))
              for index in range(1, 5)]
+    # The Cu–O first shell (feff0001) is stiff and the Cu–Cu shells beyond it
+    # are not, so one ΔR and one σ² across all four paths forces a compromise
+    # that can misfit both. This example changes both the model and the fit
+    # objective: separate Cu-O parameters and kweight [2], not [0, 1, 2, 3].
+    # The first shell
+    # gets its own pair; the Cu–Cu path, the Cu–Cu–O triangle and the distant
+    # oxygen share the second, which is six guesses against about 18
+    # independent points.
+    shells = ["o", "cu", "cu", "cu"]
+    path_parameters = [dict(s02="amp", e0="del_e0", deltar=f"del_r_{shell}", sigma2=f"sig2_{shell}")
+                       for shell in shells]
     parameters = [
         FitParameter(name="amp", value=1, min=0, max=2),
         FitParameter(name="del_e0", value=0, min=-30, max=30),
-        FitParameter(name="del_r", value=0, min=-0.2, max=0.2),
-        FitParameter(name="sig2", value=0.008, min=0, max=0.05),
+        FitParameter(name="del_r_o", value=0, min=-0.2, max=0.2),
+        FitParameter(name="sig2_o", value=0.003, min=0, max=0.05),
+        FitParameter(name="del_r_cu", value=0, min=-0.3, max=0.3),
+        FitParameter(name="sig2_cu", value=0.01, min=0, max=0.05),
     ]
     return dict(amcsd_id=15851, cif_sha256=source_hash,
                 feff_input=resources["feff.inp"].decode("utf-8"), paths=paths,
+                path_parameters=path_parameters,
                 parameters=[item.model_dump() for item in parameters],
-                transform=FitTransform(kmin=3, kmax=12, dk=1, rmin=1, rmax=4).model_dump(),
-                description="Cuprite Cu₂O (AMCSD 0015851), Cu K edge, site 1: the first four FEFF8L paths calculated from the attached crystal structure.")
+                # k² alone: the fit and the plotted curves are then the same thing.
+                transform=FitTransform(kmin=3, kmax=12, kweight=[2], dk=1, rmin=1, rmax=4).model_dump(),
+                description="Cuprite Cu₂O (AMCSD 0015851), Cu K edge, site 1: the first four FEFF8L paths calculated from the attached crystal structure. "
+                            "The Cu–O first shell has its own ΔR and σ²; the three longer paths share a second pair.")
 
 
 def _processed_data(group: dict, options: FitTransform):
@@ -422,7 +469,12 @@ def _processed_data(group: dict, options: FitTransform):
     # Native FEFF fitting and output transforms share this grid. Supplying raw,
     # nonuniform chi directly would make save_outputs label its Fourier data wrong.
     k_out = np.arange(int(min(float(k[-1]), 50) / 0.05 + 1e-6) + 1) * 0.05
-    return Group(k=k_out, chi=np.interp(k_out, k, chi),
+    # The grid has to start at zero, but chi imported from a file need not. Leave
+    # the unmeasured stretch empty: np.interp would otherwise hold the first
+    # measured point flat across it, and a window taper reaching down there would
+    # transform that fabricated plateau as if it were data.
+    chi_out = np.where(k_out < k[0], 0.0, np.interp(k_out, k, chi))
+    return Group(k=k_out, chi=chi_out,
                  filename=group.get("label", "Athena group"), groupname=group.get("label", "Athena group"))
 
 
@@ -441,9 +493,71 @@ def _number(value, *, nullable=False):
     _fail("Larch returned nonfinite fit statistics. Check the model and fit ranges.")
 
 
-def fit_group(group: dict, request: FitRequest) -> dict:
+@dataclass
+class FitInputs:
+    """The validated Larch objects a fit runs on, whichever backend runs it."""
+
+    data: object
+    dataset: object
+    transform: object
+    parameters: object
+    initial_values: dict
+    trees: dict
+    paths: list
+    path_records: list
+    active: list
+    notices: list
+    disorder: bool
+
+
+def _identity_notices(group: dict, path_records: list) -> list[str]:
+    """Refuse FEFF paths calculated for another absorber or edge than the spectrum's.
+
+    Every path must share one absorber and edge, and when the spectrum's
+    element and edge are known they must be those. A Cu K path fitted to a
+    Mn K spectrum runs without complaint and returns numbers that mean nothing,
+    so a known mismatch is refused; an unknown identity cannot be checked,
+    and the fit says so rather than passing silently.
+    """
     from .athena import _source_edge_identity
 
+    identities = {(record["metadata"]["absorber"].strip().capitalize(), record["metadata"]["edge"].strip().upper())
+                  for record in path_records}
+    if len(identities) > 1:
+        named = ", ".join(f"{record['filename']} ({record['metadata']['absorber']} {record['metadata']['edge']})"
+                          for record in path_records)
+        _fail(f"The included FEFF paths were calculated for different absorbers or edges: {named}. "
+              "A single-spectrum fit uses paths for one absorber and edge.", "paths")
+    # Use the spectrum's recorded identity, with the processed identity as a
+    # fallback for older projects. Do not guess an edge for chi-only inputs.
+    effective = (group.get("result") or {}).get("effective") or {}
+    identity = (_source_edge_identity(group.get("source") or {})
+                or _source_edge_identity({"edge_identity": effective}))
+    for record in path_records:
+        path_identity = _source_edge_identity({"edge_identity": {
+            "element": record["metadata"]["absorber"], "edge": record["metadata"]["edge"],
+        }})
+        if identity and path_identity and identity != path_identity:
+            _fail(f"{record['filename']}: this FEFF path was calculated for "
+                  f"{path_identity['element']} {path_identity['edge']}, but the selected spectrum is "
+                  f"{identity['element']} {identity['edge']}. Regenerate the FEFF paths for "
+                  f"{identity['element']} {identity['edge']}, or correct the spectrum's element/edge "
+                  "assignment if it is wrong.", "paths")
+    if not identity:
+        absorber, edge = next(iter(identities))
+        return [f"This spectrum has no recorded element and edge, so the {absorber} {edge} FEFF paths "
+                "could not be checked against it."]
+    return []
+
+
+def fit_inputs(group: dict, request: FitRequest, directory: Path) -> FitInputs:
+    """Check a fit request and build everything a fit needs from it.
+
+    Both the reference backend and the differentiable one come through here, so
+    they fit the same data with the same paths, window, and noise scale; a
+    comparison between them measures the optimizer and the forward model rather
+    than a difference in how the request was read.
+    """
     active = [path for path in request.paths if path.enabled]
     if not active:
         _fail("Enable at least one FEFF path.", "paths")
@@ -456,61 +570,92 @@ def fit_group(group: dict, request: FitRequest) -> dict:
     measured_k = group["result"]["arrays"]["k"]
     if request.transform.kmin - request.transform.dk / 2 < measured_k[0] or request.transform.kmax + request.transform.dk / 2 > measured_k[-1]:
         notices.append("The Fourier window taper extends beyond the measured k range; reduce the taper or narrow the fitting interval.")
+    if len(request.transform.kweight) > 1:
+        weights = ", ".join(f"{weight:g}" for weight in request.transform.kweight)
+        notices.append(f"The fit minimized k weights {weights} together; the curves below are drawn at "
+                       f"k^{request.transform.kweight[0]:g} only, so the plotted residual is one term of the fit.")
     effective = (group.get("result") or {}).get("effective") or {}
-    # Use the spectrum's recorded identity, with the processed identity as a
-    # fallback for older projects. Do not guess an edge for chi-only inputs.
-    identity = (_source_edge_identity(group.get("source") or {})
-                or _source_edge_identity({"edge_identity": effective}))
     rbkg = effective.get("rbkg")
     if rbkg is not None and request.transform.rmin < rbkg:
         notices.append(f"Rmin ({request.transform.rmin:g} Å) is below the background cutoff Rbkg ({rbkg:g} Å); this fit does not refine the background.")
+    parameters, initial_values, trees = _parameters(request)
+    paths, path_records = [], []
+    for index, definition in enumerate(active):
+        path, metadata = _read_path(definition, Path(directory), index)
+        if request.transform.kmax > metadata["kmax"] or request.transform.kmin < metadata["kmin"]:
+            _fail(f"{definition.filename}: the fit range must be within the FEFF calculation's {metadata['kmin']:g}–{metadata['kmax']:g} Å⁻¹ range.", "kmax")
+        initial_path = {field: _evaluate(trees[definition.id][field], initial_values | {key: metadata[key] for key in _PATH_NAMES}, f"{definition.label or definition.id}.{field}", path=path)
+                        for field in _PATH_PARAMETERS}
+        if initial_path["sigma2"] < 0 or initial_path["s02"] < 0 or initial_path["deltar"] + metadata["reff"] <= 0:
+            _fail(f"{definition.label or definition.id}: initial S0² and sigma² must be nonnegative, and Reff + ΔR must be positive.", "paths")
+        if request.transform.kmax + request.transform.dk / 2 > metadata["kmax"]:
+            notices.append(f"{definition.label or definition.id}: the window taper extends beyond the FEFF k grid; Larch may extrapolate the path. Energy shifts can also extend the required FEFF range.")
+        path.label = definition.id
+        for field in _PATH_PARAMETERS:
+            expression = getattr(definition, field).strip()
+            has_thermal_call = field == "sigma2" and any(isinstance(node, ast.Call) and node.func.id in DISORDER_FUNCTIONS
+                                                        for node in ast.walk(trees[definition.id][field]))
+            setattr(path, field, runtime_expression(expression) if has_thermal_call else expression)
+        paths.append(path)
+        path_records.append(dict(id=definition.id, label=definition.label or definition.filename,
+                                 filename=definition.filename, metadata=metadata,
+                                 sigma2_expression=definition.sigma2))
+    notices.extend(_identity_notices(group, path_records))
+    transform_options = request.transform.model_dump()
+    # This Larch version collapses noise estimates for a one-element list
+    # to a scalar; pass the matching scalar weight to its residual routine.
+    if len(transform_options["kweight"]) == 1:
+        transform_options["kweight"] = transform_options["kweight"][0]
+    transform = feffit_transform(**transform_options, kstep=0.05, nfft=2048, rwindow="hanning")
+    dataset = feffit_dataset(data=data, paths=paths, transform=transform)
+    disorder = any(isinstance(node, ast.Call) and node.func.id in DISORDER_FUNCTIONS
+                   for fields in trees.values() for node in ast.walk(fields["sigma2"]))
+    if disorder:
+        prepare_disorder_dataset(dataset)
+        notices.append("Debye/Einstein temperatures are in K and sigma² is in Å². A single-temperature fit generally cannot separate a free static offset from a free characteristic temperature; constrain one or use temperature-series evidence.")
+    return FitInputs(data=data, dataset=dataset, transform=transform, parameters=parameters,
+                     initial_values=initial_values, trees=trees, paths=paths,
+                     path_records=path_records, active=active, notices=notices, disorder=disorder)
+
+
+def bound_notices(rows: list[dict]) -> list[str]:
+    """Name every fitted Guess that finished on one of its bounds.
+
+    A standard error is a curvature at the minimum; when the minimum is a bound
+    the optimizer was stopped there rather than finding one, so that error does
+    not describe the parameter. Both engines report through this one rule.
+    """
+    notices = []
+    for row in rows:
+        if row["kind"] != "guess":
+            continue
+        for side, bound in (("lower", row["min"]), ("upper", row["max"])):
+            if bound is not None and abs(row["value"] - bound) <= 1e-6 * max(1.0, abs(bound)):
+                notices.append(f"{row['name']} finished at its {side} bound ({bound:g}); its uncertainty does not describe it. "
+                               "Widen the bound or fix the parameter.")
+    return notices
+
+
+def fit_group(group: dict, request: FitRequest) -> dict:
+    handler_started = time.perf_counter()
     with _LARCH_LOCK, tempfile.TemporaryDirectory(prefix="artemis-fit-") as directory:
-        parameters, initial_values, trees = _parameters(request)
-        paths, path_records = [], []
-        for index, definition in enumerate(active):
-            path, metadata = _read_path(definition, Path(directory), index)
-            path_identity = _source_edge_identity({"edge_identity": {
-                "element": metadata["absorber"], "edge": metadata["edge"],
-            }})
-            if identity and path_identity and identity != path_identity:
-                _fail(f"{definition.filename}: this FEFF path was calculated for "
-                      f"{path_identity['element']} {path_identity['edge']}, but the selected spectrum is "
-                      f"{identity['element']} {identity['edge']}. Regenerate the FEFF paths for "
-                      f"{identity['element']} {identity['edge']}, or correct the spectrum's element/edge "
-                      "assignment if it is wrong.", "paths")
-            if request.transform.kmax > metadata["kmax"] or request.transform.kmin < metadata["kmin"]:
-                _fail(f"{definition.filename}: the fit range must be within the FEFF calculation's {metadata['kmin']:g}–{metadata['kmax']:g} Å⁻¹ range.", "kmax")
-            initial_path = {field: _evaluate(trees[definition.id][field], initial_values | {key: metadata[key] for key in _PATH_NAMES}, f"{definition.label or definition.id}.{field}", path=path)
-                            for field in _PATH_PARAMETERS}
-            if initial_path["sigma2"] < 0 or initial_path["s02"] < 0 or initial_path["deltar"] + metadata["reff"] <= 0:
-                _fail(f"{definition.label or definition.id}: initial S0² and sigma² must be nonnegative, and Reff + ΔR must be positive.", "paths")
-            if request.transform.kmax + request.transform.dk / 2 > metadata["kmax"]:
-                notices.append(f"{definition.label or definition.id}: the window taper extends beyond the FEFF k grid; Larch may extrapolate the path. Energy shifts can also extend the required FEFF range.")
-            path.label = definition.id
-            for field in _PATH_PARAMETERS:
-                expression = getattr(definition, field).strip()
-                has_thermal_call = field == "sigma2" and any(isinstance(node, ast.Call) and node.func.id in DISORDER_FUNCTIONS
-                                                            for node in ast.walk(trees[definition.id][field]))
-                setattr(path, field, runtime_expression(expression) if has_thermal_call else expression)
-            paths.append(path)
-            path_records.append(dict(id=definition.id, label=definition.label or definition.filename,
-                                     filename=definition.filename, metadata=metadata,
-                                     sigma2_expression=definition.sigma2))
-        transform_options = request.transform.model_dump()
-        # This Larch version collapses noise estimates for a one-element list
-        # to a scalar; pass the matching scalar weight to its residual routine.
-        if len(transform_options["kweight"]) == 1:
-            transform_options["kweight"] = transform_options["kweight"][0]
-        transform = feffit_transform(**transform_options, kstep=0.05, nfft=2048, rwindow="hanning")
-        dataset = feffit_dataset(data=data, paths=paths, transform=transform)
-        has_disorder = any(isinstance(node, ast.Call) and node.func.id in DISORDER_FUNCTIONS
-                           for fields in trees.values() for node in ast.walk(fields["sigma2"]))
-        if has_disorder:
-            prepare_disorder_dataset(dataset)
-            notices.append("Debye/Einstein temperatures are in K and sigma² is in Å². A single-temperature fit generally cannot separate a free static offset from a free characteristic temperature; constrain one or use temperature-series evidence.")
+        inputs = fit_inputs(group, request, Path(directory))
+        data, dataset, parameters = inputs.data, inputs.dataset, inputs.parameters
+        initial_values, trees = inputs.initial_values, inputs.trees
+        path_records, active, notices = inputs.path_records, inputs.active, inputs.notices
+        # lmfit calls this after every residual evaluation, so the first and last
+        # calls bracket the optimizer loop inside feffit -- the same phase the fast
+        # backend times around its least-squares call. It returns None, which
+        # lmfit reads as "carry on"; the fit itself is unchanged.
+        evaluations: list[float] = []
+
+        def mark(*_args, **_kws):
+            evaluations.append(time.perf_counter())
         try:
+            started = time.perf_counter()
             with np.errstate(over="raise", invalid="raise", divide="raise"):
-                result = feffit(parameters, dataset, rmax_out=10, path_outputs=True, max_nfev=2000)
+                result = feffit(parameters, dataset, rmax_out=10, path_outputs=True, max_nfev=2000, iter_cb=mark)
+            fit_seconds = time.perf_counter() - started
             report = feffit_report(result)
         except Exception as exc:
             raise WebInputError("artemis_fit_failed", "Larch could not fit this model. Check parameter expressions, bounds, path files, and fitting ranges.",
@@ -532,51 +677,171 @@ def fit_group(group: dict, request: FitRequest) -> dict:
             notices.append("Larch could not determine reliable parameter uncertainties; inspect parameter correlations and model constraints.")
         if not result.success:
             notices.append("The optimizer did not converge. These are the final attempted parameters, not a converged fit.")
-        model = dataset.model
-        weight = request.transform.kweight[0]
-        k_weight = data.k ** weight
-        for definition, fitted_path, record in zip(active, dataset.pathlist, path_records):
-            actual = fitted_path.path_paramvals()
-            record["values"] = {field: _number(actual[field]) for field in _PATH_PARAMETERS}
-            # feffit recalculates these dataset-owned paths at the final fitted
-            # parameters. Its saved R outputs already use the model transform
-            # and the first k weight; chi(k) still needs the display weight.
-            if not np.array_equal(fitted_path.r, model.r):
-                _fail("Larch returned inconsistent path and model R grids.")
-            record["k"] = dict(chi=_finite_array(
-                np.interp(data.k, fitted_path.k, fitted_path.chi) * k_weight, f"{definition.id} chi(k)"))
-            record["r"] = {name: _finite_array(function(fitted_path.chir), f"{definition.id} R {name}")
-                           for name, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))}
-            if actual["sigma2"] < 0 or actual["s02"] < 0 or fitted_path.reff + actual["deltar"] <= 0:
-                notices.append(f"{definition.label or definition.id}: fitted path parameters are outside physical bounds. Constrain S0², sigma², and distance.")
-        model_chi = np.interp(data.k, model.k, model.chi)
-        # Retain unweighted values, including k=0, so display transforms can
-        # change weights without reading current group data or rerunning a fit.
-        plot_source = dict(schema_version=1, data=_finite_array(data.chi, "unweighted data"),
-                           model=_finite_array(model_chi, "unweighted model"),
-                           paths=[dict(id=record["id"], chi=_finite_array(
-                               np.interp(data.k, path.k, path.chi), "unweighted path"))
-                                  for record, path in zip(path_records, dataset.pathlist)])
-        weighted_data, weighted_model = data.chi * k_weight, model_chi * k_weight
-        r_data, r_model = dataset.data.chir, model.chir
-        difference = r_data - r_model
+        notices.extend(bound_notices(parameter_rows))
+        arrays = fit_arrays(request, inputs)
         statistics = dict(n_varys=int(result.nvarys), n_independent=_number(result.n_independent),
                           n_data=int(result.ndata), nfev=int(result.nfev), chi_square=_number(result.chi_square),
                           reduced_chi_square=_number(result.chi2_reduced), r_factor=_number(result.rfactor),
-                          aic=_number(result.aic), bic=_number(result.bic), errorbars=bool(result.errorbars))
+                          aic=_number(result.aic), bic=_number(result.bic), errorbars=bool(result.errorbars),
+                          epsilon_k=_number(display_epsilon(dataset)))
+        seconds = dict(fit=fit_seconds, optimizer=evaluations[-1] - evaluations[0] if len(evaluations) > 1 else None,
+                       total=time.perf_counter() - handler_started)
         return dict(group_id=group["id"], group_label=group.get("label", ""), success=bool(result.success),
                     message=str(result.message), report=report, warnings=notices, statistics=statistics,
                     parameters=parameter_rows, correlations=correlations, paths=path_records,
-                    transform=request.transform.model_dump(), plot_source=plot_source,
+                    transform=request.transform.model_dump(),
                     metadata=dict(engine="larch.feffit", kstep=0.05, nfft=2048, rwindow="hanning", phase_corrected=False,
                                   noise="Larch high-R estimate (15–30 Å)", background_refined=False,
-                                  r_residual="complex data minus model; residual_mag is its magnitude"),
-                    k=dict(x=_finite_array(data.k, "k"), data=_finite_array(weighted_data, "data"),
-                           model=_finite_array(weighted_model, "model"), residual=_finite_array(weighted_data-weighted_model, "residual"), weight=weight),
-                    r=dict(x=_finite_array(model.r, "R"),
-                           **{f"{name}_{suffix}": _finite_array(function(array), f"{name} {suffix}")
-                              for name, array in (("data", r_data), ("model", r_model), ("residual", difference))
-                              for suffix, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))}))
+                                  r_residual="complex data minus model; residual_mag is its magnitude",
+                                  seconds=_timing(seconds)),
+                    **arrays)
+
+
+def _timing(seconds: dict) -> dict:
+    """Phase timings, rounded to microseconds, with unmeasured phases left out.
+
+    Both engines report the same phases so a reader compares like with like:
+    ``total`` is the whole fit on the server, from reading the request to the
+    finished curves; ``fit`` is the fit call itself (set-up, minimization,
+    uncertainties and output arrays); ``optimizer`` is the minimization loop
+    alone. Only the fast engine has a ``compile`` phase.
+    """
+    return {name: round(value, 6) for name, value in seconds.items() if value is not None}
+
+
+def display_epsilon(dataset) -> float:
+    """The noise scale the reported uncertainties were measured against.
+
+    Every uncertainty and every chi-square in a fit is relative to this one
+    number, so two fits cannot be compared until both are known to have used
+    the same epsilon(k). Larch estimates one scale per k weight; this is the
+    one belonging to the weight that is plotted.
+    """
+    epsilon_k = dataset.epsilon_k
+    return float(np.mean(epsilon_k[0] if isinstance(epsilon_k, (list, tuple)) else epsilon_k))
+
+
+def fit_arrays(request: FitRequest, inputs: FitInputs) -> dict:
+    """Read the fitted curves off the dataset, for the plots and the path list.
+
+    Called after either backend has left the dataset standing at its converged
+    parameters, so the curves a reader compares are built the same way and
+    any difference between the two is the fit rather than the drawing.
+    """
+    data, dataset = inputs.data, inputs.dataset
+    model = dataset.model
+    weight = request.transform.kweight[0]
+    k_weight = data.k ** weight
+    for definition, fitted_path, record in zip(inputs.active, dataset.pathlist, inputs.path_records):
+        actual = fitted_path.path_paramvals()
+        record["values"] = {field: _number(actual[field]) for field in _PATH_PARAMETERS}
+        # The dataset owns these paths and has recalculated them at the final
+        # fitted parameters. Their saved R outputs already use the model
+        # transform and the first k weight; chi(k) still needs the display weight.
+        if not np.array_equal(fitted_path.r, model.r):
+            _fail("Larch returned inconsistent path and model R grids.")
+        record["k"] = dict(chi=_finite_array(
+            np.interp(data.k, fitted_path.k, fitted_path.chi) * k_weight, f"{definition.id} chi(k)"))
+        record["r"] = {name: _finite_array(function(fitted_path.chir), f"{definition.id} R {name}")
+                       for name, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))}
+        if actual["sigma2"] < 0 or actual["s02"] < 0 or fitted_path.reff + actual["deltar"] <= 0:
+            inputs.notices.append(f"{definition.label or definition.id}: fitted path parameters are outside physical bounds. Constrain S0², sigma², and distance.")
+    model_chi = np.interp(data.k, model.k, model.chi)
+    # Retain unweighted values, including k=0, so display transforms can
+    # change weights without reading current group data or rerunning a fit.
+    plot_source = dict(schema_version=1, data=_finite_array(data.chi, "unweighted data"),
+                       model=_finite_array(model_chi, "unweighted model"),
+                       paths=[dict(id=record["id"], chi=_finite_array(
+                           np.interp(data.k, path.k, path.chi), "unweighted path"))
+                              for record, path in zip(inputs.path_records, dataset.pathlist)])
+    weighted_data, weighted_model = data.chi * k_weight, model_chi * k_weight
+    r_data, r_model = dataset.data.chir, model.chir
+    difference = r_data - r_model
+    return dict(
+        plot_source=plot_source,
+        k=dict(x=_finite_array(data.k, "k"), data=_finite_array(weighted_data, "data"),
+               model=_finite_array(weighted_model, "model"),
+               residual=_finite_array(weighted_data - weighted_model, "residual"), weight=weight),
+        r=dict(x=_finite_array(model.r, "R"),
+               **{f"{name}_{suffix}": _finite_array(function(array), f"{name} {suffix}")
+                  for name, array in (("data", r_data), ("model", r_model), ("residual", difference))
+                  for suffix, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))}))
+
+
+def _preview_metrics(r, chir_mag, options: FitTransform, chi, k, weight) -> dict:
+    """How large a path is, in the two places a user judges it."""
+    window = (r >= options.rmin) & (r <= options.rmax)
+    inside = (k >= options.kmin) & (k <= options.kmax)
+    peak = int(np.argmax(chir_mag))
+    return dict(amplitude=float(chir_mag[peak]), r_at_amplitude=float(r[peak]),
+                window_area=float(np.trapezoid(chir_mag[window], r[window])) if window.any() else 0.0,
+                chi_k_peak=float(np.max(np.abs(chi[inside] * k[inside] ** weight))) if inside.any() else 0.0)
+
+
+def preview_paths(request: PathPreviewRequest) -> dict:
+    """Each enabled path's own chi(k) and chi(R) at the starting values.
+
+    The Fourier transform is the one the fit would use, so a path drawn here
+    and the same path drawn after a fit differ only by the fitted parameters.
+    """
+    enabled = [path for path in request.paths if path.enabled]
+    if not enabled:
+        _fail("Enable at least one FEFF path.", "paths")
+    if len({path.id for path in request.paths}) != len(request.paths):
+        _fail("Each path must have a unique id.", "paths")
+    if sum(len(path.content) for path in request.paths) > 4_000_000:
+        _fail("The total FEFF file content must not exceed 4 MB.", "paths")
+    definitions, values, _, _ = _initial_values(request.parameters)
+    trees, _ = _path_trees(request.paths, set(definitions))
+    options, weight, warnings = request.transform, request.transform.kweight[0], []
+    with _LARCH_LOCK, tempfile.TemporaryDirectory(prefix="artemis-preview-") as directory:
+        loaded = [(definition, *_read_path(definition, Path(directory), index))
+                  for index, definition in enumerate(enabled)]
+        reach = min(metadata["kmax"] for _, _, metadata in loaded)
+        if options.kmax > reach:
+            warnings.append(f"The FEFF paths only reach {reach:g} Å⁻¹, below the fit's kmax of {options.kmax:g} Å⁻¹; the preview stops there.")
+        # The preview grid stops at PREVIEW_KMAX to stay cheap; a fit range past it
+        # would otherwise be drawn as if the preview covered it.
+        if options.kmax > PREVIEW_KMAX and reach > PREVIEW_KMAX:
+            warnings.append(f"The preview stops at {PREVIEW_KMAX:g} Å⁻¹, below the fit's kmax of {options.kmax:g} Å⁻¹; "
+                            "the curves and sizes here leave out the rest of the fit range.")
+        k = np.arange(int(min(reach, PREVIEW_KMAX) / 0.05 + 1e-6) + 1) * 0.05
+        transform = feffit_transform(**(request.transform.model_dump() | {"kweight": weight}),
+                                     kstep=0.05, nfft=2048, rwindow="hanning")
+        records, total_chi, grid = [], np.zeros_like(k), None
+        for definition, path, metadata in loaded:
+            name = definition.label or definition.id
+            resolved = {field: _evaluate(trees[definition.id][field], values | {key: metadata[key] for key in _PATH_NAMES}, f"{name}.{field}", path=path)
+                        for field in _PATH_PARAMETERS}
+            if resolved["sigma2"] < 0 or resolved["s02"] < 0 or resolved["deltar"] + metadata["reff"] <= 0:
+                _fail(f"{name}: S0² and sigma² must be nonnegative, and Reff + ΔR must be positive.", "paths")
+            try:
+                with np.errstate(over="raise", invalid="raise", divide="raise"):
+                    path._calc_chi(k=k, **resolved)
+                fourier = Group()
+                transform._xafsft(np.asarray(path.chi, dtype=float), group=fourier, rmax_out=10)
+            except Exception as exc:
+                raise WebInputError("artemis_preview_failed", f"{name}: Larch could not evaluate this path at the current values.",
+                                    fields=("paths",), recovery="Check the path parameter expressions and their starting values.") from exc
+            chi, grid = np.asarray(path.chi, dtype=float), np.asarray(fourier.r, dtype=float)
+            total_chi = total_chi + chi
+            records.append(dict(id=definition.id, label=definition.label or definition.filename,
+                                filename=definition.filename, metadata=metadata, values=resolved,
+                                k=dict(chi=_finite_array(chi * k ** weight, f"{definition.id} chi(k)")),
+                                r={key: _finite_array(function(fourier.chir), f"{definition.id} R {key}")
+                                   for key, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))},
+                                metrics=_preview_metrics(grid, np.asarray(fourier.chir_mag, dtype=float), options, chi, k, weight)))
+        total = Group()
+        transform._xafsft(total_chi, group=total, rmax_out=10)
+    return dict(paths=records, warnings=warnings, transform=request.transform.model_dump(),
+                k=dict(x=_finite_array(k, "k"), weight=weight,
+                       total=_finite_array(total_chi * k ** weight, "total chi(k)")),
+                r=dict(x=_finite_array(grid, "R"),
+                       **{f"total_{key}": _finite_array(function(total.chir), f"total R {key}")
+                          for key, function in (("mag", np.abs), ("re", np.real), ("im", np.imag))}),
+                metadata=dict(engine="larch.feffdat", kstep=0.05, nfft=2048, rwindow="hanning",
+                              note="Starting values only; no fit is run and no measured spectrum is used.",
+                              metrics="amplitude is the tallest |chi(R)| of the path, window_area its |chi(R)| integrated over the fit R range, chi_k_peak the tallest weighted |chi(k)| in the fit k range"))
 
 
 def build_artemis_router(store) -> APIRouter:
@@ -585,6 +850,10 @@ def build_artemis_router(store) -> APIRouter:
     @router.post("/paths/inspect")
     def inspect(source: PathInput):
         return inspect_path(source)
+
+    @router.post("/paths/preview")
+    def preview(request: PathPreviewRequest):
+        return preview_paths(request)
 
     @router.get("/capabilities")
     def capabilities():
@@ -601,17 +870,14 @@ def build_artemis_router(store) -> APIRouter:
 
     jobs = FeffJobs(store.settings.data_root, store=store)
 
-    @router.post("/projects/{ident}/groups/{group_id}/fit")
-    def fit(ident: str, group_id: str, request: FitRouteRequest,
-            view: Literal["full", "summary"] = Query(default="full")):
-        """Fit one group. `?view=summary` returns the fitted values without the curves."""
+    def _run_fit(ident: str, group_id: str, request: FitRouteRequest, view: str, backend):
         project = store.load(ident)
         # Draft access is capability-guarded by Athena's integration router.
         # Do not create an unguarded alternative entry point to those spectra.
         if project.get("integration") is True:
             _fail("Import the integration draft into a local project before fitting.", "project")
         store.check(project, request.version)
-        result = fit_group(store.group(project, group_id), request.resolve(jobs))
+        result = backend(store.group(project, group_id), request.resolve(jobs))
         store.check(store.load(ident), request.version)
         reply = dict(project_id=ident, version=request.version, **result)
         if view == "summary":
@@ -619,6 +885,37 @@ def build_artemis_router(store) -> APIRouter:
 
             return fit_summary(reply)
         return reply
+
+    @router.post("/projects/{ident}/groups/{group_id}/fit")
+    def fit(ident: str, group_id: str, request: FitRouteRequest,
+            view: Literal["full", "summary"] = Query(default="full")):
+        """Fit one group. `?view=summary` returns the fitted values without the curves."""
+        return _run_fit(ident, group_id, request, view, fit_group)
+
+    @router.get("/fast-fit/status")
+    def fast_status():
+        """Whether the differentiable backend can run here, and why not if it cannot.
+
+        The client asks before offering the option, so that an absent engine
+        reads as a disabled control with a reason rather than a failed fit.
+        """
+        from .artemis_fast import fast_engine_status
+
+        return fast_engine_status()
+
+    @router.post("/projects/{ident}/groups/{group_id}/fit/fast")
+    def fit_fast(ident: str, group_id: str, request: FitRouteRequest,
+                 view: Literal["full", "summary"] = Query(default="full")):
+        """The same fit, minimized with an exact Jacobian instead of differences.
+
+        It takes the identical request body and returns the identical response
+        shape as the reference route, which is what makes the two comparable in
+        one click; `metadata.engine_parity` and `metadata.seconds` say how far
+        the two forward models differ and what the speed cost or gain was.
+        """
+        from .artemis_fast import fast_fit_group
+
+        return _run_fit(ident, group_id, request, view, fast_fit_group)
 
     from .artemis_structures import build_structures_router
 
