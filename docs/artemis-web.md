@@ -220,6 +220,9 @@ project records keep their original shape.
 The CIF viewer also reads complete P1 atom lists, as used by Materials Project
 exports, even when the backend recognizes higher symmetry. Local clusters and
 repeated unit cells retain the explicit coordinates, including small distortions.
+When the backend recognizes coordinates close to 1/3 or 2/3 as exact fractions,
+the viewer matches those sites while preserving the original CIF coordinates and
+anchoring the selected center on its explicit atom row.
 Existing saved CIFs work without reattaching them. For equivalent atoms whose
 site assignment is not encoded in the CIF, hover shows the original atom label.
 
