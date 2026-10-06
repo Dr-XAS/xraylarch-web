@@ -3,6 +3,7 @@ from concurrent.futures import ThreadPoolExecutor
 import gzip
 import json
 from pathlib import Path
+import platform
 
 from fastapi.testclient import TestClient
 import pytest
@@ -20,6 +21,27 @@ FIXTURES = Path(__file__).parent/'fixtures'
 NATIVE = json.loads((FIXTURES/'athena-xdi-controls-native.json').read_text())['native']
 
 
+def _wrong_architecture():
+    """Why the bundled XDI library cannot load into this Python, if that is the reason.
+
+    Larch ships libxdifile for x86_64 macOS only, so an arm64 Python cannot load
+    it. Any other load failure is left for the tests to report.
+    """
+    from larch.io.xdi import get_xdilib
+    try:
+        get_xdilib()
+    except OSError as exc:
+        if 'incompatible architecture' in str(exc):
+            return f'Larch\'s bundled XDI library cannot load into this {platform.machine()} Python'
+    except Exception:
+        pass
+    return None
+
+
+_architecture_problem = _wrong_architecture()
+needs_native_validator = pytest.mark.skipif(_architecture_problem is not None, reason=_architecture_problem or '')
+
+
 @pytest.fixture
 def store(tmp_path):
     return AthenaStore(Settings(data_root=tmp_path))
@@ -30,6 +52,7 @@ def imported(store, filename='xdi-official-cu_metal_rt.xdi'):
     return store.import_data(p['id'], ImportRequest(version=0, upload_id=i['upload_id'], **i['athena_suggestion']))
 
 
+@needs_native_validator
 @pytest.mark.parametrize('row', NATIVE['cases'], ids=[f"{r['family']}.{r['tag']}:{r['value']}:{r['mode']}" for r in NATIVE['cases']])
 def test_actual_native_field_status_and_message(row):
     f, t, v = row['family'], row['tag'], row['value']
@@ -41,6 +64,7 @@ def test_actual_native_field_status_and_message(row):
     assert metadata == original
 
 
+@needs_native_validator
 def test_native_presence_lists_and_larch_extension_context(store):
     assert list(REQUIRED) == NATIVE['required']; assert list(RECOMMENDED) == NATIVE['recommended']
     p = imported(store); g = p['groups'][0]
@@ -55,6 +79,7 @@ def test_native_presence_lists_and_larch_extension_context(store):
     assert reread['valid'] and any(r['family'] == 'GSE' for r in reread['results'])
 
 
+@needs_native_validator
 def test_comment_text_cannot_change_captured_extension_family_spelling():
     raw = (FIXTURES/'xdi-official-cu_metal_rt.xdi').read_bytes().replace(b'# ///', b'# ///\n# gse.extra: this is a comment')
     metadata = parse_upload(raw, 'source.xdi').xdi_metadata
@@ -126,6 +151,7 @@ def test_groups_without_header_metadata_have_current_identity_and_saved_comments
     assert p['groups'][0]['source']['xdi_metadata']['attributes']['element'] == {'symbol': 'Cu', 'edge': 'K'}
 
 
+@needs_native_validator
 def test_parallel_validation_has_independent_buffers_and_diagnostics():
     rows = NATIVE['cases'] * 2
     def run(row):
@@ -136,6 +162,7 @@ def test_parallel_validation_has_independent_buffers_and_diagnostics():
         assert list(pool.map(run, rows)) == [(row['code'], row['message']) for row in rows]
 
 
+@needs_native_validator
 @pytest.mark.parametrize('metadata', [
     {'attributes': {'Facility': {'name': 'bad\0tail'}}},
     {'attributes': {'Facility': {'name': 'x'*8193}}},
