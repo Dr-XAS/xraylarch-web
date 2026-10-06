@@ -91,7 +91,7 @@ function VisibleSectionHelp({ label, children, id }: SectionHelpProps) {
 
   return <>
     {/* A native button inside a label would become its associated control. */}
-    <span ref={trigger} role="button" tabIndex={0} className={styles.trigger} aria-label={`About ${label}`} aria-describedby={descriptionId}
+    <span ref={trigger} role="button" tabIndex={0} data-section-help="" className={styles.trigger} aria-label={`About ${label}`} aria-describedby={descriptionId}
       onMouseEnter={show} onMouseLeave={leave} onFocus={show}
       onBlur={event => { if (!tooltip.current?.contains(event.relatedTarget)) close() }}
       onPointerDown={event => { pointerWasOpen.current = open; event.stopPropagation() }}

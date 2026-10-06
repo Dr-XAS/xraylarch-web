@@ -197,8 +197,14 @@ function normalizeMenuQuery(value: string) {
 
 function Modal({ title, children, close, wide = false, help }: { title: string; children: ReactNode; close: () => void; wide?: boolean; help?: ReactNode }) {
   const ref = useRef<HTMLDialogElement>(null)
-  useEffect(() => { ref.current?.showModal(); return () => ref.current?.close() }, [])
-  return <dialog className={`ath-modal${wide ? " ath-modal-wide" : ""}`} ref={ref} onCancel={event => { event.preventDefault(); close() }} aria-label={title}><header><h2 aria-label={help ? title : undefined}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
+  useEffect(() => {
+    ref.current?.showModal()
+    // showModal focuses the first focusable element, often the title's help,
+    // which opens on focus and covers the first controls on a phone.
+    if (document.activeElement?.closest("[data-section-help]")) ref.current?.focus()
+    return () => ref.current?.close()
+  }, [])
+  return <dialog className={`ath-modal${wide ? " ath-modal-wide" : ""}`} ref={ref} tabIndex={-1} onCancel={event => { event.preventDefault(); close() }} aria-label={title}><header><h2 aria-label={help ? title : undefined}>{title}{help && <SectionHelp label={title}>{help}</SectionHelp>}</h2><button onClick={close} aria-label="Close dialog"><X size={18} /></button></header>{children}</dialog>
 }
 
 function ContextLabel({ label, children, open }: { label: string; children: ReactNode; open: (event: ContextEvent) => void }) {
