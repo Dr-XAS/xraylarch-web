@@ -110,7 +110,11 @@ and newer letter-based MP IDs are supported.
 
 The backend reads `MP_API_KEY` from its environment. Configure it as a server
 secret before starting/restarting the backend; never use a `NEXT_PUBLIC_`
-variable or place it in a project export. Missing or rejected keys, rate limits,
+variable or place it in a project export. On the Dr.XAS host the ingress-mounted
+deployment supplies it as `mp_api_key` in the private
+`/local/apps/xraylarch-web/config/integration.json` read by the backend-only
+launcher (see the deployment manifest); the standalone public instance reads it
+from its own private `config/backend.env`. Missing or rejected keys, rate limits,
 and connection failures produce an actionable message in the popup. The backend
 uses the official REST summary endpoint through the existing `httpx` dependency,
 requests compact result metadata, and fetches the selected structure on demand.

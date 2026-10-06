@@ -78,6 +78,40 @@ def test_private_config_reaches_exec_environment_without_secret_in_argv(tmp_path
     assert values["integration_hmac_secret"] not in repr(argv)
 
 
+def test_missing_config_strips_ambient_provider_secret(tmp_path):
+    from xraylarch_web.integration_runtime import backend_environment
+    env = backend_environment(tmp_path / "absent", {"PATH": "/safe/bin", "MP_API_KEY": "ambient"})
+    assert env == {"PATH": "/safe/bin"}
+
+
+def test_private_config_passes_materials_project_key_to_backend_only(tmp_path, monkeypatch):
+    from xraylarch_web import integration_runtime as runtime
+    values = {**enabled_config(), "mp_api_key": "mp-test-key-0123456789"}
+    path = config_file(tmp_path, values)
+    captured = []
+    monkeypatch.setattr(runtime.os, "execve", lambda *args: captured.append(args))
+    monkeypatch.setenv("MP_API_KEY", "ambient-must-not-survive")
+    runtime.main([str(path), "--host", "127.0.0.1", "--port", "8006"])
+    executable, argv, env = captured[0]
+    assert env["MP_API_KEY"] == values["mp_api_key"]
+    assert "XRAYLARCH_MP_API_KEY" not in env
+    assert values["mp_api_key"] not in repr(argv)
+
+
+def test_materials_project_key_is_optional(tmp_path):
+    from xraylarch_web.integration_runtime import backend_environment
+    environment = backend_environment(config_file(tmp_path, enabled_config()), {})
+    assert "MP_API_KEY" not in environment
+
+
+@pytest.mark.parametrize("secret", ["", " padded ", "two\nlines", "tab\there", 7, None, "x" * 513])
+def test_malformed_materials_project_key_is_refused(tmp_path, secret):
+    from xraylarch_web.integration_runtime import backend_environment
+    values = {**enabled_config(), "mp_api_key": secret}
+    with pytest.raises(ValueError, match="Invalid integration runtime configuration"):
+        backend_environment(config_file(tmp_path, values), {})
+
+
 def test_private_config_allows_non_secret_v2_quota_settings(tmp_path):
     from xraylarch_web.integration_runtime import backend_environment
 
