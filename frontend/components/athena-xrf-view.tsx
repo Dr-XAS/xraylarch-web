@@ -8,6 +8,7 @@ import type { AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-xrf-view.module.css'
+import { describeCalibration, type StartingCalibration } from './athena-xrf-xas'
 
 const fieldInstructions: Record<string, string> = {
   "point": "Zero-based scan-point index for the displayed detector spectrum. Point 0 is the first recorded measurement.",
@@ -17,15 +18,15 @@ const fieldInstructions: Record<string, string> = {
   "rebin": "Sum this many adjacent detector channels into each displayed bin. One preserves the original channel grid; larger bins trade spectral detail for a compact view.",
   "roi_lo": "First included channel of the window summed across the scan. Keep it within the channels being read.",
   "roi_hi": "Exclusive end channel of the window summed across the scan. This window drives the trace and raster map; energy calibration only changes its displayed energy labels.",
-  "cal_offset": "Energy in keV at channel zero for the displayed spectrum. This labels the axis only and does not move counts or fit the detector calibration.",
-  "cal_slope": "Positive gain in keV per detector channel. Use the beamline calibration; 0.01 keV is 10 eV per channel."
+  "cal_offset": "Energy in keV at channel zero for the displayed spectrum. This labels the axis only and does not move counts or fit the detector calibration. Leave it empty to use the calibration read from the file.",
+  "cal_slope": "Positive gain in keV per detector channel; 0.01 keV is 10 eV per channel. Leave it empty to use the calibration read from the file."
 }
 
 type Detector={name:string;elements:number;channels:number}
 type Axis={name:string;min:number;max:number}
 type Raster={fast:string;slow:string;columns:number;rows:number;serpentine:boolean}
 type Inspection={kind:string;upload_id:string;display_name:string;filename:string;points:number;
-  detectors:Detector[];axes:Axis[];raster:Raster|null}
+  detectors:Detector[];axes:Axis[];raster:Raster|null;starting_calibration?:Record<string,StartingCalibration>}
 // x and y are the stage positions of the columns and the rows, so the image
 // is placed where it was measured rather than on a pixel grid.
 type MapImage={rows:number;columns:number;fast:string;slow:string;x:number[];y:number[];values:number[][]}
@@ -35,14 +36,16 @@ type MapImage={rows:number;columns:number;fast:string;slow:string;x:number[];y:n
 type Frame={version:number;cube_id:string;display_name:string;points:number;point:number;averaged:number[];
   elements:number[];channel_lo:number;rebin:number;energy_kev:number[];spectra:number[][];total:number[];
   element_counts:number[];axis_name:string|null;trace_stride:number;axis:number[];roi:number[];
-  roi_range:number[];map:MapImage|null}
+  roi_range:number[];map:MapImage|null;calibration?:{cal_offset:number;cal_slope:number}}
 type Trace={x:number[];y:number[];name:string;dash?:'dot'|'dash'}
 
 const INTEGERS=['point','average','channel_lo','channel_hi','rebin','roi_lo','roi_hi'] as const
-const REQUIRED=[...INTEGERS,'cal_offset','cal_slope'] as const
+const REQUIRED=INTEGERS
+// Empty means: read from the file.
+const OPTIONAL_NUMBERS=['cal_offset','cal_slope'] as const
 const palette=['#16736b','#b76d37','#6a4fa3','#2c7fb8','#c0392b','#7f8c2a','#a0338e','#4d6b8a']
 const blank={point:'0',average:'1',channel_lo:'0',channel_hi:'0',rebin:'1',roi_lo:'0',roi_hi:'0',
-  cal_offset:'0',cal_slope:'0.01'}
+  cal_offset:'',cal_slope:''}
 const labels:Record<string,string>={point:'Scan point',average:'Average over points',
   channel_lo:'First channel read',channel_hi:'Last channel read',rebin:'Channels per bin',
   roi_lo:'Window of interest, first channel',roi_hi:'Window of interest, last channel',
@@ -77,8 +80,10 @@ function MapFigure({image,revision,log}:{image:MapImage;revision:string;log:bool
     style={{width:'100%',height:'100%'}} useResizeHandler /></div>
 }
 
-export function AthenaXrfView({project,setBusy}: {
+export function AthenaXrfView({project,setBusy,initialFile}: {
   project:AthenaProject;setBusy:(label:string)=>void
+  // A detector file handed over by another panel: read as soon as this opens.
+  initialFile?:File
 }) {
   const athenaApi=useAthenaApi()
   const [inspection,setInspection]=useState<Inspection|null>(null)
@@ -95,15 +100,18 @@ export function AthenaXrfView({project,setBusy}: {
 
   const value=(name:keyof typeof blank)=>Number(form[name])
   const chosenDetector=inspection?.detectors.find(d=>d.name===detector)
+  const fileCalibration=inspection?.starting_calibration?.[detector]
   const elements=chosenDetector?Array.from({length:chosenDetector.elements},(_,i)=>i):[]
   const selected=chosen.filter(index=>index<elements.length).sort((a,b)=>a-b)
+  const optional=(name:keyof typeof blank)=>form[name].trim()===''?null:Number(form[name])
   const numbers=REQUIRED.every(f=>form[f].trim()!==''&&Number.isFinite(value(f)))
     &&INTEGERS.every(f=>Number.isInteger(value(f)))
+    &&OPTIONAL_NUMBERS.every(f=>optional(f)===null||Number.isFinite(optional(f)))
   const windows=value('channel_lo')>=0&&value('channel_hi')>value('channel_lo')
     &&value('roi_lo')>=value('channel_lo')&&value('roi_hi')>value('roi_lo')
     &&value('roi_hi')<=value('channel_hi')
   const sizes=value('rebin')>=1&&value('rebin')<=64&&value('average')>=1&&value('average')<=1024
-    &&value('point')>=0&&value('point')<(inspection?.points??0)&&value('cal_slope')>0
+    &&value('point')>=0&&value('point')<(inspection?.points??0)&&(optional('cal_slope')===null||optional('cal_slope')!>0)
   const valid=!!inspection&&!!chosenDetector&&selected.length>0&&numbers&&windows&&sizes
   const problem=!inspection?''
     : !chosenDetector?'Choose the detector to look at.'
@@ -121,7 +129,7 @@ export function AthenaXrfView({project,setBusy}: {
     elements:selected.length===elements.length?[]:selected,
     channel_range:[value('channel_lo'),value('channel_hi')],rebin:value('rebin'),
     roi_range:[value('roi_lo'),value('roi_hi')],
-    cal_offset:value('cal_offset'),cal_slope:value('cal_slope'),axis:axis===''?null:axis}
+    cal_offset:optional('cal_offset'),cal_slope:optional('cal_slope'),axis:axis===''?null:axis}
   // As in the fitting panel, the project version is left out of the key: a
   // group added in another panel must not blank the image on screen.
   const key=JSON.stringify([project.id,{...body,version:0}])
@@ -161,9 +169,9 @@ export function AthenaXrfView({project,setBusy}: {
     if(following&&name==='channel_hi')return {...f,channel_hi:next,roi_hi:next}
     return {...f,[name]:next}
   })}
-  function field(name:keyof typeof blank,step:'any'|1,extra?:{min?:number;max?:number}) {
+  function field(name:keyof typeof blank,step:'any'|1,extra?:{min?:number;max?:number},placeholder?:string) {
     return <label className="ath-field" key={name}><span>{labels[name]} <SectionHelp label={labels[name]}>{fieldInstructions[name]}</SectionHelp></span>
-      <input type="number" step={step} {...extra} value={form[name]}
+      <input type="number" step={step} {...extra} placeholder={placeholder} value={form[name]}
         onChange={e=>edit(name,e.target.value)} /></label>
   }
   function pickDetector(found:Inspection,name:string) {
@@ -188,6 +196,14 @@ export function AthenaXrfView({project,setBusy}: {
     }catch(e){setError(e instanceof Error?e.message:'The file could not be read.')}
     finally{lock.current=false;setPending(false);setBusy('')}
   }
+  const handedOver=useRef(false)
+  useEffect(()=>{
+    if(!initialFile||handedOver.current)return
+    handedOver.current=true
+    void inspect(initialFile)
+  // The hand-over runs once, for the file the panel was opened with.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[initialFile])
 
   const spectrum:Trace[]=current?[
     ...(current.elements.length>1
@@ -199,7 +215,9 @@ export function AthenaXrfView({project,setBusy}: {
   const trace:Trace[]=current?[{x:current.axis,y:current.roi,
     name:`Channels ${current.roi_range[0]}–${current.roi_range[1]}`}]:[]
   const revision=`xrf-view:${inspection?.upload_id??''}:${detector}`
-  const kev=(channel:number)=>(value('cal_offset')+value('cal_slope')*channel).toFixed(3)
+  // The calibration the server drew with: typed, or read from the file.
+  const used=current?.calibration??shown?.calibration
+  const kev=(channel:number)=>used?(used.cal_offset+used.cal_slope*channel).toFixed(3):'?'
   // What an empty plot says. Once a file is chosen, "choose a file" is false:
   // the frame is either on its way, or was refused and the message says why.
   const waiting=!!inspection&&valid&&!current&&!failure
@@ -237,8 +255,13 @@ export function AthenaXrfView({project,setBusy}: {
         <p className="ath-hint">Reading fewer channels makes the file quicker to open; binning sums neighbouring channels, so a bin holds the counts of all of them and a weak line stays visible.</p>
         <div className="ath-fields">{field('roi_lo',1)}{field('roi_hi',1)}</div>
         <p className="ath-hint">The window of interest is summed at every point to make the trace, and the image when the file holds a raster. At the calibration below it covers {kev(value('roi_lo'))}–{kev(value('roi_hi'))} keV.</p>
-        <details><summary>Energy calibration</summary><div className="ath-fields">{field('cal_offset','any')}{field('cal_slope','any')}</div>
-          <p className="ath-hint">Channel to energy, as a straight line. This is a label for the abscissa only: it is not fitted here, and changing it moves no counts. The fitting panel solves for it against the measured lines.</p></details>
+        {fileCalibration&&<p className={fileCalibration.source==='default'?'ath-warning':'ath-hint'} aria-label="Energy calibration"><strong>Energy calibration</strong> · {form.cal_offset.trim()!==''||form.cal_slope.trim()!==''
+          ? <>as typed below; the file&apos;s own reading is {describeCalibration(fileCalibration)}.</>
+          : fileCalibration.source==='default'
+            ? <>no calibration could be read from this file, so the energy axis assumes 10 eV per channel. Type the detector&apos;s calibration below if the lines are not where they belong.</>
+            : <>{describeCalibration(fileCalibration)}, read from the file{fileCalibration.of?` (${fileCalibration.found_for} of ${fileCalibration.of} elements)`:''}.</>}</p>}
+        <details><summary>Energy calibration</summary><div className="ath-fields">{field('cal_offset','any',undefined,'From the file')}{field('cal_slope','any',undefined,'From the file')}</div>
+          <p className="ath-hint">Channel to energy, as a straight line. This is a label for the abscissa only: it is not fitted here, and changing it moves no counts. Left empty, it is read from the file (the beamline&apos;s own line windows, the elastic peak); the fitting panel then solves for each element&apos;s own calibration against the measured lines.</p></details>
         <details><summary>Detector file</summary><AthenaDownloadButton path={`/projects/${project.id}/uploads/${inspection.upload_id}/file`}>Download original detector file</AthenaDownloadButton></details>
       </>}
     </fieldset>

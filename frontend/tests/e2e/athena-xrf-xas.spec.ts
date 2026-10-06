@@ -144,3 +144,43 @@ test('exports a curve that passes through every point the reader was shown',asyn
   await expect(page.getByRole('heading',{name:/Data groups\s*2\b/})).toBeVisible()
   expect(errors).toEqual([])
 })
+
+// The 20-BM case that failed on real data: a detector file binned to about
+// 30 eV per channel, opened through Import spectra. It used to be refused there,
+// and in the XRF panel the fixed 10 eV-per-channel guess put every window on
+// empty channels. Now it lands in the panel loaded, and the calibration is
+// read from the file's own line windows.
+const binned=join(mkdtempSync(join(tmpdir(),'xrf-xas-binned-')),'binned.0001.hdf5')
+const binnedSettings=JSON.parse(execFileSync(python,[generator,binned,'60','binned-20bm'],
+  {encoding:'utf8',cwd:backend,env:{...process.env,PYTHONPATH:`${backend}:${join(backend,'tests')}`}})
+  .trim().split('\n').pop() as string)
+
+test('opens a 20-BM detector file from Import spectra in the XRF fit panel and places its windows from the file',async({page})=>{
+  test.setTimeout(180000)
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message))
+  await page.goto('/')
+  await page.getByRole('button',{name:'Import data',exact:true}).click()
+  const inspecting=page.waitForResponse(r=>r.url().endsWith('/xrf-xas/inspect'))
+  await page.getByLabel('Choose data files',{exact:true}).setInputFiles(binned)
+  const panel=page.getByRole('dialog',{name:'Fluorescence XAS from XRF fit',exact:true})
+  await expect(panel).toBeVisible()
+  expect((await inspecting).ok()).toBe(true)
+  await expect(page.getByRole('dialog',{name:'Import spectra',exact:true})).toHaveCount(0)
+  await expect(panel.getByLabel('Opened from Import spectra')).toContainText('binned.0001.hdf5')
+  await expect(panel.getByLabel('Energy calibration')).toContainText("from fluorescence lines of known energy")
+  await panel.getByLabel('Target element',{exact:true}).fill(binnedSettings.target)
+  await panel.getByLabel('Matrix elements',{exact:true}).fill(binnedSettings.matrix)
+  await panel.getByText('Normalization',{exact:true}).click()
+  await panel.getByLabel('Edge energy E₀ (eV)',{exact:true}).fill(String(binnedSettings.e0))
+  await panel.getByLabel('Post-edge end (eV)',{exact:true}).fill('560')
+  const result=await fit(page,panel)
+  const used=result.metadata.windows.starting_calibration
+  expect(used.automatic).toEqual(['cal_offset','cal_slope'])
+  expect(Math.abs(used.applied.cal_slope-binnedSettings.cal_slope)/binnedSettings.cal_slope).toBeLessThan(0.02)
+  const [lo,hi]=result.metadata.roi_range
+  expect(lo).toBeLessThanOrEqual(binnedSettings.target_channel)
+  expect(hi).toBeGreaterThan(binnedSettings.target_channel)
+  await expect(panel.getByLabel('Fluorescence XAS preview',{exact:true}).locator('.js-line').first()).toBeAttached()
+  await expect(panel.getByLabel('Window sum preview',{exact:true}).locator('.js-line').first()).toBeAttached()
+  expect(errors).toEqual([])
+})

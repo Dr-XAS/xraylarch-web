@@ -69,7 +69,83 @@ def twenty_bm_file(scan, counts, shifts=None):
     return buffer.getvalue()
 
 
-def main(path, points):
+# A detector three times coarser than the model's, as 20-BM's binned XMAP is:
+# every three channels summed, so its calibration is known exactly.
+BIN = 3
+
+
+def binned_calibration():
+    from test_athena_xrf_xas import TRUE_SHAPE
+    return TRUE_SHAPE['cal_offset'] + TRUE_SHAPE['cal_slope'], BIN * TRUE_SHAPE['cal_slope']
+
+
+def binned_spectra(points=24, detectors=2):
+    """A synthetic Mn scan summed three channels at a time: (scan, spectra)."""
+    scan, counts, _, _ = synthetic_scan(points=points, detectors=detectors, calibration_points=3)
+    full = np.zeros((counts.shape[0], counts.shape[1], DETECTOR_CHANNELS))
+    full[:, :, CHANNELS[0]:CHANNELS[0] + counts.shape[2]] = counts
+    usable = DETECTOR_CHANNELS // BIN * BIN
+    spectra = full[:, :, :usable].reshape(counts.shape[0], counts.shape[1], -1, BIN).sum(axis=3)
+    return scan, np.round(spectra).astype(np.int32)
+
+
+def binned_channel(kev):
+    offset, slope = binned_calibration()
+    return (kev - offset) / slope
+
+
+LINE_WINDOWS = (('MnKa', 5.8988), ('CrKa', 5.4147))
+
+
+def binned_twenty_bm_file(scan, spectra, *, line_windows=True, windows=LINE_WINDOWS, order=None,
+                          channel_of=binned_channel):
+    """The binned scan in 20-BM's layout, with the beamline's line windows the
+    way its control program writes them: one sum per element per line, named
+    from 0 while the MCA records are numbered from 1."""
+    import h5py
+
+    points, elements, _ = spectra.shape
+    # `order` writes the points in another order (reversed, shuffled), as a
+    # scan recorded downward in energy is.
+    order = np.arange(points) if order is None else np.asarray(order)
+    energy, i0, spectra = scan['energy_ev'][order], scan['channels']['i0'][order], spectra[order]
+    buffer = io.BytesIO()
+    pvs = []
+    with h5py.File(buffer, 'w') as handle:
+        group = handle.create_group('1D Scan')
+        group.attrs['AUTODTCORR'] = 'NO'
+        positions = np.zeros((1, points, 2), dtype=np.float32)
+        positions[0, :, 0] = energy
+        positions[0, :, 1] = 1.0
+        group['X Positions'] = positions
+        group['X Positions'].attrs['Motor Info'] = np.array(
+            [['Mono Energy *', ''], ['Scaler preset time *', '']], dtype=object)
+        detectors = group.create_group('Detectors')
+        detectors['I0'] = i0[None, :].astype(np.float32)
+        for index in range(elements):
+            group[f'MCA {index + 1}'] = spectra[None, :, index, :]
+            if line_windows:
+                for record, (name, kev) in enumerate(windows, start=7):
+                    centre = int(round(channel_of(kev)))
+                    lo, hi = centre - 5, centre + 6
+                    label = f'XMAP12B:{index}:{name}'
+                    detectors[label] = spectra[None, :, index, lo:hi].sum(axis=2).astype(np.float32)
+                    pvs.append(f'{label}/20xmap12b:mca{index + 1}.R{record}')
+        group.attrs['Header'] = '# Detector Names/PVs:\r\n# ' + '  '.join(pvs) + '\r\n'
+    return buffer.getvalue()
+
+
+def main(path, points, layout='nexus'):
+    if layout == 'binned-20bm':
+        scan, spectra = binned_spectra(points=points)
+        with open(path, 'wb') as handle:
+            handle.write(binned_twenty_bm_file(scan, spectra))
+        offset, slope = binned_calibration()
+        print(json.dumps(dict(points=points, target='Mn', matrix='Fe, Cr', e0=E0,
+                              cal_offset=offset, cal_slope=slope,
+                              target_channel=binned_channel(5.8988))))
+        return
+
     scan, counts, options, _ = synthetic_scan(points=points, detectors=2,
                                               calibration_points=3)
     with open(path, 'wb') as handle:
@@ -85,4 +161,4 @@ def main(path, points):
 
 
 if __name__ == '__main__':
-    main(sys.argv[1], int(sys.argv[2]))
+    main(sys.argv[1], int(sys.argv[2]), *sys.argv[3:4])

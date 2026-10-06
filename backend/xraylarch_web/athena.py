@@ -1656,7 +1656,13 @@ class AthenaStore:
         # text files already use.
         from .hdf5_readers import is_hdf5, prepare_hdf5, unreadable_hdf5_message
         prepared = prepare_hdf5(data, settings=self.settings)
+        detector_file = self._detector_file(data, _safe_display_name(filename)) if is_hdf5(data) else None
         if prepared is None and is_hdf5(data):
+            # A file of detector spectra is not a column table, but it is not
+            # a mistake either: it belongs in the XRF panels, and the answer
+            # says which one, so the workbench can open it there.
+            if detector_file is not None:
+                return detector_file
             raise WebInputError('upload_hdf5_unreadable', unreadable_hdf5_message(data, _safe_display_name(filename), settings=self.settings),
                                 ('file',), 'Import the scan from its text file; open detector spectra from the XRF panels.')
         if prepared is None:
@@ -1705,7 +1711,36 @@ class AthenaStore:
             reader = next((scan['beamline_reader'] for scan in scans if scan.get('beamline_reader')), None)
             return {'kind': 'scan_list', 'display_name': display_name, 'file_plugin': prepared.metadata,
                     'scans': scans, 'beamline_reader': reader}
-        return self._inspect_table(ident, project, data, display_name, prepared)
+        inspection = self._inspect_table(ident, project, data, display_name, prepared)
+        if detector_file is not None:
+            # A scan table that also carries detector spectra imports as a
+            # table; the spectra are offered to the XRF panel beside it.
+            inspection = {**inspection, 'detector_file': detector_file}
+        return inspection
+
+    def _detector_file(self, data, display_name):
+        """What the XRF panels would make of an HDF5 upload, or None.
+
+        An energy scan with multi-element spectra opens in the fluorescence
+        XAS panel; spectra without an energy scan (a map, a single spectrum)
+        open in the raw viewer. The HDF5 safety checks run inside both readers.
+        """
+        from .athena_xrf_xas import scan_summary
+        from .athena_xrf_view import read_cube, cube_summary
+        from .xrf_hdf5 import read_scan
+        try:
+            summary = scan_summary(read_scan(data, display_name, settings=self.settings))
+            return dict(kind='xrf_detector_file', opens='xrf_xas', display_name=display_name,
+                        points=summary['points'], energy_min=summary['energy_min'], energy_max=summary['energy_max'],
+                        detectors=summary['detectors'])
+        except (ValueError, KeyError, OSError):
+            pass
+        try:
+            summary = cube_summary(read_cube(data, display_name, settings=self.settings))
+            return dict(kind='xrf_detector_file', opens='xrf_view', display_name=display_name,
+                        points=summary['points'], detectors=summary['detectors'])
+        except (ValueError, KeyError, OSError):
+            return None
 
     def _inspect_table(self, ident, project, data, display_name, prepared, *, parsed=None, upload=None,
                        source_upload=None, source_name=None):
@@ -1959,8 +1994,13 @@ class AthenaStore:
         from .athena_xrf_xas import available_engines,scan_summary
         from .xrf_hdf5 import read_scan
         self.load(ident)
+        from .xrf_calibration import compact,infer_detectors
         display_name=_safe_display_name(filename)
-        summary=scan_summary(read_scan(data,display_name,settings=self.settings))
+        scan=read_scan(data,display_name,settings=self.settings)
+        summary=scan_summary(scan)
+        # Where each detector's channels sit in energy, read from the file once
+        # here, so the panel can show it before anything is fitted.
+        summary['starting_calibration']={name:compact(found) for name,found in infer_detectors(data,scan,scan['detectors']).items()}
         upload=uid()
         inspection=dict(kind='xrf_scan',upload_id=upload,display_name=display_name,**summary)
         written=[f'upload-{upload}.source',f'upload-{upload}.json']
@@ -1982,7 +2022,9 @@ class AthenaStore:
         from .athena_xrf_view import read_cube,cube_summary
         self.load(ident)
         display_name=_safe_display_name(filename)
-        summary=cube_summary(read_cube(data,display_name,settings=self.settings))
+        cube=read_cube(data,display_name,settings=self.settings)
+        summary=cube_summary(cube)
+        summary['starting_calibration']=self._cube_calibration(data,display_name,cube)
         upload=uid()
         inspection=dict(kind='xrf_cube',upload_id=upload,display_name=display_name,**summary)
         written=[f'upload-{upload}.source',f'upload-{upload}.json']
@@ -1994,6 +2036,18 @@ class AthenaStore:
                 self.storage.path(ident,name).unlink(missing_ok=True)
             raise
         return inspection
+
+    def _cube_calibration(self,data,display_name,cube):
+        """The file's own calibration per detector, when the file is an energy
+        scan (a map at one incident energy has no elastic peak to follow, and
+        then keeps the default unless it carries line windows)."""
+        from .xrf_calibration import compact,infer_detectors,summarise
+        from .xrf_hdf5 import read_scan
+        try:
+            scan=read_scan(data,display_name,settings=self.settings)
+        except (ValueError,KeyError,OSError):
+            return {name:compact(summarise({},0)) for name in sorted(cube['detectors'])}
+        return {name:compact(found) for name,found in infer_detectors(data,scan,cube['detectors']).items()}
 
     def xrf_view(self,ident,request):
         from .athena_xrf_view import read_cube,load_window,frame
@@ -2009,6 +2063,11 @@ class AthenaStore:
         if metadata.get('kind') not in ('xrf_cube','xrf_scan'):
             fail('That upload is not a multi-channel detector file.')
         cube=read_cube(data,metadata['display_name'],settings=self.settings)
+        if request.cal_offset is None or request.cal_slope is None:
+            known=(metadata.get('starting_calibration') or {}).get(request.detector) \
+                or self._cube_calibration(data,metadata['display_name'],cube).get(request.detector) or {}
+            request=request.model_copy(update={key:known.get(key) for key in ('cal_offset','cal_slope')
+                                               if getattr(request,key) is None and known.get(key) is not None})
         window=load_window(data,request.detector,request.channel_range,
                            allowed=cube['detectors'],settings=self.settings)
         return dict(frame(cube,window,request),version=p['version'],
@@ -2027,9 +2086,19 @@ class AthenaStore:
         if metadata.get('kind')!='xrf_scan':
             fail('That upload is not a fluorescence scan file.')
         scan=read_scan(data,metadata['display_name'],settings=self.settings)
+        # An empty starting calibration is the file's own, read at inspection
+        # (or now, for an upload recorded before that existed). It has to be
+        # settled before the automatic windows, which are placed with it.
+        from .athena_xrf_xas import target_line
+        from .xrf_calibration import apply,infer
+        inferred=(metadata.get('starting_calibration') or {}).get(request.detector) or infer(data,scan,request.detector)
+        _,_,line_kev=target_line(request.target,float(scan['energy_ev'].min()),float(scan['energy_ev'].max()))
+        request,calibration,notes=apply(request,inferred,line_kev)
+        scan['notes']=[*scan.get('notes',[]),*notes]
         # Automatic windows are resolved before anything is read, so the
         # counts are read for the window the result will record.
         request,windows=resolve_windows(scan,request)
+        windows['starting_calibration']=calibration
         counts=load_counts(data,request.detector,request.channel_range,allowed=scan['detectors'],settings=self.settings,
                            elements=chosen_elements(scan,request),
                            shifts={element:shift for element,shift in request.channel_shifts})

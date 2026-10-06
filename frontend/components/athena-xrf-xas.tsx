@@ -3,7 +3,7 @@
 import { SectionHelp } from "./section-help"
 
 import { ThemedPlot as Plot } from "./themed-plot"
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import { AthenaDownloadButton } from './athena-download-button'
@@ -32,7 +32,12 @@ type Detector={name:string;elements:number;channels:number;unusable_elements?:{e
 // engines are the fitting engines this server can run. MapsTorch is optional
 // -- it brings PyTorch with it -- so the panel offers what is installed
 // rather than an option whose first fit would fail.
-type Inspection={upload_id:string;display_name:string;points:number;energy_min:number;energy_max:number;detectors:Detector[];channels:string[];usable_i0:string[];suggested_i0:string|null;engines?:string[];layout?:string;notes?:string[]}
+// Where a detector's channels sit in energy, as the server read it from the
+// file: the beamline's line windows and the elastic peak, or nothing.
+export type StartingCalibration={cal_offset:number;cal_slope:number;source:'lines_and_elastic'|'lines'|'elastic_peak'|'default';
+  found_for?:number;of?:number;slope_spread?:number;reason?:string;caution?:'one scatter peak'}
+type Inspection={upload_id:string;display_name:string;points:number;energy_min:number;energy_max:number;detectors:Detector[];channels:string[];usable_i0:string[];suggested_i0:string|null;engines?:string[];layout?:string;notes?:string[];
+  starting_calibration?:Record<string,StartingCalibration>}
 type NullTest={points:number;mean_frac_of_jump:number;drift_frac_of_jump:number;drift_over_scan_frac_of_jump?:number;detrended_rms_frac_of_jump:number}
 type PostEdge={points:number;negative_fraction:number;min_frac_of_jump:number;normalized_rms_about_one:number}
 // Every verdict is decided where the numbers are made, against thresholds the
@@ -53,7 +58,8 @@ type DetectorReport={redchi:number;nfev:number;success:boolean;ier:number;messag
   calibration_subset_only:boolean;at_bounds:string[];bounded_points:number;unconverged_points:number;max_optimality:number}
 // windows says which of the fit window, comparison window and preview point
 // the server derived because they were left empty, and from which line.
-type Windows={automatic:string[];edge?:string;edge_ev?:number;line_kev?:number}
+type Windows={automatic:string[];edge?:string;edge_ev?:number;line_kev?:number;
+  starting_calibration?:StartingCalibration&{automatic:string[];applied:{cal_offset:number;cal_slope:number}}}
 type Request={pre1:number;pre2:number;norm1:number;norm2:number;preview_point:number|null}
 type Result={version:number;scan_id:string;display_name:string;energy_ev:number[];fit_over_i0:number[];roi_over_i0:number[];
   fit_norm:number[];roi_norm:number[];per_detector:number[][];spectrum:Spectrum;
@@ -69,16 +75,32 @@ const SYMBOL=/^[A-Z][a-z]?$/
 const SHIFT=/^\s*(\d+)\s*:\s*([+-]?\d+)\s*$/
 const INTEGERS=['calibration_points','point_stride','preview_detector','nnorm'] as const
 const OPTIONAL_INTEGERS=['channel_lo','channel_hi','roi_lo','roi_hi','preview_point'] as const
-const REQUIRED=[...INTEGERS,'thickness','cal_offset','cal_slope','compton_angle','scatter_beta','pre1','pre2','norm1','norm2'] as const
+const REQUIRED=[...INTEGERS,'thickness','compton_angle','scatter_beta','pre1','pre2','norm1','norm2'] as const
+// Empty means: read from the file.
+const OPTIONAL_NUMBERS=['cal_offset','cal_slope'] as const
 const palette=['#16736b','#b76d37','#6a4fa3','#2c7fb8','#c0392b','#7f8c2a','#a0338e','#4d6b8a']
-const blank={target:'',matrix:'',shifts:'',channel_lo:'',channel_hi:'',roi_lo:'',roi_hi:'',thickness:'1',cal_offset:'0',
-  cal_slope:'0.01',compton_angle:'110',scatter_beta:'0.5',calibration_points:'6',point_stride:'1',preview_point:'',preview_detector:'0',
+const blank={target:'',matrix:'',shifts:'',channel_lo:'',channel_hi:'',roi_lo:'',roi_hi:'',thickness:'1',cal_offset:'',
+  cal_slope:'',compton_angle:'110',scatter_beta:'0.5',calibration_points:'6',point_stride:'1',preview_point:'',preview_detector:'0',
   e0:'',pre1:'-170',pre2:'-40',norm1:'100',norm2:'700',nnorm:'2'}
 const labels:Record<string,string>={channel_lo:'Fit window first channel',channel_hi:'Fit window end channel (exclusive)',
   roi_lo:'Comparison window first channel',roi_hi:'Comparison window end channel (exclusive)',e0:'Edge energy E₀ (eV)',
   pre1:'Pre-edge start (eV)',pre2:'Pre-edge end (eV)',norm1:'Post-edge start (eV)',norm2:'Post-edge end (eV)',
   nnorm:'Normalization polynomial degree'}
 const percent=(value:number)=>`${(value*100).toFixed(2)}%`
+const CALIBRATION_SOURCE:Record<StartingCalibration['source'],string>={
+  lines_and_elastic:"fluorescence lines of known energy and the scatter peak",
+  lines:"fluorescence lines of known energy",
+  elastic_peak:'the elastic peak followed across the scan',
+  default:'nothing in the file',
+}
+// How far below the elastic peak the Compton peak can sit, in channels: its shift at 180 degrees.
+function comptonReach(c:{cal_slope:number},incidentEv:number) {
+  const e=incidentEv/1000
+  return (e-e/(1+2*e/510.999))/c.cal_slope
+}
+export function describeCalibration(c:{cal_offset:number;cal_slope:number}) {
+  return `${c.cal_offset.toFixed(3)} keV + ${(c.cal_slope*1000).toFixed(2)} eV per channel`
+}
 // The engines share the line families, gates, continuum and amplitude solve,
 // but not the spectral model: MapsTorch brings its own line tables, detector
 // response and escape treatment, so it is an alternative model, not the same
@@ -121,8 +143,12 @@ function curveRange(curves:number[][]):[number,number]|undefined {
   return [lo-pad,hi+pad]
 }
 
-export function AthenaXrfXas({project,onSaved,setBusy}: {
+export function AthenaXrfXas({project,onSaved,setBusy,initialFile,onViewRaw}: {
   project:AthenaProject;onSaved:(project:AthenaProject)=>void;setBusy:(label:string)=>void
+  // A detector file handed over by Import spectra: read as soon as the panel opens.
+  initialFile?:File
+  // Opens the raw spectrum viewer on the same file.
+  onViewRaw?:(file:File)=>void
 }) {
   const athenaApi=useAthenaApi()
   const [inspection,setInspection]=useState<Inspection|null>(null)
@@ -143,10 +169,21 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
   const [preview,setPreview]=useState<{key:string;value?:Result;error?:string}|null>(null)
   const [pending,setPending]=useState(false),lock=useRef(false)
   const [error,setError]=useState(''),[notice,setNotice]=useState('')
+  const [file,setFile]=useState<File|null>(null)
+  const handedOver=useRef(false)
+  useEffect(()=>{
+    if(!initialFile||handedOver.current)return
+    handedOver.current=true
+    void inspect(initialFile)
+  // The hand-over runs once, for the file the panel was opened with.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[initialFile])
 
   const value=(name:keyof typeof blank)=>Number(form[name])
   const optional=(name:keyof typeof blank)=>form[name].trim()===''?null:Number(form[name])
   const chosenDetector=inspection?.detectors.find(d=>d.name===detector)
+  const fileCalibration=inspection?.starting_calibration?.[detector]
+  const calibrationTyped=form.cal_offset.trim()!==''||form.cal_slope.trim()!==''
   const count=chosenDetector?.elements??0
   const unusable=new Map((chosenDetector?.unusable_elements??[]).map(u=>[u.element,u.reason]))
   const selected=chosen.filter(index=>index<count).sort((a,b)=>a-b)
@@ -164,6 +201,8 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
   const numbers=REQUIRED.every(f=>form[f].trim()!==''&&Number.isFinite(value(f)))
     &&INTEGERS.every(f=>Number.isInteger(value(f)))
     &&OPTIONAL_INTEGERS.every(f=>optional(f)===null||Number.isInteger(optional(f)))
+    &&OPTIONAL_NUMBERS.every(f=>optional(f)===null||Number.isFinite(optional(f)))
+    &&(optional('cal_slope')===null||optional('cal_slope')!>0)
     &&(form.e0.trim()===''||value('e0')>0)
   // A window is automatic when both of its ends are empty; one end alone is
   // neither a window nor a request for one.
@@ -181,7 +220,7 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
     : !SYMBOL.test(form.target)?'Name the target element by its symbol, such as Mn.'
     : !elements.every(e=>SYMBOL.test(e))?'Matrix elements must be a comma-separated list of element symbols.'
     : elements.includes(form.target)?'The target element must not be repeated among the matrix elements.'
-    : !numbers?'Every setting must be a finite number, and the channel, point and degree fields whole numbers.'
+    : !numbers?'Every setting must be a finite number, the energy per channel positive, and the channel, point and degree fields whole numbers.'
     : !windows?'Leave both ends of a window empty for the automatic one, or give both: the fit window needs at least 32 channels, and the comparison window must lie inside it.'
     : !ranges?'Pre-edge limits must be negative and increasing, post-edge limits positive and increasing.'
     : ''
@@ -194,7 +233,7 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
     channel_shifts:shiftsValid?shifts as number[][]:[],
     channel_range:fitAuto?null:fit,roi_range:roiAuto?null:roi,
     detector_material:material,detector_thickness:value('thickness'),
-    cal_offset:value('cal_offset'),cal_slope:value('cal_slope'),compton_angle:value('compton_angle'),scatter_beta:value('scatter_beta'),
+    cal_offset:optional('cal_offset'),cal_slope:optional('cal_slope'),compton_angle:value('compton_angle'),scatter_beta:value('scatter_beta'),
     calibration_points:value('calibration_points'),point_stride:value('point_stride'),background,engine,
     e0:form.e0.trim()===''?null:value('e0'),pre1:value('pre1'),pre2:value('pre2'),
     norm1:value('norm1'),norm2:value('norm2'),nnorm:value('nnorm'),
@@ -228,7 +267,7 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
     finally{lock.current=false;setPending(false);setBusy('')}
   }
   async function inspect(file:File) {
-    setInspection(null);setPreview(null)
+    setInspection(null);setPreview(null);setFile(file)
     await task('Reading the fluorescence scan',async()=>{
       const data=new FormData();data.append('file',file)
       const found=await athenaApi<Inspection>(`/projects/${project.id}/xrf-xas/inspect`,data)
@@ -357,9 +396,17 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
     <fieldset disabled={pending} className={styles.controls}>
       <label className="ath-field"><span>Fluorescence scan file <SectionHelp label="Fluorescence scan file">Load a scan containing a full fluorescence spectrum at each incident energy. Fits use the original detector counts and retain the source file.</SectionHelp></span><input type="file" aria-label="Choose fluorescence scan file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
       <p className="ath-hint">A multi-element detector scan: one whole XRF spectrum per detector element at every incident energy, as a NeXus-style HDF5 scan or an APS 20-BM detector file. The file is kept whole, and every fit is made from the original counts.</p>
+      {initialFile&&file===initialFile&&<p role="note" className="ath-hint" aria-label="Opened from Import spectra">{initialFile.name} holds detector spectra rather than a table of columns, so Import spectra opened it here, where its spectra are fitted into fluorescence XAS.</p>}
+      {file&&onViewRaw&&<button type="button" onClick={()=>onViewRaw(file)}>View the raw spectra of {file.name}</button>}
       {inspection&&<>
         <h3>{inspection.display_name} · {inspection.points} points · {inspection.energy_min.toFixed(1)}–{inspection.energy_max.toFixed(1)} eV</h3>
         {inspection.notes?.map((note,i)=><p key={i} role="note" className="ath-hint">{note}</p>)}
+        {fileCalibration&&<p className={fileCalibration.source==='default'||(fileCalibration.caution&&!calibrationTyped)?'ath-warning':'ath-hint'} aria-label="Energy calibration">
+          <strong>Energy calibration</strong> · {calibrationTyped
+            ? <>typed below: {describeCalibration({cal_offset:optional('cal_offset')??fileCalibration.cal_offset,cal_slope:optional('cal_slope')??fileCalibration.cal_slope})}. The file&apos;s own reading is {describeCalibration(fileCalibration)}, from {CALIBRATION_SOURCE[fileCalibration.source]}.</>
+            : fileCalibration.source==='default'
+              ? <>no calibration could be read from this file{fileCalibration.reason?` (${fileCalibration.reason})`:''}, so the windows use 10 eV per channel as a guess. Check where the target line sits in the raw spectra and type the detector&apos;s calibration under Detector model and calibration.</>
+              : <>{describeCalibration(fileCalibration)}, read from {CALIBRATION_SOURCE[fileCalibration.source]}{fileCalibration.of?` (${fileCalibration.found_for} of ${fileCalibration.of} elements)`:''}. It places the automatic windows and starts each element&apos;s own calibration; type a calibration under Detector model and calibration only to override it.{fileCalibration.caution&&<> Only one scatter peak could be followed and no line fixes it: if that peak is Compton rather than elastic, lines sit up to {Math.round(comptonReach(fileCalibration,inspection.energy_max))} channels low. Check where the target line sits in the raw spectra.</>}</>}</p>}
         <div className="ath-fields">
           <label className="ath-field"><span>Detector <SectionHelp label="Detector">Choose the detector array to fit. Inspect individual detector elements and exclude dead, shadowed or distorted channels before extracting the yield.</SectionHelp></span><select value={detector} onChange={e=>pickDetector(inspection,e.target.value)}>{inspection.detectors.map(d=><option key={d.name} value={d.name}>{d.name} · {d.elements} elements · {d.channels} channels</option>)}</select></label>
           <label className="ath-field"><span>I₀ channel <SectionHelp label="I₀ channel">Choose the incident-flux monitor used to divide the fitted fluorescence yield. It should track incoming beam intensity throughout the scan.</SectionHelp></span><select value={i0} onChange={e=>setI0(e.target.value)}>
@@ -390,14 +437,14 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
         <details><summary>Detector model and calibration</summary><div className="ath-fields">
           <label className="ath-field"><span>Detector crystal <SectionHelp label="Detector crystal">Choose the detector material, Ge or Si, used by the response model. Use the material of the fluorescence detector, not the sample.</SectionHelp></span><select value={material} onChange={e=>setMaterial(e.target.value)}><option value="Ge">Ge</option><option value="Si">Si</option></select></label>
           <label className="ath-field"><span>Crystal thickness (mm) <SectionHelp label="Crystal thickness (mm)">Set the detector crystal’s active thickness for Larch’s detector response. This control is unavailable for the MapsTorch model.</SectionHelp></span><input type="number" step="any" disabled={mapstorch} value={form.thickness} onChange={e=>edit('thickness',e.target.value)} /></label>
-          <label className="ath-field"><span>Energy offset (keV) <SectionHelp label="Energy offset (keV)">Initial intercept for detected energy = offset + slope × channel. Calibration refines it; the starting value also places automatic channel windows.</SectionHelp></span><input type="number" step="any" value={form.cal_offset} onChange={e=>edit('cal_offset',e.target.value)} /></label>
-          <label className="ath-field"><span>Energy per channel (keV) <SectionHelp label="Energy per channel (keV)">Initial detector gain in keV per channel; 0.01 means 10 eV per channel. Calibration refines it. Set a realistic value before relying on automatic windows.</SectionHelp></span><input type="number" step="any" value={form.cal_slope} onChange={e=>edit('cal_slope',e.target.value)} /></label>
+          <label className="ath-field"><span>Energy offset (keV) <SectionHelp label="Energy offset (keV)">Initial intercept for detected energy = offset + slope × channel. Calibration refines it; the starting value also places automatic channel windows. Leave it empty to use the calibration read from the file.</SectionHelp></span><input type="number" step="any" placeholder={fileCalibration?`From the file: ${fileCalibration.cal_offset.toFixed(3)}`:'From the file'} value={form.cal_offset} onChange={e=>edit('cal_offset',e.target.value)} /></label>
+          <label className="ath-field"><span>Energy per channel (keV) <SectionHelp label="Energy per channel (keV)">Initial detector gain in keV per channel; 0.01 means 10 eV per channel. Calibration refines it. Leave it empty to use the calibration read from the file.</SectionHelp></span><input type="number" step="any" placeholder={fileCalibration?`From the file: ${fileCalibration.cal_slope.toFixed(5)}`:'From the file'} value={form.cal_slope} onChange={e=>edit('cal_slope',e.target.value)} /></label>
           <label className="ath-field"><span>Compton scattering angle (°) <SectionHelp label="Compton scattering angle (°)">Starting angle used to locate the Compton scattering contribution. It is refined during detector calibration along with line-shape parameters.</SectionHelp></span><input type="number" step="any" value={form.compton_angle} onChange={e=>edit('compton_angle',e.target.value)} /></label>
           <label className="ath-field"><span>Scatter tail length (peak widths) <SectionHelp label="Scatter tail length (peak widths)">Set the fixed low-energy scatter-tail length relative to peak width. This is held during calibration; use the residual and pre-edge quality checks to judge changes.</SectionHelp></span><input type="number" step="any" min={0} max={20} disabled={mapstorch} value={form.scatter_beta} onChange={e=>edit('scatter_beta',e.target.value)} /></label>
           <label className="ath-field"><span>Calibration scan points <SectionHelp label="Calibration scan points">Number of representative scan points used to calibrate each detector element. More points provide more spectral evidence but cost more computation.</SectionHelp></span><input type="number" step={1} min={2} max={32} value={form.calibration_points} onChange={e=>edit('calibration_points',e.target.value)} /></label>
           <label className="ath-field"><span>Continuum background <SectionHelp label="Continuum background">Fit a smooth continuum together with fluorescence lines, or omit it when justified. The continuum is not subtracted from counts before the line fit.</SectionHelp></span><select value={background} onChange={e=>setBackground(e.target.value)}><option value="smooth">Fitted with the lines</option><option value="none">None</option></select></label>
           <label className="ath-field"><span>Preview point stride <SectionHelp label="Preview point stride">Draw every nth scan point in the extracted-XAS preview. All scan points are still fitted and saved when you make a group.</SectionHelp></span><input type="number" step={1} min={1} max={64} value={form.point_stride} onChange={e=>edit('point_stride',e.target.value)} /></label>
-        </div><p className="ath-hint">Offset, slope and angle are starting values only: the calibration fits them, with the peak widths and tails, on the calibration points. They also place the automatic windows, so a file whose detector is far from 10 eV per channel needs its own calibration typed here first. The scatter tail length is the exception — it is held where you set it, because fitting it lets the scatter peaks and the scattering angle trade against each other. Raise it above its default of 0.5 if the pre-edge baseline below is outside its limits and the model falls away faster than the data on the low side of the elastic peak. The continuum is fitted alongside the lines as a set of smooth falling shapes, never subtracted first, so the counts keep the noise the fit assumes they have.{mapstorch?' Under MapsTorch the crystal thickness and the scatter tail length do not enter the model, and the crystal only decides whether the missing escape peaks are mentioned.':''}</p></details>
+        </div><p className="ath-hint">Offset, slope and angle are starting values only: the calibration fits them, with the peak widths and tails, on the calibration points. Offset and slope also place the automatic windows; left empty, they are read from the file: from fluorescence lines of known energy, in the beamline&apos;s own line windows or turning on at the scan&apos;s edge, and from the elastic peak, which sits at the known incident energy at every point. The scatter tail length is the exception — it is held where you set it, because fitting it lets the scatter peaks and the scattering angle trade against each other. Raise it above its default of 0.5 if the pre-edge baseline below is outside its limits and the model falls away faster than the data on the low side of the elastic peak. The continuum is fitted alongside the lines as a set of smooth falling shapes, never subtracted first, so the counts keep the noise the fit assumes they have.{mapstorch?' Under MapsTorch the crystal thickness and the scatter tail length do not enter the model, and the crystal only decides whether the missing escape peaks are mentioned.':''}</p></details>
         <details><summary>Normalization</summary><div className="ath-fields">{field('e0','any','Auto')}{(['pre1','pre2','norm1','norm2'] as const).map(name=>field(name,'any'))}{field('nnorm',1)}</div></details>
         <div className="ath-fields">
           <label className="ath-field"><span>Spectrum at scan point <SectionHelp label="Spectrum at scan point">Choose a zero-based scan index for the detailed measured/model spectrum. Leave blank to use an automatic point above the edge.</SectionHelp></span><input type="number" step={1} min={0} max={Math.max(0,inspection.points-1)} placeholder="Automatic: past the edge" value={form.preview_point} onChange={e=>edit('preview_point',e.target.value)} /></label>
@@ -407,6 +454,8 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
           <button disabled={!valid} onClick={()=>{void refit()}}>Fit preview</button>
           <button className="ath-primary" disabled={!current} onClick={()=>{void make()}}>Make fluorescence XAS group</button>
         </div>
+        {/* A disabled button says why next to itself, not only at the foot of the plots. */}
+        {!valid&&problem&&<p className="ath-hint" role="note" aria-label="Why the fit cannot run">{problem}</p>}
         <label className="ath-check"><input type="checkbox" checked={withWindow} onChange={e=>setWithWindow(e.target.checked)} />Also export the plain window sum for comparison <SectionHelp label="Also export the plain window sum for comparison">Create a separate group from counts summed in the comparison window using the same detector elements and I₀ correction. Compare it with the fitted extraction to assess line overlap.</SectionHelp></label>
         <p className="ath-hint">Every scan point is fitted; the preview displays {value('point_stride')>1?`one in ${value('point_stride')}`:'every point'}. Make group reuses matching detector fits from the preview and saves every point. Changed fitting settings, a changed scan, cache eviction or a server restart require a new fit.</p>
         <details><summary>Scan file</summary><AthenaDownloadButton path={`/projects/${project.id}/uploads/${inspection.upload_id}/file`}>Download original scan file</AthenaDownloadButton></details>
