@@ -26,7 +26,7 @@ test("discovers, saves, reopens and fits an explicit coordination number", async
 
   // This supplied S₀² is an example input, not a calibration recommendation.
   await page.getByLabel("Path 1 fixed S₀²", { exact: true }).fill("0.85")
-  await page.getByLabel("Path 1 coordination number", { exact: true }).fill("2")
+  await expect(page.getByLabel("Path 1 coordination number", { exact: true })).toBeDisabled()
   await page.getByLabel("Path 1 coordination maximum", { exact: true }).fill("4")
   const expression = "s02_1 * cn_1 / degen"
   const saving = page.waitForResponse(response => response.url().endsWith("/model") &&

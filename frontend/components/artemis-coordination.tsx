@@ -46,7 +46,7 @@ function CoordinationForm({ index, enabled, defaults, current, expression, onPre
   try { if (!unchanged) preview = onPreview(options) } catch { /* Report incomplete values beside the form on Apply. */ }
   return <>
     <div className={styles.grid}>
-      <label><span>Coordination number (CN)<SectionHelp label={label("coordination number")}>Number of equivalent neighbors represented by this single-scattering path. Use a starting value when fitting, or a fixed value when Fit CN is off.</SectionHelp></span><input aria-label={label("coordination number")} inputMode="decimal" value={options.value}
+      <label><span>Coordination number (CN)<SectionHelp label={label("coordination number")}>Number of equivalent neighbors represented by this single-scattering path. While Fit CN is on, the displayed value is retained as the starting value. Clear Fit CN to edit it or hold CN fixed.</SectionHelp></span><input aria-label={label("coordination number")} inputMode="decimal" value={options.value} disabled={options.refine}
         onChange={event => update({ value: event.target.value })} /></label>
       <label><span>Fixed S₀²<SectionHelp label={label("fixed S₀²")}>Dimensionless amplitude factor calibrated from a reference with known coordination. It stays fixed because CN and S₀² multiply the same path amplitude.</SectionHelp></span><input aria-label={label("fixed S₀²")} inputMode="decimal" placeholder="Calibrated value" value={options.s02}
         onChange={event => update({ s02: event.target.value })} /></label>
