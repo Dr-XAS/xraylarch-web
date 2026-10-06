@@ -201,6 +201,12 @@ AMCSD and MP attachments can coexist, round-trip through JSON/PRJ, and generate
 FEFF from the saved snapshot without network access or an API key. Existing AMCSD
 project records keep their original shape.
 
+The CIF viewer also reads complete P1 atom lists, as used by Materials Project
+exports, even when the backend recognizes higher symmetry. Local clusters and
+repeated unit cells retain the explicit coordinates, including small distortions.
+Existing saved CIFs work without reattaching them. For equivalent atoms whose
+site assignment is not encoded in the CIF, hover shows the original atom label.
+
 References: [MP API](https://docs.materialsproject.org/downloading-data/using-the-api),
 [calculated structures](https://docs.materialsproject.org/methodology/materials-methodology/calculation-details).
 
