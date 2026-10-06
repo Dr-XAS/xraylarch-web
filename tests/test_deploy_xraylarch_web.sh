@@ -98,6 +98,26 @@ assert_sibling_services_healthy || test_fail "default Dr.XAS sibling profile mus
 [[ ${#sibling_http_events[@]} -eq 4 ]] || test_fail "default sibling profile must check the established HTTP services"
 [[ "${sibling_http_events[*]}" == "http://127.0.0.1:3000/ http://127.0.0.1:3001/ http://127.0.0.1:8000/docs http://127.0.0.1:8001/docs" ]] || test_fail "default sibling profile must preserve the Dr.XAS HTTP checks"
 
+(
+  http_200() { [[ "$1" != *:3001/* && "$1" != *:8001/* ]]; }
+  curl() { printf '000'; return 7; }
+  warnings=$(assert_sibling_services_healthy 2>&1) || test_fail "a Dr.XAS dev outage must not fail the default sibling profile"
+  [[ $(grep -c '^WARNING: .*Dr.XAS dev' <<<"$warnings") -eq 4 ]] || test_fail "each unhealthy Dr.XAS dev service must be reported"
+)
+for production_url in http://127.0.0.1:3000/ http://127.0.0.1:8000/docs; do
+(
+  http_200() { [[ "$1" != "$production_url" ]]; }
+  if assert_sibling_services_healthy >/dev/null 2>&1; then
+    test_fail "an unhealthy Dr.XAS production service at $production_url must fail the default sibling profile"
+  fi
+)
+done
+(
+  curl() { printf '502'; }
+  warnings=$(assert_sibling_services_healthy 2>&1) || test_fail "an unexpected Dr.XAS dev bot status must not fail the default sibling profile"
+  [[ "$warnings" == *"8002 to return 404, received 502"* ]] || test_fail "an unexpected Dr.XAS dev bot status must be reported"
+)
+
 sibling_http_events=()
 XRAYLARCH_WEB_SIBLING_PROFILE=goldendale
 assert_sibling_services_healthy || test_fail "Goldendale sibling profile must pass with healthy dev responses"

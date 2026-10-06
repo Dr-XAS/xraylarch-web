@@ -215,8 +215,11 @@ An active release is healthy only when all of the following hold:
   descendant of its screen PID and still matches the launch-time executable,
   command line, owners, release marker, and active release `frontend/` or
   `backend/` working directory; and
-- existing Dr.XAS services remain healthy on `3000`, `3001`, `8000`, `8001`,
-  `8002`, and `8003` with their established expected HTTP responses.
+- Dr.XAS production remains healthy on `3000` and `8000`. The Dr.XAS dev
+  services on `3001`, `8001`, `8002`, and `8003` are checked for their
+  established responses too, but an unhealthy dev service only prints a
+  `WARNING:` line: dev restarts on every Dr.XAS `new-features` deploy and must
+  not block XrayLarch activation or health.
 
 The checker only reads process, listener, filesystem, Git, and HTTP state. It
 never stops processes or changes host state.
@@ -251,9 +254,9 @@ repository. It starts its own five processes on ephemeral ports under temporary
 data roots and mutates no host state, so it is safe to run on a deploy host,
 but it is a pre-deploy gate and not a substitute for `check-xraylarch-web.sh`.
 
-The default sibling-service profile is `drxas` and validates the established
-Dr.XAS production, development, and bot endpoints listed above. It is the
-profile this deployment runs under.
+The default sibling-service profile is `drxas`. It requires the Dr.XAS
+production endpoints listed above and reports, without failing, the
+development and bot endpoints. It is the profile this deployment runs under.
 
 `goldendale` remains an implemented alternate profile — `ensure-watcher.sh`
 still accepts `drxas|goldendale` — but no deployment currently uses it. It
