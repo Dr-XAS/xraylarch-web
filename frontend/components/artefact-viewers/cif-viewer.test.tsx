@@ -25,10 +25,21 @@ function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure 
 }
 
 function renderer() {
+  let modelAtoms: { index: number; bonds: number[]; elem?: string; x?: number; y?: number; z?: number }[] = []
+  const selectedAtoms = () => modelAtoms
   return {
-    clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn((_xyz: string) => ({ selectedAtoms: () => [] as { index: number; bonds: number[] }[] })),
+    clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn((xyz: string) => {
+      modelAtoms = xyz.split("\n").slice(2).map((line, index) => {
+        const [elem, x, y, z] = line.split(" ")
+        return { index, elem, x: Number(x), y: Number(y), z: Number(z), bonds: [] }
+      })
+      return { selectedAtoms }
+    }),
     setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), addCylinder: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(),
-    addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn(), stopAnimate: vi.fn(),
+    addLabel: vi.fn((text: string, options: unknown) => ({ text, options })), removeLabel: vi.fn(),
+    addSphere: vi.fn(), removeShape: vi.fn(), getView: vi.fn(() => [0, 0, 0, 0, 0, 0, 1, 0]), setView: vi.fn(),
+    getModel: vi.fn((): { selectedAtoms: typeof selectedAtoms } | undefined => ({ selectedAtoms })), targetedObjects: vi.fn(() => [] as { clickable: { index: number } }[]),
+    zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn(), stopAnimate: vi.fn(),
     divwatcher: { disconnect: vi.fn() }, intwatcher: { disconnect: vi.fn() },
   }
 }
@@ -84,9 +95,9 @@ describe("CifViewer", () => {
     expect(instance.addLabel).toHaveBeenLastCalledWith("O–S · 1.803 Å", expect.objectContaining({
       position: { x: expect.closeTo(2), y: expect.closeTo(0.5), z: expect.closeTo(0.75) },
     }))
-    instance.removeAllLabels.mockClear()
+    instance.removeLabel.mockClear()
     bond.unhover_callback()
-    expect(instance.removeAllLabels).toHaveBeenCalledOnce()
+    expect(instance.removeLabel).toHaveBeenCalledOnce()
 
     instance.setHoverable.mock.calls.at(-1)![2]({ index: 2 })
     expect(instance.addLabel.mock.calls.at(-1)![0]).toContain("S · site 8 · 2.693 Å")
@@ -98,10 +109,120 @@ describe("CifViewer", () => {
     expect(instance.addCylinder).not.toHaveBeenCalled()
     fireEvent.click(screen.getByRole("button", { name: "Show S atoms" }))
     expect(instance.addCylinder).toHaveBeenCalledOnce()
-    instance.removeAllLabels.mockClear()
+    instance.setHoverable.mock.calls.at(-1)![2]({ index: 2 })
+    instance.removeLabel.mockClear()
     fireEvent.mouseLeave(screen.getByRole("img", { name: /Interactive 3D crystal structure/ }))
-    expect(instance.removeAllLabels).toHaveBeenCalledOnce()
+    expect(instance.removeLabel).toHaveBeenCalledOnce()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("measures two distances and the angle at atom 2 without rebuilding or resetting the view", async () => {
+    const attached = structure()
+    attached.sites.push({ ...attached.sites[1], index: 8, element: "S", species: "S", x: 0.2, y: 0.1 })
+    render(<CifViewer structure={attached} />)
+    const instance = await ready()
+    const plot = screen.getByRole("img", { name: /Interactive 3D/ })
+    vi.spyOn(plot, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, right: 200, bottom: 200, width: 200, height: 200 } as DOMRect)
+    const pick = (index: number) => {
+      instance.targetedObjects.mockReturnValue([{ clickable: { index } }])
+      act(() => {
+        for (const type of ["pointerdown", "pointerup"]) {
+          const event = new MouseEvent(type, { bubbles: true, clientX: 100, clientY: 100, button: 0 })
+          Object.defineProperty(event, "pointerId", { value: 1 })
+          plot.dispatchEvent(event)
+        }
+      })
+    }
+    pick(0)
+    expect(screen.queryByRole("group", { name: "CIF measurements" })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Measure" }))
+    instance.clear.mockClear(); instance.zoomTo.mockClear(); instance.addModel.mockClear()
+    pick(0); pick(0); pick(1)
+    const results = screen.getByRole("status", { name: "Measurement results" })
+    expect(results).toHaveTextContent("1–22.000 Å")
+    expect(within(results).getAllByRole("listitem")).toHaveLength(2)
+    const measurementLabels = instance.addLabel.mock.results.map(result => result.value)
+    instance.removeLabel.mockClear()
+    instance.setHoverable.mock.calls.at(-1)![2]({ index: 1 })
+    fireEvent.mouseLeave(plot)
+    expect(instance.removeLabel).toHaveBeenCalledOnce()
+    expect(measurementLabels).not.toContain(instance.removeLabel.mock.calls[0][0])
+    expect(instance.removeAllLabels).not.toHaveBeenCalled()
+    pick(2)
+    expect(results).toHaveTextContent("2–31.000 Å")
+    expect(results).toHaveTextContent("∠1–2–390.00°")
+    expect(results).toHaveTextContent("1–32.236 Å")
+    expect(instance.clear).not.toHaveBeenCalled()
+    expect(instance.addModel).not.toHaveBeenCalled()
+    expect(instance.zoomTo).not.toHaveBeenCalled()
+    pick(0)
+    expect(within(results).getAllByRole("listitem")).toHaveLength(3)
+    fireEvent.click(screen.getByRole("button", { name: "Undo atom" }))
+    expect(within(results).getAllByRole("listitem")).toHaveLength(2)
+    expect(results).not.toHaveTextContent("90.00°")
+    pick(2)
+    fireEvent.keyDown(plot, { key: "Escape" })
+    expect(results).toBeEmptyDOMElement()
+    pick(0); pick(1)
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }))
+    expect(results).toBeEmptyDOMElement()
+    expect(screen.getByRole("button", { name: "Undo atom" })).toBeDisabled()
+  })
+
+  it("keeps periodic images distinct and clears measurements when selected atoms leave the scene", async () => {
+    const attached = structure({ cell: { a: 2, b: 10, c: 10, alpha: 90, beta: 90, gamma: 90 }, sites: [structure().sites[0]] })
+    const view = render(<CifViewer structure={attached} />)
+    const instance = await ready()
+    const plot = screen.getByRole("img", { name: /Interactive 3D/ })
+    vi.spyOn(plot, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, right: 200, bottom: 200, width: 200, height: 200 } as DOMRect)
+    const pick = (index: number) => {
+      instance.targetedObjects.mockReturnValue([{ clickable: { index } }])
+      act(() => {
+        for (const type of ["pointerdown", "pointerup"]) {
+          const event = new MouseEvent(type, { bubbles: true, clientX: 100, clientY: 100 })
+          Object.defineProperty(event, "pointerId", { value: 1 })
+          plot.dispatchEvent(event)
+        }
+      })
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Measure" }))
+    const results = screen.getByRole("status", { name: "Measurement results" })
+    pick(1); pick(2)
+    expect(results).toHaveTextContent("4.000 Å")
+    expect(within(results).getAllByText("Cu · site 3")).toHaveLength(2)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Bonds" }))
+    expect(results).toHaveTextContent("4.000 Å")
+    fireEvent.click(screen.getByRole("button", { name: "Show Cu atoms" }))
+    expect(results).toBeEmptyDOMElement()
+    pick(0)
+    expect(instance.targetedObjects).toHaveBeenLastCalledWith(0, 0, [])
+    fireEvent.click(screen.getByRole("button", { name: "Show Cu atoms" }))
+    expect(results).toBeEmptyDOMElement()
+    fireEvent.click(screen.getByRole("button", { name: "Clear" }))
+    pick(0); pick(1)
+    fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "1" } })
+    expect(results).toBeEmptyDOMElement()
+    pick(0)
+    view.rerender(<CifViewer structure={{ ...attached, cif: "data_another" }} />)
+    expect(results).toBeEmptyDOMElement()
+    pick(0)
+    fireEvent.click(screen.getByRole("button", { name: "Measure" }))
+    fireEvent.click(screen.getByRole("button", { name: "Measure" }))
+    expect(screen.getByRole("status", { name: "Measurement results" })).toBeEmptyDOMElement()
+  })
+
+  it("keeps the retry UI usable if a scene redraw fails during measurement", async () => {
+    render(<CifViewer structure={structure()} />)
+    const instance = await ready()
+    fireEvent.click(screen.getByRole("button", { name: "Measure" }))
+    instance.addModel.mockImplementationOnce(() => { throw new Error("Lost context") })
+    instance.getModel.mockReturnValue(undefined)
+    fireEvent.click(screen.getByRole("checkbox", { name: "Bonds" }))
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to render this crystal structure.")
+    fireEvent.click(screen.getByRole("button", { name: "Retry 3D viewer" }))
+    await waitFor(() => expect(createViewer).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Measure" })).toHaveAttribute("aria-pressed", "true")
   })
 
   it("calculates finite-cluster CNs and preserves results across display-only controls", async () => {

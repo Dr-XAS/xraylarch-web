@@ -1,11 +1,12 @@
 "use client"
 
 import { SectionHelp } from "../section-help"
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import type { AtomSpec, GLViewer } from "3dmol"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, CIF_VIEWER_MIN_RADIUS, type CifVector } from "@/lib/cif-viewer"
 import { clearCifHover, createCifRenderer } from "@/lib/cif-renderer"
+import { bindCifAtomPicking, drawCifMeasurement, measurementAngle, measurementDistance } from "@/lib/cif-measurement"
 import { cifAtomStyle, cifElementColor, CIF_BOND_COLOR, CIF_BOND_RADIUS, CIF_SPHERE_RADIUS } from "@/lib/cif-viewer-style"
 import { firstShellAtoms, isShellAtom } from "@/lib/first-shell"
 import { useFirstShell, type FirstShellState } from "@/lib/use-first-shell"
@@ -51,6 +52,12 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
 }) {
   const container = useRef<HTMLDivElement>(null)
   const viewer = useRef<GLViewer | null>(null)
+  const hoverLabel = useRef<ReturnType<GLViewer["addLabel"]> | null>(null)
+  const removeHoverLabel = useCallback(() => {
+    if (hoverLabel.current) viewer.current?.removeLabel(hoverLabel.current)
+    hoverLabel.current = null
+  }, [])
+  const clearHover = useCallback(() => { if (viewer.current) clearCifHover(viewer.current, removeHoverLabel) }, [removeHoverLabel])
   const [ready, setReady] = useState(false)
   const [error, setError] = useState("")
   const [attempt, setAttempt] = useState(0)
@@ -100,6 +107,18 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
   }, [baseGeometry, mode, shell, shellAtoms, radial, radialAtoms, shellVisibility, radialKey])
   const elements = useMemo(() => [...new Set(geometry.atoms.map(atom => atom.element))].sort(), [geometry])
   const centerAtom = geometry.atoms.find(atom => atom.isAbsorber)
+  const [measuring, setMeasuring] = useState(false)
+  // Atom indices identify displayed periodic images, not crystallographic sites.
+  const measurementScope = useMemo(() => ({}), [structure.cif, center, mode, geometry.atoms])
+  const [measurement, setMeasurement] = useState({ scope: measurementScope, indices: [] as number[] })
+  const validMeasurement = measurement.scope === measurementScope && measurement.indices.every(index => geometry.atoms[index] && !hidden.includes(geometry.atoms[index].element))
+  const measuredAtoms = useMemo(() => validMeasurement ? measurement.indices.map(index => geometry.atoms[index]) : [], [validMeasurement, measurement, geometry.atoms])
+  useEffect(() => {
+    if (!validMeasurement) setMeasurement({ scope: measurementScope, indices: [] })
+  }, [validMeasurement, measurementScope])
+  const clearMeasurement = () => setMeasurement({ scope: measurementScope, indices: [] })
+  // Redraw the overlay after a scene update, independently of selection updates.
+  const measurementScene = useMemo(() => ({}), [geometry, elements, hidden, bonds, cell, mode, shell, shellAtoms, highlightShell, radial, radialAtoms])
   const visibleCount = geometry.atoms.filter(atom => !hidden.includes(atom.element)).length
   const coordinationUnavailable = mode !== "cluster" ? "Switch to Local cluster to calculate coordination numbers."
     : geometry.truncated ? "Reduce the display radius to calculate coordination numbers for a complete cluster."
@@ -140,7 +159,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     const instance = viewer.current
     if (!ready || !instance) return
     try {
-      clearCifHover(instance)
+      clearHover()
       instance.clear()
       const xyz = `${geometry.atoms.length}\nCrystal structure\n${geometry.atoms.map(atom => `${atom.element} ${atom.x} ${atom.y} ${atom.z}`).join("\n")}`
       const model = instance.addModel(xyz, "xyz")
@@ -165,13 +184,13 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
           start: { x: left.x, y: left.y, z: left.z }, end: { x: right.x, y: right.y, z: right.z },
           radius: CIF_BOND_RADIUS, color, hoverable: true,
           hover_callback: () => {
-            instance.removeAllLabels()
-            instance.addLabel(`${left.element}–${right.element} · ${distance.toFixed(3)} Å`, {
+            removeHoverLabel()
+            hoverLabel.current = instance.addLabel(`${left.element}–${right.element} · ${distance.toFixed(3)} Å`, {
               position: midpoint, fontSize: 12, fontColor: "white",
               backgroundColor: "#27272a", backgroundOpacity: 0.9, inFront: true,
             })
           },
-          unhover_callback: () => { instance.removeAllLabels() },
+          unhover_callback: removeHoverLabel,
         })
       }
       if (bonds) {
@@ -207,13 +226,13 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
       instance.setHoverable({}, true, (atom: AtomSpec) => {
         const source = geometry.atoms[atom.index ?? -1]
         if (!source || hidden.includes(source.element)) return
-        instance.removeAllLabels()
+        removeHoverLabel()
         const member = mode === "radial" ? radialAtoms.find(neighbor => isShellAtom(source, [neighbor])) : undefined
-        instance.addLabel(`${source.siteIndex < 0 ? source.label : `${source.element} · site ${source.siteIndex}`} · ${source.distance.toFixed(3)} Å${member ? ` · Shell ${member.shellIndex} · pair ${member.groupId}` : isShellAtom(source, shellAtoms) ? " · CrystalNN first shell" : ""}`, {
+        hoverLabel.current = instance.addLabel(`${source.siteIndex < 0 ? source.label : `${source.element} · site ${source.siteIndex}`} · ${source.distance.toFixed(3)} Å${member ? ` · Shell ${member.shellIndex} · pair ${member.groupId}` : isShellAtom(source, shellAtoms) ? " · CrystalNN first shell" : ""}`, {
           position: { x: source.x, y: source.y, z: source.z + 0.4 }, fontSize: 12,
           fontColor: "white", backgroundColor: "#27272a", backgroundOpacity: 0.9, inFront: true,
         })
-      }, () => { instance.removeAllLabels() })
+      }, removeHoverLabel)
       instance.zoomTo()
       if (mode === "shell") instance.zoom(1.8)
       instance.render()
@@ -221,21 +240,47 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     } catch {
       setError("Unable to render this crystal structure.")
     }
-  }, [ready, geometry, elements, hidden, bonds, cell, mode, shell, shellAtoms, highlightShell, radial, radialAtoms])
+  }, [ready, geometry, elements, hidden, bonds, cell, mode, shell, shellAtoms, highlightShell, radial, radialAtoms, clearHover, removeHoverLabel])
 
-  const clearHover = () => { if (viewer.current) clearCifHover(viewer.current) }
-  const resetButton = <button type="button" disabled={!ready || !!error} onClick={() => { if (viewer.current) clearCifHover(viewer.current); viewer.current?.zoomTo(); if (mode === "shell") viewer.current?.zoom(1.8); viewer.current?.render() }}>Reset view</button>
+  useEffect(() => {
+    const instance = viewer.current
+    if (!ready || error || !instance || !measuring || !measuredAtoms.length || !instance.getModel()) return
+    const dispose = drawCifMeasurement(instance, measuredAtoms)
+    return () => { if (viewer.current === instance) dispose() }
+  }, [ready, error, measuring, measuredAtoms, measurementScene])
+
+  useEffect(() => {
+    const instance = viewer.current
+    const host = container.current
+    if (!ready || error || !instance || !host || !measuring) return
+    const model = instance.getModel()
+    if (!model) return
+    const atoms = model.selectedAtoms({}).filter(atom => !hidden.includes(geometry.atoms[atom.index ?? -1]?.element))
+    return bindCifAtomPicking(host, instance, atoms, index => {
+      if (!geometry.atoms[index] || hidden.includes(geometry.atoms[index].element)) return
+      host.focus({ preventScroll: true })
+      setMeasurement(previous => {
+        const indices = previous.scope === measurementScope ? previous.indices : []
+        if (indices.length >= 3 || indices.includes(index)) return previous
+        return { scope: measurementScope, indices: [...indices, index] }
+      })
+    })
+  }, [ready, error, measuring, measurementScene, measurementScope, geometry.atoms, hidden])
+
+  const angle = measuredAtoms.length === 3 ? measurementAngle(measuredAtoms[0], measuredAtoms[1], measuredAtoms[2]) : null
+  const resetButton = <button type="button" disabled={!ready || !!error} onClick={() => { clearHover(); viewer.current?.zoomTo(); if (mode === "shell") viewer.current?.zoom(1.8); viewer.current?.render() }}>Reset view</button>
   const actions = <div className={styles.headerActions}>
+    <button type="button" aria-pressed={measuring} disabled={!ready || !!error} onClick={() => { setMeasuring(value => !value); clearMeasurement(); clearHover() }}>Measure</button>
     <button type="button" aria-expanded={coordinationPanel === "open"} aria-controls={coordinationId}
       onClick={() => setCoordinationPanel(previous => previous === "open" ? "closed" : "open")}>Coordination numbers</button>
     {resetButton}
   </div>
-  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. The largest sphere marks the center; larger neighboring spheres mark CrystalNN first-shell atoms, keeping their element colors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
+  const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Enable Measure and click two atoms for a distance, or three for distances and the angle at atom 2. Measurements use the displayed periodic images and do not imply a chemical bond. Escape clears the selection. Bonds are inferred from distances. Display settings do not change FEFF parameters. The largest sphere marks the center; larger neighboring spheres mark CrystalNN first-shell atoms, keeping their element colors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
   const content = <><ResizablePlotCard className={styles.resizeCard} storageKey="artemis.cif.height.v1"
     defaultHeight={310} minHeight={250} plotSelector="[data-cif-plot]" resizeLabel="Resize CIF structure height" controlsId={plotId}>
     {structureControls}
     <div className={styles.canvas}>
-      <div id={plotId} data-cif-plot ref={container} className={styles.surface} role="img" onMouseLeave={clearHover} onPointerDown={clearHover} aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
+      <div id={plotId} data-cif-plot ref={container} className={styles.surface} role="img" tabIndex={measuring ? 0 : undefined} onKeyDown={event => { if (measuring && event.key === "Escape") { clearMeasurement(); event.stopPropagation() } }} onMouseLeave={clearHover} onPointerDown={clearHover} aria-label={`Interactive 3D crystal structure of ${structure.mineral || structure.formula}`} />
       {ready && !error && geometry.atoms.length > 0 && geometry.lattice && structure.sites.length > 0 && <div className={styles.legendCorner}>
         {mode === "radial" ? <div className={styles.options} aria-label="Visible CIF elements"><SectionHelp label="Visible CIF elements">Toggle an element to show or hide its atoms. Hidden atoms remain part of the coordination and shell calculations.</SectionHelp>{elements.map(element => <label key={element}><input type="checkbox" checked={!hidden.includes(element)} onChange={() => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])} />{element}</label>)}</div> : <AtomLegend elements={elements} hiddenElements={hidden}
           onToggle={element => setHidden(previous => previous.includes(element) ? previous.filter(item => item !== element) : [...previous, element])}
@@ -248,6 +293,24 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
         : error ? <div className={styles.overlay} role="alert">{error}<button type="button" onClick={() => setAttempt(value => value + 1)}>Retry 3D viewer</button></div>
         : !ready ? <p className={styles.overlay} role="status">Loading 3D structure…</p> : null}
     </div>
+    {measuring && <div className={styles.measurements} role="group" aria-label="CIF measurements" onKeyDown={event => { if (event.key === "Escape") { clearMeasurement(); event.stopPropagation() } }}>
+      <div className={styles.measurementActions}>
+        <span>{["Click two atoms for a distance; a third adds an angle.", "Click a second atom to measure its distance.", "Click a third atom to add the angle at atom 2.", "Three atoms selected. Undo or clear to measure again."][measuredAtoms.length]}</span>
+        <button type="button" disabled={!measuredAtoms.length} onClick={() => setMeasurement(previous => ({ scope: measurementScope, indices: previous.indices.slice(0, -1) }))}>Undo atom</button>
+        <button type="button" disabled={!measuredAtoms.length} onClick={clearMeasurement}>Clear</button>
+      </div>
+      <div role="status" aria-label="Measurement results">
+        {measuredAtoms.length > 0 && <ol className={styles.measuredAtoms}>{measuredAtoms.map((atom, index) => <li key={index}>{atom.element} · {atom.siteIndex < 0 ? atom.label : `site ${atom.siteIndex}`}</li>)}</ol>}
+        {measuredAtoms.length >= 2 && <dl className={styles.measurementValues}>
+          <div><dt>1–2</dt><dd>{measurementDistance(measuredAtoms[0], measuredAtoms[1]).toFixed(3)} Å</dd></div>
+          {measuredAtoms.length === 3 && <>
+            <div><dt>2–3</dt><dd>{measurementDistance(measuredAtoms[1], measuredAtoms[2]).toFixed(3)} Å</dd></div>
+            <div><dt>∠1–2–3</dt><dd>{angle === null ? "Undefined" : `${angle.toFixed(2)}°`}</dd></div>
+            <div><dt>1–3</dt><dd>{measurementDistance(measuredAtoms[0], measuredAtoms[2]).toFixed(3)} Å</dd></div>
+          </>}
+        </dl>}
+      </div>
+    </div>}
     {geometry.lattice && structure.sites.length > 0 && <>
       <div className={styles.controls}>
         <label><span>View<SectionHelp label="CIF view mode">Local cluster shows atoms within the display radius. Unit cell shows repeated crystallographic cells. CrystalNN first shell uses its periodic neighbor analysis; Radial shells groups neighbors by distance.</SectionHelp></span><select aria-label="CIF view mode" value={mode} onChange={event => setMode(event.target.value as typeof mode)}><option value="cluster">Local cluster</option><option value="cell">Unit cell</option><option value="shell" disabled={!shell}>CrystalNN first shell</option><option value="radial" disabled={!radial}>Radial shells</option></select></label>

@@ -235,6 +235,19 @@ display settings when switching views. Expansions beyond the 1,500-atom preview
 limit show a message to reduce the repeats. These controls do not modify the
 saved CIF or FEFF parameters.
 
+Enable **Measure** in the CIF viewer heading, then click two atoms to display
+their distance in Å. A third atom adds the 2–3 distance and the 1–2–3 angle
+(atom 2 is the vertex); the result bar also lists the 1–3 distance. Numbered
+highlights identify the selected atoms without replacing their element colors.
+Measurements use the actual displayed periodic images, even when they share a
+crystallographic site, and do not imply a chemical bond or an EXAFS fitted distance.
+Drag to rotate normally. Hovering or moving the pointer away keeps measurements
+visible. Use **Undo atom**, **Clear**, or Escape while the viewer is focused to
+change the selection; after three atoms, clear or undo before selecting more.
+Changing CIF, center, view, or displayed geometry, or hiding a selected element,
+clears the selection. Measurements are temporary display state and do not change
+the saved structure or FEFF inputs.
+
 Click **Coordination numbers** in the viewer heading to calculate coordination
 shells for the current **Local cluster**. Set **Distance cutoff** (default 5 Å)
 and **Shell tolerance** (default 0.01 Å), then **Calculate** to update results.

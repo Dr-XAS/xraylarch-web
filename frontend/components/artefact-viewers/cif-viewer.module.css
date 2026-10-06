@@ -2,6 +2,16 @@
 .docked { min-width: 0; container-type: inline-size; }
 .heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--ath-line); }
 .headerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.headerActions button[aria-pressed=true] { color: var(--ath-primary); border-color: var(--ath-primary); background: var(--ath-canvas); }
+.measurements { padding: 8px 12px; border-top: 1px solid var(--ath-line); font-size: var(--text-caption); }
+.measurementActions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.measurementActions > span { flex: 1 1 220px; color: var(--ath-muted); }
+.measuredAtoms { display: flex; flex-wrap: wrap; gap: 6px 28px; margin: 8px 0 0; padding-left: 20px; }
+.measuredAtoms li::marker { color: var(--ath-primary); font-weight: 600; }
+.measurementValues { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 8px 0 0; font-variant-numeric: tabular-nums; }
+.measurementValues > div { display: flex; gap: 6px; }
+.measurementValues dt { color: var(--ath-muted); }
+.measurementValues dd { margin: 0; font-weight: 500; }
 .viewer .heading h4 { margin: 0; font-size: var(--text-body); font-weight: 500; }
 .resizeCard { border: 0; border-radius: 0; box-shadow: none; }
 .canvas { position: relative; height: var(--ath-plot-height, 310px); background: var(--ath-plot-bg, var(--ath-popover)); }
