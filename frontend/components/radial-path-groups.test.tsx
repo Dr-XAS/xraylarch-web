@@ -56,3 +56,12 @@ it("passes the actual matched shell only to single-scattering paths", () => {
   expect(renderPath).toHaveBeenCalledWith(unmatched, undefined)
   expect(renderPath).toHaveBeenCalledWith(multiple, undefined)
 })
+
+it("names the unmatched group once in its heading, region and button", () => {
+  const unmatched = { id: "unmatched", metadata: { ...radialMetadata(), reff: 4 } }
+  render(<RadialPathGroups paths={[unmatched]} structure={radialStructure} analysis={radialFixture}
+    selectedIds={["unmatched"]} action="Include" onSelection={vi.fn()} renderPath={path => path.id} />)
+  const region = screen.getByRole("region", { name: "Unmatched paths" })
+  expect(within(region).getByText("Unmatched", { exact: true })).toBeVisible()
+  expect(within(region).getByRole("button", { name: "Exclude unmatched paths" })).toBeEnabled()
+})

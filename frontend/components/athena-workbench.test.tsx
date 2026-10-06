@@ -5692,6 +5692,26 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     expect(screen.getByRole("checkbox", { name: "Mark Unused reference" })).not.toBeChecked()
   })
 
+  it.each([/linear combination fitting/i, /principal component analysis/i, /xanes peak fitting/i])("labels and resets the %s range for the chosen signal space", async tool => {
+    // XAS-QA-002: χ(k) kept the eV labels and the energy limits, which the
+    // server then read as k limits.
+    const initial = projectFixture()
+    initial.groups.forEach(g => { g.result!.effective = { ...g.result!.effective, kmin: 3, kmax: 11.5 } })
+    await openSaved(initial)
+    const dialog = await openTool("Analysis", tool)
+    const signal = (value: string) => fireEvent.change(within(dialog).getByRole("combobox", { name: /fit signal/i }), { target: { value } })
+    const range = (unit: string) => ["minimum", "maximum"].map(end => within(dialog).getByRole("spinbutton", { name: `Range ${end} ${unit}` }))
+    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8959, 9059])
+    editNumber(/^Range minimum/, 8965, dialog)
+    signal("dmude")
+    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8965, 9059])
+    signal("chi")
+    expect(range("Å⁻¹").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([3, 11.5])
+    expect(within(dialog).queryByRole("spinbutton", { name: /eV$/ })).toBeNull()
+    signal("norm")
+    expect(range("eV").map(input => (input as HTMLInputElement).valueAsNumber)).toEqual([8959, 9059])
+  })
+
   it("uses the PCA dialog selection independently of project marks", async () => {
     const project = await openSaved()
     const dialog = await openTool("Analysis", /principal component analysis/i)
