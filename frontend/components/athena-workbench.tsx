@@ -1,6 +1,6 @@
 "use client"
 
-import { Fragment, useEffect, useId, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
+import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Activity, ArrowUpDown, BookOpen, Bug, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, Link2, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
 import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
@@ -684,7 +684,9 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const context = pickContext()
   const contextRef = useRef(context)
   contextRef.current = context
-  useEffect(() => {
+  // Attached during commit, so a shortcut pressed as soon as the loaded project or a
+  // closed dialog is on screen never reaches the previous render's listener.
+  useLayoutEffect(() => {
     const mergeShortcut = (event:KeyboardEvent) => {
       if (!(event.ctrlKey || event.metaKey) || !event.shiftKey || event.altKey || modal || busy || !project || !canOpen("merge")) return
       if ((event.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"]')) return
