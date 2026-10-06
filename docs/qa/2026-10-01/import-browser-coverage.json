@@ -1,0 +1,53 @@
+{
+  "target": "http://drxas.xray.aps.anl.gov:3004",
+  "deployed_revision": "881d526f62d72f05f6fdaa8bfb879baee89acd55",
+  "browser": "Playwright Chromium, headless",
+  "workflow_tests_passed": 8,
+  "confirmed_issues": [
+    "issues/import-mobile-fluorescence-scale.json"
+  ],
+  "project_ids": [
+    "MtZiVJZY0eDra67SWT5uzVhw",
+    "QsoG8cIWkynI0lAkNHdXFS1l",
+    "tEpcBKpZj-RfGRoBAcObIauo",
+    "3mNGVPvcAQKLMGmFzJDjEVpE",
+    "0FpxfOEODyoHhNueY6mzu3SW",
+    "m2SU-rkyMaNF9f9-B9_tx8ao",
+    "CImMwl4rASFfjUyOAwGdG_4z",
+    "P8GlE1H6SITN3-NHsEss9Xtm",
+    "Nyux8o766-iTqYvPi4H0yBh-",
+    "oRiqtbgXVmox4Pb7AoFfVK9L",
+    "hmTr89BeMjE2seZ6RrL8nUN5",
+    "YbgpNdwyCstV0rdYSFveuUu1",
+    "D8buaxAKz0F43EfltlM1J6pJ"
+  ],
+  "passed_workflows": [
+    "Real-Cu combined transmission + fluorescence batch with independent scales, flipped sums, exact preview/import equality, source mapping, expected negative-step diagnostic and reload persistence.",
+    "Reference-channel arithmetic, zero-count preview error and recovery, source display, exact preview/import equality, linked references and reload.",
+    "390x844 multichannel fluorescence selection by column range, pause/replot, per-channel preview and imported arrays, visible mobile preview.",
+    "Batch preprocessing copies standard parameters, aligns reference channels, marks samples only and persists results.",
+    "Native cu.prj browser import, norm preview, E/k/R/q plotted curves, project Save dialog/download/reopen, exact arrays/parameters/results and six groups after reload.",
+    "Classic source A/source B imports, preview/apply, restore source A, reload and revision CSV/recipe downloads.",
+    "Classic duplicate-named signal mapping selects correct column and plotted values.",
+    "Classic 390x844 layout keeps processing controls reachable without document overflow."
+  ],
+  "visual_review": [
+    "Desktop import dialog, combined detector selection and two scientific preview traces.",
+    "Mobile fluorescence preview preserves both measured channel traces and axis/legend labels.",
+    "Mobile combined-mode multiplier has confirmed clipping/collapse bug.",
+    "Classic mobile controls fit the viewport.",
+    "Native project plots and parameter panels visible; default 3D wavelet view reports unsupported WebGL in this headless runtime, so 3D rendering quality was not qualified."
+  ],
+  "screenshots": [
+    "browser/results/columns-imports-transmissi-21a88-ross-a-shared-real-Cu-batch/dual-mode-desktop.png",
+    "browser/results/columns-imports-transmissi-21a88-ross-a-shared-real-Cu-batch/dual-mode-mobile.png",
+    "browser/results/columns-column-preview-ref-1f84f-ecovery-and-imported-values/column-preview-desktop.png",
+    "browser/results/columns-MED-range-selectio-33c4c-l-import-and-mobile-preview/column-preview-mobile.png",
+    "browser/partial-match-results/columns-imports-a-batch-wi-210e9-ent-and-sample-only-marking/import-preprocessing.png",
+    "browser/roundtrip-classic-results/project-ordinary-import-pl-763e5-ed-project-roundtrip-cu-prj/project-final.png",
+    "browser/roundtrip-classic-results/classic-has-no-document-ov-b7b28-tor-reachable-at-390-by-844/classic-final.png",
+    "browser/fluorescence-control-390.png",
+    "browser/fluorescence-control-360.png"
+  ],
+  "runner_adjustments": "Temporary copies of repository e2e tests use deployed origin, absolute fixture paths and anchored form-label regexes that permit appended About help-button names. Initial exact-name and overly broad locator failures were runner errors; final targeted runs pass. No product code was edited."
+}
