@@ -183,7 +183,7 @@ function FluorescenceColumns({ inspection, mapping, setMapping }: {
       <td>{c.index + 1}. {c.name}</td>
     </tr>)}</tbody></table></div>
     <p className="ath-formula">{columnExpression(signalMapping, inspection.columns)}</p>
-    <div className="ath-fields">
+    <div className={`ath-fields ${styles.fluorescenceFields}`}>
       <button type="button" onClick={flip}>Flip fluorescence numerator and denominator</button>
       <label className="ath-field"><span>Fluorescence multiplicative constant</span><input type="number" step="any" value={fluorescence.signal_multiplier ?? 1}
         onChange={e => update({ signal_multiplier: e.target.value === '' ? '' : Number(e.target.value) })} /></label>

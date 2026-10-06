@@ -573,3 +573,28 @@ test("XAS-QA-007: retrying an import whose response was lost does not import the
   expect(stored.groups).toHaveLength(1)
   expect(errors).toEqual([])
 })
+
+test("XAS-QA-001: the fluorescence multiplier stays readable in a narrow dual-mode import", async ({ page }, info) => {
+  test.setTimeout(60000)
+  const panel = await openColumns(page)
+  await panel.getByRole("combobox", { name: "Measurement", exact: true }).selectOption("both")
+  const fluorescence = panel.getByRole("group", { name: "Fluorescence columns", exact: true })
+  const constant = fluorescence.getByLabel("Fluorescence multiplicative constant", { exact: true })
+  await constant.fill("0.5")
+  for (const width of [1400, 768, 390, 360]) {
+    await page.setViewportSize({ width, height: 844 })
+    await constant.scrollIntoViewIfNeeded()
+    const metrics = await constant.evaluate(input => {
+      const label = input.closest("label")!.querySelector("span")!.getBoundingClientRect()
+      const box = input.getBoundingClientRect()
+      const set = input.closest("fieldset")!
+      return { label: label.width, input: box.width, right: box.right, overflow: set.scrollWidth - set.clientWidth }
+    })
+    expect(metrics.label, `label width at ${width}px`).toBeGreaterThan(100)
+    expect(metrics.input, `input width at ${width}px`).toBeGreaterThan(100)
+    expect(metrics.right, `input right edge at ${width}px`).toBeLessThanOrEqual(width)
+    expect(metrics.overflow, `fieldset overflow at ${width}px`).toBeLessThanOrEqual(0)
+    await expect(constant).toHaveValue("0.5")
+    if (width === 360) await fluorescence.screenshot({ path: info.outputPath("fluorescence-360.png") })
+  }
+})
