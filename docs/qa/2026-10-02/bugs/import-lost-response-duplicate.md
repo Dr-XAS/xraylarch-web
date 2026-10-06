@@ -2,7 +2,7 @@
 
 Priority: P2. Confirmed on releases 881d526f62d72f05f6fdaa8bfb879baee89acd55 and 18c6a8dd03502e15c0bba88490c88f966ad70ffe.
 
-Status: fixed by PR #10 (`f8ae23fd3`), merged October 5, 2026; not yet deployed. A retried import with the same idempotency key returns the first import's result.
+Status: fixed by PR #10 (`f8ae23fd3`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). A retried import with the same idempotency key returns the first import's result.
 
 Target: http://drxas.xray.aps.anl.gov:3004. Isolated QA project: `tmbFP_rsf5S6U3MH3ysAtV71`.
 
