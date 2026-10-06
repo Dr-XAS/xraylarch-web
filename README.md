@@ -40,6 +40,9 @@ analysis, EXAFS fitting, CIF/FEFF setup, simulation, and viewer controls. Hover,
 focus, or tap an icon for its meaning, units, and relevant constraints; press
 Escape to dismiss it. Help stays out of the form layout and does not change data.
 
+The Xraylarch, Demeter, and Dr. XAS team credits stay visible below the Larch-Web
+title, independently of **Show instruction**.
+
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper
 examples: three temperature-series foils, a room-temperature Cu₂O reference,

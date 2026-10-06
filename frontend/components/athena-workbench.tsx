@@ -2347,7 +2347,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }
 
   return <InstructionVisibility value={showInstruction}><main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
-    <header className="ath-header"><div className="ath-brand"><DrXasLogo /><div><h1 aria-label="Larch-Web">Larch-Web<SectionHelp label="Larch-Web">powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>, and developed by the Dr. XAS team.</SectionHelp></h1></div></div>
+    <header className="ath-header"><div className="ath-brand"><DrXasLogo /><div className="ath-brand-copy">
+      <h1>Larch-Web</h1>
+      <p className="ath-brand-credits"><span>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>,</span>{" "}<span>and developed by the Dr. XAS team.</span></p>
+    </div></div>
       <nav aria-label="Main menu">
         {mainMenuNames.map(label => <div className="ath-menu-wrap" key={label}><button aria-expanded={menu === label} onClick={() => toggleTopMenu(label)}>{label}<ChevronDown size={12} /></button>{label === "Group" && <SectionHelp label="Group references">Assign reference foil links one or more spectra to a shared reference. For the older two-group tie, mark exactly two groups: the first in Manual order is the sample, the second its reference. Sorting changes only the view. Tying adopts the sample’s energy shift and keeps both shifts linked when either is edited.</SectionHelp>}{menu === label && <div className="ath-menu" onKeyDown={event => { if (event.key === "Escape") setMenu("") }}>{renderMainMenuCommands(label)}</div>}</div>)}
         <div className="ath-menu-wrap ath-help-menu-wrap"><button ref={helpTriggerRef} aria-haspopup="dialog" aria-controls="ath-menu-command-search" aria-expanded={menu === "Help"} onClick={() => toggleTopMenu("Help")}>Search menu<ChevronDown size={12} /></button>
