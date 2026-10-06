@@ -140,7 +140,9 @@ def add_simulation(store, jobs, ident: str, request: AddSimulationRequest, *, id
         parameters.update(kweight=transform.kweight[0], kstep=result["metadata"]["kstep"],
                           nfft=result["metadata"]["nfft"], rmax_out=10,
                           rwindow=result["metadata"]["rwindow"])
-        default_label = (attachment.get("label") or attachment["structure"]["formula"] or attachment["structure"]["mineral"])
+        structure = attachment["structure"]
+        default_label = (attachment.get("label") or structure.get("filename")
+                         or structure["formula"] or structure["mineral"])
         label = request.label or f"{default_label} · {job_request['absorber']} {job_request['edge']} · theory"
         source = dict(operation="simulation", tags=["theory"], simulation=copy.deepcopy(result["simulation"]),
                       feff=copy.deepcopy(result["source"]), warnings=list(result["warnings"]),

@@ -14,7 +14,7 @@ from pydantic import ValidationError
 
 from xraylarch_web import artemis
 from xraylarch_web.artemis_simulation import AddSimulationRequest, SimulationRequest, add_simulation, simulate_job
-from xraylarch_web.artemis_attachments import structure_attachment
+from xraylarch_web.artemis_attachments import RenameRequest, rename_structure, structure_attachment
 from xraylarch_web.artemis_structures import structure_details
 from xraylarch_web.athena import AthenaStore, Command
 from xraylarch_web.config import Settings
@@ -160,6 +160,7 @@ def test_addition_keeps_unweighted_chi_exact_transform_and_provenance(owned_simu
     assert saved["version"] == original["version"] + 1
     assert len(saved["groups"]) == 1
     group = saved["groups"][0]
+    assert group["label"] == "cuprite.cif · Cu K · theory"
     assert group["data_type"] == "chi" and group["marked"] is True
     assert group["processing_error"] is None
     assert group["source"]["tags"] == ["theory"]
@@ -178,6 +179,17 @@ def test_addition_keeps_unweighted_chi_exact_transform_and_provenance(owned_simu
     assert store.load(original["id"])["groups"][0] == group
 
 
+@pytest.mark.parametrize("label", [None, "Custom theory spectrum"])
+def test_addition_uses_current_cif_name_unless_spectrum_name_is_explicit(owned_simulation, label):
+    store, jobs, original, job = owned_simulation
+    renamed = rename_structure(store, original["id"], original["artemis_structures"][0]["id"],
+                               RenameRequest(version=original["version"], label="Cuprite reference"))
+    request = addition(renamed, job).model_copy(update={"label": label})
+    saved = add_simulation(store, jobs, original["id"], request)
+    assert saved["groups"][0]["label"] == (label or "Cuprite reference · Cu K · theory")
+    assert saved["groups"][0]["source"]["feff"]["provenance"] == job["provenance"]
+
+
 @pytest.mark.parametrize("format", ["json", "prj"])
 def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation, format):
     store, jobs, original, job = owned_simulation
@@ -189,6 +201,7 @@ def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation,
     imported = store.create()
     restored = store.restore(imported["id"], imported["version"], payload, f"theory.{format}")
     reopened = AthenaStore(store.settings).load(restored["id"])["groups"][0]
+    assert reopened["label"] == group["label"]
     assert reopened["source"]["tags"] == ["theory"]
     assert reopened["source"]["simulation"] == group["source"]["simulation"]
     assert reopened["source"]["feff"] == group["source"]["feff"]

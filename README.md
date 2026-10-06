@@ -116,7 +116,9 @@ FEFF, then sum all available paths or the selected paths with explicit S₀²,
 JSON containing the exact CIF, FEFF input, path files, parameters and results.
 S₀² defaults to 0.85. After simulation, **Add to data list** saves χ(k) with a
 **theory** tag, its Fourier parameters, and the exact CIF/FEFF sources in the
-project. The shared σ² is an assumption; inequivalent sites are not averaged automatically.
+project. Simulated spectra use the CIF's custom name or uploaded filename before
+falling back to its chemical formula, followed by the element, edge, and **theory**.
+The shared σ² is an assumption; inequivalent sites are not averaged automatically.
 
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.
