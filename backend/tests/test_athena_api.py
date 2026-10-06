@@ -345,3 +345,48 @@ def test_bad_requests_and_stale_writes_return_actionable_errors(client):
     malformed = client.post(f"/api/athena/projects/{p['id']}/restore?version={p['version']}", files={"file": ("bad.prj", b"# Athena project file -- Demeter version 0.9.26\n@x = invalid(;")})
     assert malformed.status_code == 400
     assert client.get(f"/api/athena/projects/{p['id']}").json() == p
+
+
+def test_import_retried_under_its_key_is_answered_not_imported_twice(client):
+    """XAS-QA-007: a lost import response must not turn the retry into a second scan."""
+    project = create(client)
+    raw = ("energy i0 it\n" + "".join(
+        f"{100 + index} {10 + index} {5 + index / 2}\n" for index in range(12)
+    )).encode()
+    inspected = client.post(
+        f"/api/athena/projects/{project['id']}/inspect", files={"file": ("cu.dat", raw)},
+    ).json()
+    columns = {column["name"]: column["column_id"] for column in inspected["columns"]}
+    endpoint = f"/api/athena/projects/{project['id']}/import"
+    body = {"version": 0, "upload_id": inspected["upload_id"], "energy_column": columns["energy"],
+            "numerator": [columns["i0"]], "denominator": columns["it"], "mode": "transmission"}
+
+    first = client.post(endpoint, json=body, headers={"Idempotency-Key": "import-1"})
+    assert first.status_code == 200, first.text
+    imported = first.json()
+    assert len(imported["groups"]) == 1
+
+    # The browser never saw `first`, so it retries the same body: same key, stale version.
+    retry = client.post(endpoint, json=body, headers={"Idempotency-Key": "import-1"})
+    assert retry.status_code == 200, retry.text
+    answered = retry.json()
+    assert answered["version"] == imported["version"]
+    assert [g["id"] for g in answered["groups"]] == [g["id"] for g in imported["groups"]]
+    replay = answered["last_operation"]["idempotent_replay"]
+    assert replay["version_after"] == imported["version"]
+    assert replay["group_ids"] == [imported["groups"][0]["id"]]
+    # Nothing was saved by the answered retry.
+    stored = client.get(f"/api/athena/projects/{project['id']}").json()
+    assert stored["version"] == imported["version"] and len(stored["groups"]) == 1
+    assert "idempotent_replay" not in (stored.get("last_operation") or {})
+
+    # Without the key a stale retry is still the ordinary conflict.
+    unkeyed = client.post(endpoint, json=body)
+    assert unkeyed.status_code == 409, unkeyed.text
+
+    # A deliberate second import of the same upload, under a new key, still works.
+    again = client.post(endpoint, json={**body, "version": imported["version"]},
+                        headers={"Idempotency-Key": "import-2"})
+    assert again.status_code == 200, again.text
+    assert len(again.json()["groups"]) == 2
+    assert "idempotent_replay" not in (again.json().get("last_operation") or {})

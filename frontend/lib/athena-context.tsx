@@ -23,11 +23,11 @@ export function useAthenaTransport() {
 export function useAthenaApi() {
   const transport = useContext(AthenaTransportContext)
   if (!transport) return athenaApi
-  return <T,>(path: string, body?: unknown, method?: string, signal?: AbortSignal): Promise<T> => transport.api<T>(`/api/athena${path}`, {
+  return <T,>(path: string, body?: unknown, method?: string, signal?: AbortSignal, headers?: Record<string, string>): Promise<T> => transport.api<T>(`/api/athena${path}`, {
     signal,
     method: method ?? (body === undefined ? "GET" : "POST"),
-    ...(body instanceof FormData ? { body } : body !== undefined ? {
-      headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-    } : {}),
+    ...(body instanceof FormData ? { body, headers } : body !== undefined ? {
+      headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body),
+    } : { headers }),
   })
 }

@@ -63,7 +63,9 @@ their errors, and previews marked `preview: true`. It returns the last twenty;
 something that was refused. If a command times out, do not resend it blind: the retry's
 version is stale and comes back as a 409. Send an `Idempotency-Key` header instead, and
 a retry under a used key is answered from the record, marked
-`last_operation.idempotent_replay`.
+`last_operation.idempotent_replay`. `POST .../import` takes the same header: a
+retry under a used key imports nothing and returns the current project, with the
+groups the first import made in `idempotent_replay.group_ids`.
 
 ## Or use the CLI
 
