@@ -2,6 +2,7 @@ import type { Analysis, AthenaGroup } from "@/lib/athena"
 
 export type PlotSpace = "E" | "k" | "R" | "q"
 export type PlotRange = [number | null, number | null]
+export const DEFAULT_R_PLOT_RANGE = [0, 6] as const
 
 export function spectrumTraceCoordinates(group: AthenaGroup, space: PlotSpace, energyMode: string, component = "mag", kWeight: number | null = null) {
   if (group.data_type === "detector" && (space !== "E" || energyMode !== "mu")) return null
@@ -48,6 +49,9 @@ export function automaticPlotRange(
   analysis: Analysis | null = null, analysisVisible = false, kWeight: number | null = null,
 ): PlotRange {
   if (analysisVisible) return outwardRange(analysisXValues(analysis))
+  if (space === "R" && groups.some(group => spectrumTraceCoordinates(group, space, energyMode, component, kWeight))) {
+    return [...DEFAULT_R_PLOT_RANGE]
+  }
   return outwardRange(groups.flatMap(group => {
     const coordinates = spectrumTraceCoordinates(group, space, energyMode, component, kWeight)
     if (!coordinates) return []

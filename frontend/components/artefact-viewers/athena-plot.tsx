@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 import { defaultPlotColors, spectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { AthenaContextMenu } from "../athena-context-menu"
-import { spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
+import { DEFAULT_R_PLOT_RANGE, spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 export type Space = PlotSpace
 interface Props {
@@ -264,7 +264,8 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     { id: "grid", label: "Show grids", checked: showGrid, onSelect: () => onShowGridChange?.(!showGrid) },
     { id: "points", label: "Show data points", checked: showDataPoints, onSelect: () => onShowDataPointsChange?.(!showDataPoints) },
   ]} />
-  const [rangeStart, rangeEnd] = range
+  const rangeStart = range[0] ?? (space === "R" ? DEFAULT_R_PLOT_RANGE[0] : null)
+  const rangeEnd = range[1] ?? (space === "R" ? DEFAULT_R_PLOT_RANGE[1] : null)
   const layout = useMemo(() => {
     const xRange = analysisVisible || (rangeStart === null && rangeEnd === null)
       ? { autorange: true as const }
