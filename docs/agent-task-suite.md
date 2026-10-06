@@ -888,6 +888,59 @@ says three, and an `align` of the foils that was accepted then is rejected now,
 because the foils share a reference and align refuses linked groups. A transcript
 from after those changes replays without a divergence and passes T2.
 
+## Replaying FEFF calculations and fits
+
+`replay-http` adds scientific checks for retained HTTP evidence. It starts a backend
+in a temporary private data root, reruns FEFF, replays Athena mutations in order,
+and fits the newly created groups and paths. It needs no running server; `--url`
+does not affect this subcommand.
+
+```sh
+PYTHONPATH=backend backend/.venv/bin/python -m xraylarch_web.agent_suite replay-http \
+  docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T5/events.jsonl \
+  --setup-transcript docs/agent-runs/2026-10-05-native-vs-app/runs/t2-t5/app-T5-runtime/transcript.jsonl \
+  --setup-seq 1 --out scientific-replay.json
+```
+
+The setup sequence is the last command **before** the HTTP recording begins, not
+the last command in the run. Replay uses only that transcript prefix, which must
+start with the recorded `example` command. The retained runs start after setup,
+so a project summary alone cannot supply the missing measurements. Imports and
+attached CIF setup are currently unsupported; they fail explicitly.
+
+Both the older combined `evidence.jsonl` rows and the newer `events.jsonl` format
+are accepted. Concurrent event results are paired by `tool_result.call_seq`;
+unassociated `http_result` rows cannot identify which request they answer.
+Source project, group and FEFF job IDs map to fresh IDs, and command/fit versions
+must agree with the current checkpoint. A fit referencing a job without a recorded
+submission fails. FEFF uses the bundled AMCSD structure and runs again even if the
+recorded response said `reused`; recorded completion metadata must also exist.
+
+The JSON report includes each step, expected and actual fit quantities, differences,
+explicit tolerances, skipped observations and a final project snapshot. It compares
+path distance, sigma2 and other path values, parameter values and stderr, statistics,
+correlations, transform settings, bound flags, concerns and warnings. Numeric
+values use relative tolerance `2e-5` and absolute tolerance `1e-9`; distance `r`
+uses absolute tolerance `5e-5 Å` because its summary is rounded to four decimal
+places. `deltar` still receives the tighter comparison. Transform settings use
+absolute tolerance `1e-9`. Integer/boolean type mismatches fail. Optimizer iteration
+count `nfev`, response prose, timestamps and generated identities are excluded.
+Older summaries lack `sigma2_expression`; replay reconstructs that field from the
+recorded fit request, then compares it with the current response.
+
+Missing fields, nonfinite values, lost paths/parameters and condensed inputs fail.
+Fit requests must retain an explicit transform object; replay does not infer lost
+settings from current defaults. A command or fit divergence stops further work,
+marks subsequent steps `not_replayed` and exits 1. An observations-only recording
+also fails because it compared no scientific operation. `fit_validation: not_run`
+distinguishes an Athena-only replay from a checked fit.
+
+Athena checks here cover group summary values and relationships at each mutation,
+not requested/effective processing recipes or arrays. Digest, parameters and other
+observations are counted as skips. For Athena recipe checks, retain the original
+final snapshot and use `agent_suite diff original-run.json scientific-replay.json`.
+Neither comparison establishes equality of the underlying arrays.
+
 ## Ninth run, 2026-10-05
 
 The first retained replayable baseline is in
@@ -912,4 +965,4 @@ Both T3 arms chose kmax 18 and also fitted a distance. Both T4 arms merged μ wi
 truncating or aligning, retaining all three parents. Both T5 arms found 2.5489 Å and
 reported a practical ±0.02 Å with energy-offset sensitivity evidence. The saved API
 evidence includes these fits; command replay checks project mutations, not read-only
-fit calculations.
+fit calculations. Use `replay-http` above to rerun those calculations.

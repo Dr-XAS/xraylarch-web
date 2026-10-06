@@ -337,6 +337,12 @@ def main(argv: list[str] | None = None, http: httpx.Client | None = None) -> int
                           help="the record after which the arm started; default, the first example")
     replayed.add_argument("--keep-going", action="store_true",
                           help="go on past a command that cannot be replayed")
+    scientific = sub.add_parser("replay-http", help="replay HTTP science evidence in a private backend")
+    scientific.add_argument("evidence", type=Path, help="events.jsonl or combined evidence.jsonl")
+    scientific.add_argument("--setup-transcript", type=Path, required=True)
+    scientific.add_argument("--setup-seq", type=int, required=True, help="last setup transcript sequence, before HTTP evidence begins")
+    scientific.add_argument("--job-timeout", type=float, default=180)
+    scientific.add_argument("--out", type=Path, required=True, help="write scientific comparisons and final snapshot")
     compared = sub.add_parser("diff", help="two final projects, quantity by quantity with tolerances")
     compared.add_argument("a", help="a run file with a final snapshot, or a project id")
     compared.add_argument("b", help="a run file with a final snapshot, or a project id")
@@ -346,6 +352,22 @@ def main(argv: list[str] | None = None, http: httpx.Client | None = None) -> int
         for task in TASKS.values():
             print(f"{task.key}\n  prompt: {task.prompt}\n  answer: {task.answer}\n")
         return 0
+    if args.command == "replay-http":
+        from .agent_http_replay import private_replay
+        try:
+            result = private_replay(args.evidence, args.setup_transcript,
+                                    setup_seq=args.setup_seq, job_timeout=args.job_timeout)
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            result = {"ok": False, "steps": [], "divergences": [str(exc)]}
+        args.out.write_text(json.dumps(result, indent=2, ensure_ascii=False, allow_nan=False))
+        for step in result["steps"]:
+            print(f"  {step['status']} seq {step['seq']} {step['method']} {step['path']}"
+                  + (f"  {step['note']}" if step.get("note") else ""))
+        for line in result["divergences"]:
+            print(f"  diverged: {line}")
+        print(f"{'PASS' if result['ok'] else 'FAIL'}: {result.get('commands', 0)} commands, "
+              f"{result.get('feff_jobs', 0)} FEFF jobs, {result.get('fits', 0)} fits; report {args.out}")
+        return 0 if result["ok"] else 1
     http = http or httpx.Client(base_url=args.url, timeout=120)
     if args.command == "finish":
         from .agent_diff import snapshot

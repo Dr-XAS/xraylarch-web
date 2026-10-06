@@ -243,6 +243,18 @@ actually uses well.
   rejections remain in the saved run for task grading. Eleven tests in
   `test_agent_replay.py`.
 
+  `agent_suite replay-http` now handles saved HTTP FEFF/fit evidence in a private
+  temporary backend. It uses the explicit setup transcript prefix, correlates
+  concurrent results by call sequence, remaps group/job IDs and checks versions at
+  each operation. It reruns bundled AMCSD FEFF jobs and compares their completed
+  path metadata, then checks fit distances, disorder, parameter uncertainties,
+  statistics, settings and concerns. Condensed inputs, missing scientific fields,
+  unsupported mutations and unavailable job/setup inputs fail. The report lists
+  skipped observations and distinguishes zero fitted comparisons from a fit pass.
+  Athena coverage in this mode is limited to summary checkpoints; `diff` still
+  provides final effective-parameter comparisons. See the
+  [replay instructions and tolerances](agent-task-suite.md#replaying-feff-calculations-and-fits).
+
 - **Idempotency keys** on `/command`, so a retry after a timeout does not merge twice.
 
   *Built*, as an `Idempotency-Key` header. The version check already stops the double
@@ -310,10 +322,8 @@ itself through the CLI.
 
 ### Layer 5 — in-repo documentation
 
-A root `AGENTS.md` (only the Next.js-generated one exists today, under `frontend/`),
-covering how to start the stack, the ports, and the workflow recipes. The domain
-vocabulary in `CONTEXT.md` should feed the agent guide directly, so the agent and the
-codebase argue in the same words.
+The root `AGENTS.md` covers stack startup, ports, workflow recipes and scientific
+interpretation. `CONTEXT.md` defines the shared domain vocabulary.
 
 ## The harness that makes this an experiment
 
@@ -338,14 +348,19 @@ that passed can be checked again after a change without paying for the arm again
 `diff` compares two final projects quantity by quantity with the tolerances the answer
 assertions use (`backend/xraylarch_web/agent_diff.py`: energies within 0.1 eV, edge
 steps within 0.005, k within 0.01 Å⁻¹), groups matched by label and ids compared
-through label and occurrence, so duplicate names remain distinct. That is the numerical equivalence check question 3
-asks for, on the app-driving side; the native-tools adapter, and with it the
-comparison, does not exist yet.
+through label and occurrence, so duplicate names remain distinct. Dr.XAS now has
+the native-tools adapter in `backend/eval/native_app_comparison.py`. The
+[matched native/app comparison](agent-runs/2026-10-05-native-vs-app/README.md)
+records five task pairs, and the
+[native-fix verification](agent-runs/2026-10-05-native-fixes/README.md) records the
+alignment and Fourier corrections it prompted. These compare configured systems,
+including their libraries and instructions; they do not isolate interface design.
 
 The [October 5 baseline](agent-runs/2026-10-05/README.md) retains all ten arms'
 transcripts, final snapshots and API evidence. All state checks and replay comparisons
 passed; strict answer grading passed nine of ten. Read-only FEFF and fit responses
-are retained for review but are not reproduced by command replay.
+are retained for review. Command replay does not reproduce them; `replay-http`
+reruns FEFF and fits from complete HTTP evidence and an explicit setup prefix.
 
 Fixtures are already here. `examples/xafsdata` holds the Cu foil series, and the
 `example` command action builds the five-group benchmark project in a single call: the
