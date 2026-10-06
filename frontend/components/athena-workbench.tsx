@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type SetStateAction, type MouseEvent, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react"
 import { Activity, ArrowUpDown, BookOpen, Bug, ChevronDown, ChevronRight, Copy, Download, ExternalLink, FileText, Folder, FolderOpen, FolderPlus, GripVertical, Layers, Link2, LockKeyhole, Pencil, Plus, Redo2, Search, Settings2, Trash2, Undo2, Upload, X } from "lucide-react"
-import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy, type EdgePair } from "@/lib/athena"
+import { resources, hasSavedMerge, isDifferenceGroup, dataTypeLabel, measurementModeLabel, importedAsReference, type AthenaGroup, type AthenaGroupFolder, type AthenaProject, type Parameters, type Analysis, type E0Method, type E0Options, type EdgePolicy } from "@/lib/athena"
 import type { AthenaSession } from "@/lib/athena-transport"
 import { ApiRequestError } from "@/lib/backend-client"
 import { isSelectionCommand, mergeSelectionUpdate, type AthenaSelectionUpdate } from "@/lib/athena-selection"
@@ -49,7 +49,7 @@ import { labelParts } from "@/lib/athena-labels"
 import { batchExclusions, columnPayload, initialColumnMapping, reuseColumnMapping, reuseProblem, defaultPreprocessing, defaultRebin, lastImportedSample, type ColumnMapping } from "@/lib/athena-import"
 import { isAthenaProjectFile } from "@/lib/athena-file-types"
 import { EdgePolicyDialog, edgePolicyDescription, useEdgePolicy } from "./athena-edge-policy"
-import { EdgeIdentityDialog, edgeIdentityDescription } from "./athena-edge-identity"
+import { edgeIdentityDescription } from "./athena-edge-identity"
 import { AthenaDifferenceDialog } from "./athena-difference"
 import { AthenaDatatype } from './athena-datatype'
 import { AthenaReferencePicker } from './athena-reference-picker'
@@ -170,7 +170,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "xrf_xas" | "xrf_view" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "edge_policy" | "edge_identity" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
+type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "xrf_xas" | "xrf_view" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "edge_policy" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
 const mainMenuNames = ["File", "Edit", "Group", "Energy", "Plot", "Process", "Analysis"] as const
 type MainMenuName = typeof mainMenuNames[number]
 type MenuCommand = {
@@ -207,7 +207,7 @@ const modalOperations: Partial<Record<Exclude<ModalName, null>, readonly string[
   metadata: ["metadata"], multi_electron: ["preview", "multi_electron"], log_ratio: ["analyze"],
   copy_series: ["copy_series"], groups: ["metadata"],
   group_folder: ["project"], reference: ["assign_reference"],
-  e0: ["set_e0"], edge_policy: ["upload"], edge_identity: ["metadata"], datatype: ["change_datatype"],
+  e0: ["set_e0"], edge_policy: ["upload"], datatype: ["change_datatype"],
   xdi: ["read_group", "xdi_comments"], data_export: ["export"], parameter_report: ["report"], context_report: ["report"],
   special_plot: ["plot"], rename: ["metadata"], save_project: ["export"],
 }
@@ -761,10 +761,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     const failed = Object.values(autoApplyPlans).some(plan => plan.status === "failed")
     setMessage(failed ? "Retry or discard the failed parameter changes before continuing" : "Waiting for automatic parameter processing")
     return true
-  }
-  function openEdgeIdentity() {
-    if (!canOpen("edge_identity") || !active || active.frozen || busy || parameterActionBlocked()) return
-    cancelPick(); setMenu(""); setError(""); setModal("edge_identity")
   }
   function stopEdgePolicy() { updateEdgePolicy(null); setMenu(""); setMessage("Element and edge enforcement stopped · future batches") }
   function armPick(key: PickKey, label: string, splineEnergy = false) {
@@ -1393,15 +1389,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       const next = await command("background_standard", [id], { standard_id: backgroundStandard || null })
       if (!next.last_operation?.skipped_group_ids.includes(id)) setStandardDrafts(d => Object.fromEntries(Object.entries(d).filter(([key]) => key !== id)))
     })
-  }
-  async function saveEdgeIdentity(id: string, identity: EdgePair) {
-    if (busy || active?.id !== id || active.frozen || parameterActionBlocked()) return false
-    let saved = false
-    await task("Saving absorber and edge", async () => {
-      await command("edge_identity", [id], identity)
-      saved = true
-    })
-    return saved
   }
   async function applySelectedE0(ids: string[], options: E0Options) {
     if (busy || !ids.length || parameterActionBlocked()) return
@@ -2204,7 +2191,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     { id: "group-mark-freeze", menu: "Group", label: "Mark / freeze groups…", keywords: "select lock unfreeze batch", disabled: !project?.groups.length || !!busy || parameterUpdatePending || !canOpen("groups"), action: () => openTool("groups") },
     { id: "group-folder", menu: "Group", label: "Group spectra…", keywords: "folder organize collapse expand marked", disabled: !project?.groups.length || !!busy || parameterUpdatePending || !canOpen("group_folder"), icon: <FolderPlus size={15} />, action: () => openGroupFolderEditor() },
     { id: "group-datatype", menu: "Group", label: "Processing settings…", keywords: "normalization exafs processing", disabled: !project?.groups.length || !!busy || parameterUpdatePending || !canOpen("datatype"), action: () => openTool("datatype") },
-    { id: "group-edge-identity", menu: "Group", label: "Edit absorber and edge…", keywords: "element e0 identity", disabled: !active || !!active?.frozen || !!busy || parameterUpdatePending || !canOpen("edge_identity"), action: openEdgeIdentity },
     { id: "group-file-metadata", menu: "Group", label: "File metadata…", keywords: "xdi headers", disabled: !active || !!busy || parameterUpdatePending || !canOpen("xdi"), action: () => openTool("xdi") },
     { id: "group-information", menu: "Group", label: "Group information…", keywords: "metadata label notes multiplier offset reference", disabled: !active || !!busy || parameterUpdatePending || !canOpen("metadata"), action: () => openTool("metadata") },
     { id: "group-duplicate", menu: "Group", label: "Duplicate current group", keywords: "copy clone", disabled: !active || !!busy || parameterUpdatePending || !canCommand("duplicate"), icon: <Copy size={15} />, action: () => act("duplicate") },
@@ -2406,7 +2392,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
         {!availableViewers.some(id => shownViewers.has(id)) && <p className="ath-viewer-empty" role="status">No viewers selected. Choose one above to show its results.</p>}
         <div className="ath-viewer-stack">{orderedViewerIds.map(viewer => <div key={viewer} id={viewer === "single" || viewer === "multiple" ? `athena-${viewer}-spectrum-viewer` : undefined} data-viewer-id={viewer} hidden={!shownViewers.has(viewer)}>
         {viewer === "single" ? <>
-        {active && <section className="ath-group-identity" aria-label="Current absorber and edge"><span onContextMenu={event => showContext(event, { kind: "section", section: "group" })}>Absorber / edge: <strong>{edgeIdentityDescription(active)}</strong></span><button disabled={active.frozen || !!busy || !canOpen("edge_identity")} onClick={openEdgeIdentity}>Edit absorber and edge…</button></section>}
+        {active && <section className="ath-group-identity" aria-label="Current absorber and edge"><span onContextMenu={event => showContext(event, { kind: "section", section: "group" })}>Absorber / edge: <strong>{edgeIdentityDescription(active)}</strong></span></section>}
         {renderSpectrumViewer("single")}
         {active?.processing_error && <div className="ath-error" role="alert">{active.processing_error}</div>}{active?.result?.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}
         {analysis && <section className="ath-analysis-result"><header><h3 aria-label={toolTitles[analysis.kind]}>{toolTitles[analysis.kind]}{analysis.kind === "log_ratio" && <SectionHelp label="Log-ratio results">Effective cumulant differences (target minus reference). These require the same isolated shell and scatterers; they are not absolute structural parameters.</SectionHelp>}</h3>{(project?.analyses?.length ?? 0) > 1 && <select aria-label="Saved analysis" value={analysis.id ?? ""} onChange={e => { const result = project?.analyses?.find(r => r.id === e.target.value); if (result) { setAnalysis(result); setAnalysisVisible(true) } }}>{project?.analyses?.map((r,i) => <option key={r.id ?? i} value={r.id}>{toolTitles[r.kind]} · {i+1}</option>)}</select>}{lcfPlotted && <label className="ath-field"><span>Plotted target</span><select aria-label="Plotted target" value={lcfPlotted.group_id} onChange={e => { setLcfPlotTarget(e.target.value); setAnalysisVisible(true) }}>{lcfPlotRows.map(row => <option key={row.group_id} value={row.group_id}>{row.label}</option>)}</select></label>}<button onClick={() => setAnalysisVisible(!analysisVisible)}>{analysisVisible ? "Show spectra" : "Show fit plot"}</button><button onClick={() => { const a = document.createElement("a"); const url = URL.createObjectURL(new Blob([JSON.stringify(analysis, null, 2)], { type: "application/json" })); a.href = url; a.download = `athena-${analysis.kind}.json`; a.click(); URL.revokeObjectURL(url) }}><Download size={14} />Report</button></header>{analysis.project_version !== project?.version && <p className="ath-warning">The project changed after this analysis. Run the fit again to use the current data.</p>}{analysis.kind === "lcf" && <LcfWeights result={analysis.result} />}{analysis.kind === "lcf_search" && <LcfSearchSummary result={analysis.result} />}{analysis.kind === "lcf_series" && <><LcfSeriesSummary result={analysis.result} /><SeriesTrend title="Series LCF trend" {...lcfSeriesTrend(analysis.result)} /></>}{analysis.kind === "pca" && <p>Explained variance: {(analysis.result.explained_variance_ratio as number[] ?? []).map(v => `${(v * 100).toFixed(2)}%`).join(" · ")}</p>}{analysis.kind === "peaks" && <PeakSummary result={analysis.result} unit={analysis.options.array === "chi" ? "Å⁻¹" : "eV"} />}{analysis.kind === "peaks_series" && <><PeakSeriesSummary result={analysis.result} unit={analysis.options.array === "chi" ? "Å⁻¹" : "eV"} /><SeriesTrend title="Peak series trend" {...peakSeriesTrend(analysis.result, analysis.options.array === "chi" ? "Å⁻¹" : "eV")} /></>}{analysis.kind === "log_ratio" && <><pre>{JSON.stringify((analysis.result.cumulant_fit as {parameters: unknown})?.parameters, null, 2)}</pre></>}</section>}
@@ -2453,7 +2439,6 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
       return saved
     }} /></Modal>}
     {modal === "edge_policy" && <EdgePolicyDialog policy={edgePolicy} apply={policy => { updateEdgePolicy(policy); setMessage(`Import edge enforcement · ${edgePolicyDescription(policy)}`) }} close={() => setModal(null)} />}
-    {modal === "edge_identity" && active && <EdgeIdentityDialog key={`${project?.id}:${active.id}`} group={active} busy={!!busy} error={error} clearError={() => setError("")} save={saveEdgeIdentity} close={() => setModal(null)} />}
     {modal === 'rebin' && project && <Modal title="Rebin data" wide close={() => { if (!busy) setModal(null) }}>
       <AthenaRebin key={project.id} project={project} activeId={activeId} selectGroup={setActiveId}
         grid={rebinGrid} setGrid={rebinDefaults.edit} setBusy={setBusy}

@@ -166,6 +166,10 @@ while preserving the supplied normalization. Detector choices and previewed
 signals can be reviewed before import; successful import choices are remembered
 for subsequent matching files.
 
+The current group's element and absorption edge are shown automatically, using
+saved file metadata when available or inference from E₀. No manual identity
+selection is required.
+
 Use **Group → Change data type** to correct current, marked, or all energy
 groups after import. The type button next to Freeze also supports Athena's
 Ctrl+Alt-click μ(E)/XANES toggle, preserving the normalized-input flag. Legacy
