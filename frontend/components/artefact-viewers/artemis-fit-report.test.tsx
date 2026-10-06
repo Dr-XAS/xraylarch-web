@@ -193,3 +193,87 @@ describe("Artemis fit report", () => {
     expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled()
   })
 })
+
+
+describe("Dr.XAS fit-health colors", () => {
+  const valueCell = (name: string) => within(parameterRow(name)).getAllByRole("cell")[0]
+  const metricValue = (label: string) => screen.getByText(label, { exact: true }).closest("div")!.querySelector("dd")!
+
+  it("colors existing parameter values without changing their text, order, or treatment", () => {
+    const result = fitResult()
+    result.parameters.push(
+      { ...result.parameters[0], name: "del_e0", value: 9.14, stderr: 0.486 },
+      { ...result.parameters[0], name: "del_r", value: 0.12, stderr: 0.001 },
+      { ...result.parameters[0], name: "s02_2", value: 0.00001, min: 0, max: 1.5 },
+    )
+    const original = structuredClone(result)
+    render(<ArtemisFitReport result={result} />)
+
+    expect(valueCell("amp")).toHaveAttribute("data-health", "good")
+    expect(valueCell("sig2")).toHaveAttribute("data-health", "good")
+    expect(valueCell("del_e0")).toHaveAttribute("data-health", "caution")
+    expect(valueCell("del_e0")).toHaveTextContent("9.14 ± 0.486")
+    expect(valueCell("del_r")).toHaveAttribute("data-health", "bad")
+    expect(valueCell("s02_2")).toHaveAttribute("data-health", "railed")
+    expect(valueCell("temperature")).toHaveAttribute("data-health", "neutral")
+    expect(valueCell("half_amp amp / 2")).toHaveAttribute("data-health", "neutral")
+    expect(within(screen.getByRole("table", { name: "Fitted parameters" })).getAllByRole("rowheader").map(row => row.querySelector("code")!.textContent)).toEqual(result.parameters.map(parameter => parameter.name))
+    expect(valueCell("del_e0").getAttribute("title")).toContain("Borderline")
+    expect(valueCell("del_e0").getAttribute("aria-description")).toEqual(valueCell("del_e0").getAttribute("title"))
+    expect(result).toEqual(original)
+  })
+
+  it("colors fit-quality and correlation numbers while retaining weak pairs and noise units", () => {
+    const result = fitResult()
+    result.statistics = { ...result.statistics, r_factor: 0.05, n_varys: 3, n_independent: 5, epsilon_k: 0.2 }
+    result.correlations = [
+      { left: "amp", right: "sig2", value: 0.2 },
+      { left: "amp", right: "del_r", value: -0.8 },
+      { left: "sig2", right: "del_r", value: 0.94 },
+    ]
+    render(<ArtemisFitReport result={result} />)
+
+    expect(metricValue("R factor")).toHaveAttribute("data-health", "bad")
+    expect(metricValue("Free parameters")).toHaveAttribute("data-health", "caution")
+    expect(metricValue("Independent points")).toHaveAttribute("data-health", "caution")
+    expect(metricValue("Noise ε(k)")).not.toHaveAttribute("data-health")
+    expect(metricValue("Reduced χ²")).not.toHaveAttribute("data-health")
+    expect(screen.getByText("+0.940")).toHaveAttribute("data-health", "bad")
+    expect(screen.getByText("-0.800")).toHaveAttribute("data-health", "caution")
+    expect(screen.getByText("+0.200")).toHaveAttribute("data-health", "good")
+    expect(screen.getByText("Parameter correlations (3)", { exact: true })).toBeInTheDocument()
+  })
+
+  it("assesses custom names from this fit's saved paths, not an unrelated path", () => {
+    const result = fitResult()
+    result.parameters = [
+      { ...result.parameters[0], name: "energy_shift", value: 9 },
+      { ...result.parameters[0], name: "other", value: 0.01 },
+    ]
+    const path = { id: "path1", filename: "feff0001.dat", content: "", label: "Cu–Cu", enabled: true,
+      s02: "0.85", e0: "energy_shift", deltar: "0", sigma2: "0.005" }
+    result.request = { version: result.version, parameters: [], transform: result.transform,
+      paths: [path, { ...path, id: "unrelated", sigma2: "other" }] }
+    render(<ArtemisFitReport result={result} />)
+
+    expect(valueCell("energy_shift")).toHaveAttribute("data-health", "caution")
+    expect(valueCell("other")).toHaveAttribute("data-health", "neutral")
+  })
+
+  it("does not treat a coordination-scaled path amplitude as pure S₀²", () => {
+    const result = fitResult()
+    result.parameters = [
+      { ...result.parameters[0], name: "s02_1", kind: "set", value: 0.9 },
+      { ...result.parameters[0], name: "cn_1", value: 2.4 },
+    ]
+    result.paths[0].values!.s02 = 0.18
+    result.request = { version: result.version, parameters: [], transform: result.transform,
+      paths: [{ id: "path1", filename: "feff0001.dat", content: "", label: "Cu–Cu", enabled: true,
+        s02: "s02_1 * cn_1 / degen", e0: "0", deltar: "0.01", sigma2: "0.003" }] }
+    render(<ArtemisFitReport result={result} />)
+
+    expect(valueCell("s02_1")).toHaveAttribute("data-health", "good")
+    expect(valueCell("cn_1")).toHaveAttribute("data-health", "neutral")
+    expect(screen.getByText("0.18", { exact: true })).not.toHaveAttribute("data-health")
+  })
+})

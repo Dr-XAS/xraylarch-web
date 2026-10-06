@@ -330,14 +330,34 @@ def test_insufficient_postedge_and_preedge_margins_are_actionable():
             initialize_import(x, expit((x - 8981) / 2), policy=CU_POLICY)
 
 
-def test_norm_short_scan_does_not_change_representation_to_force_processing():
+def test_norm_short_scan_preserves_explicit_exafs_and_parameter_choices():
     x = np.linspace(8779, 9049, 1001)
     y = expit((x - 8983) / 2.5)
     with pytest.raises(ValueError, match="kmax|FT range"):
-        initialize_import(x, y, policy=CU_POLICY, data_type="norm")
+        initialize_import(x, y, policy=CU_POLICY, data_type="norm", exafs=True)
     result = initialize_import(x, y, {"kmin": 1}, policy=CU_POLICY, data_type="norm")
     assert result["data_type"] == "norm"
     final_processing(x, y, result)
+
+
+@pytest.mark.parametrize('normalized', [False, True])
+@pytest.mark.parametrize('end', [9079, 9089])
+def test_auto_import_retries_xanes_defaults_when_boundary_ft_range_is_unusable(normalized, end):
+    x = np.linspace(8779, end, 1001)
+    y = expit((x - 8983) / 2.5)
+    data_type = 'norm' if normalized else 'mu'
+    automatic = initialize_import(x, y, policy=CU_POLICY, data_type=data_type)
+    assert automatic['data_type'] == 'xanes'
+    assert any('Automatic EXAFS' in warning for warning in automatic['warnings'])
+    processed = process_spectrum(x, y, automatic['parameters'], 'xanes', is_normalized=normalized)
+    assert processed['arrays']['norm'] and not processed['effective']['exafs']
+    if normalized:
+        np.testing.assert_array_equal(processed['arrays']['norm'], y)
+    # Passing a caller recipe or explicitly enabling EXAFS retains validation.
+    with pytest.raises(ValueError, match='FT range|dk is too wide'):
+        initialize_import(x, y, {}, policy=CU_POLICY, data_type=data_type)
+    with pytest.raises(ValueError, match='FT range|dk is too wide'):
+        initialize_import(x, y, policy=CU_POLICY, data_type=data_type, exafs=True)
 
 
 def test_invalid_spectrum_and_resource_bounds(copper):

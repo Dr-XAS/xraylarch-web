@@ -8,11 +8,12 @@
 .renameEditor { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: flex-end; gap: 6px; min-width: 0; }
 .renameEditor label { display: flex; flex: 1 1 140px; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--text-label); color: var(--ath-muted, #647669); }
 .renameEditor input { width: 100%; min-width: 0; }
-.panel button.removeButton { min-height: 32px; padding: 5px 9px; border-color: var(--ath-error-line, #e9c8b4); background: var(--ath-error-bg, #fff1ec); color: var(--ath-error-ink, #9c3425); }
+.panel button.renameButton, .panel button.removeButton { min-height: 30px; padding: 4px 7px; gap: 4px; font-size: var(--text-label); }
+.panel button.removeButton { border-color: var(--ath-error-line, #e9c8b4); background: var(--ath-error-bg, #fff1ec); color: var(--ath-error-ink, #9c3425); }
 .panel button.removeButton:not(:disabled):hover { border-color: var(--ath-error-ink, #9c3425); background: var(--ath-error-bg, #fff1ec); }
 .removeButton svg { flex-shrink: 0; }
 .attachedList strong { font-size: var(--text-body); font-weight: 500; overflow-wrap: anywhere; }
-.attachedList small { font-size: var(--text-caption); color: var(--ath-muted, #647669); }
+.attachedList small { overflow-wrap: anywhere; font-size: var(--text-caption); color: var(--ath-muted, #647669); }
 .dialog { display: none; width: min(940px, calc(100vw - 36px)); max-width: none; max-height: min(90dvh, 920px); padding: 0; margin: auto; border: 1px solid var(--ath-line, #dce5dc); border-radius: 9px; background: var(--ath-popover, #fff); color: var(--ath-ink, #24362c); box-shadow: 0 20px 70px #14241b40; }
 .dialog[open] { display: flex; flex-direction: column; }
 .dialog::backdrop { background: var(--ath-backdrop, #10241b70); }
@@ -31,8 +32,15 @@
 .placeholder { padding: 24px 10px; color: var(--ath-muted, #647669); text-align: center; font-size: var(--text-body); line-height: var(--leading-body); }
 .savedStructures { margin-top: 18px; border-top: 1px solid var(--ath-line, #dce5dc); }
 .savedStructures h4 { font-size: var(--text-section); font-weight: 500; line-height: var(--leading-heading); }
-.savedStructureRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0; }
-.panel .savedStructureRow button.result { flex: 1 1 130px; width: auto; min-width: 0; margin: 0; }
+.savedStructureRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; margin: 8px 0; }
+.panel .savedStructureRow button.result { min-width: 0; margin: 0; }
+.savedStructureRow .result small { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.savedStructureRow .renameEditor { grid-column: 1 / -1; }
+.savedStructureActions { display: flex; align-items: center; gap: 4px; }
+.panel .savedStructureActions button { width: 30px; height: 30px; min-height: 30px; padding: 0; border-color: transparent; background: transparent; }
+.panel .savedStructureActions button:not(:disabled):hover { border-color: var(--ath-line, #dce5dc); background: var(--ath-surface, #fff); }
+.panel .savedStructureActions button.removeButton:not(:disabled):hover { border-color: var(--ath-error-line, #e9c8b4); background: var(--ath-error-bg, #fff1ec); }
+.savedStructureActions .actionLabel { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .panel button.attachButton { background: var(--ath-primary, #268553); color: var(--ath-primary-foreground); border-color: var(--ath-primary, #268553); padding: 8px 12px; }
 .panel button.attachButton:not(:disabled):hover { background: var(--ath-attach-hover, #216940); color: var(--ath-primary-foreground); }
 .help, .source, .citation { color: var(--ath-muted, #647669); font-size: var(--text-caption); line-height: var(--leading-body); margin: 7px 0; overflow-wrap: anywhere; }
@@ -40,7 +48,8 @@
 .searchFields { grid-template-columns: minmax(0, 1fr) 80px; }
 .searchFields label, .grid label { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--ath-muted, #647669); font-size: var(--text-label); }
 .searchResults { margin: 10px 0; max-height: 250px; overflow-y: auto; }
-.panel button.result { display: flex; width: 100%; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left; margin: 5px 0; padding: 8px; }
+.panel button.result { display: flex; width: 100%; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left; white-space: normal; margin: 5px 0; padding: 8px; }
+.result strong, .result span, .result small { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .result strong { font-size: var(--text-body); font-weight: 500; }
 .result span, .result small { color: var(--ath-muted, #647669); font-size: var(--text-caption); }
 .panel button.result[aria-pressed=true] { border-color: var(--ath-primary, #268553); background: var(--ath-canvas, #f5f8f5); }

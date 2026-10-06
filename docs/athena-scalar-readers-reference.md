@@ -64,9 +64,10 @@ Native fluorescence uses **MCA2 + MCA3 + MCA4 + MCA5 + MCA6 + MCA8**, divided
 by I0. MCA1 and MCA7 remain available for manual inclusion, with live preview.
 The official measurement has a zero transmission denominator and only a
 40 eV scan range. Its initial transmission preview correctly reports zero
-counts. Choose **Use fluorescence columns**, then **Data type → XANES · short
-energy range** to preview and process it. Detector selection and data type
-are explicit user choices; the file reader does not silently replace them.
+counts. Choose **Use fluorescence columns** to preview and process it.
+Automatic import retains this short scan as XANES and explains why EXAFS
+was not calculated. Detector selection remains an explicit user choice;
+the file reader does not silently replace it.
 
 ## CLS named and fallback scalar columns
 

@@ -11,6 +11,8 @@ from fastapi.testclient import TestClient
 
 from xraylarch_web.athena import AthenaStore, Command
 from xraylarch_web.athena_calibration import CalibrationOptions, calibration_curve, calibration_shift, zero_crossing
+from xraylarch_web.athena_calibration_references import calibration_target
+from xraylarch_web.athena_e0 import atomic_edge
 from xraylarch_web.athena_smoothing_preferences import SGPreferenceRequest
 from reference.native_larch_replay import replay_calibration
 from xraylarch_web.config import Settings
@@ -73,6 +75,58 @@ def project(store,shift=2.75,name='Cu'):
 
 
 def command(p,**options):return Command(version=p['version'],action='calibrate',group_ids=[p['groups'][0]['id']],options=dict(coordinate='displayed',**options))
+
+
+@pytest.mark.parametrize('element,edge,energy', [
+    ('V', 'K', 5463.76), ('Fe', 'K', 7110.75), ('Cu', 'K', 8980.48),
+    ('Mo', 'K', 20000.36), ('Sb', 'K', 30490.5),
+    ('Pt', 'L3', 11562.76), ('Pt', 'L2', 13271.90), ('Pt', 'L1', 13880.7),
+    ('Au', 'L1', 14355.3), ('Pb', 'L3', 13035.07),
+])
+def test_calibration_prefers_kraft_table_i_e1_with_citation(element, edge, energy):
+    # Independently checked against Table I, E1, p. 686 (not its E2 column).
+    target = calibration_target(element.lower(), edge.lower())
+    assert (target['element'], target['edge'], target['energy']) == (element, edge, energy)
+    assert target['source'] == 'kraft1996'
+    assert target['table'] == 'I' and target['column'] == 'E1'
+    assert target['doi'] == '10.1063/1.1146657'
+    assert 'Kraft' in target['citation'] and '681–687 (1996)' in target['citation']
+    assert 'Metal foil' in target['convention']
+
+
+@pytest.mark.parametrize('element,edge', [('Ti', 'K'), ('Cu', 'L3'), ('U', 'L3')])
+def test_unlisted_calibration_edges_fall_back_without_changing_atomic_tables(element, edge):
+    target = calibration_target(element, edge)
+    atom = atomic_edge(element, edge)
+    assert {key: target[key] for key in atom} == atom
+    assert target['source'] == 'xraydb' and target['citation'] == 'XrayDB / Elam'
+    assert target['doi'] is None
+    assert atomic_edge('Cu', 'K')['energy'] == 8979
+    assert atomic_edge('Fe', 'K')['energy'] == 7112
+
+
+@pytest.mark.parametrize('name,energy', [('Cu', 8980.48), ('Fe', 7110.75)])
+def test_preferred_calibration_default_is_reviewed_saved_and_retains_reference(store, name, energy):
+    p = project(store, name=name)
+    preview = store.preview_calibration(p['id'], command(p))
+    assert preview['options']['target'] == energy
+    assert preview['calibration_target'] == calibration_target(name, 'K')
+    assert preview['atomic_target'] == atomic_edge(name, 'K')
+    assert store.load(p['id']) == p
+    saved = store.command(p['id'], command(p, **{k: v for k, v in preview['options'].items() if k != 'coordinate'}))
+    assert saved['groups'][0]['parameters']['e0'] == energy
+    assert saved['groups'][0]['parameters']['energy_shift'] == preview['energy_shift']
+    assert saved['last_operation']['calibration']['calibration_target'] == preview['calibration_target']
+    assert saved['groups'][0]['source'] == p['groups'][0]['source']
+
+
+def test_explicit_calibration_target_overrides_preferred_reference(store):
+    p = project(store)
+    preview = store.preview_calibration(p['id'], command(p, target=8981.25))
+    assert preview['options']['target'] == 8981.25
+    assert preview['calibration_target']['energy'] == 8980.48
+    saved = store.command(p['id'], command(p, target=8981.25))
+    assert saved['groups'][0]['parameters']['e0'] == 8981.25
 
 
 @pytest.mark.parametrize('name',['Cu','Fe'])
@@ -178,6 +232,7 @@ def test_detector_explicit_calibration_does_not_infer_absorber(store):
     with pytest.raises(WebInputError,match='observed reference'):store.preview_calibration(p['id'],command(p))
     preview=store.preview_calibration(p['id'],command(p,observed=9000,target=9002,display='mu'))
     assert preview['atomic_target'] is None
+    assert preview['calibration_target'] is None
     after=store.command(p['id'],command(p,observed=9000,target=9002,display='mu'))
     assert after['groups'][0]['data_type']=='detector' and after['groups'][0]['result']['arrays']['chi']==[]
 

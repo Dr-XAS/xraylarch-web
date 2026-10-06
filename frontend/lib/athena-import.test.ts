@@ -9,7 +9,7 @@ const inspection: InspectionResponse = { upload_id: "u", display_name: "file.dat
   athena_suggestion: { energy_column: "c0", numerator: ["c1"], denominator: "c2", mode: "transmission", units: "keV", data_type: "mu" } }
 it("initializes a new file from backend suggestions and clears previous transforms and references", () => {
   expect(initialColumnMapping(inspection, { ...previous, is_reference: true })).toEqual({ ...previous, ...inspection.athena_suggestion,
-    is_reference: false,
+    is_reference: false, exafs: null,
     reference_numerator: "", reference_denominator: "", signal_multiplier: 1, invert: false, individual_channels: false })
   expect(initialColumnMapping(inspection, { ...previous, is_reference: true }, true, false).is_reference).toBe(true)
 })
@@ -19,22 +19,35 @@ it("initializes extracted chi and constant-1 detector suggestions", () => {
   const constant = initialColumnMapping({ ...inspection, athena_suggestion: { ...inspection.athena_suggestion!, numerator: [] } }, previous)
   expect(columnPayload(constant).numerator).toEqual([])
 })
-it('sends and reuses normalized absorption without EXAFS while resetting normalization for fresh raw suggestions', () => {
+it('uses automatic EXAFS for normalized imports and batches while resetting normalization for fresh raw suggestions', () => {
   const mapping = changeImportProcessing({ ...previous, energy_column: 'c0', numerator: ['c1'], denominator: 'c2',
-    reference_numerator: '', reference_denominator: '', invert: false }, { is_normalized: true, exafs: false })
-  expect(columnPayload(mapping)).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
-  expect(reuseColumnMapping(inspection, inspection, mapping)).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
+    reference_numerator: '', reference_denominator: '', invert: false }, { is_normalized: true })
+  expect(columnPayload(mapping)).toMatchObject({ data_type: 'norm', is_normalized: true, exafs: null })
+  expect(columnPayload(reuseColumnMapping(inspection, inspection, mapping)!)).toMatchObject({ data_type: 'norm', is_normalized: true, exafs: null })
   const remembered = { ...inspection, remembered_columns: { version: 1, matching_columns: true, mapping, warnings: [] } }
-  expect(columnPayload(initialColumnMapping(remembered, previous))).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
+  expect(columnPayload(initialColumnMapping(remembered, previous))).toMatchObject({ data_type: 'norm', is_normalized: true, exafs: null })
   expect(initialColumnMapping(inspection, mapping)).toMatchObject({ data_type: 'mu' })
-  expect(columnPayload(initialColumnMapping(inspection, mapping)).exafs).toBe(true)
+  expect(columnPayload(initialColumnMapping(inspection, mapping)).exafs).toBeNull()
   expect(initialColumnMapping(inspection, mapping).is_normalized).not.toBe(true)
   expect(changeInputType(mapping, 'chi')).toMatchObject({ data_type: 'chi', is_normalized: false })
 })
-it.each(['mu', 'norm', 'xanes'] as const)('sends an explicit EXAFS choice for %s, including legacy and reopened mappings', data_type => {
+it.each(['mu', 'norm', 'xanes'] as const)('uses automatic EXAFS for new %s imports but retains explicit replacement settings', data_type => {
   for (const exafs of [undefined, null, true, false]) {
-    expect(columnPayload({ ...previous, data_type, exafs }).exafs).toBe(data_type !== 'xanes')
+    const mapping = { ...previous, data_type, exafs }
+    expect(columnPayload(mapping)).toMatchObject({ data_type: data_type === 'norm' ? 'norm' : 'mu', exafs: null })
+    expect(columnPayload(mapping, { automaticExafs: false })).toMatchObject({ data_type, exafs: data_type !== 'xanes' })
   }
+})
+it.each([false, true])('clears remembered XANES-only processing without losing normalized=%s or column choices', is_normalized => {
+  const mapping: ColumnMapping = { ...previous, energy_column: 'c0', numerator: ['c1'], denominator: 'c2',
+    data_type: 'xanes', is_normalized, exafs: false }
+  const remembered = { ...inspection, remembered_columns: { version: 1, matching_columns: true, mapping, warnings: [] } }
+  const selected = initialColumnMapping(remembered, previous)
+  expect(selected).toMatchObject({ energy_column: 'c0', numerator: ['c1'], denominator: 'c2',
+    data_type: is_normalized ? 'norm' : 'mu', is_normalized, exafs: null })
+  expect(columnPayload(selected).exafs).toBeNull()
+  expect(changeImportProcessing(mapping, { is_normalized: !is_normalized })).toMatchObject({
+    data_type: is_normalized ? 'mu' : 'norm', is_normalized: !is_normalized, exafs: null })
 })
 it.each(['chi', 'xmudat'] as const)('omits ordinary-energy EXAFS settings for %s input', data_type => {
   const mapping = { ...previous, exafs: false }
@@ -96,7 +109,7 @@ it('restores accepted choices over guesses and keeps the recorded activation and
     rebin: { ...defaultRebin, enabled: true, pre: 7 } }
   const input = { ...inspection, remembered_columns: { version: 8, matching_columns: true, mapping: remembered, warnings: [] } }
   const selected = initialColumnMapping(input, previous)
-  expect(selected).toMatchObject({ ...remembered, signal_multiplier: -9, invert: false })
+  expect(selected).toMatchObject({ ...remembered, data_type: 'mu', exafs: null, signal_multiplier: -9, invert: false })
   expect(columnPayload(selected)).toMatchObject({ rebin: { pre: 7 }, rebin_grid: { pre: 7 }, preprocessing: remembered.preprocessing })
   expect(initialColumnMapping(input, previous, false)).toEqual(initialColumnMapping(inspection, previous))
   expect(remembered.rebin.enabled).toBe(true)

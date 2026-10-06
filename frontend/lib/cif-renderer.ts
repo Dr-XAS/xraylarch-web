@@ -13,11 +13,11 @@ type RendererResources = {
 type ViewerCanvas = HTMLCanvasElement & { _3dmol_viewer?: GLViewer }
 
 /** 3Dmol does not reset hover on scene clear or when the pointer leaves its canvas. */
-export function clearCifHover(viewer: GLViewer) {
+export function clearCifHover(viewer: GLViewer, clearLabels: () => void = () => viewer.removeAllLabels()) {
   const resources = viewer as unknown as RendererResources
   window.clearTimeout(resources.hoverTimeout)
   resources.current_hover = null
-  viewer.removeAllLabels()
+  clearLabels()
 }
 
 /** Own the otherwise undisposable global listeners installed by 3Dmol 2.5. */

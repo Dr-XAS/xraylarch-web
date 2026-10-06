@@ -69,6 +69,30 @@ def inspected(store, p, *, x=None, columns=None):
         rebin=ImportRebin(), preprocessing=ImportPreprocessing()), ids
 
 
+@pytest.mark.parametrize('normalized', [False, True])
+def test_automatic_exafs_boundary_with_policy_rebins_then_imports_as_xanes(store, normalized):
+    from scipy.special import expit
+    project = store.create()
+    x = np.linspace(8779, 9089, 1241)
+    y = expit((x - 8983) / 2.5)
+    request, _ = inspected(store, project, x=x, columns={'mu': y})
+    request = request.model_copy(update={
+        'data_type': 'norm' if normalized else 'mu',
+        'edge_policy': ImportEdgePolicy(element='Cu', edge='K')})
+    # Preview and import both construct the grid before final processing.
+    preview = store.preview_columns(project['id'], request)
+    imported = store.import_data(project['id'], request)
+    group = imported['groups'][0]
+    assert group['data_type'] == 'xanes' and group['is_normalized'] is normalized
+    assert group['processing_error'] is None
+    assert group['result']['arrays']['norm'] and not group['result']['effective']['exafs']
+    assert any('EXAFS' in warning for warning in group['result']['warnings'])
+    trace = next(trace for trace in preview['traces'] if trace['role'] == 'sample' and trace['stage'] == 'rebinned')
+    assert trace['x'] == group['energy'] and trace['y'] == group['mu']
+    if normalized:
+        assert group['result']['arrays']['norm'] == group['mu']
+
+
 @pytest.mark.parametrize('width', range(1, 12))
 @pytest.mark.parametrize('reversed_bounds', [False, True])
 def test_native_grid_boxcar_endpoints_and_even_widths(width, reversed_bounds):

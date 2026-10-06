@@ -219,3 +219,104 @@ def test_explicit_exafs_short_import_reports_unusable_defaults_without_changing_
     assert store.load(project['id']) == project
     legacy = store.import_data(project['id'], request.model_copy(update={'exafs': None}))
     assert legacy['groups'][0]['data_type'] == 'xanes'
+
+
+@pytest.mark.parametrize('normalized', [False, True])
+@pytest.mark.parametrize('enforced', [False, True])
+@pytest.mark.parametrize('end,expected_exafs', [(9049, False), (9479, True)])
+def test_automatic_import_uses_each_spectrums_range_and_preserves_input(workspace, normalized, enforced, end, expected_exafs):
+    from scipy.special import expit
+    store, project, _, _ = workspace
+    x = np.linspace(8779, end, 1001)
+    y = expit((x - 8983) / 2.5)
+    if not normalized:
+        y = .2 + 1.8 * y
+    info, ids = inspect(store, project, x, y)
+    request = ImportRequest(version=0, upload_id=info['upload_id'], energy_column=ids['energy'],
+        numerator=[ids['mu']], data_type='norm' if normalized else 'mu',
+        edge_policy={'element': 'Cu', 'edge': 'K'} if enforced else None)
+    imported = store.import_data(project['id'], request)
+    actual = imported['groups'][0]
+    assert actual['data_type'] == (('norm' if normalized else 'mu') if expected_exafs else 'xanes')
+    assert actual['is_normalized'] is normalized
+    assert actual['processing_error'] is None
+    assert actual['result']['effective']['exafs'] is expected_exafs
+    assert bool(actual['result']['arrays']['chi']) is expected_exafs
+    np.testing.assert_array_equal(actual['energy'], x)
+    np.testing.assert_array_equal(actual['mu'], y)
+    assert actual['source']['mapping']['exafs'] is None
+    if normalized:
+        np.testing.assert_array_equal(actual['result']['arrays']['norm'], y)
+    if not expected_exafs:
+        assert any('EXAFS' in warning and 'XANES' in warning for warning in actual['result']['warnings'])
+    assert store.load(project['id']) == imported
+
+
+def test_automatic_import_keeps_normalization_when_sampling_cannot_support_autobk(workspace):
+    from scipy.special import expit
+    store, _, _, _ = workspace
+    # Long support, but a gap leaves multiple requested spline knots at the
+    # same measured point. The pre/post-edge fits remain well supported.
+    x = np.r_[np.linspace(8779, 9030, 503), np.linspace(9470, 9479, 20)]
+    y = .2 + 1.8 * expit((x - 8983) / 2.5)
+    explicit = store.make_import_group('Sparse', x, y, exafs=True)
+    assert 'spline knots' in explicit['processing_error']
+    assert explicit['data_type'] == 'mu'
+    automatic = store.make_import_group('Sparse', x, y)
+    assert automatic['processing_error'] is None
+    assert automatic['data_type'] == 'xanes'
+    assert automatic['result']['arrays']['norm']
+    assert automatic['result']['arrays']['chi'] == []
+    assert automatic['result']['effective']['exafs'] is False
+    warning = next(w for w in automatic['result']['warnings'] if 'Automatic EXAFS' in w)
+    assert 'spline knots' in warning and warning in automatic['source']['warnings']
+    np.testing.assert_array_equal(automatic['energy'], x)
+    np.testing.assert_array_equal(automatic['mu'], y)
+
+
+def test_automatic_import_does_not_hide_invalid_normalization(workspace):
+    store, _, _, _ = workspace
+    x = np.linspace(8779, 9479, 1001)
+    invalid = store.make_import_group('Constant', x, np.ones_like(x))
+    assert invalid['data_type'] == 'mu'
+    assert 'constant' in invalid['processing_error']
+    assert invalid['result'] is None
+    with pytest.raises(WebInputError, match='normalization flag'):
+        store.make_import_group('Invalid normalized flag', x, np.ones_like(x), data_type='norm', is_normalized=False)
+
+
+def test_automatic_short_import_can_enable_exafs_later(workspace):
+    from scipy.special import expit
+    store, project, _, _ = workspace
+    x = np.linspace(8779, 9049, 1001)
+    y = .2 + 1.8 * expit((x - 8983) / 2.5)
+    group = store.make_import_group('Near edge', x, y)
+    assert group['data_type'] == 'xanes'
+    project['groups'].append(group)
+    project = store.save(project, store.load(project['id']), 'Fixture')
+    changed = change(store, project, is_normalized=False, exafs=True)['groups'][0]
+    assert changed['data_type'] == 'mu' and changed['processing_error'] is None
+    assert changed['result']['effective']['exafs'] is True
+    assert changed['energy'] == group['energy'] and changed['mu'] == group['mu']
+    assert not any('Automatic EXAFS' in w for w in changed['result']['warnings'])
+
+
+@pytest.mark.parametrize('enforced', [False, True])
+def test_automatic_import_notice_survives_import_parameter_copy(workspace, enforced):
+    from scipy.special import expit
+    store, project, _, _ = workspace
+    x = np.linspace(8779, 9049, 1001)
+    y = .2 + 1.8 * expit((x - 8983) / 2.5)
+    standard = store.make_group('Standard', x, y, data_type='xanes', parameters={'norm1': 15, 'norm2': 50})
+    project['groups'].append(standard)
+    project = store.save(project, store.load(project['id']), 'Fixture')
+    info, ids = inspect(store, project, x, y)
+    request = ImportRequest(version=project['version'], upload_id=info['upload_id'],
+        energy_column=ids['energy'], numerator=[ids['mu']],
+        edge_policy={'element': 'Cu', 'edge': 'K'} if enforced else None,
+        preprocessing={'standard_id': standard['id'], 'copy_parameters': True})
+    group = store.import_data(project['id'], request)['groups'][-1]
+    assert group['data_type'] == 'xanes' and group['processing_error'] is None
+    assert group['parameters']['norm2'] == 50
+    notes = [w for w in group['result']['warnings'] if w.startswith('Automatic EXAFS')]
+    assert len(notes) == 1 and notes[0] in group['source']['warnings']

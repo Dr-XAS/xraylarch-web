@@ -11,12 +11,14 @@ import controls from './athena-smoothing.module.css'
 type Display='mu'|'norm'|'derivative'|'second'
 type Options={coordinate:'displayed';observed?:number;target?:number;display:Display;smoothing:number;smoothing_method:'three_point'|'savitzky_golay';sg_window?:number;sg_order?:number}
 type NormalizationLimit={parameter:'pre1'|'norm2';requested:number;used:number}
+type CalibrationTarget={element:string;edge:string;energy:number;source:'kraft1996'|'xraydb';citation:string;doi:string|null;table?:'I';column?:'E1';convention?:string}
 export type CalibrationPreview={project_id:string;version:number;group_id:string;options:Options;requested_options:Options;
   curve:{x:number[];y:number[];unsmoothed:number[];marker:{x:number;y:number};range:number[];smoothing:Record<string,unknown>;normalization?:NormalizationLimit[]};
   calibrated_curve?:{x:number[];y:number[]}|null;
   normalization_limits?:{group_id:string;label:string;adjustments:NormalizationLimit[]}[];
   energy_shift:number;shift_delta:number;actual_reference:number;zero_crossing:number|null;
   atomic_target:{element:string;edge:string;energy:number}|null;
+  calibration_target?:CalibrationTarget|null;
   changes:{group_id:string;label:string;e0:number|null;energy_shift:number}[];processing_errors:Record<string,string>}
 export type CalibrationDraft={display:Display;smoothing:string;smoothing_method:Options['smoothing_method']}
 const finite=(a:unknown):a is number[]=>Array.isArray(a)&&a.every(v=>typeof v==='number'&&Number.isFinite(v))
@@ -104,6 +106,7 @@ export function AthenaCalibration({project,activeId,selectGroup,initialDraft,rem
     }catch(e){if(alive.current){setPreview(null);setActionError(e instanceof Error?e.message:'Calibration failed.')}}
     finally{saving.current=false;setBusy('')}
   }
+  const reference:CalibrationTarget|null=current?.calibration_target??(current?.atomic_target?{...current.atomic_target,source:'xraydb',citation:'XrayDB/Elam',doi:null}:null)
   const curve=current?.curve, traces:Array<Record<string,unknown>>=[]
   if(curve){
     if(Number(draft.smoothing))traces.push({x:curve.x,y:curve.unsmoothed,name:'Without display smoothing',type:'scatter',mode:'lines',line:{color:'#a5afa9',width:1}})
@@ -120,7 +123,10 @@ export function AthenaCalibration({project,activeId,selectGroup,initialDraft,rem
       <label className="ath-field"><span>Smoothing · 0–10 <SectionHelp label="Smoothing · 0–10">Set zero to inspect the unsmoothed curve. Three-point smoothing repeats this many times; Savitzky–Golay uses one pass whenever this is positive.</SectionHelp></span><input aria-label="Calibration smoothing" type="number" min="0" max="10" step="1" value={draft.smoothing} onChange={e=>setDraft(d=>({...d,smoothing:e.target.value}))}/></label>
       <label className="ath-field"><span>Observed reference · eV <SectionHelp label="Zero crossing">Zero crossing searches the unsmoothed second derivative around the reference, as in native Athena. Smoothing affects the display only.<br /><br />Select a measured reference point and assign its calibrated energy. Previewing and display smoothing leave the stored data unchanged.</SectionHelp></span><input aria-label="Observed reference · eV" type="number" step="any" value={observed} onChange={e=>{manual.current=true;setObserved(e.target.value)}}/></label>
       <label className="ath-field"><span>Calibrate to · eV <SectionHelp label="Calibrate to · eV">Enter the known energy of the observed reference feature. The difference from the observed energy is added to the group’s current energy shift.</SectionHelp></span><input aria-label="Calibrate to · eV" type="number" step="any" value={target} onChange={e=>{manual.current=true;setTarget(e.target.value)}}/></label>
-      {current?.atomic_target&&<p className="ath-hint">Tabulated {current.atomic_target.element} {current.atomic_target.edge} edge: {current.atomic_target.energy} eV (XrayDB/Elam).</p>}
+      {reference&&<div className="ath-hint" aria-label="Calibration reference">
+        <p>Reference {reference.element} {reference.edge} edge: {reference.energy} eV. {reference.source==='kraft1996'?<a href={`https://doi.org/${reference.doi??'10.1063/1.1146657'}`} target="_blank" rel="noreferrer">Kraft et al. (1996), Table I, E₁</a>:<>XrayDB/Elam (fallback).</>}</p>
+        {reference.source==='kraft1996'&&<p>{reference.citation}<br />{reference.convention??'Metal foils: lowest-energy inflection point.'}</p>}
+      </div>}
       <div className={styles.views}><button disabled={!current} aria-pressed={picking} onClick={()=>setPicking(v=>!v)}>{picking?'Cancel point selection':'Select a point'}</button><button disabled={!current||draft.display!=='second'||group?.data_type==='detector'||group?.is_difference} onClick={()=>void findZero()}>Find zero crossing</button></div>
       <a href="https://bruceravel.github.io/demeter/documents/Athena/process/cal.html" target="_blank" rel="noreferrer">Document section: calibration</a>
     </fieldset><section className={styles.results} aria-label="Calibration preview">

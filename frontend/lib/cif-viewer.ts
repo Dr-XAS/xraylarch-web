@@ -41,7 +41,7 @@ const MAX_CIF_LENGTH = 2_000_000
 const MAX_SYMMETRY_OPERATIONS = 384
 const TOLERANCE = 1e-6
 type StructureSite = ArtemisStructure["sites"][number]
-type UnitCellSite = { site: StructureSite & { label?: string }; frac: CifVector }
+type UnitCellSite = { site: StructureSite & { label?: string }; frac: CifVector; parsedFrac?: CifVector }
 type SymmetryCoordinate = [number, number, number, number]
 type SymmetryOperation = [SymmetryCoordinate, SymmetryCoordinate, SymmetryCoordinate]
 const IDENTITY: SymmetryOperation = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]
@@ -68,6 +68,18 @@ function sameFractionalPosition(left: CifVector, right: CifVector) {
     const difference = Math.abs(wrapped(value) - wrapped(right[axis]))
     return Math.min(difference, 1 - difference) < TOLERANCE
   })
+}
+
+function parsedFractionalCoordinate(value: number) {
+  // Pymatgen's CIF parser rationalizes thirds with frac_tolerance=1e-4
+  // relative to the ideal fraction. Match its site metadata without changing
+  // the saved coordinates used for drawing or widening geometric tolerances.
+  return [1 / 3, 2 / 3].find(fraction => Math.abs(value / fraction - 1) <= 1e-4) ?? value
+}
+
+function matchesRepresentative(atom: UnitCellSite, position: CifVector) {
+  return sameFractionalPosition(atom.frac, position)
+    || (atom.parsedFrac !== undefined && sameFractionalPosition(atom.parsedFrac, position))
 }
 
 /** Conventional fractional-to-Cartesian basis, including oblique cells. */
@@ -205,11 +217,13 @@ function explicitP1Sites(structure: ArtemisStructure): UnitCellSite[] | null {
       const symbol = values[offset + columns[0]]
       const element = symbol.match(/^([A-Z][a-z]?)(?:\d*[+-])?$/)?.[1]
       if (!element) throw new Error("The CIF contains an invalid atom-site element.")
-      const frac = columns.slice(1).map(column => wrapped(number(values[offset + column]))) as CifVector
+      const coordinates = columns.slice(1).map(column => number(values[offset + column]))
+      const frac = coordinates.map(wrapped) as CifVector
+      const parsedFrac = coordinates.map(value => wrapped(parsedFractionalCoordinate(value))) as CifVector
       const occupancy = occupancyColumn < 0 ? 1 : number(values[offset + occupancyColumn])
       if (occupancy <= 0 || (multiplicityColumn >= 0 && number(values[offset + multiplicityColumn]) !== 1)) return null
       const label = labelColumn < 0 ? `${element}${atoms.length + 1}` : values[offset + labelColumn]
-      atoms.push({ site: { index: -1, element, species: symbol, occupancy, multiplicity: 1, wyckoff: "", x: frac[0], y: frac[1], z: frac[2], label }, frac })
+      atoms.push({ site: { index: -1, element, species: symbol, occupancy, multiplicity: 1, wyckoff: "", x: frac[0], y: frac[1], z: frac[2], label }, frac, parsedFrac })
       if (atoms.length > MAX_CELL_ATOMS) throw new Error("Too many unit-cell atoms for the structure preview.")
     }
   }
@@ -219,14 +233,14 @@ function explicitP1Sites(structure: ArtemisStructure): UnitCellSite[] | null {
   // species/occupancy population, and distinct periodic position to agree.
   if (atoms.length !== structure.sites.reduce((sum, site) => sum + site.multiplicity, 0)) return null
   for (const site of structure.sites) {
-    if (!atoms.some(atom => sameSpecies(atom.site, site) && sameFractionalPosition(atom.frac, [site.x, site.y, site.z]))) return null
+    if (!atoms.some(atom => sameSpecies(atom.site, site) && matchesRepresentative(atom, [site.x, site.y, site.z]))) return null
     const expected = structure.sites.filter(other => sameSpecies(other, site)).reduce((sum, other) => sum + other.multiplicity, 0)
     if (atoms.filter(atom => sameSpecies(atom.site, site)).length !== expected) return null
   }
   for (const [index, atom] of atoms.entries()) {
     if (atoms.slice(0, index).some(other => other.site.element === atom.site.element && sameFractionalPosition(other.frac, atom.frac))) return null
     const candidates = structure.sites.filter(site => sameSpecies(atom.site, site))
-    const representative = candidates.find(site => sameFractionalPosition(atom.frac, [site.x, site.y, site.z]))
+    const representative = candidates.find(site => matchesRepresentative(atom, [site.x, site.y, site.z]))
     // A P1 CIF does not encode which of several same-element orbits a row belongs
     // to. Keep its CIF label instead of inventing a crystallographic site index.
     const site = representative ?? (candidates.length === 1 ? candidates[0] : undefined)
@@ -276,7 +290,7 @@ export function buildCifGeometry(structure: ArtemisStructure, options: CifGeomet
     const selectedFrac: CifVector = [wrapped(selected.x), wrapped(selected.y), wrapped(selected.z)]
     // Anchor on the actual displayed row even if CIF rounding differs slightly
     // from the backend representative, so shell views always retain the center.
-    const centerFrac = sites.find(({ site, frac }) => site.index === selected.index && site.element === selected.element && sameFractionalPosition(frac, selectedFrac))?.frac ?? selectedFrac
+    const centerFrac = sites.find(atom => atom.site.index === selected.index && atom.site.element === selected.element && matchesRepresentative(atom, selectedFrac))?.frac ?? selectedFrac
     geometry.center = cartesian(centerFrac, lattice)
     const cellRepeats = [0, 1, 2].map(axis => {
       const value = options.mode === "cell" ? options.cellRepeats?.[axis] : undefined

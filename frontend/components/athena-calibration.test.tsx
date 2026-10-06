@@ -16,11 +16,11 @@ const project={id:'p',version:4,groups:[{id:'g',label:'Measured Cu',data_type:'m
   parameters:{e0:8982,energy_shift:2,kweight:2},result:{effective:{e0:8982}},source:{}}]} as unknown as AthenaProject
 const props=()=>({project,activeId:'g',selectGroup:vi.fn(),setBusy:vi.fn(),saved:vi.fn(),close:vi.fn(),disabled:false,rememberDraft:vi.fn()})
 function preview(options:Options,zero=false):CalibrationPreview {
-  const observed=zero?8981.12345:options.observed??8982,target=options.target??8979,shift=Number((target-observed+2).toFixed(3))
+  const observed=zero?8981.12345:options.observed??8982,target=options.target??8980.48,shift=Number((target-observed+2).toFixed(3))
   const raw=y.map(v=>options.display==='second'?v-.5:options.display==='derivative'?v*.1:v),smooth=raw.map(v=>options.smoothing?v*.9:v)
   return {project_id:'p',version:4,group_id:'g',requested_options:options,options:{...options,observed,target,...(options.smoothing_method==='savitzky_golay'&&options.smoothing?{sg_window:31,sg_order:9}:{})},
     curve:{x:x.map(v=>v+2),y:smooth,unsmoothed:raw,marker:{x:observed,y:smooth[20]},range:[observed-30,observed+50],smoothing:{}},
-    energy_shift:shift,shift_delta:shift-2,actual_reference:observed+shift-2,atomic_target:{element:'Cu',edge:'K',energy:8979},zero_crossing:zero?observed:null,
+    energy_shift:shift,shift_delta:shift-2,actual_reference:observed+shift-2,atomic_target:{element:'Cu',edge:'K',energy:8979},calibration_target:{element:'Cu',edge:'K',energy:8980.48,source:'kraft1996',citation:'S. Kraft et al., Rev. Sci. Instrum. 67, 681–687 (1996), Table I, E1.',doi:'10.1063/1.1146657',table:'I',column:'E1',convention:'Metal foils: lowest-energy inflection point.'},zero_crossing:zero?observed:null,
     changes:[{group_id:'g',label:'Measured Cu',e0:target,energy_shift:shift}],processing_errors:{}}
 }
 function serve(){api.mockImplementation(async(path,body)=>preview((body as {options:Options}).options,path.endsWith('/zero')))}
@@ -30,14 +30,58 @@ const handoff=()=>plot.mock.calls.at(-1)![0]
 async function ready(){await waitFor(()=>expect(save()).toBeEnabled(),{timeout:2500})}
 afterEach(()=>{cleanup();vi.clearAllMocks();api.mockReset()})
 
-it('starts with raw derivative and tabulated target, then previews four native display choices',async()=>{
+it('starts with the cited Kraft reference target, then previews four native display choices',async()=>{
   serve();render(<AthenaCalibration {...props()}/>);expect(save()).toBeDisabled();await ready()
   expect(screen.getByLabelText('Observed reference · eV',{exact:true})).toHaveValue(8982)
-  expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8979)
+  expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8980.48)
+  expect(screen.getByRole('link',{name:'Kraft et al. (1996), Table I, E₁'})).toHaveAttribute('href','https://doi.org/10.1063/1.1146657')
+  expect(screen.getByLabelText('Calibration reference')).toHaveTextContent('Reference Cu K edge: 8980.48 eV')
+  expect(screen.getByLabelText('Calibration reference')).toHaveTextContent('Rev. Sci. Instrum. 67, 681–687 (1996)')
+  expect(screen.getByLabelText('Calibration reference')).toHaveTextContent('Metal foils: lowest-energy inflection point.')
   expect(screen.getByLabelText('Calibration display')).toHaveValue('derivative')
   expect(handoff().data[0].x).toEqual(x.map(v=>v+2));expect(handoff().layout).toEqual(expect.objectContaining({xaxis:expect.objectContaining({range:[8952,9032]})}))
   for(const display of ['mu','norm','second']){change('Calibration display',display);await ready();expect((api.mock.calls.at(-1)?.[1] as {options:Options}).options.display).toBe(display)}
   expect(screen.getByRole('button',{name:'Find zero crossing'})).toBeEnabled()
+})
+
+it('keeps a custom target while citing the recommended reference through display changes',async()=>{
+  serve();render(<AthenaCalibration {...props()}/>);await ready()
+  change('Calibrate to · eV','8981.25');await ready()
+  change('Calibration display','norm');await ready()
+  expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8981.25)
+  expect(screen.getByLabelText('Calibration reference')).toHaveTextContent('Reference Cu K edge: 8980.48 eV')
+  expect((api.mock.calls.at(-1)?.[1] as {options:Options}).options.target).toBe(8981.25)
+})
+
+it('loads the reference default for a newly selected group after a manual target',async()=>{
+  const p=props(),nextGroup={...project.groups[0],id:'g2',label:'Second Cu foil'}
+  const expanded={...project,groups:[...project.groups,nextGroup]}
+  api.mockImplementation(async(_path,body)=>{
+    const request=body as {options:Options;group_ids:string[]},result=preview(request.options)
+    result.group_id=request.group_ids[0]
+    result.changes=result.changes.map(c=>({...c,group_id:result.group_id}))
+    return result
+  })
+  const rendered=render(<AthenaCalibration {...p} project={expanded}/>);await ready()
+  change('Calibrate to · eV','8981.25');await ready()
+  rendered.rerender(<AthenaCalibration {...p} project={expanded} activeId="g2"/>)
+  await waitFor(()=>expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8980.48),{timeout:2500});await ready()
+  expect(screen.getByRole('link',{name:'Kraft et al. (1996), Table I, E₁'})).toBeVisible()
+})
+
+it.each([false,true])('labels XrayDB fallback, including older preview responses: %s',async legacy=>{
+  api.mockImplementation(async(_path,body)=>{
+    const options=(body as {options:Options}).options
+    const result=preview({...options,target:options.target??8979})
+    result.requested_options=options
+    if(legacy)delete result.calibration_target
+    else result.calibration_target={element:'Cu',edge:'K',energy:8979,source:'xraydb',citation:'XrayDB/Elam',doi:null}
+    return result
+  })
+  render(<AthenaCalibration {...props()}/>);await ready()
+  expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8979)
+  expect(screen.getByLabelText('Calibration reference')).toHaveTextContent('XrayDB/Elam (fallback)')
+  expect(screen.queryByRole('link',{name:/Kraft/})).toBeNull()
 })
 
 it('picks a reference, previews the rounded total shift and saves reviewed settings without rewriting raw data',async()=>{
@@ -123,7 +167,7 @@ it('keeps a zero-search error visible when the workbench resumes previewing afte
 
 it.each(['axis','shift','marker','version','calibrated'])('rejects mismatched %s preview evidence',async what=>{
   serve();render(<AthenaCalibration {...props()}/>);await ready()
-  const options={coordinate:'displayed' as const,observed:8981,target:8979,display:'derivative' as const,smoothing:0,smoothing_method:'three_point' as const},r=preview(options)
+  const options={coordinate:'displayed' as const,observed:8981,target:8980.48,display:'derivative' as const,smoothing:0,smoothing_method:'three_point' as const},r=preview(options)
   if(what==='axis')r.curve.x[0]++
   if(what==='shift')r.shift_delta++
   if(what==='marker')r.curve.marker.x++
@@ -140,7 +184,7 @@ it('discards a late response after values change and revert',async()=>{
   await waitFor(()=>expect(api.mock.calls.at(-1)?.[1]).toEqual(expect.objectContaining({options:expect.objectContaining({observed:8981})})))
   change('Observed reference · eV','8980');change('Observed reference · eV','8981');await ready()
   const correct=handoff().data
-  await act(async()=>finish({...preview({coordinate:'displayed',observed:8981,target:8979,display:'derivative',smoothing:0,smoothing_method:'three_point'}),version:3}))
+  await act(async()=>finish({...preview({coordinate:'displayed',observed:8981,target:8980.48,display:'derivative',smoothing:0,smoothing_method:'three_point'}),version:3}))
   expect(handoff().data).toEqual(correct);expect(screen.queryByRole('alert')).toBeNull()
 })
 
@@ -154,7 +198,7 @@ it('keeps inputs and the panel open after a revision conflict, with no duplicate
   serve();const p=props();render(<AthenaCalibration {...p}/>);await ready()
   api.mockRejectedValueOnce(new Error('Project changed. Reload.'));fireEvent.click(save());fireEvent.click(save())
   expect(await screen.findByRole('alert')).toHaveTextContent('Project changed')
-  expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8979)
+  expect(screen.getByLabelText('Calibrate to · eV',{exact:true})).toHaveValue(8980.48)
   expect(api.mock.calls.filter(([path])=>path.endsWith('/command'))).toHaveLength(1)
   expect(p.close).not.toHaveBeenCalled();expect(p.setBusy).toHaveBeenLastCalledWith('');expect(save()).toBeDisabled()
 })

@@ -95,7 +95,10 @@ ACTIONS: dict[str, Action] = {
         "Move a spectrum's energy axis so a chosen feature lands on a known energy.",
         "one", model="athena_calibration:CalibrationOptions",
         preview="/projects/{id}/calibration/preview",
-        note="Requires coordinate='displayed' to take effect.",
+        note="Requires coordinate='displayed' to take effect. An omitted target uses "
+             "Kraft et al. (1996), Table I E1, for listed metal-foil edges, then "
+             "XrayDB/Elam for unlisted edges. Preview calibration_target gives "
+             "the reference energy and citation; explicit targets take precedence.",
     ),
     "change_datatype": Action(
         "Reinterpret what a group's values mean, e.g. mu(E) as already-normalized.",

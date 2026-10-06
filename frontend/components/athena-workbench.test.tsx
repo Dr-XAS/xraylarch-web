@@ -508,7 +508,7 @@ async function chooseImportFiles(inspections: InspectionResponse[], shareParamet
 function chooseFluorescenceMapping(dialog: HTMLElement) {
   const view = within(dialog)
   fireEvent.change(view.getByRole("combobox", { name: "Measurement" }), { target: { value: "fluorescence" } })
-  fireEvent.click(view.getByRole("checkbox", { name: "Enable EXAFS processing" }))
+  expect(view.queryByRole("checkbox", { name: "Enable EXAFS processing" })).not.toBeInTheDocument()
   fireEvent.change(view.getByRole("combobox", { name: "Energy units" }), { target: { value: "keV" } })
   fireEvent.click(view.getByRole("checkbox", { name: "Numerator It" }))
   fireEvent.click(view.getByRole("checkbox", { name: "Numerator If1" }))
@@ -549,7 +549,7 @@ const fluorescenceMapping = {
   preprocessing: { mark: false, standard_id: null, copy_parameters: false, align: false },
   edge_policy: null,
   energy_column: "col_0", numerator: ["col_3", "col_4"], denominator: "col_2",
-  mode: "fluorescence", units: "keV", data_type: "xanes", is_normalized: false, exafs: false,
+  mode: "fluorescence", units: "keV", data_type: "mu", exafs: null,
   reference_numerator: "col_1", reference_denominator: "col_5", sort: true,
 }
 
@@ -3936,7 +3936,7 @@ describe("AthenaWorkbench batch import", () => {
     submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
     expect(importCalls()).toHaveLength(1)
-    expect(importCalls()[0][1]).toMatchObject({ version: project.version, numerator: ['col_3', 'col_4'],
+    expect(importCalls()[0][1]).toMatchObject({ version: project.version, numerator: ['col_3', 'col_4'], data_type: 'mu', exafs: null,
       denominator: ['col_1', 'col_2'], invert: false, rebin: { pre: 7, e0: null }, rebin_grid: { pre: 7 }, preprocessing: { mark: true } })
     expect(screen.getByRole('status')).toHaveTextContent('Spectra imported, but column choices could not be remembered')
     expect(plotProps().active?.label).toBe('remembered.dat')

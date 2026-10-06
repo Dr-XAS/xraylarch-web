@@ -44,23 +44,31 @@ it('shows field instructions on demand without changing column selections or fie
   expect(screen.queryByRole('tooltip')).not.toBeInTheDocument()
   expect(screen.queryByRole('button', { name: 'About Multiplicative constant' })).not.toBeInTheDocument()
 })
-it('keeps normalization independent of EXAFS processing for the same absorption input format', () => {
+it('offers normalization with automatic EXAFS processing for new absorption imports', () => {
   render(<Harness />)
   expect(screen.getByLabelText('Input format')).toHaveValue('mu')
   expect(screen.queryByRole('option', { name: /XANES/ })).not.toBeInTheDocument()
   expect(screen.queryByRole('option', { name: 'Normalized μ(E)' })).not.toBeInTheDocument()
   expect(screen.getByLabelText('Input already normalized')).not.toBeChecked()
-  expect(screen.getByLabelText('Enable EXAFS processing')).toBeChecked()
+  expect(screen.queryByLabelText('Enable EXAFS processing')).not.toBeInTheDocument()
 
   fireEvent.click(screen.getByLabelText('Input already normalized'))
-  expect(accepted()).toMatchObject({ data_type: 'norm', is_normalized: true })
-  fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
-  expect(accepted()).toMatchObject({ data_type: 'xanes', is_normalized: true })
+  expect(accepted()).toMatchObject({ data_type: 'norm', is_normalized: true, exafs: null })
   expect(screen.getByLabelText('Input already normalized')).toBeChecked()
   expect(screen.getByLabelText('Input format')).toHaveValue('mu')
 
   fireEvent.click(screen.getByLabelText('Input already normalized'))
-  expect(accepted()).toMatchObject({ data_type: 'xanes', is_normalized: false })
+  expect(accepted()).toMatchObject({ ...initial, is_normalized: false, exafs: null })
+})
+it('keeps normalization independent of the explicit EXAFS choice when replacing columns', () => {
+  render(<Harness replacement />)
+  expect(screen.getByLabelText('Enable EXAFS processing')).toBeChecked()
+  fireEvent.click(screen.getByLabelText('Input already normalized'))
+  expect(accepted()).toMatchObject({ data_type: 'norm', is_normalized: true, exafs: true })
+  fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
+  expect(accepted()).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
+  fireEvent.click(screen.getByLabelText('Input already normalized'))
+  expect(accepted()).toMatchObject({ data_type: 'xanes', is_normalized: false, exafs: false })
   expect(screen.getByLabelText('Enable EXAFS processing')).not.toBeChecked()
   fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
   expect(accepted()).toMatchObject({ ...initial, is_normalized: false })
@@ -70,7 +78,7 @@ it.each([
   ['xanes', true, true, false],
   ['norm', undefined, true, true],
 ] as const)('restores existing %s processing choices without changing the absorption format', (data_type, is_normalized, normalized, exafs) => {
-  render(<Harness initialMapping={{ ...initial, data_type, is_normalized }} />)
+  render(<Harness replacement initialMapping={{ ...initial, data_type, is_normalized }} />)
   expect(screen.getByLabelText('Input format')).toHaveValue('mu')
   expect(screen.getByLabelText('Input already normalized')).toHaveProperty('checked', normalized)
   expect(screen.getByLabelText('Enable EXAFS processing')).toHaveProperty('checked', exafs)
@@ -263,17 +271,17 @@ it('places the file and import actions above the column controls', () => {
 it('applies native transmission/fluorescence suggestions only on request and preserves other import choices', () => {
   render(<Harness inspection={{ plugin_suggestions: readerSuggestions }} />)
   expect(accepted()).toEqual(initial)
-  fireEvent.click(screen.getByLabelText('Enable EXAFS processing'))
+  fireEvent.click(screen.getByLabelText('Input already normalized'))
   fireEvent.change(screen.getByLabelText('reference numerator'), { target: { value: 'c2' } })
   fireEvent.click(screen.getByLabelText('Save each channel as its own group'))
   fireEvent.click(screen.getByRole('button', { name: 'Use fluorescence columns' }))
   expect(accepted()).toMatchObject({ numerator: ['c3'], denominator: 'c1', mode: 'fluorescence', units: 'eV',
-    data_type: 'xanes', individual_channels: false, reference_numerator: 'c2' })
+    data_type: 'norm', is_normalized: true, exafs: null, individual_channels: false, reference_numerator: 'c2' })
   expect(screen.getByLabelText('Natural log')).not.toBeChecked()
   fireEvent.click(screen.getByLabelText('Numerator detB'))
   expect(accepted().numerator).toEqual(['c3', 'c4'])
   fireEvent.click(screen.getByRole('button', { name: 'Use transmission columns' }))
-  expect(accepted()).toMatchObject({ numerator: ['c1'], denominator: 'c2', mode: 'transmission', data_type: 'xanes', reference_numerator: 'c2' })
+  expect(accepted()).toMatchObject({ numerator: ['c1'], denominator: 'c2', mode: 'transmission', data_type: 'norm', exafs: null, reference_numerator: 'c2' })
   expect(screen.getByLabelText('Natural log')).toBeChecked()
 })
 it('does not offer a nonexistent reader fluorescence mapping', () => {
@@ -381,7 +389,7 @@ it("exposes source contents and freezes mapping controls during import", () => {
   expect(screen.getByLabelText("Measurement")).toBeDisabled()
   expect(screen.getByLabelText("Numerator i0")).toBeDisabled()
   expect(screen.getByLabelText('Input already normalized')).toBeDisabled()
-  expect(screen.getByLabelText('Enable EXAFS processing')).toBeDisabled()
+  expect(screen.queryByLabelText('Enable EXAFS processing')).not.toBeInTheDocument()
   expect(screen.getByRole("button", { name: "Select range" })).toBeDisabled()
 })
 
