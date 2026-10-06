@@ -223,9 +223,10 @@ def capabilities() -> dict:
                 "metals and oxides.",
                 "Poll with ?view=summary for scatterers, degeneracy and reff; full replies include "
                 "CIF, logs and path files. Fits can reference paths by job and path ID.",
-                "Identical requests reuse completed jobs for 23 hours (200, reused=true). "
-                "Changing fit ranges does not require another FEFF calculation.",
+                "Identical jobs are reused for 23 hours (200, reused=true). "
+                "Changing fit or simulation parameters does not rerun FEFF.",
             ],
         },
+        "simulation": "/api/artemis/capabilities/simulation",
         "fit_reply": NOTE,
     }

@@ -4,9 +4,9 @@ import { afterEach, expect, it, vi } from "vitest"
 import { CifViewer } from "./cif-viewer"
 import type { ArtemisStructure } from "@/lib/artemis-structures"
 import type { FirstShell } from "@/lib/first-shell"
-const { renderer } = vi.hoisted(() => ({ renderer: { clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn(), setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(), addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn() } }))
+const { renderer } = vi.hoisted(() => ({ renderer: { clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn(() => ({ selectedAtoms: () => [] })), setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), addCylinder: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(), addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn() } }))
 vi.mock("3dmol", () => ({}))
-vi.mock("@/lib/cif-renderer", () => ({ createCifRenderer: () => ({ viewer: renderer, dispose: vi.fn() }) }))
+vi.mock("@/lib/cif-renderer", () => ({ clearCifHover: vi.fn(), createCifRenderer: () => ({ viewer: renderer, dispose: vi.fn() }) }))
 vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: vi.fn() }) }))
 vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: () => ({ data: null, loading: false, error: "", retry: () => {}, settings: { radius: 6, tolerance: 0.05 }, setSettings: () => {} }) }))
 const structure: ArtemisStructure = { id: 1, mineral: "CuO", formula: "CuO", space_group: "P1", authors: "", year: null, journal: "", title: "", cif: "data_cuo", elements: ["Cu", "O"], supported: true, ordered: true, warnings: [], cell: { a: 10, b: 10, c: 10, alpha: 90, beta: 90, gamma: 90 }, sites: [
@@ -19,21 +19,31 @@ it("shows complete shell beyond display radius, styles neighbors and respects hi
   render(<CifViewer structure={structure} selectedSite={1} analysis={{ shell, error: "", loading: false, retry: vi.fn() }} />)
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
   expect(screen.getByText("CrystalNN first shell · CN 1")).toBeVisible()
-  await waitFor(() => expect(renderer.addStyle).toHaveBeenCalledWith({ index: 1 }, { sphere: { color: "#06b6d4", radius: 0.36 } }))
+  await waitFor(() => expect(renderer.addStyle).toHaveBeenCalledWith({ index: 1 }, { sphere: { color: "#e5bf46", radius: 0.42 } }))
+  expect(renderer.addStyle).toHaveBeenCalledWith({ index: 0 }, { sphere: { color: "#225ea8", radius: 0.5 } })
+  expect(screen.getByText("Center: Cu · site 1")).toBeVisible()
   fireEvent.change(screen.getByRole("slider", { name: "CIF display radius" }), { target: { value: "1" } })
   expect(screen.getByText("1 atom shown")).toBeVisible()
   fireEvent.change(screen.getByRole("combobox", { name: "CIF view mode" }), { target: { value: "shell" } })
   expect(screen.getByText("2 atoms shown")).toBeVisible()
   expect(screen.queryByRole("slider", { name: "CIF display radius" })).toBeNull()
-  renderer.addStyle.mockClear(); renderer.addLine.mockClear()
+  expect(renderer.addCylinder).toHaveBeenCalledOnce()
+  const bond = renderer.addCylinder.mock.calls[0][0]
+  expect(bond).toMatchObject({ color: "#06b6d4", hoverable: true })
+  bond.hover_callback()
+  expect(renderer.addLabel.mock.calls.at(-1)![0]).toBe("Cu–O · 2.000 Å")
+  renderer.addStyle.mockClear(); renderer.addLine.mockClear(); renderer.addCylinder.mockClear()
   fireEvent.click(screen.getByRole("button", { name: "Show O atoms" }))
   expect(renderer.addStyle).not.toHaveBeenCalledWith({ index: 1 }, expect.anything())
   expect(renderer.addLine).not.toHaveBeenCalled()
+  expect(renderer.addCylinder).not.toHaveBeenCalled()
 })
 it("does not highlight a different center with an old shell", async () => {
   render(<CifViewer structure={structure} selectedSite={2} analysis={{ shell, error: "", loading: false, retry: vi.fn() }} />)
   await waitFor(() => expect(screen.getByRole("button", { name: "Reset view" })).toBeEnabled())
-  expect(renderer.addStyle.mock.calls.every(([selection]) => !("index" in selection))).toBe(true)
+  expect(renderer.addStyle).toHaveBeenCalledWith({ index: 0 }, { sphere: { color: "#e5bf46", radius: 0.5 } })
+  expect(renderer.addStyle.mock.calls.filter(([selection]) => "index" in selection)).toHaveLength(1)
+  expect(screen.getByText("Center: O · site 2")).toBeVisible()
   expect(screen.queryByRole("checkbox", { name: "Highlight CrystalNN first shell" })).toBeNull()
 })
 it("follows an explicit absorber selection round trip after a local display edit", async () => {

@@ -26,8 +26,8 @@ function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure 
 
 function renderer() {
   return {
-    clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn(),
-    setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(),
+    clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn((_xyz: string) => ({ selectedAtoms: () => [] as { index: number; bonds: number[] }[] })),
+    setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), addCylinder: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(),
     addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn(), stopAnimate: vi.fn(),
     divwatcher: { disconnect: vi.fn() }, intwatcher: { disconnect: vi.fn() },
   }
@@ -69,6 +69,41 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
 describe("CifViewer", () => {
+  it("reports the hovered bond's endpoint distance, independently of the center atom", async () => {
+    const attached = structure()
+    attached.sites.push({ ...attached.sites[1], index: 8, element: "S", species: "S", x: 0.2, y: 0.1, z: 0.15 })
+    render(<CifViewer structure={attached} />)
+    const instance = await ready()
+    instance.addModel.mockReturnValue({ selectedAtoms: () => [{ index: 1, bonds: [2] }, { index: 2, bonds: [1] }] })
+    // Rebuild using the inferred O–S bond; neither endpoint is the center Cu.
+    fireEvent.click(screen.getByRole("checkbox", { name: "Unit cell outline" }))
+    expect(instance.addCylinder).toHaveBeenCalledOnce()
+    const bond = instance.addCylinder.mock.calls[0][0]
+    expect(bond).toMatchObject({ hoverable: true, radius: 0.08, color: "#8a8f98" })
+    bond.hover_callback()
+    expect(instance.addLabel).toHaveBeenLastCalledWith("O–S · 1.803 Å", expect.objectContaining({
+      position: { x: expect.closeTo(2), y: expect.closeTo(0.5), z: expect.closeTo(0.75) },
+    }))
+    instance.removeAllLabels.mockClear()
+    bond.unhover_callback()
+    expect(instance.removeAllLabels).toHaveBeenCalledOnce()
+
+    instance.setHoverable.mock.calls.at(-1)![2]({ index: 2 })
+    expect(instance.addLabel.mock.calls.at(-1)![0]).toContain("S · site 8 · 2.693 Å")
+    instance.addCylinder.mockClear()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Bonds" }))
+    expect(instance.addCylinder).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Show S atoms" }))
+    fireEvent.click(screen.getByRole("checkbox", { name: "Bonds" }))
+    expect(instance.addCylinder).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole("button", { name: "Show S atoms" }))
+    expect(instance.addCylinder).toHaveBeenCalledOnce()
+    instance.removeAllLabels.mockClear()
+    fireEvent.mouseLeave(screen.getByRole("img", { name: /Interactive 3D crystal structure/ }))
+    expect(instance.removeAllLabels).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
   it("calculates finite-cluster CNs and preserves results across display-only controls", async () => {
     const attached = structure()
     const original = structuredClone(attached)
@@ -231,13 +266,14 @@ describe("CifViewer", () => {
     expect(canvas).toContainElement(screen.getByRole("checkbox", { name: "Bonds" }))
     expect(canvas).toContainElement(screen.getByRole("checkbox", { name: "Unit cell outline" }))
     expect(screen.getAllByRole("checkbox")).toHaveLength(2)
-    expect(instance.addStyle).toHaveBeenCalledWith({ elem: "O" }, expect.objectContaining({ sphere: expect.any(Object), stick: expect.any(Object) }))
+    expect(instance.addStyle).toHaveBeenCalledWith({ elem: "O" }, { sphere: expect.any(Object) })
 
     instance.addStyle.mockClear()
     fireEvent.click(screen.getByRole("button", { name: "Show O atoms" }))
     expect(screen.getByRole("button", { name: "Show O atoms" })).toHaveAttribute("aria-pressed", "false")
     expect(screen.getByText("1 atom shown")).toBeVisible()
-    expect(instance.addStyle.mock.calls.map(([selection]) => selection)).toEqual([{ elem: "Cu" }])
+    expect(instance.addStyle.mock.calls.map(([selection]) => selection)).toEqual([{ elem: "Cu" }, { index: 0 }])
+    expect(screen.getByText("Center: Cu · site 3")).toBeVisible()
     expect(atoms(instance)).toHaveLength(2)
 
     instance.addStyle.mockClear()

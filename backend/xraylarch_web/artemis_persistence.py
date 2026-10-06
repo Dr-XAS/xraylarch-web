@@ -47,6 +47,13 @@ class ViewerCluster(StrictModel):
     atoms: list[Atom] = Field(max_length=4000)
 
 
+class SourceCif(StrictModel):
+    sha256: Digest
+    label: str = Field(min_length=1, max_length=512)
+    siteIndex: int = Field(ge=1)
+    attachmentId: Identifier | None = None
+
+
 class PathMetadata(StrictModel):
     reff: float = Field(gt=0, le=100)
     degen: float = Field(gt=0, le=100000)
@@ -57,6 +64,7 @@ class PathMetadata(StrictModel):
     kmin: float = Field(ge=0)
     kmax: float = Field(gt=0)
     viewerCluster: ViewerCluster | None = None
+    sourceCif: SourceCif | None = None
 
 
 class DraftPath(FitPath):
@@ -342,10 +350,13 @@ def prepared_model(model):
     value = model_data(model)
     for path in value["paths"]:
         cluster = path["metadata"].get("viewerCluster")
+        source_cif = path["metadata"].get("sourceCif")
         # Saved metadata never substitutes for reading the supplied FEFF text.
         path["metadata"] = inspect_path(PathInput(filename=path["filename"], content=path["content"]))["metadata"]
         if cluster is not None:
             path["metadata"]["viewerCluster"] = cluster
+        if source_cif is not None:
+            path["metadata"]["sourceCif"] = source_cif
     return value
 
 

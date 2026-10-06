@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest"
 import type { ArtemisStructure } from "./artemis-structures"
-import { buildCifGeometry, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, type CifVector } from "./cif-viewer"
+import { buildCifGeometry, cartesian, CIF_VIEWER_DEFAULT_RADIUS, CIF_VIEWER_MAX_CELL_REPEATS, CIF_VIEWER_MAX_RADIUS, type CifVector } from "./cif-viewer"
+import fccP1 from "./fixtures/cif-p1-fcc-cu.json"
+import perturbedP1 from "./fixtures/cif-p1-perturbed-cu-cr-p-s.json"
 
 function structure(overrides: Partial<ArtemisStructure> = {}): ArtemisStructure {
   return {
@@ -54,7 +56,104 @@ O 0 -.584 .25
 `,
 })
 
+const p1Copper = structure({
+  cif: `data_explicit_copper
+_symmetry_equiv_pos_as_xyz 'x,y,z'
+loop_
+_atom_site_type_symbol
+_atom_site_label
+_atom_site_symmetry_multiplicity
+_atom_site_fract_x
+_atom_site_fract_y
+_atom_site_fract_z
+_atom_site_occupancy
+Cu Cu0 1 0 0 0 1
+Cu Cu1 1 0 .5 .5 1
+Cu Cu2 1 .5 0 .5 1
+Cu Cu3 1 .5 .5 0 1
+`,
+})
+
 describe("CIF viewer geometry", () => {
+  it.each([fccP1, perturbedP1])("matches independent periodic geometry for $structure.mineral", fixture => {
+    const source = fixture.structure as ArtemisStructure
+    const before = JSON.stringify(source)
+    const cell = buildCifGeometry(source, { mode: "cell" })
+    expect(cell.warnings).toEqual([])
+    expect(cell.atoms).toHaveLength(fixture.expected.cellAtomCount)
+    const positionKey = (element: string, coordinates: number[]) => `${element}:${coordinates.map(value => value.toFixed(6)).join(",")}`
+    const actual = cell.atoms.map(atom => positionKey(atom.element, [atom.x, atom.y, atom.z].map((value, i) => value + cell.center[i]))).sort()
+    const expected = fixture.expected.cellAtoms.map(atom => positionKey(atom.element, cartesian(atom.fractional as CifVector, cell.lattice!))).sort()
+    expect(actual).toEqual(expected)
+    for (const reference of fixture.expected.clusters) {
+      const cluster = buildCifGeometry(source, reference)
+      expect(cluster.warnings).toEqual([])
+      expect(cluster.atoms).toHaveLength(reference.atoms.length)
+      expect(cluster.atoms.filter(atom => atom.isAbsorber)).toHaveLength(1)
+      for (const expectedAtom of reference.atoms) {
+        expect(cluster.atoms.some(atom => atom.element === expectedAtom.element && Math.hypot(atom.x - expectedAtom.cartesianOffset[0], atom.y - expectedAtom.cartesianOffset[1], atom.z - expectedAtom.cartesianOffset[2]) < 1e-7)).toBe(true)
+      }
+    }
+    expect(JSON.stringify(source)).toBe(before)
+  })
+
+  it("retains CIF labels for explicit rows whose crystallographic orbit is unknown", () => {
+    const cell = buildCifGeometry(perturbedP1.structure as ArtemisStructure, { mode: "cell" })
+    const unknown = cell.atoms.filter(atom => atom.siteIndex < 0)
+    expect(unknown.length).toBeGreaterThan(0)
+    expect(unknown.every(atom => /^[PS]\d+$/.test(atom.label))).toBe(true)
+  })
+
+  it("anchors the absorber to the explicit row when representative coordinates round differently", () => {
+    // pymatgen rationalizes .333333 to 1/3 in the representative metadata.
+    const source = structure({
+      cell: { a: 10, b: 10, c: 10, alpha: 90, beta: 90, gamma: 90 },
+      sites: [{ ...p1Copper.sites[0], x: 1 / 3, multiplicity: 2 }],
+      cif: p1Copper.cif.slice(0, p1Copper.cif.indexOf("Cu Cu0")) + "Cu Cu0 1 .333333 0 0 1\nCu Cu1 1 .833333 0 0 1\n",
+    })
+    const geometry = buildCifGeometry(source)
+    expect(geometry.warnings).toEqual([])
+    expect(geometry.atoms.filter(atom => atom.isAbsorber)).toHaveLength(1)
+    expect(geometry.atoms[0].distance).toBe(0)
+    expect(geometry.center[0]).toBeCloseTo(.333333 * 10, 10)
+  })
+
+  it("renders complete explicit P1 cells with backend-inferred higher symmetry", () => {
+    const before = JSON.stringify(p1Copper)
+    const cell = buildCifGeometry(p1Copper, { mode: "cell" })
+    expect(cell.warnings).toEqual([])
+    expect(cell.atoms).toHaveLength(4)
+    expect(cell.atoms.map(atom => atom.siteIndex)).toEqual([1, 1, 1, 1])
+    expect(buildCifGeometry(p1Copper, { mode: "cell", cellRepeats: [2, 3, 1] }).atoms).toHaveLength(24)
+    const cluster = buildCifGeometry(p1Copper, { radius: 3 })
+    expect(cluster.atoms).toHaveLength(13)
+    expect(cluster.atoms.filter(atom => atom.isAbsorber)).toHaveLength(1)
+    for (const atom of cluster.atoms.slice(1)) expect(atom.distance).toBeCloseTo(3.63 / Math.sqrt(2), 8)
+    expect(JSON.stringify(p1Copper)).toBe(before)
+  })
+
+  it("accepts CIF real uncertainties and periodic coordinates in explicit cells", () => {
+    const source = { ...p1Copper, cif: p1Copper.cif.replace("Cu Cu1 1 0 .5 .5 1", "Cu Cu1 1 1.0(2) 5.0(1)e-1 -.5 1") }
+    expect(buildCifGeometry(source).atoms).toEqual(buildCifGeometry(p1Copper).atoms)
+  })
+
+  it.each([
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", ""),
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", "O O3 1 .5 .5 0 1"),
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", "Cu Cu3 1 0 .5 .5 1"),
+    (cif: string) => cif.replace("Cu Cu0 1 0 0 0 1", "Cu Cu0 1 .1 0 0 1"),
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", "Cu Cu3 1 .5 .5 0 .5"),
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", "Cu Cu3 2 .5 .5 0 1"),
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", "Cu Cu3 1 .5 .5 ? 1"),
+    (cif: string) => cif.replace("Cu Cu3 1 .5 .5 0 1", "Cu Cu3 1 .5 .5 0"),
+    (cif: string) => cif + "data_second\n_atom_site_label Cu\n",
+    (cif: string) => cif.replace("'x,y,z'", "'-x,-y,-z'"),
+  ])("refuses an incomplete or inconsistent explicit cell %#", change => {
+    const geometry = buildCifGeometry({ ...p1Copper, cif: change(p1Copper.cif) })
+    expect(geometry.atoms).toEqual([])
+    expect(geometry.warnings.length).toBeGreaterThan(0)
+  })
+
   it("expands the FCC cell and preserves its twelve nearest Cu neighbors", () => {
     const cell = buildCifGeometry(structure(), { mode: "cell" })
     expect(cell.warnings).toEqual([])

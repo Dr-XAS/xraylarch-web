@@ -84,11 +84,13 @@ describe("ProjectCifViewer", () => {
     const view = render(<ProjectCifViewer attachments={[copper]} selectedId={copper.id} onSelect={onSelect} />)
     const displayedStructure = vi.mocked(CifViewer).mock.calls.at(-1)![0].structure
     const refreshed = structuredClone(copper)
+    refreshed.label = "Copper reference at 300 K"
     expect(refreshed.structure).not.toBe(displayedStructure)
 
     view.rerender(<ProjectCifViewer attachments={[refreshed]} selectedId={copper.id} onSelect={onSelect} />)
     // A new geometry input would rerun the renderer effect and reset its camera.
     expect(vi.mocked(CifViewer).mock.calls.at(-1)![0].structure).toBe(displayedStructure)
+    expect(screen.getByRole("option", { name: "Copper reference at 300 K · AMCSD 0013088" })).toBeInTheDocument()
 
     const replacement = { ...refreshed, sha256: "updated-snapshot", structure: { ...refreshed.structure, cif: "data_updated_Copper" } }
     view.rerender(<ProjectCifViewer attachments={[replacement]} selectedId={copper.id} onSelect={onSelect} />)

@@ -45,6 +45,17 @@ ranges, then choose **Run EXAFS fit**; loading an example never runs a fit autom
 Fitting drafts automatically save with their spectrum in the local project.
 Wait for **Saved** before reloading; a failed save offers **Retry saving model**.
 
+Right-click **Fit range & transform**, or use its **⋯** button, and choose
+**Apply fit range & transform to marked groups** to copy the current group's
+fit space, k and R ranges, tapers, window, and fit k-weights. Right-click an
+individual field to copy only that parameter. The same menus are available
+with **Shift+F10** while a control or heading has focus.
+The marked groups keep their own FEFF paths, fit parameters, and saved fit
+history; groups without a model get an empty model with the copied settings.
+Copies save automatically, and the current group and unmarked groups are
+unchanged. An invalid resulting range prevents the entire copy. Copying model
+settings does not run a fit; saved fits indicate when their model differs.
+
 The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
 and up to four legs. The first four files in FEFF order are:
 
@@ -78,12 +89,72 @@ before **Show paths** is available.
 
 ## Crystal structures and FEFF calculations
 
+### Simulate EXAFS from a CIF
+
+An empty project is sufficient. Open **EXAFS fitting → Crystal structures →
+Upload CIF**, then **Simulate EXAFS from this CIF**. A saved structure can also be
+opened with **Simulate EXAFS from CIF** in the FEFF paths section. Choose the
+absorbing element, absorption edge and inequivalent site, and run FEFF. The
+**Simulate EXAFS** controls appear when the calculation completes.
+
+Simulation sums all available paths by default (up to 100), independently of the
+24-path fit-model limit. **Selected paths** uses the checkboxes below, with their
+existing fit-selection limit. Review any warning that the FEFF job returned only
+part of its generated paths; increase Maximum paths and recalculate if needed.
+
+The default shared parameters are S₀² = 1, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
+σ² is an explicit disorder assumption, not calculated from CIF displacement
+factors or temperature. Native FEFF degeneracies are retained. The result is for
+one selected absorbing site; crystallographic multiplicity is not applied again,
+and inequivalent sites are not population averaged. Shared parameters are a
+simple forward model; use the fitting model for path-specific expressions.
+
+χ(k) is calculated on a 0.05 Å⁻¹ grid through the common FEFF support (at most
+20 Å⁻¹). The Fourier defaults are k = 3–12 Å⁻¹, k-weight 2, a Hanning window and
+dk = 2 Å⁻¹. These are simulation controls, independent of any measured group's
+processing. |χ(R)| is not phase corrected, so its peak positions are not bond
+distances. Changing simulation inputs hides the old result until recalculation.
+
+**Download χ(k) CSV** includes unweighted χ(k), including its k=0 value, and the
+weighted display curve. **Download χ(R) CSV** includes magnitude, real and
+imaginary components. **Download simulation JSON** retains all curves, the
+original CIF, FEFF input, selected path files, assumptions and parameters.
+Simulation does not create a measured group or save a fit; use these downloads
+to retain the result. Attached CIFs remain part of Save project.
+
+The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
+example, `{"s02": 1, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
+for all available paths or supply a nonempty list of IDs from the completed job.
+`transform` accepts the existing Fourier fields with one `kweight` value, such as
+`[2]`. Full responses include raw `k.chi`, weighted `k.total`, complex R curves,
+and source files. `?view=summary` elides arrays and omits source files. FEFF jobs
+expire after 24 hours; export the full result to preserve its inputs.
+`GET /api/artemis/capabilities/simulation` describes all fields and defaults.
+
+### Attach and calculate paths
+
 The structure workflow uses the local AMCSD database packaged with Larixite.
 This is a curated snapshot rather than a live search of the full online AMCSD:
 the installed `amcsd_cif1.db` contains 9,275 structures and identifies itself as
 the trimmed 2021-05-16 release. The application does not implicitly download or
 replace this database. A missing entry in this snapshot does not establish that
 the structure is absent from AMCSD.
+
+Choose **Upload CIF** in **Crystal structures** or its search dialog to attach
+your own `.cif` file (up to 500 KB, one data block per file). The upload is
+validated and attached directly, then opens in the structure viewer. The
+project retains the exact CIF text, original filename, and SHA-256 checksum
+through reloads and JSON/PRJ exchange. Identical text is attached only once;
+different files with the same filename remain separate snapshots. Invalid CIFs
+leave the project unchanged. Readable disordered structures are retained with
+warnings, but FEFF requires an ordered structure. The existing project limit
+of 20 CIFs and 4 MB of structure attachments applies to uploads too.
+
+Use **Rename** beside an attached CIF to set its project name (up to 200
+characters), then **Save** or press Enter. **Cancel** or Escape discards the edit.
+The name appears in the attached list and CIF selectors and survives reloads,
+JSON/PRJ exchange, and Undo/Redo. The original CIF text, mineral name, source ID,
+upload filename, and existing FEFF paths are preserved.
 
 Open **Search / attach CIF** from **Crystal structures** in the fitting panel. Search by mineral, formula, or AMCSD ID,
 optionally adding a **Contains element** filter. Text searches use literal
@@ -129,6 +200,12 @@ when unavailable), and the structure calculation's task ID when returned.
 AMCSD and MP attachments can coexist, round-trip through JSON/PRJ, and generate
 FEFF from the saved snapshot without network access or an API key. Existing AMCSD
 project records keep their original shape.
+
+The CIF viewer also reads complete P1 atom lists, as used by Materials Project
+exports, even when the backend recognizes higher symmetry. Local clusters and
+repeated unit cells retain the explicit coordinates, including small distortions.
+Existing saved CIFs work without reattaching them. For equivalent atoms whose
+site assignment is not encoded in the CIF, hover shows the original atom label.
 
 References: [MP API](https://docs.materialsproject.org/downloading-data/using-the-api),
 [calculated structures](https://docs.materialsproject.org/methodology/materials-methodology/calculation-details).
@@ -578,7 +655,7 @@ Structure search and calculation use:
 | `GET /api/artemis/structures?q=...&element=...&limit=...` | Search AMCSD by default; add `provider=materials_project` for MP. `element` is one optional symbol and `limit` is 1–50. |
 | `GET /api/artemis/structures/{id}` | Retrieve CIF text, citation, lattice parameters, native site indices, and supported/unsupported status. MP IDs require `provider=materials_project`. |
 | `GET /api/artemis/projects/{id}/structures` | List the current project's saved CIF snapshots and project version. |
-| `POST /api/artemis/projects/{id}/structures` | Attach using `{version, amcsd_id}` or `{version, provider: "materials_project", material_id}`; return the updated project. |
+| `POST /api/artemis/projects/{id}/structures` | Attach using `{version, amcsd_id}`, `{version, provider: "materials_project", material_id}`, or `{version, provider: "uploaded", filename, cif}` with full CIF text; return the updated project. |
 | `POST /api/artemis/feff/jobs` | Start an isolated FEFF8L job; returns HTTP 202 and its job ID. |
 | `GET /api/artemis/feff/jobs/{id}` | Poll `running`, `complete`, or `failed` status, log, input provenance, and generated paths. |
 
@@ -668,7 +745,7 @@ ranges, weights, and interpretation*. The whole suite runs in about 3.5 s.
 
 ## Scope beyond this iteration
 
-Future work includes arbitrary external CIF/Atoms input, disordered structures
+Future work includes Atoms input, disordered structures
 and automatic averaging over absorber sites, desktop Artemis project interchange,
 simultaneous multi-dataset fits, q-space and wavelet fitting,
 background co-refinement, additional cumulants, dynamical-matrix/trajectory disorder inputs,
@@ -684,9 +761,16 @@ and [model validation](https://bruceravel.github.io/demeter/documents/Artemis/fi
 
 ## FEFF path viewer
 
-The **FEFF path viewer** shows a clickable **FEFF0001**, **FEFF0002**, etc. legend
-inside its 3D canvas, including paths excluded from fitting. Toggle any combination
-of paths to overlay their representative trajectories. Each path has a distinct
+The **FEFF path viewer** displays one **CIF source** and absorber site at a time.
+Choose the source above the scene; its paths alone appear in the legend, geometry,
+details, contribution curves, and table. Generated paths retain their CIF identity
+when saved or exported. Older paths are grouped by their recorded FEFF input
+cluster or a uniquely matching attached CIF; files with an unknown source remain
+individually selectable. Switching sources does not change fit inclusion.
+
+A clickable **FEFF0001**, **FEFF0002**, etc. legend inside the 3D canvas includes
+paths excluded from fitting. Toggle any combination of paths from the selected
+source to overlay their representative trajectories. Each path has a distinct
 arrow color that matches its legend; numbered arrows follow the FEFF geometry
 order back to the absorber. Shared atoms are drawn once. Select **Path details**
 to inspect one visible path, then **Leg 1**, **Leg 2**, etc. to emphasize a
@@ -776,7 +860,7 @@ destructive interference can make the sum smaller than a single path.
 R is not phase corrected, so peaks fall roughly 0.2–0.5 Å below the true
 interatomic distance.
 
-The table lists every path — included or not — with its FEFF header values
+The table lists every path in the selected source — included or not — with its FEFF header values
 (legs, `Reff`, degeneracy) and, once the curves exist, three measures of size:
 
 | Column | Meaning |
@@ -793,7 +877,7 @@ The filters narrow the table, the plot, and the in-canvas legend together, so
 the three never disagree. **Legs** separates single scattering (two legs) from
 multiple scattering (three or more). **R_eff at most** drops distant paths.
 **Peak |χ(R)| at least** drops paths below a fraction of the largest path in
-the model and needs the contributions to have been computed first; a path whose
+the selected source and needs the contributions to have been computed first; a path whose
 amplitude is unknown is never hidden. Filtering is a display choice: it does
 not change which paths are included in the fit. Use the EXAFS fitting tab's
 inclusion toggles for that.
@@ -807,8 +891,10 @@ neighbor elements, distance ranges, alternative coordination weights, and any
 radius/oxidation-state warnings. The shell is the most probable bonded-neighbor
 set; it is not a fitted CN or an R-space Fourier-transform window.
 
-The viewer highlights the absorber in amber and exact periodic neighbors in
-cyan. **View → CrystalNN first shell** displays the entire shell, including
+The viewer keeps the element legend colors when highlighting the first shell.
+The largest sphere marks the center; larger neighboring spheres mark CrystalNN
+first-shell atoms. An on-canvas label identifies the center element and site.
+**View → CrystalNN first shell** displays the entire shell, including
 neighbors across cell boundaries, independently of the display radius. Changing
 the viewer center only changes the display; use the explicit FEFF absorber-site
 controls to change a calculation.
@@ -844,7 +930,8 @@ flagged because FEFF generation currently excludes H.
 ### Periodic radial shells
 
 **CIF structure viewer → View → Radial shells** colors neighbors by their radial
-shell around the selected center. The absorber is amber. The table below the
+shell around the selected center. The center remains in its element color and
+is shown as the largest sphere with an explicit center label. The table below the
 viewer shows each shell's actual minimum/maximum distance, neighbor count,
 element composition and symmetry pair groups. Select shell checkboxes to show
 any combination; initially shells 1–3 are visible. These complete periodic

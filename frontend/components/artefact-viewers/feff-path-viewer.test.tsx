@@ -4,17 +4,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { FeffPathViewer, type FeffPathSummary } from "./feff-path-viewer"
 import { feffArrow } from "../feff-path-scene"
 import { buildFeffPathGeometry } from "@/lib/feff-path-geometry"
+import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 
 const { createViewer } = vi.hoisted(() => ({ createViewer: vi.fn() }))
 vi.mock("3dmol", () => ({ createViewer, Vector2: class { constructor(public x: number, public y: number) {} } }))
 // The contribution plot has its own suite; keep Plotly out of the scene tests.
 vi.mock("next/dynamic", () => ({ default: () => () => <div data-testid="contribution-plot" /> }))
 const site = (x: number, y = 0, ipot = 1) => ({ atom: "Cu", x, y, z: 0, ipot })
+const copperSource = { sha256: "a".repeat(64), label: "Copper CIF", siteIndex: 1 }
 const paths: FeffPathSummary[] = [
   { id: "cu1", filename: "feff0001.dat", label: "Cu first shell", enabled: true,
-    metadata: { absorber: "Cu", edge: "K", reff: 2.56, degen: 12, nleg: 2, kmin: 0, kmax: 15, geometry: [site(0, 0, 0), site(2.56)] } },
+    metadata: { sourceCif: copperSource, absorber: "Cu", edge: "K", reff: 2.56, degen: 12, nleg: 2, kmin: 0, kmax: 15, geometry: [site(0, 0, 0), site(2.56)] } },
   { id: "cu2", filename: "feff0002.dat", label: "Cu triangle", enabled: false,
-    metadata: { absorber: "Cu", edge: "K", reff: 3.4142, degen: 48, nleg: 3, kmin: 0, kmax: 15, geometry: [site(0, 0, 0), site(2), site(0, 2)] } },
+    metadata: { sourceCif: copperSource, absorber: "Cu", edge: "K", reff: 3.4142, degen: 48, nleg: 3, kmin: 0, kmax: 15, geometry: [site(0, 0, 0), site(2), site(0, 2)] } },
 ]
 type Coordinates = [number, number, number]
 // Supply a known bond graph in the few tests that inspect bond highlighting;
@@ -221,7 +223,7 @@ describe("FeffPathViewer", () => {
     expect(createViewer).toHaveBeenCalledOnce()
   })
 
-  it("does not borrow equivalent atoms from another selected path's FEFF source", async () => {
+  it("keeps older paths from different FEFF clusters in separate source selections", async () => {
     const cu = { atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 }
     const o = (x: number, y: number) => ({ atom: "O", x, y, z: 0, ipot: 1 })
     const n = (x: number, y: number) => ({ atom: "N", x, y, z: 0, ipot: 2 })
@@ -241,15 +243,63 @@ describe("FeffPathViewer", () => {
     }
     render(<FeffPathViewer paths={[first, second]} onOpenModel={vi.fn()} />)
     const scene = await ready()
-    fireEvent.click(screen.getByRole("button", { name: "Show second.dat" }))
-    expect(screen.getByText(/first.dat: Equivalent paths were not expanded: this file's recorded source/)).toBeVisible()
+    expect(screen.queryByRole("button", { name: "Show second.dat" })).not.toBeInTheDocument()
+    expect(scene.addArrow).toHaveBeenCalledTimes(2)
+    const picker = screen.getByRole("combobox", { name: "FEFF path CIF source" })
+    const option = within(picker).getByRole("option", { name: /Second source/ }) as HTMLOptionElement
+    fireEvent.change(picker, { target: { value: option.value } })
+    expect(screen.queryByRole("button", { name: "Show first.dat" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Show second.dat" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.queryByRole("combobox", { name: "Path details" })).not.toBeInTheDocument()
+    expect(scene.addArrow).toHaveBeenCalledTimes(3)
+    expect(scene.addSphere.mock.calls.some(([sphere]) => coordinatesMatch(sphere.center, [-2, 1, 0]))).toBe(false)
+  })
 
-    fireEvent.change(screen.getByRole("combobox", { name: "Path details" }), { target: { value: "first" } })
-    expect(screen.getByText(/second.dat: Equivalent paths were not expanded: this file's recorded source/)).toBeVisible()
-    const unrelatedNitrogen = scene.addSphere.mock.calls.find(([sphere]) => coordinatesMatch(sphere.center, [-2, 1, 0]))?.[0]
-    expect(unrelatedNitrogen).toBeDefined()
-    expect(unrelatedNitrogen.opacity ** 2).toBeCloseTo(0.3)
-    expect(scene.addSphere.mock.calls.find(([sphere]) => coordinatesMatch(sphere.center, [2, 1, 0]))?.[0].opacity).toBe(1)
+  it("switches CIFs without mixing duplicate filenames, stale selections, or model state", async () => {
+    const other = { ...cupritePath(), metadata: { ...cupritePath().metadata,
+      sourceCif: { sha256: "b".repeat(64), label: "Cuprite CIF", siteIndex: 1 } } }
+    const mixed = [...structuredClone(paths), other]
+    const original = structuredClone(mixed)
+    const { rerender } = render(<FeffPathViewer paths={mixed} onOpenModel={vi.fn()} />)
+    const scene = await ready()
+    fireEvent.click(screen.getByRole("button", { name: "Show feff0002.dat" }))
+    expect(scene.addArrow).toHaveBeenCalledTimes(5)
+    fireEvent.click(screen.getByRole("button", { name: "Leg 3" }))
+    const picker = screen.getByRole("combobox", { name: "FEFF path CIF source" })
+    fireEvent.change(picker, { target: { value: (within(picker).getByRole("option", { name: /Cuprite CIF/ }) as HTMLOptionElement).value } })
+    expect(screen.queryByRole("button", { name: "Show feff0002.dat" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "All legs" })).toHaveAttribute("aria-pressed", "true")
+    expect(scene.addArrow).toHaveBeenCalledTimes(2)
+    expect(screen.getByText("Cuprite first shell")).toBeVisible()
+    expect(mixed).toEqual(original)
+    rerender(<FeffPathViewer paths={paths} onOpenModel={vi.fn()} />)
+    expect(screen.getByRole("button", { name: "Show feff0001.dat" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Show feff0002.dat" })).toHaveAttribute("aria-pressed", "false")
+    expect(scene.addArrow).toHaveBeenCalledTimes(2)
+  })
+
+  it("keeps CIF fallback surroundings at the recorded absorber site", async () => {
+    const atomSite = (element: string, x: number, y: number, z: number, index: number) => ({
+      index, element, species: element, occupancy: 1, multiplicity: 1, wyckoff: "a", x, y, z,
+    })
+    const attachment: ArtemisStructureAttachment = {
+      id: "two-sites", sha256: "c".repeat(64), attached_at: "2026-10-06",
+      structure: { id: 1, mineral: "Two sites", formula: "Cu O N", space_group: "P 1", authors: "", year: null,
+        journal: "", title: "", cif: "data_two_sites", elements: ["Cu", "O", "N"], ordered: true, supported: true, warnings: [],
+        cell: { a: 10, b: 10, c: 10, alpha: 90, beta: 90, gamma: 90 },
+        sites: [atomSite("Cu", .2, .2, .2, 1), atomSite("O", .38, .2, .2, 2), atomSite("N", .2, .4, .2, 3),
+          atomSite("Cu", .7, .7, .7, 4), atomSite("O", .88, .7, .7, 5)],
+      },
+    }
+    const path = cupritePath()
+    delete path.metadata.viewerCluster
+    path.metadata.sourceCif = { sha256: attachment.sha256, label: "Two sites", siteIndex: 1 }
+    render(<FeffPathViewer paths={[path]} attachments={[attachment]} onOpenModel={vi.fn()} />)
+    const scene = await ready()
+    expect(screen.getByRole("checkbox", { name: "Local structure" })).toBeChecked()
+    expect(screen.queryByRole("combobox", { name: "FEFF local structure source" })).not.toBeInTheDocument()
+    expect(screen.queryByText(/More than one attached structure matches/)).not.toBeInTheDocument()
+    expect(scene.addModel.mock.calls.at(-1)?.[0]).toContain("N ")
   })
 
   it("falls back after the selected path is removed and clears when switching to an empty model", async () => {

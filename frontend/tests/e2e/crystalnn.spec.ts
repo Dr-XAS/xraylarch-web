@@ -18,7 +18,7 @@ test("CrystalNN shell, FEFF candidates, and periodic viewer use the selected abs
   await expect.poll(() => viewer.locator("canvas").evaluate(element => {
     const v = (element as HTMLCanvasElement & { _3dmol_viewer?: { getModel: () => { selectedAtoms: (selection: object) => { style: { sphere?: { color?: string } } }[] } } })._3dmol_viewer
     return v?.getModel().selectedAtoms({}).map(atom => atom.style.sphere?.color).sort()
-  })).toEqual(["#06b6d4", "#06b6d4", "#f59e0b"])
+  })).toEqual(["#225ea8", "#e5bf46", "#e5bf46"])
   await viewer.screenshot({ path: info.outputPath("crystalnn-cuprite-first-shell.png") })
 
   await page.getByRole("button", { name: "Generate FEFF paths", exact: true }).click()
