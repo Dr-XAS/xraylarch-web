@@ -1563,6 +1563,12 @@ class AthenaStore:
     def make_import_group(self, label, energy, mu, *, data_type="mu", is_normalized=None, exafs=None, source=None, edge_policy=None):
         """Initialize raw imports; project restore and derived groups bypass this."""
         source = copy.deepcopy(source or {})
+        auto_exafs = exafs is None and data_type in ("mu", "norm")
+        if data_type == "norm" and is_normalized is False:
+            fail("Supply a boolean normalization flag consistent with the data type.")
+        # Preserve normalized input when automatic processing selects XANES.
+        if auto_exafs and is_normalized is None:
+            is_normalized = data_type == "norm"
         parameters, prepared = None, None
         if edge_policy is not None and data_type != "chi":
             from .athena_import_policy import initialize_import
@@ -1579,8 +1585,36 @@ class AthenaStore:
             source["e0_fraction"] = policy.fraction
             source["import_defaults"] = prepared["defaults"]
             source.setdefault("warnings", []).extend(prepared.get("warnings", []))
-        g = self.make_group(label, energy, mu, parameters=parameters, data_type=data_type,
+        # Establish a usable normalized spectrum before attempting automatic
+        # EXAFS. Any later failure is confined to background/FT processing;
+        # invalid normalization remains a visible processing error.
+        g = self.make_group(label, energy, mu, parameters=parameters,
+                            data_type="xanes" if auto_exafs else data_type,
                             is_normalized=is_normalized, source=source)
+        if auto_exafs and data_type != "xanes":
+            if g["processing_error"]:
+                g["data_type"] = data_type
+            else:
+                from .athena_import_policy import AUTOMATIC_EXAFS_WARNING, XANES_CUTOFF
+                normalized_result = g["result"]
+                end = normalized_result["arrays"]["energy"][-1]
+                post_edge = end - normalized_result["effective"]["e0"]
+                reason = None
+                if post_edge < XANES_CUTOFF:
+                    reason = f"Only {post_edge:.6g} eV of post-edge data is available (less than 100 eV)."
+                else:
+                    g["data_type"] = data_type
+                    try:
+                        self.process(g)
+                        if not g["result"]["effective"]["exafs"]:
+                            reason = "Insufficient post-edge data for background removal."
+                    except (ValueError, WebInputError) as exc:
+                        reason = str(exc)
+                if reason is not None:
+                    g.update(data_type="xanes", result=normalized_result, processing_error=None)
+                    warning = f"{AUTOMATIC_EXAFS_WARNING} was unavailable: {reason} Imported as XANES with normalization retained."
+                    g["source"].setdefault("warnings", []).append(warning)
+                    g["result"]["warnings"].append(warning)
         if prepared is not None:
             if g["processing_error"]:
                 fail(f"{label}: enforced edge could not be processed. {g['processing_error']}")
@@ -2415,6 +2449,7 @@ class AthenaStore:
                                     recovery='Inspect the fit and corrected I0, then confirm the review for this file.')
             from .athena_columns import map_columns
             measurements = []
+            imported_groups = []
             column_names = {c['column_id']: c['name'] for c in metadata['columns']}
             for mode_request in request.measurement_requests():
                 mapped = map_columns(arrays, mode_request, column_names)
@@ -2493,6 +2528,7 @@ class AthenaStore:
                         from .athena_xdi_history import inherit_source
                         g['source']['xdi_metadata'] = inherit_source(g, 'rebin', {})
                     p["groups"].append(g)
+                    imported_groups.append(g)
                     self.preprocess_import(p, g, standard, mode_request.preprocessing)
                     reference = None
                     if mapped["reference"] is not None:
@@ -2518,6 +2554,7 @@ class AthenaStore:
                             reference['source']['xdi_metadata'] = inherit_source(reference, 'rebin', {})
                         g["reference_id"] = reference["id"]
                         p["groups"].append(reference)
+                        imported_groups.append(reference)
                     shared_alignment = self.align_import(p, g, reference, standard,
                                                          mode_request.preprocessing, shared_alignment)
             if target is not None:
@@ -2541,6 +2578,15 @@ class AthenaStore:
                     e0_selection.update(group_id=target['id'], energy_shift=replacement['parameters']['energy_shift'])
                 p['groups'][p['groups'].index(target)] = replacement
                 self._process_groups(p, [target['id']], tolerate_errors=True)
+            # Import-time copying/alignment can rebuild results. Retain the
+            # automatic mode decision in the returned result for this import;
+            # later manual processing can replace it without a stale notice.
+            from .athena_import_policy import AUTOMATIC_EXAFS_WARNING
+            for group in imported_groups:
+                if group['data_type'] == 'xanes' and group.get('result'):
+                    warnings = group['result']['warnings']
+                    warnings.extend(message for message in group['source'].get('warnings', [])
+                                    if message.startswith(AUTOMATIC_EXAFS_WARNING) and message not in warnings)
             _exchange_budget(p["groups"], self.settings)
             message = (f"Reimported columns for {target['label']} ({len(x)} points)" if target is not None else
                        f"Imported {metadata['display_name']} ({len(x)} points, {nnew} groups)")

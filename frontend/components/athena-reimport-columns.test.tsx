@@ -69,7 +69,7 @@ it('submits changes to the same group with the inspected version and preserves s
   expect(state.onBusyChange).toHaveBeenLastCalledWith(true)
   expect(api.mock.calls.at(-1)).toEqual(['/projects/p/groups/sample/reimport', expect.objectContaining({
     upload_id: 'reimport-token', version: 6, numerator: ['c3', 'c2'], denominator: 'c1', reader_reviewed: true,
-    signal_multiplier: -2, invert: false,
+    signal_multiplier: -2, invert: false, data_type: 'mu', exafs: true,
     is_reference: true,
     individual_channels: false, reference_numerator: null, reference_denominator: null, additional_fluorescence: null,
     preprocessing: defaultPreprocessing, rebin: expect.objectContaining({ e0: 8979, xanes: 0.25 }),
@@ -77,6 +77,21 @@ it('submits changes to the same group with the inspected version and preserves s
   await act(async () => finish(updated))
   expect(state.onApplied).toHaveBeenCalledExactlyOnceWith(updated)
   expect(state.onBusyChange).toHaveBeenLastCalledWith(false)
+})
+
+it.each(['norm', 'xanes'] as const)('retains the existing %s EXAFS choice when replacing columns', async data_type => {
+  const original = inspection()
+  api.mockResolvedValueOnce({ ...original, current_mapping: { ...original.current_mapping, data_type, is_normalized: true } })
+  setup()
+  await screen.findByRole('button', { name: 'Apply column changes' })
+  expect(screen.getByLabelText('Input already normalized')).toBeChecked()
+  expect(screen.getByLabelText('Enable EXAFS processing')).toHaveProperty('checked', data_type !== 'xanes')
+  fireEvent.click(screen.getByLabelText('Numerator It'))
+  api.mockResolvedValueOnce({ ...project, version: 7 })
+  fireEvent.click(screen.getByRole('button', { name: 'Apply column changes' }))
+  await waitFor(() => expect(api).toHaveBeenLastCalledWith('/projects/p/groups/sample/reimport', expect.objectContaining({
+    data_type, is_normalized: true, exafs: data_type !== 'xanes', numerator: ['c3', 'c2'],
+  })))
 })
 
 it('supports retrying a failed inspection without modifying the spectrum', async () => {

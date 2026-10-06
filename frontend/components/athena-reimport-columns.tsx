@@ -56,7 +56,7 @@ export function AthenaReimportColumns({ project, group, onApplied, onBusyChange,
     savingRef.current = true; setSaving(true); setError(""); onBusyChange(true)
     try {
       const updated = await athenaApi<AthenaProject>(`/projects/${project.id}/groups/${group.id}/reimport`, {
-        ...columnPayload(mapping), version: inspection.version, upload_id: inspection.upload_id, reader_reviewed: readerReviewed,
+        ...columnPayload(mapping, { automaticExafs: false }), version: inspection.version, upload_id: inspection.upload_id, reader_reviewed: readerReviewed,
       })
       onApplied(updated)
     } catch (e) { setError(e instanceof Error ? e.message : "Could not apply column changes.") }

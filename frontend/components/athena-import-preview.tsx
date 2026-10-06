@@ -9,8 +9,8 @@ import styles from "./athena-column-selection.module.css"
 
 const colors = ["#16736b", "#c37b38", "#7470b0", "#467cac", "#c85a65"]
 
-export function AthenaImportPreview({ projectId, version, uploadId, mapping, disabled = false }: {
-  projectId: string; version: number; uploadId: string; mapping: ColumnMapping; disabled?: boolean
+export function AthenaImportPreview({ projectId, version, uploadId, mapping, disabled = false, automaticExafs = true }: {
+  projectId: string; version: number; uploadId: string; mapping: ColumnMapping; disabled?: boolean; automaticExafs?: boolean
 }) {
   const athenaApi = useAthenaApi()
   const [paused, setPaused] = useState(false)
@@ -19,7 +19,7 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
   const [state, setState] = useState<{ key: string; value?: ColumnPreview; error?: string } | null>(null)
   const problem = columnProblem(mapping)
   const [showOriginal, setShowOriginal] = useState(true)
-  const previewPayload = columnPayload(mapping)
+  const previewPayload = columnPayload(mapping, { automaticExafs })
   delete previewPayload.is_reference
   const key = JSON.stringify({ projectId, version, uploadId, mapping: previewPayload })
   const [manualKey, setManualKey] = useState("")

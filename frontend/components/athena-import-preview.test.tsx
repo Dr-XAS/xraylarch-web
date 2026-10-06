@@ -5,7 +5,7 @@ import { AthenaImportPreview } from "./athena-import-preview"
 import { defaultRebin, type ColumnMapping, type ColumnPreview } from "@/lib/athena-import"
 
 const { api, plot } = vi.hoisted(() => ({ api: vi.fn(), plot: vi.fn() }))
-vi.mock("@/lib/athena", () => ({ athenaApi: api }))
+vi.mock("@/lib/athena", async original => ({ ...await original<typeof import("@/lib/athena")>(), athenaApi: api }))
 vi.mock("next/dynamic", () => ({ default: () => (props: unknown) => { plot(props); return <div data-testid="plotly" /> } }))
 const mapping: ColumnMapping = { energy_column: "c0", numerator: ["c1"], denominator: "c2", mode: "transmission", units: "eV",
   data_type: "mu", reference_numerator: "", reference_denominator: "", sort: false }
@@ -29,7 +29,7 @@ describe("live column preview", () => {
     expect(api).not.toHaveBeenCalled()
     await tick(1)
     expect(api).toHaveBeenCalledExactlyOnceWith("/projects/p/preview-columns", {
-      version: 2, upload_id: "u", ...mapping, exafs: true, units: "keV", numerator: ["c2"], denominator: "c1", sort: true,
+      version: 2, upload_id: "u", ...mapping, exafs: null, units: "keV", numerator: ["c2"], denominator: "c1", sort: true,
       reference_numerator: null, reference_denominator: null,
       preprocessing: { mark: false, standard_id: null, copy_parameters: false, align: false },
     }, "POST", expect.any(AbortSignal))
@@ -45,6 +45,14 @@ describe("live column preview", () => {
     await tick(500)
     expect(api).toHaveBeenCalledTimes(1)
     expect(api.mock.calls[0][1]).not.toHaveProperty("is_reference")
+  })
+  it('previews remembered absorption as automatic but preserves an explicit replacement choice', async () => {
+    const view = render(<AthenaImportPreview {...props({ data_type: 'xanes', is_normalized: true, exafs: false })} />)
+    await tick()
+    expect(api.mock.calls.at(-1)?.[1]).toMatchObject({ data_type: 'norm', is_normalized: true, exafs: null })
+    view.rerender(<AthenaImportPreview {...props({ data_type: 'xanes', is_normalized: true, exafs: false })} automaticExafs={false} />)
+    await tick()
+    expect(api.mock.calls.at(-1)?.[1]).toMatchObject({ data_type: 'xanes', is_normalized: true, exafs: false })
   })
   it.each(["resolve", "reject"] as const)("ignores an old request that %s after a newer selection", async completion => {
     const old = deferred<ColumnPreview>(), current = deferred<ColumnPreview>()

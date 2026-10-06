@@ -33,8 +33,9 @@ detector records. [Legacy detector project handling](athena-detector-reference.m
 Group → Processing settings exposes two independent controls: **Input already
 normalized** and **Enable EXAFS processing**. They initialize from the selected
 group and can be applied to the current, marked, or all groups. Energy spectra
-share the μ(E) label. The import dialog uses the same controls alongside an
-input-format choice for μ(E), extracted χ(k), or FEFF xmu.dat.
+share the μ(E) label. The new-import dialog keeps **Input already normalized**
+alongside an input-format choice for μ(E), extracted χ(k), or FEFF xmu.dat.
+It selects EXAFS processing automatically, without an additional checkbox.
 
 The previous three-way type selector and Ctrl+Alt type shortcut have been
 removed from the web interface. The backend retains native type commands and
@@ -42,8 +43,15 @@ project flags for compatibility. Explicit processing settings map to μ(E) or
 norm(E) with EXAFS enabled, and XANES with EXAFS disabled; `is_normalized`
 preserves normalization independently, including normalized XANES. Input
 normalization also applies to import previews, edge initialization and rebinning.
-New imports send an explicit EXAFS setting. Edge enforcement honors it; legacy
-requests that omit it retain automatic XANES selection for short scans.
+New absorption imports send `exafs: null`. Automatic import retains near-edge
+scans as XANES and attempts EXAFS on longer scans. If automatic EXAFS cannot
+be calculated but normalization succeeds, the imported group keeps that
+normalized result and reports the reason. Already-normalized inputs retain
+their supplied values. This decision is made separately for each imported
+spectrum, including files in a batch. Remembered column choices retain columns
+and normalization but do not restore an obsolete EXAFS on/off choice.
+Explicit API EXAFS settings, post-import processing settings, and column
+replacement retain their manual behavior; saved projects are not reclassified.
 
 The dialog preserves queued parameter edits and reports processing errors.
 Cancel makes no request. Frozen energy groups remain eligible; χ(k) and FEFF

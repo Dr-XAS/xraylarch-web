@@ -38,8 +38,13 @@ from .athena_science import AthenaParameters, ScientificError, _fft_capacity, _n
 
 SOURCE_REVISION = "06afc8da08a5a7d5a26ee14992170fcf5dc67406"
 XANES_CUTOFF = 100.0  # eV after the tabulated seed, xanes.cutoff
+AUTOMATIC_EXAFS_WARNING = "Automatic EXAFS processing"
 _NORMALIZATION_FIELDS = ("pre1", "pre2", "norm1", "norm2", "nnorm")
 _RANGE_FIELDS = (*_NORMALIZATION_FIELDS, "bkg_kmin", "bkg_kmax", "kmin", "kmax")
+
+
+class _AutomaticImportRangeError(ScientificError):
+    """Only automatically resolved import bounds may try XANES defaults."""
 
 
 def _policy(policy):
@@ -191,7 +196,10 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", is
     unless an AUTOMATIC bound would exceed support at the refined E0. Mu scans
     ending <100 eV after the seed become xanes when exafs is omitted. An explicit
     EXAFS choice retains its processing mode and requires usable ranges.
-    norm keeps its representation and must have usable k ranges. XANES retains unused EXAFS
+    Default normalized imports also use XANES for short scans, preserving the
+    normalized-input flag. When no parameters or EXAFS choice were supplied,
+    unusable automatic ranges may retry XANES defaults; actual normalization,
+    fraction selection and explicit parameter errors still fail. XANES retains unused EXAFS
     recipe values rather than creating invalid/inactive numeric FT ranges.
     The caller performs final processing once and owns atomic persistence.
     """
@@ -226,12 +234,26 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", is
         raise ScientificError("Enforced import energy spacing is below 0.0005 eV; rebin close points.")
     if not x[1] <= seed <= x[-2]:
         raise ScientificError(f"Enforced {atom['element']} {atom['edge']} E0={seed:g} eV needs measured data on both sides in the shifted energy range; select the correct edge or extend the scan.")
+    auto_exafs = parameters is None and exafs is None and data_type in ("mu", "norm")
+    seed_type = "xanes" if auto_exafs and x[-1] - seed < XANES_CUTOFF else data_type
+
+    def resolve_ranges(function, *args):
+        # Keep this boundary around defaults only. A failed normalization or
+        # fractional crossing must never turn into a successful import.
+        try:
+            return function(*args)
+        except ValueError as exc:
+            if auto_exafs and seed_type != "xanes":
+                raise _AutomaticImportRangeError(str(exc)) from exc
+            raise
+
     try:
         with np.errstate(over="raise", invalid="raise", divide="raise"):
-            seed_recipe, automatic, output_type, short, available = _seed_defaults(x, p, seed, data_type, is_normalized, exafs)
+            seed_recipe, automatic, output_type, short, available = resolve_ranges(
+                _seed_defaults, x, p, seed, seed_type, is_normalized, exafs)
             current = seed
             for iteration in range(1, MAX_ITERATIONS + 1):
-                recipe = _at_e0(x, seed_recipe, automatic, current, output_type, is_normalized)
+                recipe = resolve_ranges(_at_e0, x, seed_recipe, automatic, current, output_type, is_normalized)
                 normalized = y if is_normalized else _normalized(x, y, AthenaParameters(**recipe), current)
                 # x is already shifted, so the selector must receive shift=0.
                 selection = compute_e0(x, normalized, {}, method="fraction", fraction=fraction,
@@ -241,7 +263,17 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", is
                 current = next_e0
                 if converged:
                     break
-            final_recipe = _at_e0(x, seed_recipe, automatic, current, output_type, is_normalized)
+            final_recipe = resolve_ranges(_at_e0, x, seed_recipe, automatic, current, output_type, is_normalized)
+    except _AutomaticImportRangeError as exc:
+        try:
+            fallback = initialize_import(energy, mu, policy=policy, data_type="xanes",
+                                         is_normalized=is_normalized, exafs=False, _for_rebin=_for_rebin)
+        except ValueError:
+            raise ScientificError(str(exc)) from exc
+        fallback["warnings"].append(
+            f"{AUTOMATIC_EXAFS_WARNING} was unavailable with the import defaults: {exc} "
+            "Imported as XANES with normalization retained.")
+        return fallback
     except (ArithmeticError, np.linalg.LinAlgError) as exc:
         raise ScientificError("Enforced import normalization is numerically unstable; rescale mu or adjust the normalization ranges.") from exc
     selection.update(iterations=iteration, converged=converged)
@@ -257,7 +289,7 @@ def initialize_import(energy, mu, parameters=None, *, policy, data_type="mu", is
     if (selection["element"], selection["edge"]) != (atom["element"], atom["edge"]):
         warnings.append(f"Fractional E0 is nearer {selection['element']} {selection['edge']}; the enforced identity remains {atom['element']} {atom['edge']}. Confirm the selected absorber and ranges.")
     if output_type != data_type:
-        warnings.append("Less than 100 eV of post-edge data at the tabulated seed: this mu scan was initialized as XANES.")
+        warnings.append(f"{AUTOMATIC_EXAFS_WARNING} was skipped: less than 100 eV of post-edge data at the tabulated seed. This scan was initialized as XANES.")
     resolved = {key: seed_recipe[key] for key in _RANGE_FIELDS}
     result.update(parameters=final_recipe, data_type=output_type,
                   edge_identity={"element": atom["element"], "edge": atom["edge"], "origin": "enforced"},

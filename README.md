@@ -180,6 +180,12 @@ while preserving the supplied normalization. Detector choices and previewed
 signals can be reviewed before import; successful import choices are remembered
 for subsequent matching files.
 
+EXAFS processing is automatic for new absorption imports. Short near-edge scans
+retain their normalized spectrum and explain why EXAFS was not calculated;
+longer scans calculate the background and Fourier transforms when supported.
+**Input already normalized** still preserves supplied normalized values.
+Use **Group → Processing settings…** after import to turn EXAFS on or off manually.
+
 The current group's element and absorption edge are shown automatically, using
 saved file metadata when available or inference from E₀. No manual identity
 selection is required.
@@ -223,7 +229,7 @@ native channel defaults, geometry fallbacks and measured verification.
 columns and date/time-prefixed measurements. Their converted values and native
 channel suggestions appear in the same live preview. For the official CMC
 sample, the transmission denominator is zero: choose **Use fluorescence
-columns** and **Data type → XANES · short energy range**. See the
+columns**; automatic import retains its short scan as XANES. See the
 [scalar-reader contract](docs/athena-scalar-readers-reference.md) for examples,
 native numerical comparisons and retained source metadata.
 

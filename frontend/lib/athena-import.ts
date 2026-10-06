@@ -38,13 +38,14 @@ export interface ColumnPreview {
   rebin_results?: { id: string; label: string; role: "sample" | "reference"; e0: number; source_points: number; output_points: number }[]
 }
 
-export function columnPayload(mapping: ColumnMapping) {
+export function columnPayload(mapping: ColumnMapping, { automaticExafs = true } = {}) {
   mapping = normalizeImportInversion(mapping)
+  if (automaticExafs) mapping = automaticImportProcessing(mapping)
   const denominator = denominatorColumns(mapping)
   const fluorescenceDenominator = mapping.additional_fluorescence && denominatorColumns(mapping.additional_fluorescence)
   const { enabled, ...rebin } = mapping.rebin ?? defaultRebin
   const { exafs: _exafs, ...input } = mapping
-  const payload = { ...input, ...importExafsSetting(mapping.data_type), preprocessing: mapping.preprocessing ?? defaultPreprocessing,
+  const payload = { ...input, ...importExafsSetting(mapping.data_type, automaticExafs), preprocessing: mapping.preprocessing ?? defaultPreprocessing,
     ...(mapping.additional_fluorescence ? { additional_fluorescence: { ...mapping.additional_fluorescence,
       denominator: fluorescenceDenominator!.length > 1 ? fluorescenceDenominator : fluorescenceDenominator![0] || null } } : {}),
     ...(mapping.rebin ? { rebin: enabled ? rebin : null } : {}),
@@ -110,21 +111,29 @@ export function rebinProblem(r?: ImportRebinOptions): string | null {
   return null
 }
 
-export function changeInputType(mapping: ColumnMapping, data_type: ColumnMapping["data_type"]): ColumnMapping {
+export function changeInputType(mapping: ColumnMapping, data_type: ColumnMapping["data_type"], { automaticExafs = true } = {}): ColumnMapping {
   const { exafs: _exafs, ...input } = mapping
-  return { ...input, data_type, ...importExafsSetting(data_type), is_normalized: data_type === 'norm' || data_type === 'xmudat', ...(data_type === "chi" ? { mode: "mu" as const, units: "eV" as const,
+  return { ...input, data_type, ...importExafsSetting(data_type, automaticExafs), is_normalized: data_type === 'norm' || data_type === 'xmudat', ...(data_type === "chi" ? { mode: "mu" as const, units: "eV" as const,
     denominator: "", invert: false, signal_multiplier: 1, reference_numerator: "", reference_denominator: "",
     ...(mapping.additional_fluorescence ? { additional_fluorescence: null } : {}),
     ...(mapping.rebin ? { rebin: { ...mapping.rebin, enabled: false } } : {}),
     ...(mapping.preprocessing ? { preprocessing: { ...mapping.preprocessing, standard_id: null, copy_parameters: false, align: false } } : {}) } : {}) }
 }
 
-function importExafsSetting(data_type: ColumnMapping['data_type']): { exafs?: boolean } {
-  return data_type === 'chi' || data_type === 'xmudat' ? {} : { exafs: data_type !== 'xanes' }
+function importExafsSetting(data_type: ColumnMapping['data_type'], automaticExafs: boolean): { exafs?: boolean | null } {
+  return data_type === 'chi' || data_type === 'xmudat' ? {} : { exafs: automaticExafs ? null : data_type !== 'xanes' }
 }
 
-export function changeImportProcessing(mapping: ColumnMapping, options: Partial<ReturnType<typeof energyProcessingSettings>>): ColumnMapping {
+function automaticImportProcessing(mapping: ColumnMapping): ColumnMapping {
+  if (mapping.data_type === 'chi' || mapping.data_type === 'xmudat') return mapping
+  // Old remembered choices may carry XANES-only processing. New imports decide
+  // EXAFS eligibility from each spectrum, while retaining its normalization flag.
+  return { ...mapping, data_type: energyProcessingSettings(mapping).is_normalized ? 'norm' : 'mu', exafs: null }
+}
+
+export function changeImportProcessing(mapping: ColumnMapping, options: Partial<ReturnType<typeof energyProcessingSettings>>, { automaticExafs = true } = {}): ColumnMapping {
   const { is_normalized, exafs } = { ...energyProcessingSettings(mapping), ...options }
+  if (automaticExafs) return { ...mapping, is_normalized, exafs: null, data_type: is_normalized ? 'norm' : 'mu' }
   return { ...mapping, is_normalized, exafs, data_type: !exafs ? 'xanes' : is_normalized ? 'norm' : 'mu' }
 }
 
@@ -180,7 +189,7 @@ export function initialColumnMapping(inspection: InspectionResponse, previous: C
   const is_reference = resetReference ? false : previous.is_reference ?? false
   const selected = normalizeImportInversion(restored ? { ...mapping, ...restored.mapping, is_reference } : { ...mapping, is_reference })
   if (selected.rebin && !restored) selected.rebin = { ...selected.rebin, enabled: false }
-  return selected.data_type === 'chi' ? changeInputType(selected, 'chi') : selected
+  return selected.data_type === 'chi' ? changeInputType(selected, 'chi') : automaticImportProcessing(selected)
 }
 
 function mappingColumnIds(mapping: ColumnMapping): string[] {
