@@ -22,6 +22,7 @@
 .viewer .toolbar button { padding: 6px 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); cursor: pointer; font: inherit; font-size: var(--text-body); line-height: var(--leading-control); }
 .editor button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 6px 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; background: var(--ath-surface, #fff); color: var(--ath-ink, #24362c); cursor: pointer; font: inherit; font-size: var(--text-body); line-height: var(--leading-control); }
 .editor button:disabled { opacity: .5; cursor: default; }
+.editor button.contextTrigger { padding: 0 4px; min-width: 24px; border-color: transparent; background: transparent; color: var(--ath-muted, #647669); }
 .editor button.syncButton { background: var(--ath-sync-primary, #7c3aed); border-color: var(--ath-sync-primary, #7c3aed); color: var(--ath-primary-foreground); font-weight: 500; }
 .editor button.syncButton:not(:disabled):hover { background: var(--ath-sync-primary-hover, #6d28d9); border-color: var(--ath-sync-primary-hover, #6d28d9); color: var(--ath-primary-foreground); }
 .editor button.syncButton:focus-visible { outline-color: var(--ath-sync-primary, #7c3aed); }

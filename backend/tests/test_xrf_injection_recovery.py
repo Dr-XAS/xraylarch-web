@@ -12,11 +12,14 @@ user would run -- is the chi(k) that went in.
 Every test is named for one failure in the table at the end of
 docs/athena-xrf-xas-reference.md. Nothing here is measured data.
 """
+import hashlib
+
 import numpy as np
 import pytest
 
 import xrf_injection_fixture as fx
 from xraylarch_web import athena_xrf_xas as engine
+from xraylarch_web.athena_xrf_runtime import XrfRuntime
 
 pytestmark = pytest.mark.xrf_slow
 
@@ -72,12 +75,32 @@ def pre_edge_fraction(energy_ev, mu):
     return float(np.mean(mu[below]) / (np.mean(mu[above]) - np.mean(mu[below])))
 
 
-def run(**generator):
+@pytest.fixture(scope='module')
+def runtime():
+    """The server's detector scheduling: one worker process per element.
+
+    test_athena_xrf_runtime holds the pooled result identical to the serial
+    loop, so no assertion here turns on the scheduling. It halves the wall time of each full
+    calibration, which keeps the slowest fixture inside the CI per-test limit.
+    One pool serves the whole module, and a one-CPU host falls back to serial.
+    """
+    runtime = XrfRuntime(2)
+    try:
+        yield runtime
+    finally:
+        runtime.close()
+
+
+def run(runtime, **generator):
     scan, counts, truth = fx.scan_and_counts(points=POINTS, **generator)
     matrix = generator.get('matrix', ('Fe', 'Cr'))
     opts = options(matrix_elements=list(matrix),
                    open_gates=[] if generator.get('gated', True) else list(matrix))
-    result = engine.extract(scan, counts, opts)
+    # The runtime keys its cache on the upload's content hash. Scans here
+    # differ in their counts alone, so hash the counts, or two generators
+    # with the same options would be served one result.
+    digest = hashlib.sha256(counts.tobytes()).hexdigest()
+    result = runtime.extract(scan, counts, opts, None, digest)
     print('Detector calibration:', [dict(response_model=r['response_model'],
                                          success=r['success'], at_bounds=r['at_bounds'])
                                     for r in result['detector_reports']])
@@ -85,29 +108,29 @@ def run(**generator):
 
 
 @pytest.fixture(scope='module')
-def measured():
+def measured(runtime):
     """The honest case: two matrix elements, counting statistics, everything on."""
-    return run(noise=True)
+    return run(runtime, noise=True)
 
 
 @pytest.fixture(scope='module')
-def quiet():
+def quiet(runtime):
     """The same scan with the statistics switched off, so what is left is bias."""
-    return run(noise=False)
+    return run(runtime, noise=False)
 
 
 @pytest.fixture(scope='module')
-def ungated():
+def ungated(runtime):
     """Fe excited at every point, so its lines overlap the target's but its own
     absorption edge makes no step inside the scan."""
-    return run(noise=False, gated=False)
+    return run(runtime, noise=False, gated=False)
 
 
 @pytest.fixture(scope='module')
-def no_matrix():
+def no_matrix(runtime):
     """Only the target, the scatter and the continuum: the detector response is
     still one the engine's model cannot reach, but nothing else competes."""
-    return run(noise=False, matrix=())
+    return run(runtime, noise=False, matrix=())
 
 
 def test_a_chi_the_model_never_saw_comes_back_out(measured):
@@ -124,10 +147,10 @@ def test_a_chi_the_model_never_saw_comes_back_out(measured):
     assert misfit(chi_of(energy, fit), chi_of(energy, truth)) < 0.20
 
 
-def test_a_second_charge_collection_tail_does_not_become_exafs():
+def test_a_second_charge_collection_tail_does_not_become_exafs(runtime):
     """A two-population tail remains outside the fitter's response family."""
     detector = dict(fx.DETECTOR, secondary_tail_frac=0.04, secondary_tail_kev=0.75)
-    result, energy, fit, truth = run(noise=True, seed=17, detector=detector)
+    result, energy, fit, truth = run(runtime, noise=True, seed=17, detector=detector)
     assert all(report['success'] for report in result['detector_reports'])
     assert misfit(chi_of(energy, fit)) < 0.20
     assert misfit(chi_of(energy, fit), chi_of(energy, truth)) < 0.20
@@ -137,10 +160,10 @@ def test_a_second_charge_collection_tail_does_not_become_exafs():
                          ids=['germanium_width', 'silicon_drift_like_width'])
 @pytest.mark.parametrize('matrix', [('Fe', 'Cr'), ('Cr',)], ids=['gated_iron', 'no_iron'])
 @pytest.mark.parametrize('noise', [False, True], ids=['noiseless', 'poisson'])
-def test_realistic_detector_widths_recover_the_injected_signal(noise_kev, fano, matrix, noise):
+def test_realistic_detector_widths_recover_the_injected_signal(runtime, noise_kev, fano, matrix, noise):
     """Physical Fano broadening must work with and without the overlapping Fe line."""
     detector = dict(fx.DETECTOR, noise_kev=noise_kev, fano=fano)
-    result, energy, fit, truth = run(noise=noise, detector=detector, matrix=matrix)
+    result, energy, fit, truth = run(runtime, noise=noise, detector=detector, matrix=matrix)
     assert all(report['success'] for report in result['detector_reports'])
     assert misfit(chi_of(energy, fit)) < 0.20
     assert misfit(chi_of(energy, fit), chi_of(energy, truth)) < 0.20

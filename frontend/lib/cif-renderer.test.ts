@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 import type { GLViewer, ViewerSpec } from "3dmol"
-import { createCifRenderer } from "./cif-renderer"
+import { clearCifHover, createCifRenderer } from "./cif-renderer"
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); document.body.replaceChildren() })
 
@@ -33,6 +33,17 @@ function rendererFixture(fail = false) {
 }
 
 describe("CIF renderer lifecycle", () => {
+  it("cancels pending hover and forgets the target when leaving or rebuilding the scene", () => {
+    vi.useFakeTimers()
+    const pendingHover = vi.fn()
+    const instance = { current_hover: {}, hoverTimeout: window.setTimeout(pendingHover, 80), removeAllLabels: vi.fn() }
+    clearCifHover(instance as unknown as GLViewer)
+    vi.advanceTimersByTime(100)
+    expect(pendingHover).not.toHaveBeenCalled()
+    expect(instance.current_hover).toBeNull()
+    expect(instance.removeAllLabels).toHaveBeenCalledOnce()
+  })
+
   it("restores globals immediately and removes only this viewer's resources on disposal", () => {
     vi.useFakeTimers()
     const fixture = rendererFixture()

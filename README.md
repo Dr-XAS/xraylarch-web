@@ -83,7 +83,11 @@ and already-normalized inputs.
 The `Artemis-web` branch adds **EXAFS fitting** alongside **Processing** in the
 middle parameter panel. Search the bundled AMCSD database or Materials Project
 in the CIF popup (MP requires `MP_API_KEY` in the backend environment), attach
-the selected CIF directly to the project, select an absorber
+the selected CIF directly to the project, or choose **Upload CIF** to attach your
+own `.cif` file (up to 500 KB). Uploaded CIFs keep their original text and filename
+in saved projects. Use **Rename** beside an attached CIF to give it a project-specific name.
+Names survive saving and reopening the project; source identifiers, original CIF
+text, and uploaded filenames stay intact. Select an absorber
 site, and calculate FEFF8L scattering paths using
 Larch/Larixite. Review the generated paths and add the selected ones to the
 model, or import existing FEFF path files. Define Guess/Set/Def parameters
@@ -98,6 +102,13 @@ filename or cancel. The selected format's `.prj` or `.json` extension is added
 automatically; the exported filename does not rename the saved project.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
+
+**Simulate EXAFS from CIF** uses the same attached structure and FEFF calculation
+without requiring a measured spectrum. Choose an absorbing site and edge, run
+FEFF, then sum all available paths or the selected paths with explicit S₀²,
+σ², ΔE₀ and ΔR. View χ(k) and |χ(R)|, download CSV curves, or export simulation
+JSON containing the exact CIF, FEFF input, path files, parameters and results.
+The shared σ² is an assumption; inequivalent sites are not averaged automatically.
 
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.

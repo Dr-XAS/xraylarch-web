@@ -6,12 +6,12 @@ async function crystalScene(panel: Locator) {
     const viewer = (element as HTMLCanvasElement & {
       _3dmol_viewer?: {
         getModel: () => { selectedAtoms: (selection: object) => Point[] }
-        shapes: { stylespec: { start?: Point; end?: Point } }[]
+        shapes: { stylespec: { start?: Point; end?: Point; radius?: number } }[]
         renderer: { getContext: () => WebGLRenderingContext }
       }
     })._3dmol_viewer
     const context = viewer?.renderer.getContext()
-    const lines = viewer?.shapes.filter(shape => shape.stylespec.start && shape.stylespec.end) ?? []
+    const lines = viewer?.shapes.filter(shape => shape.stylespec.start && shape.stylespec.end && shape.stylespec.radius === undefined) ?? []
     const vertices = lines.flatMap(line => [line.stylespec.start!, line.stylespec.end!])
     // 3Dmol shares an OffscreenCanvas context; inspect the visible canvas's
     // pixels rather than renderer counters that another viewer can reset.
@@ -196,7 +196,11 @@ test("calculates finite-cluster coordination numbers and invalidates changed inp
   await expect(stale).toBeVisible()
   await expect(table).toHaveCount(0)
   await calculate.click()
-  await expect(calculation.getByText("Uses all 1 cluster atom, including hidden elements. Neighbors outside this finite cluster are excluded.", { exact: true })).toBeVisible()
+  await page.getByRole("checkbox", { name: "Show instruction", exact: true }).check()
+  await calculation.getByRole("button", { name: "About Cluster coordination calculation", exact: true }).hover()
+  await expect(page.getByRole("tooltip").getByText("Uses all 1 cluster atom, including hidden elements. Neighbors outside this finite cluster are excluded.", { exact: true })).toBeVisible()
+  await page.keyboard.press("Escape")
+  await page.getByRole("checkbox", { name: "Show instruction", exact: true }).uncheck()
   await expect(copperCopper).toContainText("No neighbors within cutoff (CN 0)")
   const mode = panel.getByRole("combobox", { name: "CIF view mode", exact: true })
   await mode.selectOption("cell")

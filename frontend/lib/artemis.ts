@@ -30,6 +30,8 @@ export interface ArtemisPathMetadata {
   geometry: { atom: string; x: number; y: number; z: number; ipot: number }[]
   /** Actual FEFF input atoms for the structure preview, saved with the model. */
   viewerCluster?: FeffViewerCluster
+  /** CIF snapshot used to calculate this path; retained even if its attachment is removed. */
+  sourceCif?: { sha256: string; label: string; siteIndex: number; attachmentId?: string }
   kmin: number
   kmax: number
 }
