@@ -3,9 +3,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, expect, it, vi } from "vitest"
 import { CifViewer } from "./cif-viewer"
 import { radialFixture, radialStructure } from "@/tests/fixtures/radial-shells"
-const { renderer } = vi.hoisted(() => ({ renderer: { clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn(), setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(), addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn() } }))
+const { renderer } = vi.hoisted(() => ({ renderer: { clear: vi.fn(), setBackgroundColor: vi.fn(), setHoverDuration: vi.fn(), addModel: vi.fn(() => ({ selectedAtoms: () => [] })), setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), addCylinder: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(), addLabel: vi.fn(), zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn() } }))
 vi.mock("3dmol", () => ({}))
-vi.mock("@/lib/cif-renderer", () => ({ createCifRenderer: () => ({ viewer: renderer, dispose: vi.fn() }) }))
+vi.mock("@/lib/cif-renderer", () => ({ clearCifHover: vi.fn(), createCifRenderer: () => ({ viewer: renderer, dispose: vi.fn() }) }))
 vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: null, loading: false, error: "", retry: vi.fn() }) }))
 vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: () => ({ data: null, loading: false, error: "", retry: vi.fn(), settings: { radius: 6, tolerance: 0.05 }, setSettings: vi.fn() }) }))
 const state = { contextKey: "fixture-site-1", data: radialFixture, error: "", loading: false, retry: vi.fn(), settings: { radius: 6, tolerance: 0.05 }, setSettings: vi.fn() }
