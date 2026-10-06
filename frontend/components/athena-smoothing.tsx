@@ -9,6 +9,13 @@ import { SmoothingDefaults, useSmoothingPreferences } from './athena-smoothing-d
 import styles from './athena-processing-layout.module.css'
 import smoothingStyles from './athena-smoothing.module.css'
 
+const fieldInstructions: Record<string, string> = {
+  "window": "For three-point smoothing this is the repetition count; for boxcar or Gaussian filtering it is the kernel length in samples. Even kernel lengths become the next odd length.",
+  "sigma": "Gaussian standard deviation in samples, not eV. On an irregular energy grid, the effective energy width varies along the scan.",
+  "sgWindow": "Requested Savitzky–Golay window size in samples. The preview reports the effective size after Larch resolves its relationship with polynomial order.",
+  "order": "Degree of the local polynomial in the Savitzky–Golay filter. Higher order can preserve curvature but also retain noise; compare the original and filtered curves."
+}
+
 type Space = 'E' | 'k' | 'R'
 type Method = 'boxcar' | 'gaussian' | 'savitzky_golay' | 'three_point'
 type Options = { method: Method; window?: number; sigma?: number; order?: number; repetitions?: number }
@@ -119,7 +126,7 @@ export function AthenaSmoothing({ project, activeId, selectGroup, setBusy, saved
         <label className="ath-field"><span>Algorithm <SectionHelp label="Smoothing algorithm">{draft.method === 'boxcar' || draft.method === 'gaussian' ? 'Even kernel sizes become the next odd size. Athena trims the filter boundaries; the preview reports how many points remain.' : draft.method === 'savitzky_golay' ? 'Uses Larch’s Savitzky–Golay filter and endpoint padding. Athena’s effective defaults are a 31-sample window and order 9. The preference ranges are window 0–39 and order 9–39; Larch may adjust their relationship.' : 'Repeats Athena’s three-point kernel: half the centre sample plus one quarter of each neighbour. Repetitions share the kernel-size control used by boxcar and Gaussian.'}<br /><br />Compare the original and filtered data before making a new group. Filters use neighbouring samples; on an irregular energy grid, their energy width varies along the scan. Smoothing can distort peak shapes and affect later analysis.</SectionHelp></span><select aria-label="Algorithm" value={draft.method} onChange={e => setDraft(d => ({ ...d, method: e.target.value as Method }))}>
           <option value="boxcar">Boxcar average</option><option value="gaussian">Gaussian filter</option><option value="savitzky_golay">Savitzky–Golay</option><option value="three_point">Three-point smoothing</option>
         </select></label>
-        <div className="ath-fields">{fields.map(field => <label className="ath-field" key={field}><span>{names[field]}</span><input type="number" min={field === 'order' ? 9 : 0} max={field === 'order' || field === 'sgWindow' ? 39 : undefined} step={field === 'sigma' ? 'any' : 1} value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value, ...((field === 'sgWindow' || field === 'order') ? {sgEdited: true} : {}) }))} /></label>)}</div>
+        <div className="ath-fields">{fields.map(field => <label className="ath-field" key={field}><span>{names[field]} <SectionHelp label={names[field]}>{fieldInstructions[field]}</SectionHelp></span><input type="number" min={field === 'order' ? 9 : 0} max={field === 'order' || field === 'sgWindow' ? 39 : undefined} step={field === 'sigma' ? 'any' : 1} value={draft[field]} onChange={e => setDraft(d => ({ ...d, [field]: e.target.value, ...((field === 'sgWindow' || field === 'order') ? {sgEdited: true} : {}) }))} /></label>)}</div>
         {draft.method === 'savitzky_golay' && <details open={preferencesOpen} onToggle={e => setPreferencesOpen(e.currentTarget.open)}>
           <summary>Session and saved SG preferences</summary>
           <SmoothingDefaults preferences={preferences} disabled={disabled}/>

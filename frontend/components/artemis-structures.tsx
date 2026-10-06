@@ -462,7 +462,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   function renameEditor(attachment: ArtemisStructureAttachment, location: "list" | "dialog") {
     if (renaming?.id !== attachment.id || renaming.location !== location) return null
     return <div className={styles.renameEditor}>
-      <label>CIF name<input autoFocus aria-label="CIF name" value={renaming.name} maxLength={200} disabled={controlsDisabled}
+      <label><span>CIF name<SectionHelp label="CIF name">A project-specific display name. Renaming preserves the original CIF text, uploaded filename and source identifiers.</SectionHelp></span><input autoFocus aria-label="CIF name" value={renaming.name} maxLength={200} disabled={controlsDisabled}
         onFocus={event => event.target.select()} onChange={event => setRenaming({ ...renaming, name: event.target.value })}
         onKeyDown={event => {
           if (event.key === "Enter") { event.preventDefault(); void renameAttachment(attachment) }
@@ -605,13 +605,13 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       {dialogMode === "structure" && <div className={styles.searchColumn}>
       <div className={styles.toolbar}>{uploadControl(true)}<SectionHelp label="Upload your CIF">Attach one .cif file (up to 500 KB). The project retains the original CIF and filename. FEFF requires an ordered crystal structure.</SectionHelp></div>
       {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
-      <label className={styles.provider}>Source<select aria-label="Structure source" value={provider} disabled={controlsDisabled} onChange={event => {
+      <label className={styles.provider}><span>Source<SectionHelp label="Structure source">AMCSD searches the bundled crystal-structure database. Materials Project searches its online catalogue and requires a configured API key on the server.</SectionHelp></span><select aria-label="Structure source" value={provider} disabled={controlsDisabled} onChange={event => {
         clearSelectedAttachment(); setBusy(null); setSearch(null); setProvider(event.target.value as typeof provider)
       }}><option value="amcsd">AMCSD</option><option value="materials_project">Materials Project</option></select></label>
       <div className={styles.searchFields}>
         <label><span>{provider === "materials_project" ? "Formula, chemical system, or MP ID" : "Mineral, formula, or AMCSD ID"}<SectionHelp label="Structure search">{provider === "materials_project" ? "Search Materials Project: Cu2O for a formula, Cu-O for that chemical system, or mp-30 for a material. The element filter includes compounds containing that element." : "Search the local AMCSD database snapshot."}</SectionHelp></span><input aria-label={provider === "materials_project" ? "Materials Project search query" : "AMCSD search query"} value={query} placeholder={provider === "materials_project" ? "e.g. Cu2O, Cu-O, mp-30" : "e.g. copper or 13088"} disabled={controlsDisabled}
           onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
-        <label>Contains element<input aria-label={provider === "materials_project" ? "Materials Project element filter" : "AMCSD element filter"} value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
+        <label><span>Contains element<SectionHelp label="Structure element filter">Filter for structures containing this chemical symbol, for example Cu. This does not select the absorbing element or restrict the structure to a pure element.</SectionHelp></span><input aria-label={provider === "materials_project" ? "Materials Project element filter" : "AMCSD element filter"} value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
       </div>
       <button type="button" disabled={controlsDisabled || busy === "search" || (!query.trim() && !element.trim())} onClick={findStructures}><Search size={13} />{busy === "search" ? "Searching…" : provider === "materials_project" ? "Search Materials Project" : "Search AMCSD"}</button>
       {search && <div className={styles.searchResults}>
@@ -625,7 +625,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       </div>}
       <div className={styles.detailColumn}>
       {dialogMode === "feff" && <>
-        <label className={styles.provider}>Crystal structure<select aria-label="FEFF crystal structure" value={attachmentId ?? ""} disabled={controlsDisabled || listLoading} onChange={event => {
+        <label className={styles.provider}><span>Crystal structure<SectionHelp label="FEFF crystal structure">Choose the attached CIF snapshot used to build the FEFF cluster. Check its phase and measurement conditions against your sample before generating paths.</SectionHelp></span><select aria-label="FEFF crystal structure" value={attachmentId ?? ""} disabled={controlsDisabled || listLoading} onChange={event => {
           const attachment = attachments.find(item => item.id === event.target.value)
           if (attachment) openAttachment(attachment, "feff")
         }}><option value="" disabled>Choose an attached CIF</option>{attachments.map(item => <option key={item.id} value={item.id}>{attachmentName(item)} · {structureLabel(item.structure)}</option>)}</select></label>
@@ -644,8 +644,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
         {structure.warnings.map((warning, i) => <p className={styles.warning} key={i}>{warning}</p>)}
         {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : dialogMode === "feff" && <>
           <div className={styles.grid}>
-            <label>Absorber<select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { manualAbsorber.current = true; invalidateJob(); setAbsorber(event.target.value); setSite("") }}><option value="" disabled>Choose absorber</option>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
-            <label>Absorption edge<select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}><option value="" disabled>Choose edge</option>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label><span>Absorber<SectionHelp label="FEFF absorber">The absorbing element at the center of the FEFF cluster. Choose the element measured by your spectrum, then select its crystallographic site.</SectionHelp></span><select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { manualAbsorber.current = true; invalidateJob(); setAbsorber(event.target.value); setSite("") }}><option value="" disabled>Choose absorber</option>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label><span>Absorption edge<SectionHelp label="FEFF absorption edge">The core-level edge used in the FEFF calculation. Match the measured absorption edge; paths calculated for another edge are not interchangeable.</SectionHelp></span><select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}><option value="" disabled>Choose edge</option>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
           </div>
           {!absorber && spectrumEdge && <p className={styles.warning}>The spectrum absorber {spectrumEdge.element} has no supported site in this CIF. Choose a matching structure or select an absorber manually.</p>}
           {!edge && spectrumEdge && <p className={styles.warning}>The spectrum edge {spectrumEdge.edge} is not supported here. Choose K, L1, L2, or L3 explicitly.</p>}
@@ -655,10 +655,10 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
           </fieldset>
           {site && <details><summary>FEFF shell distance ranges · {absorber} site {site}</summary><RadialShellPanel state={radialState} disabled={controlsDisabled} /></details>}
           <div className={styles.grid}>
-            <label>Cluster radius (Å)<input aria-label="FEFF cluster radius" inputMode="decimal" value={clusterRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setClusterRadius(event.target.value) }} /></label>
-            <label><span>Max path R (Å)<SectionHelp label="Maximum path R">Max path R is the effective half-path length.</SectionHelp></span><input aria-label="FEFF maximum path radius" inputMode="decimal" value={pathRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setPathRadius(event.target.value) }} /></label>
-            <label>Maximum legs<select aria-label="FEFF maximum legs" value={maxLegs} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxLegs(event.target.value) }}>{[2, 3, 4].map(item => <option key={item}>{item}</option>)}</select></label>
-            <label>Maximum paths<input aria-label="FEFF maximum paths" inputMode="numeric" value={maxPaths} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxPaths(event.target.value) }} /></label>
+            <label><span>Cluster radius (Å)<SectionHelp label="FEFF cluster radius">Radius of the atomic cluster built around the absorbing site from the periodic CIF. It must cover the paths you request; a larger cluster can increase calculation time.</SectionHelp></span><input aria-label="FEFF cluster radius" inputMode="decimal" value={clusterRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setClusterRadius(event.target.value) }} /></label>
+            <label><span>Max path R (Å)<SectionHelp label="Maximum path R">Maximum effective half-path length in Å. For single scattering this equals the absorbing atom–neighbor distance; for multiple scattering it is half the total path length.</SectionHelp></span><input aria-label="FEFF maximum path radius" inputMode="decimal" value={pathRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setPathRadius(event.target.value) }} /></label>
+            <label><span>Maximum legs<SectionHelp label="FEFF maximum legs">Maximum number of segments in a scattering path. Two legs means single scattering; three and four include multiple scattering and can create many more paths.</SectionHelp></span><select aria-label="FEFF maximum legs" value={maxLegs} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxLegs(event.target.value) }}>{[2, 3, 4].map(item => <option key={item}>{item}</option>)}</select></label>
+            <label><span>Maximum paths<SectionHelp label="FEFF maximum paths">Limit on the generated paths returned for review. Increase it if the result is truncated; adding many paths to a fit still requires a justified model.</SectionHelp></span><input aria-label="FEFF maximum paths" inputMode="numeric" value={maxPaths} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxPaths(event.target.value) }} /></label>
           </div>
         </>}
       </div>}

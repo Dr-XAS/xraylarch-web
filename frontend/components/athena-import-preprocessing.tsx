@@ -11,16 +11,16 @@ export function AthenaImportPreprocessing({ value = defaultPreprocessing, groups
   const valid = groups.filter(g => !['chi', 'detector'].includes(g.data_type) && !isDifferenceGroup(g) && !g.processing_error && g.result)
   const missing = !!value.standard_id && !valid.some(g => g.id === value.standard_id)
   return <details><summary>Preprocess imported groups <SectionHelp label="Import preprocessing">References remain unmarked. Preprocessing choices are remembered after a successful import and reused within matching batches.</SectionHelp></summary>
-    <label className="ath-check"><input type="checkbox" checked={value.mark} onChange={e => onChange({ ...value, mark: e.target.checked })} />Mark each imported sample</label>
+    <label className="ath-check"><input type="checkbox" checked={value.mark} onChange={e => onChange({ ...value, mark: e.target.checked })} />Mark each imported sample <SectionHelp label="Mark each imported sample">Include newly imported sample groups in later batch operations. Linked references remain unmarked.</SectionHelp></label>
     <label className="ath-field"><span>Preprocessing standard <SectionHelp label="Preprocessing standard">Copy processing parameters, element/edge and plot scale/offset; preserve the imported energy shift. Alignment fits smoothed edge derivatives and uses reference channels when both scans have them. Separate detector groups share one fitted shift.</SectionHelp></span><select disabled={chi} value={value.standard_id ?? ''}
       onChange={e => onChange({ ...value, standard_id: e.target.value || null, ...(!e.target.value ? { align: false, copy_parameters: false } : {}) })}>
       <option value="">None</option>{missing && <option value={value.standard_id!}>Previous standard unavailable · choose another</option>}
       {valid.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}
     </select></label>
     <label className="ath-check"><input type="checkbox" checked={value.copy_parameters} disabled={chi || !value.standard_id || missing}
-      onChange={e => onChange({ ...value, copy_parameters: e.target.checked })} />Set parameters to the standard</label>
+      onChange={e => onChange({ ...value, copy_parameters: e.target.checked })} />Set parameters to the standard <SectionHelp label="Set parameters to the standard">Copy the chosen standard’s processing parameters, element/edge and plot scale/offset onto imported samples. Preserve the imported energy shift.</SectionHelp></label>
     <label className="ath-check"><input type="checkbox" checked={value.align} disabled={chi || !value.standard_id || missing}
-      onChange={e => onChange({ ...value, align: e.target.checked })} />Align to the standard</label>
+      onChange={e => onChange({ ...value, align: e.target.checked })} />Align to the standard <SectionHelp label="Align to the standard">Fit the imported spectrum’s energy shift against the chosen standard, using linked references when both scans have them. Inspect the imported result after alignment.</SectionHelp></label>
     {chi && <p className="ath-hint">Parameter copying and energy alignment require μ(E), XANES or normalized energy data.</p>}
     {missing && <p role="alert" className="ath-error">The chosen standard is no longer usable. Select another standard or None.</p>}
   </details>

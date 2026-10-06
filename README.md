@@ -35,7 +35,10 @@ The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 **Save project** defaults to the complete web project (`.json`), with a file-name
 confirmation before download. Native Athena (`.prj`) exports remain in **File**.
 Enable **Show instruction** at the top right to display inline information icons;
-they are hidden by default.
+they are hidden by default. Field-level instructions cover processing, imports,
+analysis, EXAFS fitting, CIF/FEFF setup, simulation, and viewer controls. Hover,
+focus, or tap an icon for its meaning, units, and relevant constraints; press
+Escape to dismiss it. Help stays out of the form layout and does not change data.
 
 For standalone development, open [http://localhost:3004](http://localhost:3004)
 using the local commands below, then import spectra or load the measured copper

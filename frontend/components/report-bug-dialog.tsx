@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type ChangeEvent, type ClipboardEve
 import { Bug, Lightbulb, MessageSquare, Paperclip, X } from "lucide-react"
 
 import { ApiRequestError } from "@/lib/backend-client"
+import { SectionHelp } from "./section-help"
 import {
   MAX_ATTACHMENTS, MAX_SCREENSHOTS, REPORT_TYPES, REPORT_TYPE_LABELS,
   rememberedEmail, submitBugReport, validateSubmission,
@@ -148,7 +149,7 @@ export function ReportBugDialog({ projectId, projectState, onClose, onSubmitted,
           })}
         </div>
         <label className="ath-field" htmlFor={`${id}-description`}>
-          <span>Description<small>Paste images here to attach them</small></span>
+          <span>Description<SectionHelp label="Report description">Describe the steps, what happened, and the result you expected. For a feature request, explain what you want to accomplish.</SectionHelp><small>Paste images here to attach them</small></span>
           <textarea id={`${id}-description`} rows={6} value={description} placeholder={TYPE_PROMPTS[type]} onChange={event => setDescription(event.target.value)} onPaste={onPaste} disabled={sending} aria-invalid={!!errors.description} aria-describedby={errors.description ? `${id}-description-error` : undefined} />
         </label>
         {errors.description && <p className="ath-report-error" id={`${id}-description-error`} role="alert">{errors.description}</p>}
@@ -165,12 +166,12 @@ export function ReportBugDialog({ projectId, projectState, onClose, onSubmitted,
         {errors.attachments && <p className="ath-report-error" role="alert">{errors.attachments}</p>}
 
         <label className="ath-field" htmlFor={`${id}-email`}>
-          <span>Your email<small>Required, so we can follow up</small></span>
+          <span>Your email<SectionHelp label="Report email">Contact address saved with this report so the team can follow up. It is remembered in this browser for future reports.</SectionHelp><small>Required, so we can follow up</small></span>
           <input id={`${id}-email`} type="email" autoComplete="email" value={email} onChange={event => setEmail(event.target.value)} disabled={sending} aria-invalid={!!errors.user_email} aria-describedby={errors.user_email ? `${id}-email-error` : undefined} />
         </label>
         {errors.user_email && <p className="ath-report-error" id={`${id}-email-error`} role="alert">{errors.user_email}</p>}
 
-        {projectId && <label className="ath-check"><input type="checkbox" checked={attachProject} disabled={sending} onChange={event => setAttachProject(event.target.checked)} />Attach a copy of the current project</label>}
+        {projectId && <label className="ath-check"><input type="checkbox" checked={attachProject} disabled={sending} onChange={event => setAttachProject(event.target.checked)} />Attach a copy of the current project<SectionHelp label="Attach project">Include the current project’s spectra and processing state so the issue can be reproduced. Turn this off to send the report without that project export.</SectionHelp></label>}
         <p className="ath-hint">The report also records this page, your browser and screen, the app build, a summary of the open project and its recent journal, and this site&apos;s browser storage. It is saved on this server only{projectId ? "" : "; no project is open to attach"}.</p>
 
         {submitError && <p className="ath-report-error" role="alert">{submitError}</p>}

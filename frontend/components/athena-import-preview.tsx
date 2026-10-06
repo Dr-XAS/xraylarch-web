@@ -45,10 +45,10 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
   const plottedReference = traces.some(t => t.role === "reference")
   return <section className={styles.previewPanel} aria-label="Column selection preview">
     <div className={styles.previewTools}><strong>Preview selected columns <SectionHelp label="Selected columns preview">The selected detector signals before normalization or background removal.</SectionHelp></strong>
-      <label className="ath-check"><input type="checkbox" checked={paused} onChange={e => { setPaused(e.target.checked); setManualKey("") }} />Pause plotting</label>
+      <label className="ath-check"><input type="checkbox" checked={paused} onChange={e => { setPaused(e.target.checked); setManualKey("") }} />Pause plotting <SectionHelp label="Pause plotting">Pause automatic preview updates while changing columns or processing options. Resume to inspect the current mapping before import.</SectionHelp></label>
       <button type="button" disabled={disabled || !!problem} onClick={() => { setManualKey(key); setRetry(n => n + 1); setState(null) }}>Replot</button>
-      {hasReference && <label className="ath-check"><input type="checkbox" checked={showReference} onChange={e => setShowReference(e.target.checked)} />Plot reference</label>}
-      {mapping.rebin?.enabled && <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Plot original data</label>}
+      {hasReference && <label className="ath-check"><input type="checkbox" checked={showReference} onChange={e => setShowReference(e.target.checked)} />Plot reference <SectionHelp label="Plot reference">Overlay the reference signal calculated from the reference columns, so its edge and polarity can be checked before import.</SectionHelp></label>}
+      {mapping.rebin?.enabled && <label className="ath-check"><input type="checkbox" checked={showOriginal} onChange={e => setShowOriginal(e.target.checked)} />Plot original data <SectionHelp label="Plot original data">Compare the unreduced signal with the rebinned preview to see whether the new grid preserves spectral features.</SectionHelp></label>}
     </div>
     {paused && <p role="status">Plotting paused{value && !isCurrent ? " — the displayed curve uses the previous column selection." : "."} Replot updates once.</p>}
     <div className={styles.plot} aria-label="Imported signal preview plot" aria-busy={!paused && !isCurrent && !problem}>

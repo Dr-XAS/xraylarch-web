@@ -46,8 +46,8 @@ function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathS
     </div>
     <dl className={styles.facts}>
       <div><dt>Absorber / edge</dt><dd>{path.metadata.absorber} {path.metadata.edge}</dd></div>
-      <div><dt>R<sub>eff</sub> · half length</dt><dd>{number(path.metadata.reff)} Å</dd></div>
-      <div><dt>Degeneracy N</dt><dd>{number(path.metadata.degen)}</dd></div>
+      <div><dt>R<sub>eff</sub> · half length<SectionHelp label="Effective path length">Half the total travel length of this FEFF scattering path. It is the absorber–neighbor separation only for a two-leg single-scattering path.</SectionHelp></dt><dd>{number(path.metadata.reff)} Å</dd></div>
+      <div><dt>Degeneracy N<SectionHelp label="Path degeneracy">Number of equivalent trajectories represented by this FEFF path. It contributes to the path amplitude and is distinct from a fitted coordination-number scale.</SectionHelp></dt><dd>{number(path.metadata.degen)}</dd></div>
       <div><dt>Legs</dt><dd>{path.metadata.nleg}</dd></div>
     </dl>
     {geometry ? <>
@@ -57,6 +57,7 @@ function PathDetail({ path, color, selectedLeg, onSelectLeg }: { path: FeffPathS
           <span className={atom.atomIndex === 0 ? styles.absorber : undefined}>{siteLabel(atom)}</span>
         </span>)}</div>
         <div className={styles.legControls} role="group" aria-label="Highlight scattering leg">
+          <SectionHelp label="Highlight scattering leg">Highlight all directed segments or one leg of the focused path. The reported length and scattering angle describe that leg; this only changes the 3D emphasis.</SectionHelp>
           <button type="button" aria-pressed={selectedLeg === null} onClick={() => onSelectLeg(null)}>All legs</button>
           {geometry.legs.map(item => <button type="button" key={item.index} aria-pressed={selectedLeg === item.index} onClick={() => onSelectLeg(item.index)} title={`${siteLabel(item.from)} → ${siteLabel(item.to)} · ${number(item.length)} Å`}>
             <i style={{ background: color }} />Leg {item.index}
@@ -151,7 +152,7 @@ function PathContributions({ state, rows, shown, filter, onFilter, sort, onSort,
   const sortBy = (key: PathSortKey) => onSort({ key, descending: sort.key === key ? !sort.descending : key === "amplitude" })
   return <section className={styles.contributions} aria-label="Path contributions">
     <div className={styles.contributionsHeading}>
-      <label className={styles.contributionsToggle}><input type="checkbox" checked={enabled} onChange={event => onEnabled(event.target.checked)} />Show χ(k) and χ(R) contributions</label>
+      <label className={styles.contributionsToggle}><input type="checkbox" aria-label="Show χ(k) and χ(R) contributions" checked={enabled} onChange={event => onEnabled(event.target.checked)} />Show χ(k) and χ(R) contributions<SectionHelp label="Path contributions">Calculate each included path and their sum using the model’s starting parameters. This preview uses no measured spectrum and does not run a fit. R-space magnitudes are taken after summing the complex contributions.</SectionHelp></label>
       {enabled && <div className={styles.choice} role="group" aria-label="Contribution plot space">{(["k", "r"] as const).map(value =>
         <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}</div>}
       {enabled && space === "r" && <div className={styles.choice} role="group" aria-label="Contribution R component">{([["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"]] as const).map(([value, label]) =>
@@ -181,12 +182,12 @@ function PathContributions({ state, rows, shown, filter, onFilter, sort, onSort,
       {preview && <p className={styles.note}>Starting values only: no fit has been run and no measured spectrum is used. The shaded band is the fit range. Magnitudes do not add — the complex contributions are summed before the magnitude is taken, so the sum can be smaller than a single path.{scoped ? " Contributions cover only the selected source." : ""}{curves?.partial ? ` While a filter hides paths, the solid sum covers only the paths shown and the dashed curve includes all paths in ${scoped ? "the selected source" : "the starting model"}.` : ""}</p>}
     </>}
     <div className={styles.filters} role="group" aria-label="Path filters">
-      <label>Legs<select aria-label="Filter by legs" value={filter.legs} onChange={event => onFilter({ ...filter, legs: event.target.value as PathFilter["legs"] })}>
+      <label><span>Legs<SectionHelp label="Filter by legs">Show all paths, single scattering with two legs, or multiple scattering with three or more legs. These filters change the displayed list, not which paths are included in the fit.</SectionHelp></span><select aria-label="Filter by legs" value={filter.legs} onChange={event => onFilter({ ...filter, legs: event.target.value as PathFilter["legs"] })}>
         <option value="all">All</option><option value="single">Single scattering (2)</option><option value="multiple">Multiple scattering (3+)</option>
       </select></label>
-      <label>R<sub>eff</sub> at most (Å)<input inputMode="decimal" aria-label="Filter by maximum Reff" value={filter.reffMax === null ? "" : String(filter.reffMax)}
+      <label><span>R<sub>eff</sub> at most (Å)<SectionHelp label="Maximum path length filter">Limit displayed paths by R_eff, half their total travel length in Å. For multiple scattering, R_eff is not generally an absorber–neighbor distance. Leave blank for no limit.</SectionHelp></span><input inputMode="decimal" aria-label="Filter by maximum Reff" value={filter.reffMax === null ? "" : String(filter.reffMax)}
         onChange={event => { const text = event.target.value.trim(); onFilter({ ...filter, reffMax: text && Number.isFinite(Number(text)) ? Number(text) : null }) }} /></label>
-      <label>Peak |χ(R)| at least<select aria-label="Filter by smallest peak amplitude" value={String(filter.minAmplitude)} disabled={!preview}
+      <label><span>Peak |χ(R)| at least<SectionHelp label="Minimum path amplitude filter">Show paths whose Fourier magnitude peak reaches the selected fraction of the largest path peak. Values use the model’s starting parameters and transform; enable contributions to calculate them.</SectionHelp></span><select aria-label="Filter by smallest peak amplitude" value={String(filter.minAmplitude)} disabled={!preview}
         onChange={event => onFilter({ ...filter, minAmplitude: Number(event.target.value) })}>
         <option value="0">Any</option><option value="0.01">1% of the largest</option><option value="0.05">5% of the largest</option><option value="0.2">20% of the largest</option>
       </select></label>
@@ -195,7 +196,7 @@ function PathContributions({ state, rows, shown, filter, onFilter, sort, onSort,
       {shown.length < rows.length && <button type="button" onClick={() => onFilter(ALL_PATHS)}>Clear filters</button>}
     </div>
     <div className={styles.tableScroll}><table>
-      <caption>FEFF paths at the model’s starting values</caption>
+      <caption>FEFF paths at the model’s starting values<SectionHelp label="Path table">Click a column heading to sort; click again to reverse. Peak and area measure each path’s Fourier magnitude at the model’s starting values. R at peak is uncorrected for phase, not a bond distance. Filtering or sorting does not edit model inclusion.</SectionHelp></caption>
       <thead><tr>{SORT_COLUMNS.map(column => <th scope="col" key={column.key} aria-sort={sort.key === column.key ? (sort.descending ? "descending" : "ascending") : "none"}>
         <button type="button" onClick={() => sortBy(column.key)} title={column.help}
           aria-label={`Sort by ${column.label.replace(/<[^>]+>/g, "")}`} dangerouslySetInnerHTML={{ __html: column.label + (sort.key === column.key && column.key !== "model" ? (sort.descending ? " ↓" : " ↑") : "") }} />
@@ -322,7 +323,7 @@ function PathWorkspace({ paths: allPaths, attachments: allAttachments, model }: 
     })}</div>
   </div>
   return <div className={styles.workspace}>
-    <div className={structureStyles.controls}><label>CIF source
+    <div className={structureStyles.controls}><label><span>CIF source<SectionHelp label="FEFF path CIF source">Group paths by their recorded calculation source. Choose a source to inspect paths from one structure and absorbing site together; paths from other sources remain in the model.</SectionHelp></span>
       <select aria-label="FEFF path CIF source" value={source.key} onChange={event => {
         setSourceChoice(event.target.value); setSelection(null); setFocusedId(""); setSelectedLeg(null); setFilter(ALL_PATHS)
       }}>
@@ -332,7 +333,7 @@ function PathWorkspace({ paths: allPaths, attachments: allAttachments, model }: 
     <FeffPathScene paths={scenePaths} activePathId={focused.path.id} selectedLeg={selectedLeg} context={context.atoms}
       contextLabel={context.source ? context.sourceLabel : undefined} radius={context.radius} maxRadius={context.maxRadius} onRadiusChange={setRadius}
       legend={legend}
-      structureControls={source.siteIndex === undefined && context.candidates.length > 1 ? <div className={structureStyles.controls}><label>Project CIF
+      structureControls={source.siteIndex === undefined && context.candidates.length > 1 ? <div className={structureStyles.controls}><label><span>Project CIF<SectionHelp label="FEFF local structure source">Choose the matching attached CIF and site for surrounding atoms. A verified match is needed to expand equivalent scattering paths.</SectionHelp></span>
         <select aria-label="FEFF local structure source" value={context.attachmentId ? JSON.stringify([context.attachmentId, context.siteIndex]) : ""} onChange={event => setStructureChoice(event.target.value)}>
           <option value="" disabled>Select matching structure</option>
           {context.candidates.map(candidate => <option key={`${candidate.attachmentId}:${candidate.siteIndex}`} value={JSON.stringify([candidate.attachmentId, candidate.siteIndex])}>{candidate.label}</option>)}
@@ -344,7 +345,7 @@ function PathWorkspace({ paths: allPaths, attachments: allAttachments, model }: 
     {scenePaths.map(path => path.equivalenceWarning && <p className={styles.note} key={`${path.id}-source`}>{path.filename}: {path.equivalenceWarning}</p>)}
     {!context.source && !context.requiresSelection && <p className={styles.note}>Path atoms only<SectionHelp label="Missing local structure">Attach a matching project CIF or generate paths from a CIF to show the surrounding local structure. These files contain path atoms only.</SectionHelp></p>}
     {!selected.length ? <p className={styles.note} role="status">No paths shown</p> : <>
-      {selected.length > 1 && <label className={styles.detailPicker}>Path details <select aria-label="Path details" value={focused.path.id} onChange={event => { setFocusedId(event.target.value); setSelectedLeg(null) }}>
+      {selected.length > 1 && <label className={styles.detailPicker}><span>Path details<SectionHelp label="Path details">Choose which of the displayed paths supplies the metadata, scattering sequence and leg controls below. The other displayed paths stay visible.</SectionHelp></span> <select aria-label="Path details" value={focused.path.id} onChange={event => { setFocusedId(event.target.value); setSelectedLeg(null) }}>
         {selected.map(({ path }) => <option key={path.id} value={path.id}>{path.filename}{paths.filter(item => item.filename === path.filename).length > 1 ? ` · ${path.label}` : ""}</option>)}
       </select><span>{selected.length} paths shown</span></label>}
       {!focused.path.enabled && <p className={styles.note}>Excluded from fit · displayed for inspection</p>}

@@ -25,6 +25,7 @@ function VisibleSectionHelp({ label, children, id }: SectionHelpProps) {
   const [host, setHost] = useState<Element | null>(null)
   const [open, setOpen] = useState(false)
   const [position, setPosition] = useState({ left: 0, top: 0 })
+  const [scrollRevision, setScrollRevision] = useState(0)
 
   function cancelTimer() {
     if (timer.current !== null) clearTimeout(timer.current)
@@ -50,6 +51,10 @@ function VisibleSectionHelp({ label, children, id }: SectionHelpProps) {
     const anchor = trigger.current?.getBoundingClientRect()
     const bounds = tooltip.current?.getBoundingClientRect()
     if (!anchor || !bounds) return
+    if (anchor.bottom < 0 || anchor.top > window.innerHeight || anchor.right < 0 || anchor.left > window.innerWidth) {
+      close()
+      return
+    }
     const margin = 8
     const below = anchor.bottom + margin
     setPosition({
@@ -57,7 +62,7 @@ function VisibleSectionHelp({ label, children, id }: SectionHelpProps) {
       top: Math.max(margin, Math.min(below + bounds.height <= window.innerHeight - margin
         ? below : anchor.top - bounds.height - margin, window.innerHeight - bounds.height - margin)),
     })
-  }, [open, host, children])
+  }, [open, host, children, scrollRevision])
   useEffect(() => {
     if (!open) return
     const outside = (event: Event) => {
@@ -73,7 +78,10 @@ function VisibleSectionHelp({ label, children, id }: SectionHelpProps) {
     }
     const scroll = (event: Event) => {
       if (event.target instanceof Node && tooltip.current?.contains(event.target)) return
-      close()
+      // Tabbing to an off-screen field scrolls it into view after focus. Keep
+      // its help anchored instead of immediately dismissing the new tooltip.
+      if (document.activeElement === trigger.current) setScrollRevision(value => value + 1)
+      else close()
     }
     document.addEventListener("keydown", escape, true)
     document.addEventListener("pointerdown", outside, true)

@@ -8,6 +8,7 @@ import { artemisApi, type ArtemisModelDraft, type ArtemisExample, type ArtemisEx
 import type { ArtemisStructureAttachment } from "@/lib/artemis-structures"
 import { ApiRequestError } from "@/lib/backend-client"
 import { ArtemisFittingPanel, type ArtemisModelActions } from "./artemis-fitting"
+import { InstructionVisibility } from "./section-help"
 import { ArtemisFitResultViewer } from "./artefact-viewers/artemis-fit-result-viewer"
 import type { ArtemisPlotWeightResult } from "./artefact-viewers/artemis-plot-weight"
 
@@ -137,6 +138,31 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); localStorage.clear() })
 
 describe("ArtemisFittingPanel", () => {
+  it("reveals field instructions without changing the model or running a fit", async () => {
+    const setup = preparedExample()
+    const source = group()
+    const panel = (visible: boolean) => <InstructionVisibility.Provider value={visible}>
+      <ArtemisFittingPanel projectId="p" version={4} group={source} exampleSetup={setup} />
+    </InstructionVisibility.Provider>
+    const view = render(panel(false))
+    await screen.findByLabelText("Path 1 S₀²")
+    expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "Expand path 1 details" }))
+    const initialValue = (screen.getByLabelText("Parameter 1 value") as HTMLInputElement).value
+    const calls = api.mock.calls.length
+    view.rerender(panel(true))
+    for (const name of ["Path 1 S₀²", "Path 1 ΔE₀ (eV)", "Path 1 ΔR (Å)", "Path 1 σ² (Å²)", "Parameter 1 name", "Parameter 1 kind", "Parameter 1 minimum", "Parameter 1 maximum", "Fit k min (Å⁻¹)", "Fit k max (Å⁻¹)", "Fit R min (Å)", "Fit R max (Å)", "Fit k taper dk (Å⁻¹)", "Fit k window", "Fit k-weight"])
+      expect(screen.getByRole("button", { name: `About ${name}` })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole("button", { name: "About Path 1 ΔR (Å)" }))
+    expect(screen.getByRole("tooltip")).toHaveTextContent("R_eff + ΔR")
+    expect(screen.getByLabelText("Parameter 1 value")).toHaveValue(initialValue)
+    expect(screen.getByRole("checkbox", { name: "Include path 1" })).toBeChecked()
+    expect(api).toHaveBeenCalledTimes(calls)
+    view.rerender(panel(false))
+    expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Path 1 ΔR (Å)")).toHaveValue("del_r")
+  })
+
   it("replacing with a generated path already in the model keeps its edits and drops parameters only removed paths used", async () => {
     // Replace reset kept paths to default expressions and left del_r2 behind,
     // a parameter no remaining path used, to be fitted against nothing.

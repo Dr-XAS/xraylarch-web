@@ -6466,8 +6466,15 @@ describe("Instruction visibility", () => {
     const callsBefore = api.mock.calls.length
     fireEvent.click(toggle)
     expect(screen.getByRole("button", { name: "About Larch-Web" })).toBeVisible()
+    const rbkg = screen.getByRole("spinbutton", { name: "Rbkg Å" })
+    const valueBefore = (rbkg as HTMLInputElement).value
+    fireEvent.focus(screen.getByRole("button", { name: "About Rbkg" }))
+    expect(screen.getByRole("tooltip")).toHaveTextContent("AUTOBK minimizes background")
     fireEvent.click(toggle)
     expect(screen.queryByRole("button", { name: "About Larch-Web" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "About Rbkg" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument()
+    expect((rbkg as HTMLInputElement).value).toBe(valueBefore)
     expect(api.mock.calls.length).toBe(callsBefore)
   })
 })

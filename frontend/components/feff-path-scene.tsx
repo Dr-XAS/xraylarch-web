@@ -259,8 +259,8 @@ export function FeffPathScene({ paths, activePathId, selectedLeg, context = EMPT
       radiusAriaLabel="FEFF display radius" radiusDisabled={!contextLabel || !showContext}
       bonds={bonds} onBondsChange={setBonds} showBondsControl={false} atomCount={atoms.length}>
       {contextLabel && <span>{contextLabel}</span>}
-      <label><input type="checkbox" checked={labels} onChange={event => setLabels(event.target.checked)} />Labels</label>
-      {contextLabel && <label><input type="checkbox" checked={showContext} onChange={event => setShowContext(event.target.checked)} />Local structure</label>}
+      <label><input type="checkbox" aria-label="Labels" checked={labels} onChange={event => setLabels(event.target.checked)} />Labels<SectionHelp label="FEFF atom labels">Show element and atom identifiers on the scattering path. Hide labels to reduce overlap; hover still provides atom details.</SectionHelp></label>
+      {contextLabel && <label><input type="checkbox" aria-label="Local structure" checked={showContext} onChange={event => setShowContext(event.target.checked)} />Local structure<SectionHelp label="Show FEFF local structure">Show surrounding atoms from the verified FEFF input or matching CIF. The selected scattering paths remain visible when the context is hidden.</SectionHelp></label>}
     </LocalStructureControls>
     </ResizablePlotCard>
   </section>

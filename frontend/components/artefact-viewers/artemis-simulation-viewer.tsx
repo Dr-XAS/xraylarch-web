@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useId, useState } from "react"
 import type { SimulationResult } from "@/lib/artemis-simulation"
 import { simulationCsv } from "@/lib/artemis-simulation"
@@ -31,8 +32,10 @@ export function ArtemisSimulationViewer({ result }: { result: SimulationResult }
     <ViewerDisplayControls label="Simulation display and export" className={styles.controls}>
       <button type="button" aria-pressed={space === "k"} onClick={() => setSpace("k")}>χ(k)</button>
       <button type="button" aria-pressed={space === "r"} onClick={() => setSpace("r")}>|χ(R)|</button>
+      <SectionHelp label="Simulation plot space">χ(k) shows the summed FEFF paths with the simulated k-weight. |χ(R)| shows the magnitude of their Fourier transform; its peaks are not phase-corrected distances.</SectionHelp>
       <button type="button" onClick={() => downloadArtemisText(`${stem}-${space}.csv`, simulationCsv(result, space), "text/csv")}>Download {space === "k" ? "χ(k)" : "χ(R)"} CSV</button>
       <button type="button" onClick={() => downloadArtemisText(`${stem}.json`, JSON.stringify(result, null, 2), "application/json")}>Download simulation JSON</button>
+      <SectionHelp label="Simulation downloads">CSV exports the plotted space as numeric arrays. JSON retains the exact CIF, FEFF input, path files, simulation parameters and both spaces for reproducibility.</SectionHelp>
     </ViewerDisplayControls>
     </ResizablePlotCard>
   </ViewerPanel>

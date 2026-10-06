@@ -46,7 +46,7 @@
 .panel button.result[aria-pressed=true] { border-color: var(--ath-primary, #268553); background: var(--ath-canvas, #f5f8f5); }
 .structure { margin-top: 0; padding-top: 0; }
 .structure h4 { font-size: var(--text-section); font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; line-height: var(--leading-heading); }
-.structure h4 span { display: block; color: var(--ath-muted, #647669); font-size: var(--text-caption); margin-top: 4px; }
+.structure h4 > span:not([data-section-help]) { display: block; color: var(--ath-muted, #647669); font-size: var(--text-caption); margin-top: 4px; }
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .textDetails { margin: 9px 0; font-size: var(--text-label); }
 .textDetails summary { cursor: pointer; margin: 6px 0; font-size: var(--text-label); }

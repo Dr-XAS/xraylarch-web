@@ -8,7 +8,15 @@ import { ArtemisSimulationViewer } from "./artefact-viewers/artemis-simulation-v
 import { SectionHelp } from "./section-help"
 import styles from "./artemis-structures.module.css"
 
-const fields: [keyof SimulationFields, string][] = [["s02", "S₀²"], ["sigma2", "σ² (Å²)"], ["e0", "ΔE₀ (eV)"], ["deltar", "ΔR (Å)"], ["kmin", "FT k min (Å⁻¹)"], ["kmax", "FT k max (Å⁻¹)"], ["dk", "FT dk (Å⁻¹)"]]
+const fields: [keyof SimulationFields, string, string][] = [
+  ["s02", "S₀²", "Dimensionless amplitude reduction factor shared by every path. FEFF degeneracies are already included; this value is an assumption unless calibrated from a reference."],
+  ["sigma2", "σ² (Å²)", "Shared mean-square relative displacement, damping each path by exp(−2k²σ²). It is not derived from CIF displacement factors; different shells can have different disorder."],
+  ["e0", "ΔE₀ (eV)", "Shared energy correction relative to the FEFF calculation, in eV. It changes the phase of χ(k); zero keeps the FEFF energy reference."],
+  ["deltar", "ΔR (Å)", "Shared change to each path’s effective half-path length. Zero uses the CIF geometry; a nonzero value shifts every included path by the same amount."],
+  ["kmin", "FT k min (Å⁻¹)", "Lower wavenumber limit for the Fourier transform. It changes χ(R), while the calculated χ(k) remains available over its FEFF support."],
+  ["kmax", "FT k max (Å⁻¹)", "Upper wavenumber limit for the Fourier transform, up to 20 Å⁻¹. Use a range supported by the FEFF paths and at least 1 Å⁻¹ wider than the lower limit."],
+  ["dk", "FT dk (Å⁻¹)", "Width of the smooth taper at the k-window edges. Increasing it reduces abrupt-edge ringing in χ(R)."],
+]
 
 export function ArtemisSimulation({ job, selectedIds, disabled }: { job: ArtemisFeffJob; selectedIds: string[]; disabled: boolean }) {
   const [values, setValues] = useState({ ...simulationDefaults })
@@ -41,12 +49,12 @@ export function ArtemisSimulation({ job, selectedIds, disabled }: { job: Artemis
     <h4>Simulate EXAFS<SectionHelp label="EXAFS simulation assumptions">No measured spectrum is required. One absorbing site is simulated, with FEFF degeneracies and shared S₀², ΔE₀, ΔR and σ². The default σ² = 0.003 Å² is an assumption, not inferred from CIF displacement factors or temperature. Inequivalent sites are not averaged.</SectionHelp></h4>
     <p className={styles.help}>{job.request.absorber} {job.request.edge} · site {job.request.site_index} · {job.paths.length} available paths{job.truncated ? ` of ${job.total_paths} generated` : ""} · shared σ² assumption</p>
     <div className={styles.grid}>
-      <label>Simulation paths<select aria-label="Simulation paths" value={selection} onChange={event => setSelection(event.target.value)} disabled={disabled}>
+      <label><span>Simulation paths<SectionHelp label="Simulation paths">Sum all paths available in this job, or only those checked in the generated-path list. A truncated job does not contain every path FEFF generated.</SectionHelp></span><select aria-label="Simulation paths" value={selection} onChange={event => setSelection(event.target.value)} disabled={disabled}>
         <option value="all">All available paths ({job.paths.length})</option><option value="selected">Selected paths ({selectedIds.length})</option>
       </select></label>
-      {fields.map(([key, label]) => <label key={key}>{label}<input aria-label={`Simulation ${label}`} inputMode="decimal" value={values[key]} disabled={disabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
-      <label>FT k-weight<select aria-label="Simulation k-weight" value={weight} disabled={disabled} onChange={event => setWeight(Number(event.target.value))}>{[0, 1, 2, 3].map(item => <option key={item}>{item}</option>)}</select></label>
-      <label>FT window<select aria-label="Simulation window" value={window} disabled={disabled} onChange={event => setWindow(event.target.value as ArtemisTransform["window"])}>{["hanning", "kaiser", "parzen", "welch"].map(item => <option key={item}>{item}</option>)}</select></label>
+      {fields.map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help}</SectionHelp></span><input aria-label={`Simulation ${label}`} inputMode="decimal" value={values[key]} disabled={disabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
+      <label><span>FT k-weight<SectionHelp label="Simulation k-weight">Power of k multiplying χ(k) before Fourier transformation and in the weighted k plot. Higher powers emphasize high-k oscillations.</SectionHelp></span><select aria-label="Simulation k-weight" value={weight} disabled={disabled} onChange={event => setWeight(Number(event.target.value))}>{[0, 1, 2, 3].map(item => <option key={item}>{item}</option>)}</select></label>
+      <label><span>FT window<SectionHelp label="Simulation window">Taper shape used over the chosen k interval. Window shape affects Fourier peak width and ringing, not the underlying FEFF paths.</SectionHelp></span><select aria-label="Simulation window" value={window} disabled={disabled} onChange={event => setWindow(event.target.value as ArtemisTransform["window"])}>{["hanning", "kaiser", "parzen", "welch"].map(item => <option key={item}>{item}</option>)}</select></label>
     </div>
     {validation && <p className={styles.warning} role="status">{validation}</p>}
     <button type="button" className={styles.primaryButton} disabled={disabled || !request || current?.loading} onClick={() => void simulate()}>{current?.loading ? "Simulating EXAFS…" : current?.error ? "Retry EXAFS simulation" : "Run EXAFS simulation"}</button>

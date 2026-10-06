@@ -298,12 +298,21 @@ html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-acc
 .ath-parameter-section-heading > svg { flex: 0 0 20px; }
 .ath-parameter-section-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 8px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .ath-parameter-section-title > .ath-context-label > span { flex-wrap: wrap; }
+.ath-app .ath-parameter-section-title > .ath-context-label:has(+ [data-section-help]) { width: auto; flex: 1; }
 .ath-app .ath-parameter-section-title small { font-weight: 400; }
 .ath-parameter-section-heading:focus-visible { outline-offset: -2px; border-radius: 4px; }
 .ath-fields { display: grid; align-items: end; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding-bottom: 10px; }
 .ath-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label); color: var(--ath-muted); margin-bottom: 8px; min-width: 0; }
 .ath-fields .ath-field { margin-bottom: 0; }.ath-field > span { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 3px; line-height: var(--leading-control); }.ath-field > span small { color: var(--ath-muted); font-size: var(--text-caption); text-align: right; }
 .ath-field em { font-size: var(--text-caption); color: var(--ath-muted); font-style: normal; }.ath-field input, .ath-field select { font-variant-numeric: tabular-nums; }
+/* Field help shares the label line; units stay at its trailing edge. */
+.ath-field-title { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+.ath-field > span:has(> [data-section-help]),
+.ath-field .ath-context-label > span:has(> [data-section-help]) { justify-content: flex-start; align-items: center; }
+.ath-field > span:has(> [data-section-help]) > small,
+.ath-field .ath-context-label > span:has(> [data-section-help]) > small { margin-left: auto; }
+.ath-search input { min-width: 0; flex: 1; }
+.ath-search > [data-section-help] { margin-right: 6px; }
 .ath-hint { color: var(--ath-muted); font-size: var(--text-caption); margin: 10px 0 13px; line-height: 1.7; }
 .ath-apply { border-top: 1px solid var(--ath-line); padding: 10px 12px; margin-top: auto; background: var(--ath-surface-muted); }
 .ath-apply > .ath-primary { width: 100%; margin-top: 11px; padding: 10px; }.ath-apply > .ath-reset { display: block; font-size: var(--text-body); color: var(--ath-warning-ink, #9a956f); margin: 7px auto 0; padding: 2px; }

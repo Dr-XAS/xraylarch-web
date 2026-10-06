@@ -31,8 +31,8 @@ export function ClusterCoordination({ geometry, unavailableReason }: { geometry:
       event.preventDefault()
       setCalculation(calculate(geometry, bondRange, tolerance, unavailableReason))
     }}>
-      <label>Distance cutoff (Å)<input aria-label="CN distance cutoff" type="number" min="0.001" step="any" required value={bondRange} onChange={event => setBondRange(event.target.value)} /></label>
-      <label>Shell tolerance (Å)<input aria-label="CN shell tolerance" type="number" min="0" step="any" required value={tolerance} onChange={event => setTolerance(event.target.value)} /></label>
+      <label><span>Distance cutoff (Å)<SectionHelp label="Coordination distance cutoff">Count neighbors strictly inside this distance, in Å. Only atoms in the current finite display cluster are available; enlarge the cluster if it cuts off neighbors you need.</SectionHelp></span><input aria-label="CN distance cutoff" type="number" min="0.001" step="any" required value={bondRange} onChange={event => setBondRange(event.target.value)} /></label>
+      <label><span>Shell tolerance (Å)<SectionHelp label="Coordination shell tolerance">Group consecutive neighbor distances into one shell when their gap is no greater than this tolerance, in Å. A larger tolerance can combine nearby shells. Calculate again after changing it.</SectionHelp></span><input aria-label="CN shell tolerance" type="number" min="0" step="any" required value={tolerance} onChange={event => setTolerance(event.target.value)} /></label>
       <button type="submit" disabled={!!unavailableReason}>Calculate</button><SectionHelp label="Cluster coordination calculation">Uses all {geometry.atoms.length} cluster atom{geometry.atoms.length === 1 ? "" : "s"}, including hidden elements. Neighbors outside this finite cluster are excluded.</SectionHelp>
     </form>
     {unavailableReason ? <p className={styles.warning} role="status">{unavailableReason}</p>

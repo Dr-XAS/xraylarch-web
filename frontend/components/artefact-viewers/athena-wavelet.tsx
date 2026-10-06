@@ -1,5 +1,6 @@
 "use client"
 
+import { SectionHelp } from "../section-help"
 import { useEffect, useRef, useState } from "react"
 import { Box, Columns2, Download, Grid2X2, Waves } from "lucide-react"
 import { type AthenaGroup } from "@/lib/athena"
@@ -126,11 +127,12 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
     return () => { window.clearTimeout(timer); if (!completed || latest.current.key !== key) abort.abort() }
   }, [key, projectId, version, groupId, selectedWeight, reason])
 
-  return <ViewerPanel title="Wavelet plotter" viewerId="wavelet" className={styles.panel} help="Drag the k-range handles or dotted lines to update χ(k) and |χ(R)|." actions={
+  return <ViewerPanel title="Wavelet plotter" viewerId="wavelet" className={styles.panel} help="Drag the minimum and maximum k handles or dotted lines to choose the interval for the windowed χ(k) and Fourier |χ(R)| previews. The previews use the saved window settings. The wavelet matrix and saved processing parameters stay unchanged; R is not phase corrected." actions={
     <div className={styles.modes} role="group" aria-label="Wavelet view">
       <button type="button" aria-pressed={mode === "both"} onClick={() => setMode("both")}><Columns2 size={14} />2D + 3D</button>
       <button type="button" aria-pressed={mode === "2d"} onClick={() => setMode("2d")}><Grid2X2 size={14} />2D heatmap</button>
       <button type="button" aria-pressed={mode === "3d"} onClick={() => setMode("3d")}><Box size={14} />3D surface</button>
+      <SectionHelp label="Wavelet view">Choose a 2D heatmap, a rotatable 3D surface, or both. Both display the same wavelet magnitude and share a color scale. The combined view stacks on narrow panels.</SectionHelp>
     </div>
   }>
     <ResizablePlotCard className={styles.panel} storageKey={athenaWaveletHeightKey}
@@ -140,7 +142,7 @@ export function AthenaWavelet({ projectId, version, dataVersion = version, group
         <span className={styles.group} title={group?.label}><span>Current spectrum</span><strong>{group?.label ?? "None selected"}</strong></span>
         <ViewerKWeightControl label="Wavelet k-weight" value={kWeight} savedWeight={defaultWeight} onChange={value => onKWeightChange?.(value)} disabled={!projectId || !group || !onKWeightChange} />
         <WaveletColorLegend value={colors} onChange={setColors} />
-        <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button>
+        <button type="button" disabled={!current?.data} onClick={() => current?.data && exportWavelet(current.data)}><Download size={14} />Export CSV</button><SectionHelp label="Wavelet CSV export">Download the active wavelet magnitude grid: rows are R in Å and columns are k in Å⁻¹. The file records the display k-weight; dragging the preview range does not crop the grid.</SectionHelp>
       </div>
       <div id="athena-wavelet-viewer" className={styles.viewport}>
         {reason ? <div data-wavelet-placeholder className={styles.empty} role="status"><Waves size={30} strokeWidth={1} /><p>{reason}</p></div>

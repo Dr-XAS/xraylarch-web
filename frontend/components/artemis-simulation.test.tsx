@@ -5,6 +5,7 @@ import { artemisApi } from "@/lib/artemis"
 import { downloadArtemisText } from "@/lib/artemis-structures"
 import { simulationFixture, simulationJob } from "@/tests/fixtures/artemis-simulation"
 import { ArtemisSimulation } from "./artemis-simulation"
+import { InstructionVisibility } from "./section-help"
 
 vi.mock("@/lib/artemis", () => ({ artemisApi: vi.fn() }))
 vi.mock("@/lib/artemis-structures", () => ({ downloadArtemisText: vi.fn() }))
@@ -16,6 +17,22 @@ const renderSimulation = () => render(<ArtemisSimulation job={simulationJob} sel
 const run = () => fireEvent.click(screen.getByRole("button", { name: "Run EXAFS simulation" }))
 
 describe("CIF simulation controls", () => {
+  it("shows instructions for each input only when enabled, without requesting a simulation", () => {
+    const panel = (visible: boolean) => <InstructionVisibility.Provider value={visible}>
+      <ArtemisSimulation job={simulationJob} selectedIds={[]} disabled={false} />
+    </InstructionVisibility.Provider>
+    const view = render(panel(false))
+    expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
+    view.rerender(panel(true))
+    for (const name of ["Simulation paths", "Simulation S₀²", "Simulation σ² (Å²)", "Simulation ΔE₀ (eV)", "Simulation ΔR (Å)", "Simulation FT k min (Å⁻¹)", "Simulation FT k max (Å⁻¹)", "Simulation FT dk (Å⁻¹)", "Simulation k-weight", "Simulation window"])
+      expect(screen.getByRole("button", { name: `About ${name}` })).toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "About Simulation σ² (Å²)" }))
+    expect(screen.getByRole("tooltip")).toHaveTextContent("not derived from CIF displacement factors")
+    expect(screen.getByLabelText("Simulation σ² (Å²)")).toHaveValue("0.003")
+    view.rerender(panel(false))
+    expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
   it("simulates all paths without a measured group, then switches views and exports without recalculation", async () => {
     renderSimulation()
     expect(api).not.toHaveBeenCalled()

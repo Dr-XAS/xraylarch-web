@@ -1,11 +1,26 @@
 "use client"
 
+import { SectionHelp } from "./section-help"
+
 import { ThemedPlot as Plot } from "./themed-plot"
 import { useRef, useState } from 'react'
 import type { AthenaProject } from '@/lib/athena'
 import { useAthenaApi } from '@/lib/athena-context'
 import { AthenaDownloadButton } from './athena-download-button'
 import styles from './athena-xrf-xas.module.css'
+
+const fieldInstructions: Record<string, string> = {
+  "channel_lo": "First included detector channel used in fitting. Leave blank for a window derived from the target line and starting energy calibration.",
+  "channel_hi": "Exclusive end of the detector fitting window. Leave blank for the automatic range; the channel at this index is not fitted.",
+  "roi_lo": "First included channel of the plain window-sum comparison. Leave blank for the automatic window around the target fluorescence line.",
+  "roi_hi": "Exclusive end of the plain window-sum comparison. Use this comparison to assess how overlapping lines affect conventional window extraction.",
+  "e0": "Absorption-edge energy in eV used to normalize the extracted scan. This is incident-beam energy, distinct from the detector’s fluorescence-energy calibration.",
+  "pre1": "Start of the pre-edge fitting interval in eV relative to E₀. Choose a region before the edge without interfering structure.",
+  "pre2": "End of the pre-edge fitting interval in eV relative to E₀. Keep it below the edge rise and above the pre-edge start.",
+  "norm1": "Start of the post-edge normalization interval in eV relative to E₀. Place it beyond the edge structure you want to retain.",
+  "norm2": "End of the post-edge normalization interval in eV relative to E₀. Keep the interval within useful measured data.",
+  "nnorm": "Degree of the post-edge normalization polynomial. Lower degrees reduce curvature; inspect the resulting edge step and normalized spectrum."
+}
 
 // unusable_elements are the elements whose deadtime factor the extraction
 // would refuse; they start unticked, with the reason beside them.
@@ -196,7 +211,7 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
 
   function edit(name:keyof typeof blank,next:string){setForm(f=>({...f,[name]:next}))}
   function field(name:keyof typeof blank,step:'any'|1,placeholder?:string) {
-    return <label className="ath-field" key={name}><span>{labels[name]}</span>
+    return <label className="ath-field" key={name}><span>{labels[name]} <SectionHelp label={labels[name]}>{fieldInstructions[name]}</SectionHelp></span>
       <input type="number" step={step} value={form[name]} placeholder={placeholder}
         onChange={e=>edit(name,e.target.value)} /></label>
   }
@@ -340,20 +355,20 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
   const edgeless=current?.quality.elements_without_edge??[]
   return <div className="ath-modal-body"><div className={styles.layout}>
     <fieldset disabled={pending} className={styles.controls}>
-      <label className="ath-field"><span>Fluorescence scan file</span><input type="file" aria-label="Choose fluorescence scan file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
+      <label className="ath-field"><span>Fluorescence scan file <SectionHelp label="Fluorescence scan file">Load a scan containing a full fluorescence spectrum at each incident energy. Fits use the original detector counts and retain the source file.</SectionHelp></span><input type="file" aria-label="Choose fluorescence scan file" onChange={e=>{const f=e.target.files?.[0];if(f)void inspect(f)}} /></label>
       <p className="ath-hint">A multi-element detector scan: one whole XRF spectrum per detector element at every incident energy, as a NeXus-style HDF5 scan or an APS 20-BM detector file. The file is kept whole, and every fit is made from the original counts.</p>
       {inspection&&<>
         <h3>{inspection.display_name} · {inspection.points} points · {inspection.energy_min.toFixed(1)}–{inspection.energy_max.toFixed(1)} eV</h3>
         {inspection.notes?.map((note,i)=><p key={i} role="note" className="ath-hint">{note}</p>)}
         <div className="ath-fields">
-          <label className="ath-field"><span>Detector</span><select value={detector} onChange={e=>pickDetector(inspection,e.target.value)}>{inspection.detectors.map(d=><option key={d.name} value={d.name}>{d.name} · {d.elements} elements · {d.channels} channels</option>)}</select></label>
-          <label className="ath-field"><span>I₀ channel</span><select value={i0} onChange={e=>setI0(e.target.value)}>
+          <label className="ath-field"><span>Detector <SectionHelp label="Detector">Choose the detector array to fit. Inspect individual detector elements and exclude dead, shadowed or distorted channels before extracting the yield.</SectionHelp></span><select value={detector} onChange={e=>pickDetector(inspection,e.target.value)}>{inspection.detectors.map(d=><option key={d.name} value={d.name}>{d.name} · {d.elements} elements · {d.channels} channels</option>)}</select></label>
+          <label className="ath-field"><span>I₀ channel <SectionHelp label="I₀ channel">Choose the incident-flux monitor used to divide the fitted fluorescence yield. It should track incoming beam intensity throughout the scan.</SectionHelp></span><select value={i0} onChange={e=>setI0(e.target.value)}>
             <option value="">Choose the incident-flux monitor</option>
             {inspection.usable_i0.map(c=><option key={c} value={c}>{c}</option>)}</select></label>
-          <label className="ath-field"><span>Target element</span><input value={form.target} placeholder="Mn" onChange={e=>edit('target',e.target.value)} /></label>
-          <label className="ath-field"><span>Matrix elements</span><input value={form.matrix} placeholder="Ti, V, Cr, Fe" onChange={e=>edit('matrix',e.target.value)} /></label>
+          <label className="ath-field"><span>Target element <SectionHelp label="Target element">Enter the chemical symbol of the element whose fluorescence yield will become XAS. Its edge gate remains open so the pre-edge baseline is determined by the data.</SectionHelp></span><input value={form.target} placeholder="Mn" onChange={e=>edit('target',e.target.value)} /></label>
+          <label className="ath-field"><span>Matrix elements <SectionHelp label="Matrix elements">Enter comma-separated symbols for other elements whose lines overlap the fit window, for example Ti, V, Cr, Fe. Include plausible contributors to avoid assigning their intensity to the target.</SectionHelp></span><input value={form.matrix} placeholder="Ti, V, Cr, Fe" onChange={e=>edit('matrix',e.target.value)} /></label>
         </div>
-        {count>1&&<div className={styles.gates} aria-label="Detector elements">
+        {count>1&&<div className={styles.gates} aria-label="Detector elements"><SectionHelp label="Detector elements">Select usable elements for fitting, deadtime correction and the comparison window. All three calculations use this same set; inspect detector consistency before extracting XAS.</SectionHelp>
           {Array.from({length:count},(_,index)=><label className="ath-check" key={index} title={unusable.get(index)}>
             <input type="checkbox" checked={selected.includes(index)}
               onChange={e=>setChosen(c=>e.target.checked?[...c,index]:c.filter(v=>v!==index))} />
@@ -362,37 +377,37 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
         </div>}
         {[...unusable].map(([index,reason])=><p key={index} className="ath-hint">Element {index+1} is left out: {reason}</p>)}
         <p className="ath-hint">The fit, the deadtime correction and the window sum all use exactly the ticked elements. Leave out an element the raw viewer shows dead, shadowed or with a broad, smeared line.</p>
-        <label className="ath-field"><span>Channel shifts (element:channels)</span><input value={form.shifts} placeholder="none, or 11:3" onChange={e=>edit('shifts',e.target.value)} /></label>
+        <label className="ath-field"><span>Channel shifts (element:channels) <SectionHelp label="Channel shifts (element:channels)">Enter one-based detector-element shifts such as 11:3 (element 11, plus 3 channels). Positive values read higher channels, negative values lower channels. These shifts mainly affect the comparison window; each detector element is calibrated separately for fitting.</SectionHelp></span><input value={form.shifts} placeholder="none, or 11:3" onChange={e=>edit('shifts',e.target.value)} /></label>
         <p className="ath-hint">An element whose spectrum sits a few channels off its neighbours is read that many channels higher (positive) or lower, so its line falls in the same comparison window. Each element is calibrated on its own for the fit, so the shift matters mostly to the window sum.</p>
         <p className="ath-hint">Matrix elements are the other lines in the window. The target&apos;s edge gate is always open, so its pre-edge is free to be whatever the data say.</p>
-        {elements.length>0&&<div className={styles.gates} aria-label="Force the edge gate open">{elements.map(symbol=><label className="ath-check" key={symbol}><input type="checkbox" checked={open.includes(symbol)} onChange={e=>setGates(g=>e.target.checked?[...g,symbol]:g.filter(v=>v!==symbol))} />Fit {symbol} below its edge</label>)}</div>}
+        {elements.length>0&&<div className={styles.gates} aria-label="Force the edge gate open">{elements.map(symbol=><label className="ath-check" key={symbol}><input type="checkbox" checked={open.includes(symbol)} onChange={e=>setGates(g=>e.target.checked?[...g,symbol]:g.filter(v=>v!==symbol))} />Fit {symbol} below its edge <SectionHelp label={`Fit ${symbol} below its edge`}>Allow this matrix element’s fluorescence at incident energies below its absorption edge, for example when it originates outside the illuminated sample volume. Set this from the measurement geometry and observed lines.</SectionHelp></label>)}</div>}
         <p className="ath-hint">Open a matrix element&apos;s gate when its lines reach the detector from outside the illuminated volume, so the monochromator never switches them off. Leaving a gate shut when it should be open puts a step in μ(E) at that element&apos;s edge.</p>
         <div className="ath-fields">{(['channel_lo','channel_hi'] as const).map(name=>field(name,1,'Automatic'))}{(['roi_lo','roi_hi'] as const).map(name=>field(name,1,'Automatic'))}</div>
         <p className="ath-hint">Leave a window empty and it is derived through the calibration below: the fit window from 1.2 keV under the target line to 0.5 keV over the top incident energy, the comparison window as the target line ± 1.2 detector widths — the fixed region a conventional analysis would sum. It is plotted beside the fit, never instead of it. End channels are exclusive.</p>
-        <label className="ath-field"><span>Spectral model</span><select value={engine} onChange={e=>setEngine(e.target.value)}>
+        <label className="ath-field"><span>Spectral model <SectionHelp label="Spectral model">Choose the fluorescence line and detector-response model. Differences between engines show sensitivity to the model, rather than an uncertainty bound.</SectionHelp></span><select value={engine} onChange={e=>setEngine(e.target.value)}>
           {(inspection.engines??['larch']).map(name=><option key={name} value={name}>{engines[name]??name}</option>)}</select></label>
         {(inspection.engines??['larch']).includes('mapstorch')&&<p className="ath-hint">Both engines fit the same line families at the same gates, with the same continuum and the same amplitude solve. MapsTorch is an alternative spectral model: its line tables, detector response and escape treatment differ from Larch&apos;s, so a disagreement between the two measures how sensitive the result is to the spectral model — it does not bound the error of either. MapsTorch models no detector escape peaks; it says so above the quality checks when the fit window could hold one.</p>}
         <details><summary>Detector model and calibration</summary><div className="ath-fields">
-          <label className="ath-field"><span>Detector crystal</span><select value={material} onChange={e=>setMaterial(e.target.value)}><option value="Ge">Ge</option><option value="Si">Si</option></select></label>
-          <label className="ath-field"><span>Crystal thickness (mm)</span><input type="number" step="any" disabled={mapstorch} value={form.thickness} onChange={e=>edit('thickness',e.target.value)} /></label>
-          <label className="ath-field"><span>Energy offset (keV)</span><input type="number" step="any" value={form.cal_offset} onChange={e=>edit('cal_offset',e.target.value)} /></label>
-          <label className="ath-field"><span>Energy per channel (keV)</span><input type="number" step="any" value={form.cal_slope} onChange={e=>edit('cal_slope',e.target.value)} /></label>
-          <label className="ath-field"><span>Compton scattering angle (°)</span><input type="number" step="any" value={form.compton_angle} onChange={e=>edit('compton_angle',e.target.value)} /></label>
-          <label className="ath-field"><span>Scatter tail length (peak widths)</span><input type="number" step="any" min={0} max={20} disabled={mapstorch} value={form.scatter_beta} onChange={e=>edit('scatter_beta',e.target.value)} /></label>
-          <label className="ath-field"><span>Calibration scan points</span><input type="number" step={1} min={2} max={32} value={form.calibration_points} onChange={e=>edit('calibration_points',e.target.value)} /></label>
-          <label className="ath-field"><span>Continuum background</span><select value={background} onChange={e=>setBackground(e.target.value)}><option value="smooth">Fitted with the lines</option><option value="none">None</option></select></label>
-          <label className="ath-field"><span>Preview point stride</span><input type="number" step={1} min={1} max={64} value={form.point_stride} onChange={e=>edit('point_stride',e.target.value)} /></label>
+          <label className="ath-field"><span>Detector crystal <SectionHelp label="Detector crystal">Choose the detector material, Ge or Si, used by the response model. Use the material of the fluorescence detector, not the sample.</SectionHelp></span><select value={material} onChange={e=>setMaterial(e.target.value)}><option value="Ge">Ge</option><option value="Si">Si</option></select></label>
+          <label className="ath-field"><span>Crystal thickness (mm) <SectionHelp label="Crystal thickness (mm)">Set the detector crystal’s active thickness for Larch’s detector response. This control is unavailable for the MapsTorch model.</SectionHelp></span><input type="number" step="any" disabled={mapstorch} value={form.thickness} onChange={e=>edit('thickness',e.target.value)} /></label>
+          <label className="ath-field"><span>Energy offset (keV) <SectionHelp label="Energy offset (keV)">Initial intercept for detected energy = offset + slope × channel. Calibration refines it; the starting value also places automatic channel windows.</SectionHelp></span><input type="number" step="any" value={form.cal_offset} onChange={e=>edit('cal_offset',e.target.value)} /></label>
+          <label className="ath-field"><span>Energy per channel (keV) <SectionHelp label="Energy per channel (keV)">Initial detector gain in keV per channel; 0.01 means 10 eV per channel. Calibration refines it. Set a realistic value before relying on automatic windows.</SectionHelp></span><input type="number" step="any" value={form.cal_slope} onChange={e=>edit('cal_slope',e.target.value)} /></label>
+          <label className="ath-field"><span>Compton scattering angle (°) <SectionHelp label="Compton scattering angle (°)">Starting angle used to locate the Compton scattering contribution. It is refined during detector calibration along with line-shape parameters.</SectionHelp></span><input type="number" step="any" value={form.compton_angle} onChange={e=>edit('compton_angle',e.target.value)} /></label>
+          <label className="ath-field"><span>Scatter tail length (peak widths) <SectionHelp label="Scatter tail length (peak widths)">Set the fixed low-energy scatter-tail length relative to peak width. This is held during calibration; use the residual and pre-edge quality checks to judge changes.</SectionHelp></span><input type="number" step="any" min={0} max={20} disabled={mapstorch} value={form.scatter_beta} onChange={e=>edit('scatter_beta',e.target.value)} /></label>
+          <label className="ath-field"><span>Calibration scan points <SectionHelp label="Calibration scan points">Number of representative scan points used to calibrate each detector element. More points provide more spectral evidence but cost more computation.</SectionHelp></span><input type="number" step={1} min={2} max={32} value={form.calibration_points} onChange={e=>edit('calibration_points',e.target.value)} /></label>
+          <label className="ath-field"><span>Continuum background <SectionHelp label="Continuum background">Fit a smooth continuum together with fluorescence lines, or omit it when justified. The continuum is not subtracted from counts before the line fit.</SectionHelp></span><select value={background} onChange={e=>setBackground(e.target.value)}><option value="smooth">Fitted with the lines</option><option value="none">None</option></select></label>
+          <label className="ath-field"><span>Preview point stride <SectionHelp label="Preview point stride">Draw every nth scan point in the extracted-XAS preview. All scan points are still fitted and saved when you make a group.</SectionHelp></span><input type="number" step={1} min={1} max={64} value={form.point_stride} onChange={e=>edit('point_stride',e.target.value)} /></label>
         </div><p className="ath-hint">Offset, slope and angle are starting values only: the calibration fits them, with the peak widths and tails, on the calibration points. They also place the automatic windows, so a file whose detector is far from 10 eV per channel needs its own calibration typed here first. The scatter tail length is the exception — it is held where you set it, because fitting it lets the scatter peaks and the scattering angle trade against each other. Raise it above its default of 0.5 if the pre-edge baseline below is outside its limits and the model falls away faster than the data on the low side of the elastic peak. The continuum is fitted alongside the lines as a set of smooth falling shapes, never subtracted first, so the counts keep the noise the fit assumes they have.{mapstorch?' Under MapsTorch the crystal thickness and the scatter tail length do not enter the model, and the crystal only decides whether the missing escape peaks are mentioned.':''}</p></details>
         <details><summary>Normalization</summary><div className="ath-fields">{field('e0','any','Auto')}{(['pre1','pre2','norm1','norm2'] as const).map(name=>field(name,'any'))}{field('nnorm',1)}</div></details>
         <div className="ath-fields">
-          <label className="ath-field"><span>Spectrum at scan point</span><input type="number" step={1} min={0} max={Math.max(0,inspection.points-1)} placeholder="Automatic: past the edge" value={form.preview_point} onChange={e=>edit('preview_point',e.target.value)} /></label>
-          <label className="ath-field"><span>Spectrum from detector element</span><input type="number" step={1} min={0} max={Math.max(0,count-1)} value={form.preview_detector} onChange={e=>edit('preview_detector',e.target.value)} /></label>
+          <label className="ath-field"><span>Spectrum at scan point <SectionHelp label="Spectrum at scan point">Choose a zero-based scan index for the detailed measured/model spectrum. Leave blank to use an automatic point above the edge.</SectionHelp></span><input type="number" step={1} min={0} max={Math.max(0,inspection.points-1)} placeholder="Automatic: past the edge" value={form.preview_point} onChange={e=>edit('preview_point',e.target.value)} /></label>
+          <label className="ath-field"><span>Spectrum from detector element <SectionHelp label="Spectrum from detector element">Choose the zero-based detector-element index for the detailed spectral fit. Element 0 is the first detector element.</SectionHelp></span><input type="number" step={1} min={0} max={Math.max(0,count-1)} value={form.preview_detector} onChange={e=>edit('preview_detector',e.target.value)} /></label>
         </div>
         <div className={styles.actions}>
           <button disabled={!valid} onClick={()=>{void refit()}}>Fit preview</button>
           <button className="ath-primary" disabled={!current} onClick={()=>{void make()}}>Make fluorescence XAS group</button>
         </div>
-        <label className="ath-check"><input type="checkbox" checked={withWindow} onChange={e=>setWithWindow(e.target.checked)} />Also export the plain window sum for comparison</label>
+        <label className="ath-check"><input type="checkbox" checked={withWindow} onChange={e=>setWithWindow(e.target.checked)} />Also export the plain window sum for comparison <SectionHelp label="Also export the plain window sum for comparison">Create a separate group from counts summed in the comparison window using the same detector elements and I₀ correction. Compare it with the fitted extraction to assess line overlap.</SectionHelp></label>
         <p className="ath-hint">Every scan point is fitted; the preview displays {value('point_stride')>1?`one in ${value('point_stride')}`:'every point'}. Make group reuses matching detector fits from the preview and saves every point. Changed fitting settings, a changed scan, cache eviction or a server restart require a new fit.</p>
         <details><summary>Scan file</summary><AthenaDownloadButton path={`/projects/${project.id}/uploads/${inspection.upload_id}/file`}>Download original scan file</AthenaDownloadButton></details>
       </>}
@@ -402,16 +417,16 @@ export function AthenaXrfXas({project,onSaved,setBusy}: {
       {unconverged&&<p className="ath-warning" aria-label="Calibration warning"><strong>Calibration did not converge for {reports.length-converged} of {reports.length} detector element{reports.length===1?'':'s'}</strong>: these curves are a demonstration, not a measurement. See Quality below.</p>}
       <h3>Detector spectrum{spectrum?` at ${spectrum.incident_ev.toFixed(1)} eV incident, element ${spectrum.detector+1}`:''}</h3>
       <div className={styles.display} aria-label="Spectrum display">
-        <label className="ath-check"><input type="checkbox" checked={showComponents} onChange={e=>setShowComponents(e.target.checked)} />Fitted components</label>
-        <label className="ath-check"><input type="checkbox" checked={logCounts} onChange={e=>setLogCounts(e.target.checked)} />Logarithmic counts</label>
+        <label className="ath-check"><input type="checkbox" checked={showComponents} onChange={e=>setShowComponents(e.target.checked)} />Fitted components <SectionHelp label="Fitted components">Show individual model contributions beside the total fitted spectrum and measured counts. This is a display change only.</SectionHelp></label>
+        <label className="ath-check"><input type="checkbox" checked={logCounts} onChange={e=>setLogCounts(e.target.checked)} />Logarithmic counts <SectionHelp label="Logarithmic counts">Use a logarithmic count axis to inspect weak lines and tails. Nonpositive values cannot be shown on a logarithmic axis.</SectionHelp></label>
       </div>
       <Figure label="XRF spectrum preview" traces={counts} xlabel="Detected energy (keV)" ylabel="Counts" revision={`${revision}:spectrum`} log={logCounts}
         range={logCounts&&spectrum?countRange(spectrum.measured,spectrum.total):undefined} />
       {spectrum&&logCounts&&<p className="ath-hint">The count axis starts at half the smallest measured count; fitted components fall below it in their tails.</p>}
       <h3>Fitted extraction and window sum</h3>
       <div className={styles.display} aria-label="Extraction display">
-        <label className="ath-check"><input type="checkbox" checked={normalized} onChange={e=>setNormalized(e.target.checked)} />Normalized</label>
-        <label className="ath-check"><input type="checkbox" disabled={normalized} checked={showDetectors} onChange={e=>setShowDetectors(e.target.checked)} />Each detector element (contributions)</label>
+        <label className="ath-check"><input type="checkbox" checked={normalized} onChange={e=>setNormalized(e.target.checked)} />Normalized <SectionHelp label="Normalized">Compare the fitted and window-sum curves after normalization. Turn off to inspect their fluorescence yields and detector contributions.</SectionHelp></label>
+        <label className="ath-check"><input type="checkbox" disabled={normalized} checked={showDetectors} onChange={e=>setShowDetectors(e.target.checked)} />Each detector element (contributions) <SectionHelp label="Each detector element (contributions)">Overlay each detector element’s contribution to the extracted yield. Available with Normalized off; useful for spotting an inconsistent element.</SectionHelp></label>
       </div>
       <div className={styles.pair}>
         <div><h4>Fitted extraction</h4>

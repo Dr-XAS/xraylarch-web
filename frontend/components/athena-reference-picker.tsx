@@ -59,7 +59,7 @@ export function AthenaReferencePicker({ groups, initialSampleIds, busy, error, o
       </select>
     </label>
     <fieldset className={styles.samples} disabled={busy}>
-      <legend>Data to link <span className={styles.count}>{sampleIds.length} selected</span></legend>
+      <legend>Data to link <SectionHelp label="Data to link">Mark the sample groups that should share the chosen reference’s energy shift. The chosen reference itself is excluded from the sample list.</SectionHelp> <span className={styles.count}>{sampleIds.length} selected</span></legend>
       <div className={styles.list}>
         {energyGroups.map(group => {
           const isReference = group.id === referenceId

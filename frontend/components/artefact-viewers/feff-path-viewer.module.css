@@ -22,7 +22,7 @@
 .legendItems small { display: block; max-width: 115px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; font: inherit; color: var(--ath-muted); }
 .detailPicker { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 8px 0; color: var(--ath-muted); font-size: var(--text-label); }
 .detailPicker select { max-width: 60%; }
-.detailPicker span { margin-left: auto; font-size: var(--text-caption); }
+.detailPicker > span:last-child { margin-left: auto; font-size: var(--text-caption); }
 .detail { min-width: 0; }
 .pathHeading { display: flex; align-items: start; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
 .pathHeading h3 { margin: 0; font-size: var(--text-body); font-weight: 600; overflow-wrap: anywhere; }
