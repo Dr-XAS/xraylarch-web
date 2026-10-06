@@ -1,3 +1,9 @@
+# Shared project memory
+
+Read [CLAUDE.md](CLAUDE.md) for the shared memory bridge. Run the exact session
+bootstrap `memoryctl load` command before project mutation, and publish durable
+notes through `memoryctl` transactions. The API instructions below remain in force.
+
 # Driving this app without a browser
 
 Athena Web processes X-ray absorption spectra. This file is for an agent that has to
