@@ -2,7 +2,7 @@
 
 Severity: P3, mobile usability. Confirmed in Chromium with a 390 x 844 touch viewport.
 
-Status: fixed by PR #12 (`00baebacc`), merged October 5, 2026; not yet deployed. Opening a dialog no longer focuses, and so no longer opens, its title help. Since October 2 help icons are hidden unless Show instruction is on, and the bug only reproduced with it on.
+Status: fixed by PR #12 (`00baebacc`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). Opening a dialog no longer focuses, and so no longer opens, its title help. Since October 2 help icons are hidden unless Show instruction is on, and the bug only reproduced with it on.
 
 Target: http://drxas.xray.aps.anl.gov:3004
 Deployed revision: 881d526f62d72f05f6fdaa8bfb879baee89acd55

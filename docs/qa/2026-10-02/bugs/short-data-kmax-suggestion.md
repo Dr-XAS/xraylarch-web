@@ -2,7 +2,7 @@
 
 Priority: P3. Confirmed on deployed release `18c6a8dd03502e15c0bba88490c88f966ad70ffe` at port 3004.
 
-Status: fixed by PR #11 (`df636f1f5`), merged October 5, 2026; not yet deployed. The report still shows Larch's suggestion, says whether it can be applied, and explains why not; the action no longer submits an invalid range.
+Status: fixed by PR #11 (`df636f1f5`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). The report still shows Larch's suggestion, says whether it can be applied, and explains why not; the action no longer submits an invalid range.
 
 Project: `i4i4j1xDXYLugONRhtuReO70`. Group: `vqR1QIqaDOH3woUY4W3gAA10`, `short-xanes-25eV.dat`.
 

@@ -2,7 +2,7 @@
 
 Severity: low. Confirmed on deployed revision 881d526f62d72f05f6fdaa8bfb879baee89acd55 through port 3004.
 
-Status: fixed by PR #11 (`f486d70a6`), merged October 5, 2026; not yet deployed. Windows exactly at the minimum width are accepted.
+Status: fixed by PR #11 (`f486d70a6`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). Windows exactly at the minimum width are accepted.
 
 Artemis rejects k = 3.1–4.1 Å⁻¹ and R = 1.1–1.2 Å or 2.7–2.8 Å, although they meet the stated minimum widths of 1 Å⁻¹ and 0.1 Å. Users receive HTTP 422 instructing them to use exactly the minimum widths they already supplied. A 1.1–1.200000000000001 Å range succeeds with the same model, which confirms a floating-point boundary error.
 

@@ -7,7 +7,7 @@
     "pr": 10,
     "commit": "e71720b60",
     "merged": "2026-10-05",
-    "deployed": false
+    "deployed": "dd47cdfd"
   },
   "target": "http://drxas.xray.aps.anl.gov:3004",
   "deployed_revision": "881d526f62d72f05f6fdaa8bfb879baee89acd55",

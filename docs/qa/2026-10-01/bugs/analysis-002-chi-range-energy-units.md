@@ -2,7 +2,7 @@
 
 Severity: P3, scientific UI correctness. Confirmed through the deployed browser interface.
 
-Status: fixed by PR #12 (`e4b25efc6`), merged October 5, 2026; not yet deployed. Range labels and default limits now follow the chosen fit signal.
+Status: fixed by PR #12 (`e4b25efc6`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). Range labels and default limits now follow the chosen fit signal.
 
 Target: http://drxas.xray.aps.anl.gov:3004
 Deployed revision: 881d526f62d72f05f6fdaa8bfb879baee89acd55

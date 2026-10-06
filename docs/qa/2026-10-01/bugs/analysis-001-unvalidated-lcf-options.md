@@ -2,7 +2,7 @@
 
 Severity: P3, API correctness. Confirmed on the deployed app. Normal UI requests with proper boolean values pass.
 
-Status: fixed by PR #12 (`726a0fb25`), merged October 5, 2026; not yet deployed. LCF, PCA and peak fitting refuse unknown option names, and the LCF constraints must be JSON booleans.
+Status: fixed by PR #12 (`726a0fb25`), merged October 5, 2026, and live on port 3004 in release `dd47cdfd` (October 6). LCF, PCA and peak fitting refuse unknown option names, and the LCF constraints must be JSON booleans.
 
 Target: http://drxas.xray.aps.anl.gov:3004
 Deployed revision: 881d526f62d72f05f6fdaa8bfb879baee89acd55
