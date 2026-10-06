@@ -43,20 +43,25 @@ def test_native_larch_template_entire_residual_shift_scale_covariance_rounding_a
     # roundoff are compared with the original command on this numeric backend.
     np.testing.assert_allclose([s['fitted_shift'],s['derivative_scale']],
         [row['fitted_shift'],row['scale']],rtol=2e-8,atol=2e-11)
-    expected = row
-    if case['smoothed']:
-        expected = replay_alignment(native['command'], std['energy'], std['mu'],
-                                    row['moving_energy'], row['moving_mu'])
+    # Covariance and residuals are compared with the native command replayed on
+    # this machine. The archived ones were recorded on another platform, and
+    # MINPACK's finite differences turn its roundoff into up to 4.8e-7 relative
+    # stderr and 3.4e-10 residual on arm64 macOS.
+    expected = replay_alignment(native['command'], std['energy'], std['mu'],
+                                row['moving_energy'], row['moving_mu'])
     # MINPACK estimates covariance by finite differences. Native recomputation
     # and the web's cached standard differ by 3.62e-13 in residual, amplified
     # to 4.85e-7 relative stderr. Allow one ppm only for derived uncertainty;
     # the native committed (0.001 eV) uncertainty above still matches exactly.
     stderr_rtol = 1e-6 if case['smoothed'] else 2e-8
-    np.testing.assert_allclose(s['shift_stderr'],expected['stderr'],rtol=stderr_rtol,atol=2e-11)
+    # Exact rigid copies can follow slightly different LM termination paths:
+    # on arm64 macOS one reaches chi-square 1e-248 where native stops at 1e-18,
+    # leaving 1.2e-10 eV stderr and 4.5e-10 residual between them.
+    exact = expected['chisqr'] < 1e-15
+    np.testing.assert_allclose(s['shift_stderr'],expected['stderr'],rtol=stderr_rtol,atol=1e-9 if exact else 2e-11)
     np.testing.assert_allclose([s['chisqr'],s['redchi']],
         [expected['chisqr'],expected['redchi']],rtol=2e-8,atol=2e-11)
-    # Exact rigid copies can follow slightly different LM termination paths.
-    np.testing.assert_allclose(result['curve']['residual'],expected['residual'],rtol=2e-8,atol=1e-10)
+    np.testing.assert_allclose(result['curve']['residual'],expected['residual'],rtol=2e-8,atol=1e-9 if exact else 1e-10)
     assert commit['e0']==case['moving_e0'] and commit['ref_e0']==case['moving_e0']+.75
     assert commit['ref_shift']==commit['shift'] and commit['ref_stderr']==commit['stderr']
     assert native['display']==dict(window=21,order=9) and native['restored']==prefs
