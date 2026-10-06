@@ -1,0 +1,71 @@
+{
+  "target": "http://drxas.xray.aps.anl.gov:3004",
+  "deployed_revision": "881d526f62d72f05f6fdaa8bfb879baee89acd55",
+  "date": "2026-10-01",
+  "access": "Live HTTP through deployed frontend proxy; API only per project AGENTS.md. No browser rendering inspected.",
+  "checks": 150,
+  "checks_passed": 150,
+  "checks_failed": 0,
+  "recorded_http_requests": 186,
+  "confirmed_issues": [],
+  "projects_created": [
+    "GZ_UCy3PecSaU7oxZ-7BYbNx",
+    "yAEfbDpbZ1C_L3-eRuxaAesp",
+    "n83kOUlE5Gy4HtWCqSq2CMi7",
+    "Ut1WtFxznI85tyEZBnGPdVGq",
+    "kVSjxusXtn0zSuzceBErEkaV",
+    "zXP-x3jU0Xt5gXGf74ROvAKp",
+    "ao9XYaPX3WgYhOnIrexM5gN1",
+    "3z1WI7h3W0oIIwjBobklpkbR",
+    "Herm9m7eusg4Q-nXuZwDFG1c",
+    "AUljorVb7tB_NjtzLvB79sTr",
+    "cPgiGy4BpWnGJNBR1Lutp520"
+  ],
+  "classic_workspace": "_ChXkeEUHSnMAu9Ns7rHrg",
+  "scientific_results": {
+    "import_mu_max_error": "2.22e-16 across direct mu, transmission, summed fluorescence, signal scaling and inverse transmission; eV/keV axes agree within 1e-10 eV.",
+    "normalized_input": "Explicit normalized inputs retain supplied normalization exactly.",
+    "export_accuracy": "Current mu, norm, chi, R and q output agrees with saved numeric arrays at rtol 1e-9 / atol 1e-10. All five chosen k weights agree with independent k**weight multiplication.",
+    "archives": "JSON and PRJ round trips retain 14 groups, energy and mu arrays, parameters and linked references. Official native Cu archive, 17-group native JSON archive and detector archive import successfully.",
+    "dispersive_cu": "Measured Cu calibration residual sum of squares improved from 0.1326562198 to 0.0144996711; energy axis agrees with published result to 0.1460033311 eV RMS / 0.3490045131 eV maximum.",
+    "dispersive_pd": "Measured Pd calibration residual sum of squares improved from 0.0550406208 to 0.0040563134; committed energy/mu arrays exactly match refinement preview."
+  },
+  "coverage": [
+    "Direct absorption, transmission, summed fluorescence, separate detector channels, combined transmission and fluorescence, sample/reference channels, eV, keV, multiplier, inversion, XANES-only, normalized spectra, column reimport, undo/redo.",
+    "Descending energy rejection and explicit sorting, duplicate energy rejection, NaN rejection, short scan rejection, constant-signal diagnostic, zero-count rejection, negative-count absolute-log polarity warning.",
+    "Single xmu/norm/chi/R/q export and preview; chi weights 0/1/2/3/arbitrary 1.5; 19 marked export forms; five separate-file ZIP forms and duplicate filenames; export version preservation.",
+    "JSON/native PRJ project preview and import, exact raw-array round trips, parameter and linked-reference preservation, official desktop archives.",
+    "Measured Cu/Fe XDI, X11A transmission scan, Cu/NiO FEFF xmu.dat; exported xmu/norm/chi XDI reimport with explicit data type.",
+    "CSV, semicolon CSV, TSV, UTF-8 BOM CSV; broken middle rows, ragged numeric rows, overflow, nonnumeric and empty files.",
+    "All-group and marked-group parameter-report previews and BIFF XLS downloads.",
+    "Measured Cu and Pd dispersive inspection, initial calibration, refinement and commit; comparison to published Cu calibration.",
+    "Classic workspace creation, upload, mapping, scientific preview, apply, stale revision conflict, changed parameters, restore, CSV export and recipe export."
+  ],
+  "boundaries": [
+    "No shared preference endpoint writes, source edits, commits, deploys or changes to pre-existing projects. Ordinary imports automatically update the backend remembered-column choices.",
+    "Optional file plugins were not globally enabled, because doing so would change shared preferences.",
+    "No rendered UI, browser interaction, accessibility, cross-browser or visual layout testing.",
+    "Negative detector ratios deliberately use ln(abs(ratio)) and show a polarity warning, matching documented Athena behavior. This is not a filed defect.",
+    "Normalized column export reimport used an explicit normalized data type. The generic suggestion currently defaults to mu; users must review the type when reopening such files."
+  ],
+  "evidence": {
+    "assertions": "checks.json",
+    "request_response_pairs": "NNN-label.request.json and NNN-label.response",
+    "project_ids": "state.json",
+    "scripts": [
+      "qa.py",
+      "exports.py",
+      "more.py",
+      "classic.py"
+    ],
+    "logs": [
+      "run.log",
+      "exports.log",
+      "exports-resume.log",
+      "exports-resume2.log",
+      "more.log",
+      "classic.log"
+    ]
+  },
+  "test_script_notes": "Initial runner used an unsupported mark action and a Python variable shadowed a helper. Both were corrected and resumed. Their error responses are retained as evidence but are not product bugs."
+}
