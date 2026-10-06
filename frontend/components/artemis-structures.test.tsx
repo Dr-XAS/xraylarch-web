@@ -91,6 +91,12 @@ beforeEach(() => {
   Object.defineProperty(HTMLDialogElement.prototype, "showModal", { configurable: true, value: function (this: HTMLDialogElement) { this.setAttribute("open", "") } })
   Object.defineProperty(HTMLDialogElement.prototype, "close", { configurable: true, value: function (this: HTMLDialogElement) { this.removeAttribute("open"); this.dispatchEvent(new Event("close")) } })
   api.mockImplementation(async (url, body) => {
+    if (url.startsWith("/projects/p/structures/") && url.endsWith("/rename")) {
+      const id = url.split("/").at(-2)
+      savedAttachments = savedAttachments.map(item => item.id === id ? { ...item, label: (body as { label: string }).label } : item)
+      savedVersion += 1
+      return project()
+    }
     if (url.startsWith("/projects/p/structures/") && url.endsWith("/remove")) {
       const id = url.split("/").at(-2)
       savedAttachments = savedAttachments.filter(item => item.id !== id)
@@ -116,6 +122,117 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
+  it("renames only the chosen CIF and retains the generated paths and source metadata", async () => {
+    const original = attachment()
+    savedAttachments = [original, { ...attachment(), id: "cif2", amcsd_id: 13089, structure: structure({ id: 13089 }) }]
+    const onProjectChange = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange} />)
+    await screen.findAllByRole("button", { name: "Rename Copper CIF" })
+    const region = screen.getByRole("region", { name: "Project CIF structures" })
+    fireEvent.click(within(region).getAllByRole("button", { name: "Open attached Copper CIF" })[0])
+    await openFeff()
+    await generate()
+    await click("Close FEFF paths")
+    fireEvent.click(within(region).getAllByRole("button", { name: "Rename Copper CIF" })[0])
+    const input = screen.getByRole("textbox", { name: "CIF name" })
+    expect(input).toHaveFocus()
+    expect(input).toHaveValue("Copper")
+    fireEvent.change(input, { target: { value: "  Copper at 300 K  " } })
+    await click("Save CIF name")
+    expect(api).toHaveBeenCalledWith("/projects/p/structures/cif1/rename", { version: 1, label: "Copper at 300 K" })
+    expect(savedAttachments[0]).toEqual({ ...original, label: "Copper at 300 K" })
+    expect(savedAttachments[1].label).toBeUndefined()
+    expect(within(region).getByRole("button", { name: "Rename Copper at 300 K CIF" })).toBeEnabled()
+    expect(onProjectChange).toHaveBeenCalledOnce()
+    await openFeff()
+    expect(screen.getByRole("option", { name: "Copper at 300 K · AMCSD 0013088" })).toBeInTheDocument()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeInTheDocument()
+    expect(api.mock.calls.filter(([url]) => url === "/feff/jobs")).toHaveLength(1)
+  })
+
+  it("supports cancelling a rename and refuses blank names without sending a mutation", async () => {
+    savedAttachments = [attachment()]
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "   " } })
+    expect(screen.getByRole("button", { name: "Save CIF name" })).toBeDisabled()
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "CIF name" }), { key: "Enter" })
+    await click("Cancel CIF rename")
+    expect(screen.queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+    await click("Rename Copper CIF")
+    expect(screen.getByRole("textbox", { name: "CIF name" })).toHaveValue("Copper")
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "CIF name" }), { key: "Escape" })
+    expect(screen.queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/rename"))).toHaveLength(0)
+  })
+
+  it("renames from the CIF dialog with Enter and keeps that dialog open on Escape", async () => {
+    savedAttachments = [attachment()]
+    setup()
+    const dialog = screen.getByRole("dialog", { name: "Crystal structures" })
+    await within(dialog).findByRole("button", { name: "Rename Copper CIF" })
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename Copper CIF" }))
+    fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "CIF name" }), { key: "Escape" })
+    expect(dialog).toBeVisible()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Rename Copper CIF" }))
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "CIF name" }), { target: { value: "Foil reference" } })
+    await act(async () => { fireEvent.keyDown(within(dialog).getByRole("textbox", { name: "CIF name" }), { key: "Enter" }) })
+    expect(within(dialog).getByRole("button", { name: "Use attached Foil reference CIF" })).toBeInTheDocument()
+    expect(within(dialog).queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+  })
+
+  it("retains a failed rename for correction and retry", async () => {
+    savedAttachments = [attachment()]
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "Copper reference" } })
+    api.mockRejectedValueOnce(new Error("Project changed; reload and retry."))
+    await click("Save CIF name")
+    expect(screen.getByRole("alert")).toHaveTextContent("Project changed")
+    expect(screen.getByRole("textbox", { name: "CIF name" })).toHaveValue("Copper reference")
+    expect(screen.getByRole("button", { name: "Rename Copper CIF" })).toBeEnabled()
+    await click("Save CIF name")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Rename Copper reference CIF" })).toBeEnabled()
+  })
+
+  it("waits for pending fit edits and releases the mutation queue after renaming", async () => {
+    savedAttachments = [attachment()]
+    const pending = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} prepareMutation={() => pending.promise} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "Reference" } })
+    await click("Save CIF name")
+    expect(screen.getByRole("button", { name: "Save CIF name" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Remove Copper CIF from project" })).toBeDisabled()
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/rename"))).toHaveLength(0)
+    savedVersion = 2
+    await act(async () => { pending.resolve({ version: 2, finish }) })
+    expect(api).toHaveBeenCalledWith("/projects/p/structures/cif1/rename", { version: 2, label: "Reference" })
+    expect(finish).toHaveBeenCalledOnce()
+  })
+
+  it("abandons an unsent rename if the spectrum changes while flushing fit edits", async () => {
+    savedAttachments = [attachment()]
+    const pending = deferred<{ version: number; finish: () => void }>()
+    const finish = vi.fn()
+    const props = { contextKey: "p:cu", availableSlots: 24, onAddPaths: addPathsMock(), prepareMutation: () => pending.promise }
+    const view = render(<Harness {...props} />)
+    await screen.findByRole("button", { name: "Rename Copper CIF" })
+    await click("Rename Copper CIF")
+    fireEvent.change(screen.getByRole("textbox", { name: "CIF name" }), { target: { value: "Reference" } })
+    await click("Save CIF name")
+    view.rerender(<Harness {...props} contextKey="p:other" />)
+    await act(async () => { pending.resolve({ version: 2, finish }) })
+    expect(api.mock.calls.filter(([url]) => url.endsWith("/rename"))).toHaveLength(0)
+    expect(finish).toHaveBeenCalledOnce()
+    expect(screen.queryByRole("textbox", { name: "CIF name" })).not.toBeInTheDocument()
+  })
+
   it("uploads and displays a custom CIF, then generates FEFF from its saved attachment", async () => {
     const onViewStructure = vi.fn()
     render(<Harness contextKey="p:cu" spectrumEdge={{ element: "Cu", edge: "K" }} availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />)

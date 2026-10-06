@@ -150,6 +150,12 @@ leave the project unchanged. Readable disordered structures are retained with
 warnings, but FEFF requires an ordered structure. The existing project limit
 of 20 CIFs and 4 MB of structure attachments applies to uploads too.
 
+Use **Rename** beside an attached CIF to set its project name (up to 200
+characters), then **Save** or press Enter. **Cancel** or Escape discards the edit.
+The name appears in the attached list and CIF selectors and survives reloads,
+JSON/PRJ exchange, and Undo/Redo. The original CIF text, mineral name, source ID,
+upload filename, and existing FEFF paths are preserved.
+
 Open **Search / attach CIF** from **Crystal structures** in the fitting panel. Search by mineral, formula, or AMCSD ID,
 optionally adding a **Contains element** filter. Text searches use literal
 substrings of mineral names, formulas, and publication titles; a numeric query

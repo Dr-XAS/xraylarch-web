@@ -45,6 +45,7 @@ export interface ArtemisFeffRequest {
 }
 export interface ArtemisStructureAttachment {
   id: string
+  label?: string | null
   provider?: "amcsd" | "materials_project" | "uploaded"
   amcsd_id?: number
   material_id?: string
@@ -72,6 +73,10 @@ export interface ArtemisFeffJob {
   warnings: string[]
 }
 export interface ArtemisGeneratedPath extends ArtemisInspectedPath { label: string }
+
+export function attachmentName(attachment: ArtemisStructureAttachment) {
+  return attachment.label || attachment.structure.mineral || attachment.structure.formula
+}
 
 export function structureLabel(structure: ArtemisStructureSummary) {
   if (structure.provider === "uploaded") return `Uploaded CIF · ${structure.filename}`

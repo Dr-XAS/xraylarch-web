@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, ValidationError, model_validator
 
 from .errors import WebInputError
 
@@ -45,6 +45,17 @@ MaterialId = Annotated[str, Field(pattern=r"^mp-(?:[1-9][0-9]{0,11}|[a-z]{8})$")
 UploadedId = Annotated[str, Field(pattern=r"^cif-[0-9a-f]{64}$")]
 StructureProvider = Literal["amcsd", "materials_project", "uploaded"]
 Filename = Annotated[str, Field(min_length=1, max_length=255, pattern=r"^[^/\\\x00-\x1f\x7f]+\.[cC][iI][fF]$")]
+
+
+def _trim_label(value):
+    if isinstance(value, str):
+        if re.search(r"[\x00-\x1f\x7f-\x9f]", value):
+            raise ValueError("CIF names cannot contain control characters.")
+        return value.strip()
+    return value
+
+
+AttachmentLabel = Annotated[str, Field(min_length=1, max_length=200), BeforeValidator(_trim_label)]
 
 
 def validate_cif_text(cif):
@@ -116,6 +127,7 @@ class StructureSnapshot(SnapshotModel):
 
 class StructureAttachment(SnapshotModel):
     id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
+    label: AttachmentLabel | None = None
     provider: StructureProvider = "amcsd"
     amcsd_id: AmcsdId | None = None
     material_id: MaterialId | None = None
@@ -169,6 +181,11 @@ class AttachRequest(SnapshotModel):
 
 class RemoveRequest(SnapshotModel):
     version: int = Field(ge=0)
+
+
+class RenameRequest(SnapshotModel):
+    version: int = Field(ge=0)
+    label: AttachmentLabel
 
 
 def validate_attachments(records):
@@ -287,6 +304,23 @@ def remove_structure(store, ident, attachment_id, request: RemoveRequest):
         return store.save(updated, old, f"Removed {source_label(record)}: {record['structure']['mineral']}")
 
 
+def rename_structure(store, ident, attachment_id, request: RenameRequest):
+    with store.storage.lock(ident):
+        old = local_project(store, ident)
+        store.check(old, request.version)
+        records = validate_attachments(old.get(PROJECT_FIELD, []))
+        record = next((item for item in records if item["id"] == attachment_id), None)
+        if record is None:
+            _fail("This attached CIF is no longer present in the selected project.", "attachment_id")
+        if record.get("label") == request.label:
+            return old
+        previous = record.get("label") or record["structure"]["mineral"] or record["structure"]["formula"]
+        record["label"] = request.label
+        updated = copy.deepcopy(old)
+        updated[PROJECT_FIELD] = validate_attachments(records)
+        return store.save(updated, old, f"Renamed {source_label(record)}: {previous} → {request.label}")
+
+
 def build_attachments_router(store):
     router = APIRouter(tags=["Artemis project structures"])
 
@@ -303,5 +337,9 @@ def build_attachments_router(store):
     @router.post("/projects/{ident}/structures/{attachment_id}/remove")
     def remove(ident: str, attachment_id: str, request: RemoveRequest):
         return remove_structure(store, ident, attachment_id, request)
+
+    @router.post("/projects/{ident}/structures/{attachment_id}/rename")
+    def rename(ident: str, attachment_id: str, request: RenameRequest):
+        return rename_structure(store, ident, attachment_id, request)
 
     return router

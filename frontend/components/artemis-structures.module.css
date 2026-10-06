@@ -5,6 +5,9 @@
 .attachedList li + li { border-top: 1px solid var(--ath-line, #dce5dc); }
 .attachmentInfo { display: flex; flex: 1 1 100px; flex-direction: column; gap: 3px; min-width: 0; }
 .attachedActions { display: flex; flex-wrap: wrap; gap: 6px; margin-left: auto; }
+.renameEditor { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: flex-end; gap: 6px; min-width: 0; }
+.renameEditor label { display: flex; flex: 1 1 140px; flex-direction: column; gap: 4px; min-width: 0; font-size: var(--text-label); color: var(--ath-muted, #647669); }
+.renameEditor input { width: 100%; min-width: 0; }
 .panel button.removeButton { min-height: 32px; padding: 5px 9px; border-color: var(--ath-error-line, #e9c8b4); background: var(--ath-error-bg, #fff1ec); color: var(--ath-error-ink, #9c3425); }
 .panel button.removeButton:not(:disabled):hover { border-color: var(--ath-error-ink, #9c3425); background: var(--ath-error-bg, #fff1ec); }
 .removeButton svg { flex-shrink: 0; }

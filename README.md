@@ -85,7 +85,9 @@ middle parameter panel. Search the bundled AMCSD database or Materials Project
 in the CIF popup (MP requires `MP_API_KEY` in the backend environment), attach
 the selected CIF directly to the project, or choose **Upload CIF** to attach your
 own `.cif` file (up to 500 KB). Uploaded CIFs keep their original text and filename
-in saved projects. Select an absorber
+in saved projects. Use **Rename** beside an attached CIF to give it a project-specific name.
+Names survive saving and reopening the project; source identifiers, original CIF
+text, and uploaded filenames stay intact. Select an absorber
 site, and calculate FEFF8L scattering paths using
 Larch/Larixite. Review the generated paths and add the selected ones to the
 model, or import existing FEFF path files. Define Guess/Set/Def parameters
