@@ -163,6 +163,11 @@ selects an AMCSD ID. Results are limited to 25 in the UI; refine the query when
 more matches exist. Inspect the formula and publication, and select the
 structure appropriate for the sample. Different entries for one mineral may
 represent different temperatures, pressures, compositions, or refinements.
+Selecting an AMCSD or Materials Project result immediately opens its interactive
+**CIF structure viewer** in the details panel. Rotate the structure, change its
+center site, or inspect the unit cell before attaching it; selecting another
+result replaces the preview. The candidate is added to the project only when you
+choose **Attach to project**.
 Choose **Attach to project** to save the full CIF and its AMCSD provenance in
 the current project. The fitting panel lists attached structures; opening one
 reuses the saved snapshot without repeating the database search. Close the

@@ -17,7 +17,7 @@ vi.mock("@/lib/use-first-shell", () => ({ useFirstShell: () => ({ shell: firstSh
 const radialAnalysis = vi.hoisted(() => vi.fn())
 vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
-  CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} />,
+  CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} data-structure-id={structure.id} data-provider={structure.provider ?? "amcsd"} />,
 }))
 const api = vi.mocked(artemisApi)
 const request: ArtemisFeffRequest = { project_id: "p", attachment_id: "cif1", version: 2, absorber: "Cu", edge: "K", site_index: 3, cluster_radius: 5, path_radius: 4, max_legs: 4, max_paths: 60 }
@@ -315,6 +315,12 @@ describe("ArtemisStructures", () => {
     expect(api).toHaveBeenCalledWith("/structures?q=Cu&limit=25&provider=materials_project", undefined, expect.any(AbortSignal))
     await click(/Cu.*Materials Project mp-aaaaaaft/)
     expect(screen.getByText(/Database version: 2026.04.13/)).toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", mp.id)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-provider", "materials_project")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", mp.cif)
+    expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
+    expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
     expect(api).toHaveBeenCalledWith("/projects/p/structures", { version: 1, provider: "materials_project", material_id: "mp-aaaaaaft" })
     await openFeff()
@@ -756,7 +762,11 @@ describe("ArtemisStructures", () => {
     const crystalDialog = screen.getByRole("dialog", { name: "Crystal structures" })
     expect(within(crystalDialog).queryByRole("radio", { name: "Absorber site 3" })).not.toBeInTheDocument()
     expect(within(crystalDialog).queryByRole("button", { name: "Run FEFF calculation" })).not.toBeInTheDocument()
-    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(within(crystalDialog).getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13088")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-provider", "amcsd")
+    expect(screen.getByText("View CIF").closest("details")).not.toHaveAttribute("open")
     expect(onViewStructure).not.toHaveBeenCalled()
     expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
     await click("Attach to project")
@@ -773,6 +783,68 @@ describe("ArtemisStructures", () => {
     await generate()
     expect(api.mock.calls.at(-1)?.[1]).toEqual(request)
     expect(api.mock.calls.at(-1)?.[1]).not.toHaveProperty("amcsd_id")
+  })
+
+  it("replaces the candidate preview and clears it while the next CIF loads or fails", async () => {
+    const cuprite = structure({ id: 13089, mineral: "Cuprite", formula: "Cu2O", cif: "data_Cu2O\n_cell_length_a 4.27" })
+    const next = deferred<ArtemisStructure>()
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "copper", source: "AMCSD", results: [structure(), cuprite], count: 2, limited: false }
+      if (url === "/structures/13089") return next.promise
+      return fallback(url, body, signal)
+    })
+    const onProjectChange = vi.fn(), onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange} onViewStructure={onViewStructure} />)
+    await click("Search / attach CIF")
+    await findAndSelect(false)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    await click(/Cuprite.*AMCSD/)
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("Reading CIF")
+    expect(screen.queryByRole("button", { name: "Attach to project" })).not.toBeInTheDocument()
+    await act(async () => { next.resolve(cuprite) })
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13089")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", cuprite.cif)
+    await click(/Copper.*AMCSD/)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    api.mockRejectedValueOnce(new Error("Could not retrieve the selected CIF. Try again."))
+    await click(/Cuprite.*AMCSD/)
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not retrieve the selected CIF")
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Attach to project" })).not.toBeInTheDocument()
+    await click(/Cuprite.*AMCSD/)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", cuprite.cif)
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+    expect(onProjectChange).not.toHaveBeenCalled()
+    expect(onViewStructure).not.toHaveBeenCalled()
+    expect(api.mock.calls.some(([url, body]) => url === "/projects/p/structures" && body)).toBe(false)
+    expect(api.mock.calls.some(([url]) => url === "/feff/jobs")).toBe(false)
+  })
+
+  it("ignores a late CIF response after another candidate was selected", async () => {
+    const cuprite = structure({ id: 13089, mineral: "Cuprite", formula: "Cu2O", cif: "data_Cu2O" })
+    const next = deferred<ArtemisStructure>()
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "copper", source: "AMCSD", results: [structure(), cuprite], count: 2, limited: false }
+      if (url === "/structures/13089") return next.promise
+      return fallback(url, body, signal)
+    })
+    setup()
+    await findAndSelect(false)
+    await click(/Cuprite.*AMCSD/)
+    const signal = api.mock.calls.at(-1)?.[2]
+    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    await click(/Copper.*AMCSD/)
+    expect(signal?.aborted).toBe(true)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13088")
+    await act(async () => { next.resolve(cuprite) })
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", "13088")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
+    expect(screen.getByRole("button", { name: /Copper.*AMCSD/ })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: /Cuprite.*AMCSD/ })).toHaveAttribute("aria-pressed", "false")
+    expect(screen.getByRole("button", { name: "Attach to project" })).toBeEnabled()
   })
 
   it("blocks dismissal during attachment and receives the committed project after the context changes", async () => {
@@ -804,7 +876,8 @@ describe("ArtemisStructures", () => {
     expect(screen.getByText(/Copper structure/)).not.toBeVisible()
     fireEvent.mouseEnter(screen.getByRole("button", { name: "About CIF citation" }))
     expect(screen.getByText(/Copper structure/)).toBeVisible()
-    expect(screen.queryByTestId("cif-viewer")).not.toBeInTheDocument()
+    expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", structure().cif)
     await click("Attach to project")
     expect(screen.getByRole("button", { name: "Attached to project" })).toBeDisabled()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
