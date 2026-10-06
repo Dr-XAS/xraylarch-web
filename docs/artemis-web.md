@@ -97,9 +97,11 @@ opened with **Simulate EXAFS from CIF** in the FEFF paths section. Choose the
 absorbing element, absorption edge and inequivalent site, and run FEFF. The
 **Simulate EXAFS** controls appear when the calculation completes.
 
-Simulation sums all available paths by default (up to 100), independently of the
-24-path fit-model limit. **Selected paths** uses the checkboxes below, with their
-existing fit-selection limit. Review any warning that the FEFF job returned only
+Simulation sums all available paths by default (up to 100), and all checkboxes
+below start checked. Unchecking a path switches to **Selected paths**; choosing
+**All available paths** checks every path again. Simulation selection is independent
+of the 24-path fit-model limit, which still applies when adding or replacing model
+paths. Review any warning that the FEFF job returned only
 part of its generated paths; increase Maximum paths and recalculate if needed.
 
 The default shared parameters are S₀² = 0.85, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
@@ -571,7 +573,10 @@ The Results area keeps its EXAFS fit viewer available alongside Spectrum,
 Wavelet, CIF, and a separate FEFF path viewer, regardless of which processing
 tab is open. The FEFF viewer shows the current model's path metadata and atom
 geometry; add or edit paths in the EXAFS fitting tab. The fit plot compares
-data, model, and residual in k or R space. R plots offer
+data, model, and residual in k or R space. **Show paths** is checked by default
+when the saved fit includes individual path curves; uncheck it to hide them.
+Long legend labels wrap to fit the plot width without overlapping neighboring entries.
+R plots offer
 magnitude, real, and imaginary components. The magnitude residual is
 `abs(FT(data - model))`, not the difference between the data and model magnitudes.
 Plots use the first selected fit k weight; the optimizer uses all selected

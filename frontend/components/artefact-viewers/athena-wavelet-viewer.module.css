@@ -27,7 +27,7 @@
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border-width: 0; }
 :global(html[data-theme="dark"]) .selectedRange { background: #a78bfa; }
 :global(html[data-theme="dark"]) .marker { background: rgb(167 139 250 / 80%); }
-@container (max-width: 850px) {
+@container (max-width: 640px) {
   .analysis { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 }
 @container (max-width: 520px) {

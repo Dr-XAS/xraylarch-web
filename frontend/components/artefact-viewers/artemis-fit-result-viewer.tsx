@@ -1,7 +1,7 @@
 "use client"
 
 import { SectionHelp } from "../section-help"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import type { AthenaGroup } from "@/lib/athena"
 import type { ArtemisFitResult } from "@/lib/artemis"
 import { ThemedPlot as Plot } from "../themed-plot"
@@ -18,7 +18,9 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
 }) {
   const [space, setSpace] = useState<"k" | "r">("r")
   const [component, setComponent] = useState<"mag" | "re" | "im">("mag")
-  const [showPaths, setShowPaths] = useState(false)
+  const [showPaths, setShowPaths] = useState(true)
+  const plotRef = useRef<HTMLDivElement>(null)
+  const [plotWidth, setPlotWidth] = useState(0)
   const [offsetPlot, setOffsetPlot] = useState(false)
   const [offsetDraft, setOffsetDraft] = useState<{ result: ArtemisFitResult; space: "k" | "r"; component: "mag" | "re" | "im"; value: string } | null>(null)
   const [plotError, setPlotError] = useState(false)
@@ -28,6 +30,15 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const plotted = weightedPlot.result
   const plottedWeight = plotted?.k.weight ?? visible?.k.weight ?? 0
   useEffect(() => { setPlotError(false) }, [visible, space, component, showPaths, offsetPlot, kWeight])
+  useEffect(() => {
+    const element = plotRef.current
+    if (!element) return
+    const measure = () => setPlotWidth(element.clientWidth)
+    measure()
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure)
+    observer?.observe(element)
+    return () => observer?.disconnect()
+  }, [])
   const series = plotted ? space === "k" ? { x: plotted.k.x, data: plotted.k.data, model: plotted.k.model, residual: plotted.k.residual }
     : { x: plotted.r.x, data: plotted.r[`data_${component}`], model: plotted.r[`model_${component}`], residual: plotted.r[`residual_${component}`] } : null
   const paths = plotted?.paths ?? []
@@ -51,14 +62,22 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const offsetText = offsetDraft && offsetDraft.result === plotted && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
   const validSpacing = offsetText.trim() !== "" && Number.isFinite(Number(offsetText)) && Number(offsetText) >= 0 && Number(offsetText) <= Number.MAX_VALUE / Math.max(curves.length, 1)
   const spacing = validSpacing ? Number(offsetText) : automaticSpacing
+  // Leave room for plot margins and the legend swatch. Plotly measures each
+  // wrapped label instead of placing long names in fixed half-width columns.
+  const legendLineLength = Math.max(10, Math.floor((plotWidth - 150) / 8))
   const traces = series ? curves.map(curve => {
     const offset = offsetPlot ? -curve.tier * spacing : 0
+    const characters = Array.from(curve.name)
+    const lines: string[] = []
+    if (plotWidth) {
+      for (let index = 0; index < characters.length; index += legendLineLength) lines.push(characters.slice(index, index + legendLineLength).join(""))
+    }
     // The residual is drawn by default: a misfit is the first thing a reader of
     // an EXAFS fit should be able to see, not something to find in the legend.
-    return { type: "scatter", mode: "lines", name: curve.name, x: series.x.slice(), y: curve.y.map(value => value + offset),
+    return { type: "scatter", mode: "lines", name: lines.length ? lines.join("<br>") : curve.name, meta: { legendLabel: curve.name }, x: series.x.slice(), y: curve.y.map(value => value + offset),
       visible: true,
       customdata: curve.y.map(value => [value, offset]),
-      hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{fullData.name}</extra>`,
+      hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{meta.legendLabel}</extra>`,
       line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
   }) : []
   return <ViewerPanel title="EXAFS fit" label="EXAFS fit results" viewerId="fit" className={styles.viewer} help={<>Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model.{visible && <> {space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. "}{pathsShown && space === "r" && component === "mag" && "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. "}{offsetPlot && "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. "}Plot k-weight {plottedWeight}; fit weights {visible.transform.kweight.join(", ")}.</>}</>} actions={<div className={styles.resultActions}>
@@ -73,7 +92,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
         {visible.archive.imported && <p>Imported fit · unverified<SectionHelp label="Imported fit">This result was imported with the project and has not been verified by a new fit here.</SectionHelp></p>}
       </div>}
       {visible && <p className={styles.resultSummary}>{visible.group_label} · fit in {visible.transform.fitspace.toUpperCase()} · k-weights {visible.transform.kweight.join(", ")}</p>}
-      <div id="artemis-fit-plot" className={styles.plot}>
+      <div id="artemis-fit-plot" ref={plotRef} className={styles.plot}>
         {!visible || !series ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : "No fit result"}</p>
           : weightedPlot.loading ? <p className={styles.empty} role="status">Updating fit plot transform…</p>
           : weightedPlot.error ? <div className={styles.empty} role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
@@ -83,7 +102,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
                 font: { color: "#52665b" },
                 xaxis: { title: { text: space === "k" ? "k (Å⁻¹)" : "R (Å, not phase corrected)" }, gridcolor: "#e6ece4", ...(space === "r" ? { range: [0, Math.max(6, visible.transform.rmax + 1)] } : {}) },
                 yaxis: { title: { text: (space === "k" ? `k<sup>${plottedWeight}</sup>χ(k) (Å<sup>−${plottedWeight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${plottedWeight + 1}</sup>)`) + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
-                legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24, ...(pathsShown ? { entrywidth: 0.49, entrywidthmode: "fraction" } : {}) }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
+                legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24 }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
                 shapes: [{ type: "rect", xref: "x", yref: "paper", x0: space === "k" ? visible.transform.kmin : visible.transform.rmin,
                   x1: space === "k" ? visible.transform.kmax : visible.transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }],
               }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-fit-${space}-k${plottedWeight}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}

@@ -586,7 +586,6 @@ describe("ArtemisFitResultViewer", () => {
     api.mockResolvedValueOnce(preview)
     render(<ArtemisFitResultViewer result={result} group={group()} projectId="p" version={8} />)
     expect(screen.getByLabelText("EXAFS fit k-weight")).toHaveValue("2")
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
     fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "4" } })
     expect(screen.queryByTestId("fit-plot")).not.toBeInTheDocument()
     expect(screen.getByRole("status")).toHaveTextContent("Updating fit plot")
@@ -669,13 +668,11 @@ describe("ArtemisFitResultViewer", () => {
     expect(plot.mock.calls.at(-1)![0].data[2].customdata[0][1]).toBe(-7)
   })
 
-  it("shows fitted path curves only on request in k and every R component, using distinct path labels and colors", () => {
+  it("shows fitted path curves by default in k and every R component, using distinct path labels and colors", () => {
     const result = resultWithPaths()
     render(<ArtemisFitResultViewer result={result} group={group()} />)
-    expect(screen.getByRole("checkbox", { name: "Show paths" })).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "Offset plot" })).not.toBeChecked()
-    expect(plot.mock.calls.at(-1)![0].data).toHaveLength(3)
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
     let props = plot.mock.calls.at(-1)![0]
     expect(props.data).toHaveLength(5)
     expect(props.data[3]).toMatchObject({ name: "Path 1 · Cu–Cu", x: result.r.x, y: result.paths[0].r!.mag })
@@ -693,6 +690,7 @@ describe("ArtemisFitResultViewer", () => {
     expect(props.data[3]).toMatchObject({ x: result.k.x, y: result.paths[0].k!.chi })
     expect(screen.queryByText(/Individual path magnitudes/)).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).not.toBeChecked()
     expect(plot.mock.calls.at(-1)![0].data).toHaveLength(3)
     expect(api).not.toHaveBeenCalled()
   })
@@ -701,7 +699,6 @@ describe("ArtemisFitResultViewer", () => {
     const result = resultWithPaths()
     const original = JSON.stringify(result)
     render(<ArtemisFitResultViewer result={result} group={group()} />)
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
     fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
     expect(Number((screen.getByRole("spinbutton", { name: "Offset spacing" }) as HTMLInputElement).value)).toBeGreaterThan(0)
     fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "4" } })
@@ -762,7 +759,7 @@ describe("ArtemisFitResultViewer", () => {
     expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "k space" }))
     expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeEnabled()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
+    expect(screen.getByRole("checkbox", { name: "Show paths" })).toBeChecked()
     expect(plot.mock.calls.at(-1)![0].data).toHaveLength(5)
     fireEvent.click(screen.getByRole("button", { name: "R space" }))
     expect(screen.getByRole("checkbox", { name: "Show paths" })).not.toBeChecked()
@@ -772,7 +769,6 @@ describe("ArtemisFitResultViewer", () => {
   it("does not retain previous path data or manual offsets when the result context changes", () => {
     const result = resultWithPaths()
     const view = render(<ArtemisFitResultViewer result={result} group={group()} />)
-    fireEvent.click(screen.getByRole("checkbox", { name: "Show paths" }))
     fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
     fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "99" } })
     view.rerender(<ArtemisFitResultViewer result={result} group={group("iron")} />)

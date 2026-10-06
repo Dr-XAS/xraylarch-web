@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest"
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { useState } from "react"
 import { artemisApi } from "@/lib/artemis"
 import { downloadArtemisText } from "@/lib/artemis-structures"
 import { simulationFixture, simulationJob } from "@/tests/fixtures/artemis-simulation"
@@ -13,13 +14,17 @@ vi.mock("./themed-plot", () => ({ ThemedPlot: () => <div data-testid="simulation
 const api = vi.mocked(artemisApi)
 beforeEach(() => { vi.clearAllMocks(); api.mockResolvedValue(simulationFixture()) })
 afterEach(cleanup)
-const renderSimulation = (onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void>) => render(<ArtemisSimulation job={simulationJob} selectedIds={[]} disabled={false} onAddToDataList={onAddToDataList} />)
+function SimulationHarness({ onAddToDataList }: { onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void> }) {
+  const [selectedIds, setSelectedIds] = useState<string[] | null>(null)
+  return <ArtemisSimulation job={simulationJob} selectedIds={selectedIds} onSelectionChange={setSelectedIds} disabled={false} onAddToDataList={onAddToDataList} />
+}
+const renderSimulation = (onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void>) => render(<SimulationHarness onAddToDataList={onAddToDataList} />)
 const run = () => fireEvent.click(screen.getByRole("button", { name: "Run EXAFS simulation" }))
 
 describe("CIF simulation controls", () => {
   it("shows instructions for each input only when enabled, without requesting a simulation", () => {
     const panel = (visible: boolean) => <InstructionVisibility.Provider value={visible}>
-      <ArtemisSimulation job={simulationJob} selectedIds={[]} disabled={false} />
+      <ArtemisSimulation job={simulationJob} selectedIds={null} onSelectionChange={vi.fn()} disabled={false} />
     </InstructionVisibility.Provider>
     const view = render(panel(false))
     expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
@@ -67,15 +72,42 @@ describe("CIF simulation controls", () => {
     expect(screen.queryByTestId("simulation-plot")).not.toBeInTheDocument()
     run(); await screen.findByTestId("simulation-plot")
   })
-  it("shows failures and retries, but blocks an empty selection", async () => {
+  it("shows failures and retries", async () => {
     api.mockRejectedValueOnce(new Error("FEFF job expired"))
     renderSimulation(); run()
     expect(await screen.findByRole("alert")).toHaveTextContent("expired")
     fireEvent.click(screen.getByRole("button", { name: "Retry EXAFS simulation" }))
     await screen.findByTestId("simulation-plot")
-    fireEvent.change(screen.getByLabelText("Simulation paths"), { target: { value: "selected" } })
-    await waitFor(() => expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeDisabled())
+  })
+  it("blocks an empty selection", () => {
+    render(<ArtemisSimulation job={simulationJob} selectedIds={[]} onSelectionChange={vi.fn()} disabled={false} />)
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeDisabled()
     expect(screen.getByText(/Select at least one/)).toBeVisible()
+  })
+  it("keeps checked paths when switching to selected mode, and can restore all", () => {
+    renderSimulation()
+    fireEvent.change(screen.getByLabelText("Simulation paths"), { target: { value: "selected" } })
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
+    expect(screen.getByRole("option", { name: "Selected paths (1)" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
+    fireEvent.change(screen.getByLabelText("Simulation paths"), { target: { value: "all" } })
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
+    expect(api).not.toHaveBeenCalled()
+  })
+  it("invalidates completed curves when the checked paths change and sends the current selection", async () => {
+    const props = { job: simulationJob, disabled: false, onSelectionChange: vi.fn() }
+    const view = render(<ArtemisSimulation {...props} selectedIds={null} />)
+    run(); await screen.findByTestId("simulation-plot")
+    const ids = simulationJob.paths.map(path => path.id)
+    view.rerender(<ArtemisSimulation {...props} selectedIds={ids} />)
+    expect(screen.queryByTestId("simulation-plot")).not.toBeInTheDocument()
+    expect(api).toHaveBeenCalledTimes(1)
+    const result = simulationFixture()
+    result.simulation.request.path_ids = ids
+    api.mockResolvedValueOnce(result)
+    run(); await screen.findByTestId("simulation-plot")
+    expect(api).toHaveBeenLastCalledWith(`/feff/jobs/${simulationJob.id}/simulate`, expect.objectContaining({ path_ids: ids }), expect.any(AbortSignal))
   })
   it("adds the completed raw spectrum once, and hides the action after edits", async () => {
     let finish!: () => void

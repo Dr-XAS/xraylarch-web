@@ -18,21 +18,21 @@ const fields: [keyof SimulationFields, string, string][] = [
   ["dk", "FT dk (Å⁻¹)", "Width of the smooth taper at the k-window edges. Increasing it reduces abrupt-edge ringing in χ(R)."],
 ]
 
-export function ArtemisSimulation({ job, selectedIds, disabled, onAddToDataList }: {
-  job: ArtemisFeffJob; selectedIds: string[]; disabled: boolean
+export function ArtemisSimulation({ job, selectedIds, onSelectionChange, disabled, onAddToDataList }: {
+  job: ArtemisFeffJob; selectedIds: string[] | null; onSelectionChange: (ids: string[] | null) => void; disabled: boolean
   onAddToDataList?: (result: SimulationResult, idempotencyKey: string) => Promise<void>
 }) {
   const [values, setValues] = useState({ ...simulationDefaults })
   const [weight, setWeight] = useState(2)
   const [window, setWindow] = useState<ArtemisTransform["window"]>("hanning")
-  const [selection, setSelection] = useState("all")
+  const selection = selectedIds === null ? "all" : "selected"
   const [state, setState] = useState<{ key: string; result?: SimulationResult; error?: string; loading?: boolean; addKey?: string } | null>(null)
   const [addition, setAddition] = useState<{ key: string; pending?: boolean; added?: boolean; error?: string } | null>(null)
   const adding = useRef(false)
   const abort = useRef<AbortController | null>(null)
   let request: ReturnType<typeof simulationRequest> | null = null, validation = ""
-  try { request = simulationRequest(values, weight, window, selection === "all" ? null : selectedIds) } catch (error) { validation = (error as Error).message }
-  const key = JSON.stringify([job.id, values, weight, window, selection, selection === "all" ? null : selectedIds])
+  try { request = simulationRequest(values, weight, window, selectedIds) } catch (error) { validation = (error as Error).message }
+  const key = JSON.stringify([job.id, values, weight, window, selectedIds])
   useEffect(() => { setState(null); setAddition(null); return () => abort.current?.abort() }, [key])
   const current = state?.key === key ? state : null
   const addState = addition?.key === current?.addKey ? addition : null
@@ -70,8 +70,8 @@ export function ArtemisSimulation({ job, selectedIds, disabled, onAddToDataList 
     <h4>Simulate EXAFS<SectionHelp label="EXAFS simulation assumptions">No measured spectrum is required. One absorbing site is simulated, with FEFF degeneracies and shared S₀², ΔE₀, ΔR and σ². The default σ² = 0.003 Å² is an assumption, not inferred from CIF displacement factors or temperature. Inequivalent sites are not averaged.</SectionHelp></h4>
     <p className={styles.help}>{job.request.absorber} {job.request.edge} · site {job.request.site_index} · {job.paths.length} available paths{job.truncated ? ` of ${job.total_paths} generated` : ""} · shared σ² assumption</p>
     <div className={styles.grid}>
-      <label><span>Simulation paths<SectionHelp label="Simulation paths">Sum all paths available in this job, or only those checked in the generated-path list. A truncated job does not contain every path FEFF generated.</SectionHelp></span><select aria-label="Simulation paths" value={selection} onChange={event => setSelection(event.target.value)} disabled={controlsDisabled}>
-        <option value="all">All available paths ({job.paths.length})</option><option value="selected">Selected paths ({selectedIds.length})</option>
+      <label><span>Simulation paths<SectionHelp label="Simulation paths">All available paths checks every generated path below. Uncheck paths to simulate a subset. A truncated job does not contain every path FEFF generated.</SectionHelp></span><select aria-label="Simulation paths" value={selection} onChange={event => onSelectionChange(event.target.value === "all" ? null : selectedIds ?? job.paths.map(path => path.id))} disabled={controlsDisabled}>
+        <option value="all">All available paths ({job.paths.length})</option><option value="selected">Selected paths ({selectedIds?.length ?? job.paths.length})</option>
       </select></label>
       {fields.map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help}</SectionHelp></span><input aria-label={`Simulation ${label}`} inputMode="decimal" value={values[key]} disabled={controlsDisabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
       <label><span>FT k-weight<SectionHelp label="Simulation k-weight">Power of k multiplying χ(k) before Fourier transformation and in the weighted k plot. Higher powers emphasize high-k oscillations.</SectionHelp></span><select aria-label="Simulation k-weight" value={weight} disabled={controlsDisabled} onChange={event => setWeight(Number(event.target.value))}>{[0, 1, 2, 3].map(item => <option key={item}>{item}</option>)}</select></label>

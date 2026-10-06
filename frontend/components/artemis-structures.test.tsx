@@ -73,6 +73,12 @@ async function generate() {
   fireEvent.click(screen.getByRole("radio", { name: "Absorber site 3" }))
   await click("Run FEFF calculation")
 }
+function selectGeneratedPaths(...filenames: string[]) {
+  for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / }) as HTMLInputElement[]) {
+    const wanted = filenames.includes(checkbox.getAttribute("aria-label")!.replace("Select generated ", ""))
+    if (checkbox.checked !== wanted) fireEvent.click(checkbox)
+  }
+}
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done }); return { promise, resolve } }
 
 function cifFile(name = "my-copper.cif", text = structure().cif) {
@@ -124,6 +130,57 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
+  it("defaults every generated checkbox to All and keeps custom selection synchronized across reopening", async () => {
+    setup()
+    await findAndSelect()
+    await generate()
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
+    expect(screen.getByRole("button", { name: "Add selected paths (2)" })).toBeEnabled()
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" }))
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
+    expect(screen.getByRole("option", { name: "Selected paths (1)" })).toBeInTheDocument()
+    await click("Close")
+    await openFeff()
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).not.toBeChecked()
+
+    fireEvent.change(screen.getByLabelText("Simulation paths"), { target: { value: "all" } })
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
+    selectGeneratedPaths("feff0001.dat")
+    await generate()
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
+    expect(api.mock.calls.some(([url]) => url.endsWith("/simulate"))).toBe(false)
+  })
+
+  it("selects all simulation paths beyond fit capacity while guarding Add and Replace independently", async () => {
+    const existing = [{ filename: "uploaded.dat", content: "uploaded path", enabled: true }]
+    const onAddPaths = addPathsMock()
+    render(<Harness contextKey="p:cu" availableSlots={23} existingPaths={existing} onAddPaths={onAddPaths} />)
+    await click("Search / attach CIF")
+    await findAndSelect()
+    const paths = Array.from({ length: 25 }, (_, index) => ({ ...job().paths[0], id: `path${index + 1}`, filename: `feff${String(index + 1).padStart(4, "0")}.dat`, content: `path ${index + 1}` }))
+    api.mockResolvedValueOnce(job("complete", { paths, total_paths: paths.length }))
+    await generate()
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
+    expect(screen.getAllByRole("checkbox", { name: /^Select generated / })).toHaveLength(25)
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Add selected paths (25)" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /Replace the model’s 1 path with selected \(25\)/ })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0025.dat" }))
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0025.dat" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Add selected paths (24)" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: /Replace the model’s 1 path with selected \(24\)/ })).toBeEnabled()
+    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0024.dat" }))
+    expect(screen.getByRole("button", { name: "Add selected paths (23)" })).toBeEnabled()
+    expect(onAddPaths).not.toHaveBeenCalled()
+  })
+
   it("adds the completed theory spectrum using the settled project version and receives the updated list", async () => {
     const preparation = deferred<{ version: number; finish: () => void }>()
     const finish = vi.fn(), onProjectChange = vi.fn()
@@ -362,7 +419,7 @@ describe("ArtemisStructures", () => {
     await openFeff()
     await generate()
     expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "mp-cif", version: 2 }), expect.any(AbortSignal))
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click(/Add selected paths/)
     expect(onAddPaths.mock.calls[0][0][0].label).toContain("Materials Project mp-aaaaaaft")
     expect(screen.queryByText(/AMCSD undefined/)).not.toBeInTheDocument()
@@ -693,7 +750,7 @@ describe("ArtemisStructures", () => {
     await click("Use attached Copper CIF")
     await openFeff()
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click("Close")
     await click("Search / attach CIF")
     const late = deferred<AthenaProject>()
@@ -743,7 +800,7 @@ describe("ArtemisStructures", () => {
     expect(onProjectChange).not.toHaveBeenCalled()
   })
 
-  it("unions shell selections and rejects a bulk selection beyond the remaining model capacity", async () => {
+  it("unions shell selections for simulation while enforcing capacity on Add", async () => {
     const generated = job()
     for (const path of generated.paths) path.metadata.geometry.push({ atom: "Cu", ipot: 1, x: path.metadata.reff, y: 0, z: 0 })
     const analysis = { ...radialFixture, cif: structure().cif, absorber: "Cu", site_index: 3,
@@ -759,15 +816,19 @@ describe("ArtemisStructures", () => {
       const candidate = screen.getByRole("checkbox", { name: `Select generated ${filename}` }).closest("label")!
       expect(within(candidate).getByText(`Shell ${index + 1}`)).toBeVisible()
     }
+    selectGeneratedPaths()
     await click("Select shell 1 paths")
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
     await click("Select shell 2 paths")
-    expect(screen.getByRole("alert")).toHaveTextContent("2 path slots; only 1")
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
-    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).not.toBeChecked()
-    await click("Deselect shell 1 paths")
-    await click("Select shell 2 paths")
     expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeChecked()
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Add selected paths (2)" })).toBeDisabled()
+    await click("Deselect shell 1 paths")
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeChecked()
+    expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeEnabled()
   })
 
   it("opens an accessible popup, preserves selection across Escape/reopen, and restores launcher focus", async () => {
@@ -1008,7 +1069,7 @@ describe("ArtemisStructures", () => {
     expect(api.mock.calls.some(([url]) => url === "/feff/jobs")).toBe(false)
   })
 
-  it("polls running jobs, selects within the fit capacity, and appends verified paths with structure labels", async () => {
+  it("polls running jobs, defaults all paths checked, and appends only a subset that fits", async () => {
     const { onAddPaths } = setup(1)
     await findAndSelect()
     api.mockResolvedValueOnce(job("running"))
@@ -1017,13 +1078,21 @@ describe("ArtemisStructures", () => {
     expect(screen.getByRole("button", { name: "Calculating FEFF…" })).toBeDisabled()
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
     expect(screen.getByText("FEFF calculation complete")).toBeVisible()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
-    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeDisabled()
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
+    expect(screen.getByRole("button", { name: "Add selected paths (2)" })).toBeDisabled()
+    selectGeneratedPaths("feff0001.dat")
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeEnabled()
     await click("Add selected paths (1)")
     expect(onAddPaths).toHaveBeenCalledExactlyOnceWith([{ ...job().paths[0], id: undefined,
       metadata: { ...job().paths[0].metadata, sourceCif: { sha256: attachment().sha256, attachmentId: "cif1", label: "Copper · AMCSD 0013088", siteIndex: 3 } },
       label: "Copper · AMCSD 0013088 · Cu site 3 · feff0001.dat" }].map(({ id: _id, ...path }) => path))
-    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeDisabled()
+    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
+    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).not.toBeChecked()
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeEnabled()
+    selectGeneratedPaths("feff0001.dat")
+    expect(screen.getByRole("button", { name: "Add selected paths (0)" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
     expect(screen.getByText(/Added 1 generated path/)).toBeVisible()
     expect(screen.getByText("FEFF input")).toBeVisible()
   })
@@ -1037,7 +1106,7 @@ describe("ArtemisStructures", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
     await findAndSelect()
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     expect(screen.getByText(/already includes feffcu01\.dat/)).toBeVisible()
     await click("Add selected paths (1)")
     expect(screen.getByText(/feffcu01\.dat is still included/)).toBeVisible()
@@ -1055,7 +1124,7 @@ describe("ArtemisStructures", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
     await findAndSelect()
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeDisabled()
     await click(/Replace the model’s 24 paths with selected \(1\)/)
     expect(onAddPaths).toHaveBeenLastCalledWith([expect.objectContaining({ filename: "feff0001.dat" })], true)
@@ -1069,7 +1138,7 @@ describe("ArtemisStructures", () => {
     fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
     await findAndSelect()
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     expect(screen.getByRole("button", { name: "Add selected paths (0)" })).toBeDisabled()
     fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" }))
     await click(/Replace the model’s 2 paths with selected \(2\)/)
@@ -1118,7 +1187,7 @@ describe("ArtemisStructures", () => {
     completed.provenance.feff_input = "TITLE Copper\nPOTENTIALS\n0 29 Cu\n1 29 Cu\nATOMS\n0 0 0 0 Cu\n2.55 0 0 1 Cu\n-2.55 0 0 1 Cu\nEND"
     api.mockResolvedValueOnce(completed)
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click("Add selected paths (1)")
     expect(onAddPaths.mock.calls[0][0][0].metadata.viewerCluster).toEqual({ source: "feff.inp", atoms: [
       { atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 },
@@ -1140,7 +1209,7 @@ describe("ArtemisStructures", () => {
     completed.provenance.cif = "data_completed_snapshot\n_cell_length_a 3.62"
     api.mockResolvedValueOnce(completed)
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click("Add selected paths (1)")
     await waitFor(() => expect(onAddPaths).toHaveBeenCalledOnce())
     expect(onAddPaths.mock.calls[0][0][0].metadata.sourceCif).toEqual({
@@ -1158,7 +1227,7 @@ describe("ArtemisStructures", () => {
     completed.provenance.cif = "data_completed_snapshot"
     api.mockResolvedValueOnce(completed)
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click("Add selected paths (1)")
     expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeDisabled()
     rerender(<Harness contextKey="p:fe" availableSlots={24} onAddPaths={onAddPaths} />)
@@ -1222,7 +1291,7 @@ describe("ArtemisStructures", () => {
     setup(24, onAddPaths)
     await findAndSelect()
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click("Add selected paths (1)")
     expect(screen.getByRole("alert")).toHaveTextContent("Remove unused parameters")
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
@@ -1235,7 +1304,7 @@ describe("ArtemisStructures", () => {
     await findAndSelect()
     api.mockResolvedValueOnce(job("complete", { provenance: { ...job().provenance, structure: structure({ mineral: "Long crystal name ".repeat(20) }) } }))
     await generate()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     await click("Add selected paths (1)")
     const paths = onAddPaths.mock.calls[0][0]
     expect(paths[0].label).toHaveLength(120)
@@ -1243,9 +1312,9 @@ describe("ArtemisStructures", () => {
     view.rerender(<Harness contextKey="p:cu" availableSlots={23} existingPaths={paths} onAddPaths={onAddPaths} />)
     // Already in the model: Add cannot take it again (Replace may keep it).
     expect(screen.getByText(/feff0001\.dat · added/)).toBeVisible()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths("feff0001.dat")
     expect(screen.getByRole("button", { name: "Add selected paths (0)" })).toBeDisabled()
-    fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" }))
+    selectGeneratedPaths()
     view.rerender(<Harness contextKey="p:cu" availableSlots={24} existingPaths={[]} onAddPaths={onAddPaths} />)
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeEnabled()
   })

@@ -157,8 +157,9 @@ in the workspace). Viewers without a recorded event retain their default order.
 These display choices do not change project data or recalculate results.
 
 The **Wavelet plotter** follows the highlighted group’s
-processed χ(k). The default **2D + 3D** view places the heatmap beside the surface
-on wide panels and stacks them on narrow panels. The 2D plotting area stays square
+processed χ(k). The default **2D + 3D** view places the heatmap on the left and the
+surface on the right, stacking them only when the plot panel is 640 px wide or less.
+The 2D plotting area stays square
 when the browser or plot height is resized, preserving the k and R ranges.
 The k-range slider sits directly above the heatmap and follows its x-axis bounds
 as the plot resizes.
