@@ -900,9 +900,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   async function recommendedKmax(current: AthenaGroup) {
     if (!project || busy || current.frozen) return
     await task('Selecting recommended kmax', async () => {
-      const result = await athenaApi<{ version: number; results: { group_id: string; recommended_kmax?: number }[]; skipped: { reason: string }[] }>(`/projects/${project.id}/context-report`, { version: project.version, group_ids: [current.id], kind: 'measurement_uncertainty' })
-      const suggestion = result.results.find(row => row.group_id === current.id)?.recommended_kmax
+      const result = await athenaApi<{ version: number; results: { group_id: string; recommended_kmax?: number; recommended_kmax_applicable?: boolean; warnings?: string[] }[]; skipped: { reason: string }[] }>(`/projects/${project.id}/context-report`, { version: project.version, group_ids: [current.id], kind: 'measurement_uncertainty' })
+      const row = result.results.find(row => row.group_id === current.id), suggestion = row?.recommended_kmax
       if (result.version !== project.version || typeof suggestion !== 'number' || !Number.isFinite(suggestion)) throw new Error(result.skipped?.[0]?.reason ?? 'Larch could not recommend a kmax for this spectrum.')
+      if (row?.recommended_kmax_applicable === false) throw new Error(row.warnings?.[0] ?? `Larch’s suggested kmax ${suggestion} cannot be applied to this group.`)
       await command('parameters', [current.id], { kmax: suggestion })
       setDrafts(d => { const next = { ...d }; if (next[current.id]) next[current.id] = { ...next[current.id], kmax: suggestion }; return next })
     })

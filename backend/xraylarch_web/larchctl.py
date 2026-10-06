@@ -328,6 +328,8 @@ def render_digest(digest: dict) -> str:
                          f" over the current transform range, "
                          f"independent points {_number(noise.get('nidp'), 1)}"
                          f", Larch suggests kmax {_number(noise.get('recommended_kmax'), 2)}")
+            if noise.get("recommended_kmax_applicable") is False:
+                lines.append(f"    {noise['warnings'][0]}")
     if snr := digest.get("signal_to_noise"):
         if "unavailable" in snr:
             lines.append(f"  chi/noise by k: {snr['unavailable']}")

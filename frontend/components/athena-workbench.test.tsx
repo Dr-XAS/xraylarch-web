@@ -2269,6 +2269,28 @@ describe("AthenaWorkbench native context actions", () => {
     expect(plotProps().active?.parameters.rbkg).toBe(2.8)
   })
 
+  it('applies Larch’s kmax suggestion only when the parameters command can accept it', async () => {
+    const project = await openSaved()
+    const request = { version: project.version, group_ids: ['foil'], kind: 'measurement_uncertainty' }
+    const refusal = 'Larch suggests kmax 2.6, which leaves no transform range above the saved kmin 3; lower kmin to use it.'
+    api.mockResolvedValueOnce({ version: project.version, kind: 'measurement_uncertainty', skipped: [], results: [
+      { group_id: 'foil', recommended_kmax: 2.6, recommended_kmax_applicable: false, warnings: [refusal] },
+    ] })
+    fireEvent.click(within(fieldContext('FT k min')).getByRole('menuitem', { name: 'Set kmax to Larch’s suggestion' }))
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(refusal))
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/context-report`, request)
+    expect(api).toHaveBeenCalledTimes(2)
+    api.mockResolvedValueOnce({ version: project.version, kind: 'measurement_uncertainty', skipped: [], results: [
+      { group_id: 'foil', recommended_kmax: 14.6, recommended_kmax_applicable: true, warnings: [] },
+    ] })
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: { ...project.groups[0].parameters, kmax: 14.6 } } }))
+    fireEvent.click(within(fieldContext('FT k min')).getByRole('menuitem', { name: 'Set kmax to Larch’s suggestion' }))
+    await waitForWorkbenchIdle()
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'parameters', group_ids: ['foil'], options: { kmax: 14.6 },
+    })
+  })
+
   it('opens source text as a read-only report for the current group', async () => {
     const initial = projectFixture()
     initial.groups[0].source.mapping = { upload_id: 'upload-foil' }

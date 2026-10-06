@@ -8,7 +8,7 @@ import { groupYaml, type ContextReportKind } from './athena-native-context'
 
 type RemoteReport = { version?: number; kind?: string; filename?: string; text?: string; results?: Record<string, unknown>[]; skipped?: { group_id: string; label: string; reason: string }[] }
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? Number(value.toPrecision(8)).toString() : 'Unavailable'
-const reportLabels: Record<string, string> = { epsilon_k: 'Noise estimate εk', epsilon_r: 'Noise estimate εR', nidp: 'Independent points', edge_step: 'Edge step', mean: 'Mean sampled edge step', standard_deviation: 'Estimated uncertainty', samples: 'Samples', retained_samples: 'Retained samples' }
+const reportLabels: Record<string, string> = { epsilon_k: 'Noise estimate εk', epsilon_r: 'Noise estimate εR', nidp: 'Independent points', recommended_kmax: 'Larch-suggested kmax', edge_step: 'Edge step', mean: 'Mean sampled edge step', standard_deviation: 'Estimated uncertainty', samples: 'Samples', retained_samples: 'Retained samples' }
 
 export function AthenaContextReport({ kind, project, groups }: { kind: ContextReportKind; project: AthenaProject; groups: AthenaGroup[] }) {
   const athenaApi = useAthenaApi()

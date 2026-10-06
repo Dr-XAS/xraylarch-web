@@ -201,9 +201,32 @@ def measurement_uncertainty(group):
     values = {key: float(f'{getattr(out, key):.3e}') for key in ('epsilon_k', 'epsilon_r')}
     if not np.isfinite(list(values.values())).all() or min(values.values()) < 0:
         raise ScientificError('Larch could not resolve finite measurement uncertainties.')
+    suggestion = float(f'{out.kmax_suggest:.3f}')
+    note = _kmax_suggestion_problem(suggestion, float(k[-1]), p)
     return values | {'nidp': float(2 * (kmax - kmin) * (p['rmax'] - p['rmin']) / np.pi),
-                     'recommended_kmax': float(f'{out.kmax_suggest:.3f}'),
+                     'recommended_kmax': suggestion,
+                     'recommended_kmax_applicable': note is None,
+                     'warnings': [note] if note else [],
                      'method': 'Demeter Larch chi_noise; high-R noise estimate (15–30 Å)'}
+
+
+def _kmax_suggestion_problem(suggestion, available, p):
+    """Why the parameters command would refuse kmax=suggestion, or None.
+
+    Larch measures over the effective range, but the command keeps the
+    requested kmin: on short data the automatic kmin is lower than the saved
+    one, so a suggestion inside the measured window can still sit below it.
+    Where chi never falls below epsilon_k, the suggestion runs past the data.
+    """
+    if not np.isfinite(suggestion):
+        return 'Larch did not return a finite kmax suggestion.'
+    if suggestion > available + 1e-10:
+        return f'Larch suggests kmax {suggestion:g}, past the last measured k={available:.4g}.'
+    width, minimum = suggestion - p['kmin'], 2 * p['kstep']
+    if width < minimum and not np.isclose(width, minimum, rtol=1e-12, atol=1e-12):
+        return (f'Larch suggests kmax {suggestion:g}, which leaves no transform range above '
+                f'the saved kmin {p["kmin"]:g}; lower kmin to use it.')
+    return None
 
 
 def noise_floor(group):

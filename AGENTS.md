@@ -119,6 +119,9 @@ when the transform range does; a window near 1 is noise. The ratios compare wind
 within one group, not groups with each other, since each group has its own floor.
 `noise.epsilon_k` and `noise.recommended_kmax` are Larch's, measured over the current
 transform range: the first moves with that range, and the second runs pessimistic.
+When `noise.recommended_kmax_applicable` is false, the `parameters` command would refuse
+that kmax as it stands; `noise.warnings` says whether it lies past the measured k or below
+the saved kmin.
 
 **To ask whether groups are comparable, compare them.** `GET .../compare?groups=a,b,...`
 measures each group after the first against the first, reading and never applying:
