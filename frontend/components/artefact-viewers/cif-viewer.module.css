@@ -12,8 +12,9 @@
 .controls select { flex: 1; width: auto; min-width: 0; }
 .localControls { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 6px 12px; border-top: 1px solid var(--ath-line); background: var(--ath-canvas); }
 .radius { display: flex; flex: 1 1 230px; align-items: center; min-width: 0; gap: 8px; font-size: var(--text-label); color: var(--ath-muted); white-space: nowrap; }
-.radius input { flex: 1; min-width: 60px; width: auto; accent-color: var(--ath-primary); padding: 0; }
-.radius output { font-variant-numeric: tabular-nums; color: var(--ath-ink); }
+.radius input[type=range] { flex: 1; min-width: 60px; width: auto; accent-color: var(--ath-primary); padding: 0; }
+.radiusValue { display: inline-flex; flex-shrink: 0; align-items: center; gap: 4px; color: var(--ath-ink); }
+.radiusValue input[type=number] { width: 72px; min-width: 0; padding: 4px 6px; font-variant-numeric: tabular-nums; }
 .cellRepeats { display: flex; flex: 1 1 300px; flex-wrap: wrap; align-items: center; gap: 6px 12px; min-width: 0; font-size: var(--text-label); color: var(--ath-muted); }
 .cellAxes { display: flex; align-items: center; gap: 10px; }
 .cellAxes label { display: flex; align-items: center; gap: 5px; }
@@ -26,5 +27,5 @@
 .centerLabel { position: absolute; bottom: 10px; left: 12px; max-width: calc(100% - 24px); padding: 3px 6px; border-radius: 4px; background: var(--ath-popover); color: var(--ath-ink); font-size: var(--text-caption); pointer-events: none; }
 .help, .warning { margin: 6px 12px; font-size: var(--text-caption); line-height: var(--leading-body); color: var(--ath-muted); }
 .warning { color: var(--ath-warning-ink, #9a6700); }
-@container (max-width: 400px) { .controls label { flex-basis: 100%; } }
+@container (max-width: 400px) { .controls label { flex-basis: 100%; } .radius { flex-wrap: wrap; } .radius input[type=range] { flex-basis: 100%; min-width: 0; } }
 @media (max-width: 540px) { .canvas { height: var(--ath-plot-height, 250px); } }

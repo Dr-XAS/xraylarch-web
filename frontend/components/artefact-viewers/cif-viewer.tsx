@@ -231,7 +231,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     {resetButton}
   </div>
   const viewerHelp = <>Drag to rotate; scroll or pinch to zoom; hover over atoms for details or bonds for their length in Å. Bonds are inferred from distances. Display settings do not change FEFF parameters. The largest sphere marks the center; larger neighboring spheres mark CrystalNN first-shell atoms, keeping their element colors. In radial view, shell colors and neighbor counts appear in the shell table. Element visibility does not change shell membership. Use CrystalNN first shell view to show all periodic neighbors.</>
-  const content = <ResizablePlotCard className={styles.resizeCard} storageKey="artemis.cif.height.v1"
+  const content = <><ResizablePlotCard className={styles.resizeCard} storageKey="artemis.cif.height.v1"
     defaultHeight={310} minHeight={250} plotSelector="[data-cif-plot]" resizeLabel="Resize CIF structure height" controlsId={plotId}>
     {structureControls}
     <div className={styles.canvas}>
@@ -262,6 +262,9 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
             value={cellRepeats[index]} onChange={repeat => setCellRepeats(previous => previous.map((count, i) => i === index ? repeat : count) as CifVector)} />)}</div>
         </div> : undefined}
         showBondsControl={false} atomCount={visibleCount} />
+    </>}
+  </ResizablePlotCard>
+    {geometry.lattice && structure.sites.length > 0 && <>
       <div className={styles.help}><FirstShellSummary state={{ ...shellState, shell }} /></div>
       <details className={styles.help} open={mode === "radial" ? true : undefined}><summary>Radial shell ranges & display</summary>
         <RadialShellPanel state={{ ...radialState, data: radial }} selected={visibleShells} onToggle={index => {
@@ -274,7 +277,7 @@ export function CifViewer({ structure, collapsible = false, structureControls, s
     {coordinationPanel !== "unopened" && <div id={coordinationId} hidden={coordinationPanel !== "open"}>
       <ClusterCoordination geometry={geometry} unavailableReason={coordinationUnavailable} />
     </div>}
-  </ResizablePlotCard>
+  </>
   return collapsible
     ? <ViewerPanel title="CIF structure viewer" viewerId="cif" help={viewerHelp} actions={actions} className={styles.docked}>{content}</ViewerPanel>
     : <section className={styles.viewer} aria-label="CIF structure viewer">
