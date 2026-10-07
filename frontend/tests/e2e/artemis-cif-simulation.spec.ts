@@ -10,6 +10,7 @@ test("an uploaded CIF simulates, exports, and adds theory EXAFS to an empty proj
   await page.getByRole("tab", { name: "EXAFS fitting", exact: true }).click()
   const region = page.getByRole("region", { name: "Project CIF structures", exact: true })
   await expect(region.getByRole("button", { name: "Upload CIF", exact: true })).toBeEnabled()
+  await expect(region.getByRole("button", { name: "Simulate EXAFS from CIF", exact: true })).toBeVisible()
   const source = await page.request.get("/api/backend/api/artemis/structures/13088")
   expect(source.ok()).toBe(true)
   const { cif } = await source.json() as { cif: string }
@@ -20,8 +21,12 @@ test("an uploaded CIF simulates, exports, and adds theory EXAFS to an empty proj
   const attached = await (await attachResponse).json()
   expect(attached.groups).toEqual([])
   const crystal = page.getByRole("dialog", { name: "Crystal structures", exact: true })
-  await crystal.getByRole("button", { name: "Simulate EXAFS from this CIF", exact: true }).click()
+  await crystal.getByRole("button", { name: "Close CIF search", exact: true }).click()
+  const record = attached.artemis_structures[0]
+  const name = record.label || record.structure.mineral || record.structure.formula
+  await region.getByRole("button", { name: `Simulate EXAFS from ${name} CIF`, exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "FEFF paths", exact: true })
+  await expect(dialog.getByRole("combobox", { name: "FEFF crystal structure", exact: true })).toHaveValue(record.id)
   await dialog.getByRole("radio", { name: "Absorber site 1", exact: true }).check()
   await dialog.getByLabel("FEFF cluster radius", { exact: true }).fill("3")
   await dialog.getByLabel("FEFF maximum path radius", { exact: true }).fill("3")

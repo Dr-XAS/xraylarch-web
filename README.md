@@ -91,7 +91,8 @@ middle parameter panel. Search the bundled AMCSD database or Materials Project
 in the CIF popup (MP requires `MP_API_KEY` in the backend environment), attach
 the selected CIF directly to the project, or choose **Upload CIF** to attach your
 own `.cif` file (up to 500 KB). Uploaded CIFs keep their original text and filename
-in saved projects. Use **Rename** beside an attached CIF to give it a project-specific name.
+in saved projects. Use the pencil icon beside an attached CIF's name to rename it;
+the trash icon removes it from the project.
 Names survive saving and reopening the project; source identifiers, original CIF
 text, and uploaded filenames stay intact. Select an absorber
 site, and calculate FEFF8L scattering paths using
@@ -109,7 +110,9 @@ automatically; the exported filename does not rename the saved project.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
-**Simulate EXAFS from CIF** uses the same attached structure and FEFF calculation
+**Simulate EXAFS from CIF** is in **Crystal structures**. Each attached CIF also
+has a **Simulate EXAFS** button that opens the calculation with that structure selected.
+The simulation uses the same attached structure and FEFF calculation
 without requiring a measured spectrum. Choose an absorbing site and edge, run
 FEFF, then sum all available paths or the selected paths with explicit S₀²,
 σ², ΔE₀ and ΔR. View χ(k) and |χ(R)|, download CSV curves, or export simulation
