@@ -33,6 +33,14 @@ test("CIF names can be edited without changing their source or saved FEFF model"
   const saveButton = region.getByRole("button", { name: "Save CIF name", exact: true })
   const cancelButton = region.getByRole("button", { name: "Cancel CIF rename", exact: true })
 
+  const originalLabel = region.locator("strong").filter({ hasText: originalName })
+  const labelBounds = (await originalLabel.boundingBox())!
+  const renameBounds = (await renameButton(originalName).boundingBox())!
+  expect(renameBounds.width).toBeLessThanOrEqual(32)
+  expect(renameBounds.x).toBeGreaterThanOrEqual(labelBounds.x + labelBounds.width)
+  expect(renameBounds.x - labelBounds.x - labelBounds.width).toBeLessThanOrEqual(12)
+  expect(Math.abs(renameBounds.y + renameBounds.height / 2 - labelBounds.y - labelBounds.height / 2)).toBeLessThanOrEqual(1)
+
   await renameButton(originalName).click()
   await expect(nameInput).toBeFocused()
   await expect(nameInput).toHaveValue(originalName)

@@ -128,6 +128,19 @@ the group. Mark it to compare it with other groups in the multiple-spectra
 viewer. Save project retains the spectrum and its sources; Undo removes the
 addition. Simulation previews save nothing until this action is chosen.
 
+Highlight a theory group to show it in the **EXAFS fit viewer**, which switches
+to **EXAFS theory**. It displays the total theory and individual path contributions
+in k space or R-space magnitude, real, and imaginary components. Display k-weight
+(0–4), path visibility, and vertical offsets do not change the saved simulation.
+The details show supplied simulation parameters and path lengths; no data,
+residual, fitted uncertainty, correlation, or fit statistic is presented.
+Contributions use the original simulation Fourier settings and are restored from
+the saved FEFF files after project reload or FEFF job expiry. A warning identifies
+spectra whose arrays have since changed. Individual path magnitudes do not add
+to the total magnitude; the complex contributions add before taking magnitude.
+If a real fit has also been saved for the theory group, **Fit result** and
+**Theory** switch between that fit and the original simulation.
+
 The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
 example, `{"s02": 0.85, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
 for all available paths or supply a nonempty list of IDs from the completed job.
@@ -141,6 +154,10 @@ with `{version, feff_job_id, simulation}`; `simulation` is the captured
 `result.simulation.request`. It checks the project version and attached CIF,
 supports `Idempotency-Key` for retries, and returns the updated project with
 `last_operation.simulation.group_id`. The saved spectrum survives FEFF job expiry.
+`POST /api/artemis/projects/{project_id}/groups/{group_id}/simulation-view`
+with `{version, kweight}` reconstructs these saved contributions without saving
+or fitting. Omit `kweight` or use null for the original simulation weight;
+`?view=summary` elides arrays.
 
 ### Attach and calculate paths
 
@@ -525,6 +542,18 @@ chi-square uses `N_ind - N_vary` for its effective degrees of freedom. Missing
 parameter uncertainties are reported as unavailable rather than as zero.
 Convergence alone does not establish that the structural model is adequate;
 check the residuals, correlations, bounds, and parameter meaning.
+
+The fit report uses the viewer palette for compact status badges and includes an
+always-visible **Status color guide**, even when **Show instruction** is off.
+Olive green means **In range**, gold **Borderline**, coral **Out of range**, slate
+**S₀² at bound**, and gray **Not assessed**. Each badge includes text and an icon;
+numeric values retain a neutral background. The gold report heading and R-factor
+card identify the EXAFS report; their status is given by the badge.
+**Reference ranges & thresholds** expands the criteria used for the displayed
+statistics and parameters. These checks are heuristics, not a verdict on fit
+validity. Parameter checks include ±1σ when available; without an uncertainty,
+only the value is checked. Colors, reference criteria, and labels do not alter
+the fitted values, scientific calculation, or downloaded report.
 
 Noise is estimated by Larch from the high-R region, 15–30 Å. The existing Athena
 processed arrays do not retain `delta_chi`, so this iteration does not propagate

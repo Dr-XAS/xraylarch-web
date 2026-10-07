@@ -82,14 +82,13 @@ export function ArtemisSimulation({ job, selectedIds, onSelectionChange, disable
     {current?.error && <p className={styles.error} role="alert">{current.error}</p>}
     {current?.result && <>
       <p className={styles.status} role="status">Simulation complete · {current.result.paths.length} path{current.result.paths.length === 1 ? "" : "s"} · no measured spectrum or fit</p>
-      {onAddToDataList && <div className={styles.toolbar}>
+      {current.result.warnings.map((warning, i) => <p key={i} className={styles.warning}>{warning}</p>)}
+      <ArtemisSimulationViewer result={current.result} actions={onAddToDataList && <>
         <button type="button" className={styles.primaryButton} disabled={controlsDisabled || addState?.added} onClick={() => void addToDataList()}>{addState?.pending ? "Adding spectrum…" : addState?.added ? "Added to data list" : "Add to data list"}</button>
         <SectionHelp label="Add simulated spectrum">Save the unweighted χ(k) spectrum in this project with a theory tag, its Fourier parameters, and the exact CIF and FEFF sources. It can be plotted alongside measured spectra, saved with the project, and removed with Undo.</SectionHelp>
         {addState?.added && <span className={styles.status} role="status">Spectrum added · theory</span>}
-      </div>}
+      </>} />
       {addState?.error && <p className={styles.error} role="alert">{addState.error}</p>}
-      {current.result.warnings.map((warning, i) => <p key={i} className={styles.warning}>{warning}</p>)}
-      <ArtemisSimulationViewer result={current.result} />
     </>}
   </section>
 }

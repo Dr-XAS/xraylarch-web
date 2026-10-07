@@ -37,7 +37,7 @@ function renderer() {
     }),
     setStyle: vi.fn(), addStyle: vi.fn(), addLine: vi.fn(), addCylinder: vi.fn(), setHoverable: vi.fn(), removeAllLabels: vi.fn(),
     addLabel: vi.fn((text: string, options: unknown) => ({ text, options })), removeLabel: vi.fn(),
-    addSphere: vi.fn(), removeShape: vi.fn(), getView: vi.fn(() => [0, 0, 0, 0, 0, 0, 1, 0]), setView: vi.fn(),
+    addSphere: vi.fn(), addCustom: vi.fn(), removeShape: vi.fn(), getView: vi.fn(() => [0, 0, 0, 0, 0, 0, 1, 0]), setView: vi.fn(),
     getModel: vi.fn((): { selectedAtoms: typeof selectedAtoms } | undefined => ({ selectedAtoms })), targetedObjects: vi.fn(() => [] as { clickable: { index: number } }[]),
     zoomTo: vi.fn(), zoom: vi.fn(), render: vi.fn(), stopAnimate: vi.fn(),
     divwatcher: { disconnect: vi.fn() }, intwatcher: { disconnect: vi.fn() },

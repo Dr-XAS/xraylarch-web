@@ -40,7 +40,7 @@ export interface ArtemisPreview {
 }
 
 /** Reject curves that do not describe the model that was sent, rather than plotting them. */
-export function validArtemisPreview(preview: ArtemisPreview, request: ArtemisPreviewRequest) {
+export function validArtemisPreview(preview: ArtemisPreview, request: Partial<Omit<ArtemisPreviewRequest, "paths">> & { paths: readonly Pick<ArtemisPath, "id" | "enabled">[] }) {
   const series = (values: number[], length: number) => Array.isArray(values) && values.length === length && values.every(Number.isFinite)
   const axis = (values: number[]) => Array.isArray(values) && values.length > 1 &&
     values.every((value, i) => Number.isFinite(value) && (i === 0 || value > values[i - 1]))

@@ -778,7 +778,7 @@ def _preview_metrics(r, chir_mag, options: FitTransform, chi, k, weight) -> dict
                 chi_k_peak=float(np.max(np.abs(chi[inside] * k[inside] ** weight))) if inside.any() else 0.0)
 
 
-def preview_paths(request: PathPreviewRequest) -> dict:
+def preview_paths(request: PathPreviewRequest, *, display_kweight: int | None = None) -> dict:
     """Each enabled path's own chi(k) and chi(R) at the starting values.
 
     The Fourier transform is the one the fit would use, so a path drawn here
@@ -793,7 +793,9 @@ def preview_paths(request: PathPreviewRequest) -> dict:
         _fail("The total FEFF file content must not exceed 4 MB.", "paths")
     definitions, values, _, _ = _initial_values(request.parameters)
     trees, _ = _path_trees(request.paths, set(definitions))
-    options, weight, warnings = request.transform, request.transform.kweight[0], []
+    if display_kweight is not None and (type(display_kweight) is not int or display_kweight not in range(5)):
+        _fail("Display k weight must be an integer from 0 to 4.", "kweight")
+    options, weight, warnings = request.transform, request.transform.kweight[0] if display_kweight is None else display_kweight, []
     with _LARCH_LOCK, tempfile.TemporaryDirectory(prefix="artemis-preview-") as directory:
         loaded = [(definition, *_read_path(definition, Path(directory), index))
                   for index, definition in enumerate(enabled)]

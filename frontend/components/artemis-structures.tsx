@@ -489,6 +489,13 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
         setNotice("")
       }}><Pencil size={14} aria-hidden="true" /><span className={styles.actionLabel}>Rename</span></button>
   }
+  function simulateButton(attachment: ArtemisStructureAttachment) {
+    const name = attachmentName(attachment)
+    return <button type="button" disabled={controlsDisabled || !attachment.structure.supported}
+      aria-label={`Simulate EXAFS from ${name} CIF`}
+      title={attachment.structure.supported ? `Simulate EXAFS from ${name} CIF` : "EXAFS simulation requires an ordered structure with supported atomic sites."}
+      onClick={() => openAttachment(attachment, "feff")}>Simulate EXAFS</button>
+  }
   function renameEditor(attachment: ArtemisStructureAttachment, location: "list" | "dialog") {
     if (renaming?.id !== attachment.id || renaming.location !== location) return null
     return <div className={styles.renameEditor}>
@@ -607,10 +614,14 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   }
   const working = busy === "job" || job?.status === "running"
   const structures = <section className={styles.panel} aria-label="Project CIF structures">
-    <div className={styles.toolbar}><button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>{uploadControl()}</div>
+    <div className={styles.toolbar}><button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>{uploadControl()}<button type="button" disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Simulate EXAFS from CIF</button></div>
     {listLoading && !attachments.length && <p className={styles.help}>Loading attached CIFs…</p>}
     {!projectId ? <p className={styles.help}>Select a project to attach crystal structures.</p> : !listLoading && !attachments.length && <p className={styles.help}>No CIF structures attached to this project.</p>}
-    {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}><span className={styles.attachmentInfo}><strong>{attachmentName(item)}</strong><small>{structureLabel(item.structure)}</small></span><div className={styles.attachedActions}><button type="button" disabled={controlsDisabled} onClick={() => openAttachment(item)} aria-label={`Open attached ${attachmentName(item)} CIF`}>Open</button>{renameButton(item, "list")}{removeButton(item)}</div>{renameEditor(item, "list")}</li>)}</ul>}
+    {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}>
+      <div className={styles.attachmentInfo}><div className={styles.attachmentName}><strong>{attachmentName(item)}</strong>{renameButton(item, "list")}</div><small>{structureLabel(item.structure)}</small></div>
+      <div className={styles.attachedActions}><button type="button" disabled={controlsDisabled} onClick={() => openAttachment(item)} aria-label={`Open attached ${attachmentName(item)} CIF`}>Open</button>{simulateButton(item)}{removeButton(item)}</div>
+      {renameEditor(item, "list")}
+    </li>)}</ul>}
     {listError && !open && <p className={styles.error}>{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
     {error && !open && dialogMode === "structure" && <p className={styles.error} role="alert">{error}</p>}
     {notice && !open && dialogMode === "structure" && <p className={styles.status} role="status">{notice}</p>}
@@ -618,7 +629,6 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const feff = <div className={styles.feffLauncher}>
     <div className={styles.toolbar}>
     <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Generate FEFF paths</button>
-    <button type="button" disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Simulate EXAFS from CIF</button>
     </div>
     {!listLoading && !attachments.length && <p className={styles.help}>Attach a CIF in Crystal structures to calculate paths.</p>}
     {error && !open && dialogMode === "feff" && <p className={styles.error} role="alert">{error}</p>}
@@ -627,7 +637,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   return <>
     {children ? children({ structures, feff }) : <>{structures}{feff}</>}
     <dialog ref={dialog} className={`${styles.panel} ${styles.dialog}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
-      <header className={styles.dialogHeader}><div><h3 id={titleId}>{dialogMode === "feff" ? "FEFF paths" : "Crystal structures"}<SectionHelp label={dialogMode === "feff" ? "FEFF path generation" : "Crystal structures"}>{dialogMode === "feff" ? "Choose an attached CIF and absorber site, calculate paths, then add selected paths to the model. Closing this window keeps your calculation progress." : "Search and attach CIF structures to your project. Generate scattering paths from the FEFF paths section."}</SectionHelp></h3></div><button type="button" aria-label={dialogMode === "feff" ? "Close FEFF paths" : "Close CIF search"} disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
+      <header className={styles.dialogHeader}><div><h3 id={titleId}>{dialogMode === "feff" ? "FEFF paths" : "Crystal structures"}<SectionHelp label={dialogMode === "feff" ? "FEFF path generation" : "Crystal structures"}>{dialogMode === "feff" ? "Choose an attached CIF and absorber site, calculate paths, then add selected paths to the model. Closing this window keeps your calculation progress." : "Search and attach CIF structures to your project. Use Simulate EXAFS beside an attached structure to configure its FEFF calculation and simulation."}</SectionHelp></h3></div><button type="button" aria-label={dialogMode === "feff" ? "Close FEFF paths" : "Close CIF search"} disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
       {dialogMode === "feff" && attachmentId && (structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
         {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || !edge || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Run FEFF calculation"}</button>}
         {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !newSelected.length || newSelected.length > availableSlots} onClick={() => addPaths()}>Add selected paths ({newSelected.length})</button>}
@@ -656,11 +666,11 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       {attachments.length > 0 && <div className={styles.savedStructures}>
         <h4>Attached to this project</h4>
         {attachments.map(item => <div key={item.id} className={styles.savedStructureRow}>
-          <button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${attachmentName(item)} CIF`}>
-            <strong>{attachmentName(item)}</strong>
+          <div className={styles.attachmentInfo}>
+            <div className={styles.attachmentName}><button type="button" className={styles.result} disabled={controlsDisabled} aria-pressed={attachmentId === item.id} onClick={() => openAttachment(item)} aria-label={`Use attached ${attachmentName(item)} CIF`}><strong>{attachmentName(item)}</strong></button>{renameButton(item, "dialog")}</div>
             <small title={`${structureLabel(item.structure)} · Saved CIF`}>{structureLabel(item.structure)} · Saved CIF</small>
-          </button>
-          <div className={styles.savedStructureActions}>{renameButton(item, "dialog")}{removeButton(item)}</div>
+          </div>
+          <div className={styles.savedStructureActions}>{simulateButton(item)}{removeButton(item)}</div>
           {renameEditor(item, "dialog")}
         </div>)}
       </div>}

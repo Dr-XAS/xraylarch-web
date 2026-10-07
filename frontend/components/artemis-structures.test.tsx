@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest"
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { createHash, webcrypto } from "node:crypto"
-import { useState, type ComponentProps } from "react"
+import { useState, type ComponentProps, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
 import type { ArtemisFeffJob, ArtemisFeffRequest, ArtemisGeneratedPath, ArtemisStructure, ArtemisStructureAttachment } from "@/lib/artemis-structures"
@@ -20,7 +20,7 @@ vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
   CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} data-structure-id={structure.id} data-provider={structure.provider ?? "amcsd"} />,
 }))
-vi.mock("./artefact-viewers/artemis-simulation-viewer", () => ({ ArtemisSimulationViewer: () => <div data-testid="simulation-result" /> }))
+vi.mock("./artefact-viewers/artemis-simulation-viewer", () => ({ ArtemisSimulationViewer: ({ actions }: { actions?: ReactNode }) => <div data-testid="simulation-result">{actions}</div> }))
 const api = vi.mocked(artemisApi)
 const request: ArtemisFeffRequest = { project_id: "p", attachment_id: "cif1", version: 2, absorber: "Cu", edge: "K", site_index: 3, cluster_radius: 5, path_radius: 4, max_legs: 4, max_paths: 60 }
 let savedAttachments: ArtemisStructureAttachment[] = []
@@ -130,6 +130,48 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
+  it("opens simulation from the chosen CIF row and clears another CIF's generated paths without calculating automatically", async () => {
+    const copper = attachment()
+    const cuprite = { ...attachment(), id: "cif2", amcsd_id: 13089, structure: structure({ id: 13089, mineral: "Cuprite", formula: "Cu2O", cif: "data_Cu2O" }) }
+    savedAttachments = [copper, cuprite]
+    const onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" spectrumEdge={{ element: "Cu", edge: "K" }} availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />)
+    const region = screen.getByRole("region", { name: "Project CIF structures" })
+    expect(within(region).getByRole("button", { name: "Simulate EXAFS from CIF" })).toBeEnabled()
+    const simulateCuprite = await within(region).findByRole("button", { name: "Simulate EXAFS from Cuprite CIF" })
+    expect(simulateCuprite).toHaveTextContent("Simulate EXAFS")
+    await act(async () => { fireEvent.click(simulateCuprite) })
+    expect(screen.getByLabelText("FEFF crystal structure")).toHaveValue("cif2")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", cuprite.structure.cif)
+    expect(screen.getByRole("radio", { name: "Absorber site 3" })).toBeChecked()
+    expect(onViewStructure).toHaveBeenLastCalledWith("cif2", 3)
+    expect(api.mock.calls.filter(([, body]) => body !== undefined)).toEqual([])
+
+    await click("Run FEFF calculation")
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "cif2", absorber: "Cu", site_index: 3 }), expect.any(AbortSignal))
+    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
+    await click("Close FEFF paths")
+    await act(async () => { fireEvent.click(within(region).getByRole("button", { name: "Simulate EXAFS from Copper CIF" })) })
+    expect(screen.getByLabelText("FEFF crystal structure")).toHaveValue("cif1")
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", copper.structure.cif)
+    expect(screen.queryByRole("checkbox", { name: "Select generated feff0001.dat" })).not.toBeInTheDocument()
+    expect(api.mock.calls.filter(([url]) => url === "/feff/jobs")).toHaveLength(1)
+    await click("Run FEFF calculation")
+    expect(api).toHaveBeenLastCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "cif1" }), expect.any(AbortSignal))
+    expect(api.mock.calls.some(([url]) => url.endsWith("/simulate"))).toBe(false)
+  })
+
+  it("keeps an unsupported CIF's simulation action visible but disabled", async () => {
+    savedAttachments = [{ ...attachment(), structure: structure({ supported: false, ordered: false }) }]
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} />)
+    const region = screen.getByRole("region", { name: "Project CIF structures" })
+    const simulate = await within(region).findByRole("button", { name: "Simulate EXAFS from Copper CIF" })
+    expect(simulate).toBeVisible()
+    expect(simulate).toBeDisabled()
+    expect(within(region).getByRole("button", { name: "Open attached Copper CIF" })).toBeEnabled()
+    expect(api.mock.calls.filter(([, body]) => body !== undefined)).toEqual([])
+  })
+
   it("defaults every generated checkbox to All and keeps custom selection synchronized across reopening", async () => {
     setup()
     await findAndSelect()
