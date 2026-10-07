@@ -1068,13 +1068,11 @@ fails above 10⁻⁸. This check matters because a wrong physical constant or a 
 window would otherwise hide inside a refit: the optimizer simply absorbs it
 into the parameters, and the fit still looks converged.
 
-One real discrepancy was found this way and is corrected in the facade. The two
-codes disagree in the eighth digit on the constant converting photoelectron
-wavenumber to energy — Larch computes it from CODATA through SciPy, while the
-differentiable engine carries an older hard-coded literal. The facade scales
-E₀ by the ratio of the two on the way in, which is exact, local, and leaves the
-gradient intact. Without it the worst relative χ(k) difference over 18 paths is
-7.8 × 10⁻⁸; with it, 3.3 × 10⁻¹³.
+The forward model is `diffexafs_core.pathsum.feff_path_chi`. The facade passes
+Larch's own `KTOE` constant through its `ktoe` argument, so both models use the
+same conversion between photoelectron wavenumber squared and energy even if
+their default CODATA revisions differ. E₀ is passed unchanged: no rescaling
+workaround or global constant override is needed.
 
 ### Why the fitted parameters are not bit-identical
 
@@ -1177,21 +1175,19 @@ parity suite **skips** — which is not the same as passing, and a deployment
 that intends to offer this backend must run the suite with the engine
 installed.
 
-Installing it into the backend environment takes `jax` from PyPI and five
-packages from a research checkout that is not published:
+Install the optional engines on top of `backend/requirements.txt`. From
+`backend/`, with a folder containing the `diffexafs-core==0.1.0` wheel:
 
 ```
-pip install "jax[cpu]"
-pip install --no-deps <research-checkout>/packages/xascore \
-                      <research-checkout>/packages/xasdata \
-                      <research-checkout>/packages/xassupport \
-                      <research-checkout>/packages/xasforward \
-                      <research-checkout>/packages/diffexafs
+pip install -r requirements-engines.txt \
+    -c ../deploy/python-release-constraints.txt --find-links <wheel-folder>
 ```
 
-`--no-deps` is deliberate: those packages declare the whole lab stack, and the
-fast backend needs only `xasforward.physics.exafs_paths` and what it imports,
-which since 29 September includes `diffexafs` (without it the import fails with
-`No module named 'diffexafs'`; checked 3 October in a fresh environment).
-None of this is in `backend/requirements.txt`, so a plain install of this
-repository does not offer the backend, and `tests/test_artemis_fast.py` skips.
+`diffexafs-core` is not on PyPI; `--find-links` supplies its wheel without a
+checkout dependency. The file pins CPU JAX and CPU-only PyTorch (from the
+PyTorch CPU index), and also installs MapsTorch 0.0.2 from PyPI for the optional
+XRF engine. Normal dependency resolution is intentional; do not use `--no-deps`.
+Neither engine is in `backend/requirements.txt`. Deployment scripts install
+that file explicitly, not a requirements-file glob, so a standard deployment
+still omits the engines and `tests/test_artemis_fast.py` skips. After installing
+the engines, restart the server so availability is checked again.

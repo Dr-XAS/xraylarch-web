@@ -39,7 +39,7 @@ const fastResult = fit({
   statistics: { ...fit().statistics, nfev: 11, chi_square: 99.99 },
   parameters: [{ name: "amp", kind: "guess", value: 0.9002, initial: 0.9, stderr: 0.02, expression: "", min: null, max: null }],
   warnings: ["Fast backend: the reference and differentiable forward models differ by at most 4.20e-13 in the weighted residual at these parameters."],
-  metadata: { engine: "xasforward.exafs_paths+jax", engine_parity: 4.2e-13, seconds: { compile: 0.9, optimizer: 0.012, fit: 0.93, total: 0.95 } },
+  metadata: { engine: "diffexafs_core.pathsum+jax", engine_parity: 4.2e-13, seconds: { compile: 0.9, optimizer: 0.012, fit: 0.93, total: 0.95 } },
 })
 const row = (name: string) => screen.getByRole("rowheader", { name }).closest("tr")!
 
@@ -64,7 +64,7 @@ describe("ArtemisFastFitComparison", () => {
   })
 
   it("is not offered at all on a server without the engine, rather than as a button that can only fail", async () => {
-    // A standard deployment installs neither jax nor xasforward.
+    // A standard deployment installs neither jax nor diffexafs-core.
     status.mockResolvedValue({ available: false, reason: "No module named 'jax'" })
     const { container } = panel()
     await waitFor(() => expect(container).toBeEmptyDOMElement())
@@ -88,7 +88,7 @@ describe("ArtemisFastFitComparison", () => {
     expect(row("Whole fit call")).toHaveTextContent(/81 ms.*930 ms/)
     expect(row("Server total")).toHaveTextContent(/95 ms.*950 ms/)
     expect(row("Residual evaluations")).toHaveTextContent(/40.*11/)
-    expect(screen.getByText(/xasforward\.exafs_paths\+jax/)).toBeInTheDocument()
+    expect(screen.getByText(/diffexafs_core\.pathsum\+jax/)).toBeInTheDocument()
   })
 
   it("says 'same answer' only with the tolerances it was judged against", async () => {

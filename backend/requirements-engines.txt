@@ -1,0 +1,10 @@
+# Optional engines, installed on top of requirements.txt; not part of the release gate.
+# From backend/: pip install -r requirements-engines.txt \
+#   -c ../deploy/python-release-constraints.txt --find-links <wheel-folder>
+# Supply the diffexafs-core wheel via --find-links; it is not on PyPI.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.8.0+cpu
+mapstorch==0.0.2
+# Plain JAX installs the CPU runtime, without CUDA or TPU extras.
+jax==0.7.1
+diffexafs-core==0.1.0
