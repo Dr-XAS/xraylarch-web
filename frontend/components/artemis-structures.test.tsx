@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest"
 
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import { createHash, webcrypto } from "node:crypto"
-import { useState, type ComponentProps } from "react"
+import { useState, type ComponentProps, type ReactNode } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { artemisApi } from "@/lib/artemis"
 import type { ArtemisFeffJob, ArtemisFeffRequest, ArtemisGeneratedPath, ArtemisStructure, ArtemisStructureAttachment } from "@/lib/artemis-structures"
@@ -20,7 +20,7 @@ vi.mock("@/lib/use-radial-shells", () => ({ useRadialShells: radialAnalysis }))
 vi.mock("./artefact-viewers/cif-viewer", () => ({
   CifViewer: ({ structure }: { structure: ArtemisStructure }) => <section aria-label="CIF structure viewer" data-testid="cif-viewer" data-cif={structure.cif} data-structure-id={structure.id} data-provider={structure.provider ?? "amcsd"} />,
 }))
-vi.mock("./artefact-viewers/artemis-simulation-viewer", () => ({ ArtemisSimulationViewer: () => <div data-testid="simulation-result" /> }))
+vi.mock("./artefact-viewers/artemis-simulation-viewer", () => ({ ArtemisSimulationViewer: ({ actions }: { actions?: ReactNode }) => <div data-testid="simulation-result">{actions}</div> }))
 const api = vi.mocked(artemisApi)
 const request: ArtemisFeffRequest = { project_id: "p", attachment_id: "cif1", version: 2, absorber: "Cu", edge: "K", site_index: 3, cluster_radius: 5, path_radius: 4, max_legs: 4, max_paths: 60 }
 let savedAttachments: ArtemisStructureAttachment[] = []
