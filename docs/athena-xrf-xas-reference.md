@@ -41,6 +41,21 @@ The response is built on Larch's own XRF model (`larch.xrf.xrf_model`): the same
 external XRF package is used. The shared response corrections below extend
 the original fixed detector-width assumptions.
 
+### Target edge checks
+
+The scan must cross an absorption edge of the target, or start no more than
+200 eV above one. Otherwise extraction is refused with the target's nearby
+edges and the other K or L3 edges inside the scan named, so an unrelated low
+energy edge cannot silently become the target's line family.
+
+When E0 is found automatically and the target edge is inside the scan, a rise
+more than 50 eV from that edge produces a warning above the extraction plots.
+The warning can name another element whose K or L3 edge is in the scan and
+whose emission line is within 0.15 keV of the target line. This is a possible
+overlap to investigate, not proof of that element's contribution. A manually
+specified E0 or a target edge below the first scan point suppresses this
+comparison. The fitted arrays and existing quality checks are unchanged.
+
 ### Stage A — per-detector calibration
 
 Each detector element of a multi-element detector has its own gain, offset and

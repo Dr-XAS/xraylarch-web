@@ -1398,3 +1398,44 @@ def test_a_linear_pre_edge_drift_is_not_called_a_clean_baseline():
     assert test['detrended_rms_frac_of_jump'] < engine.NULL_RMS_LIMIT
     assert abs(test['drift_over_scan_frac_of_jump']) > engine.NULL_DRIFT_LIMIT
     assert indicators['checks']['pre_edge_null'] is False
+
+
+def test_a_target_whose_edges_the_scan_does_not_cross_is_refused_with_the_edges_named():
+    # Cu on a Cr K-edge scan once fell back to a Cu L edge near 1 keV and
+    # drew a curve from the wrong line.
+    from xraylarch_web.athena_xrf_xas import target_line
+
+    with pytest.raises(ScientificError) as refused:
+        target_line('Cu', 5839.0, 6629.0)
+    message = str(refused.value)
+    assert 'K edge (8979 eV) lies above' in message
+    assert 'Cr K (5989 eV)' in message
+
+
+def test_a_scan_starting_just_above_the_target_edge_still_measures_it():
+    from xraylarch_web.athena_xrf_xas import edge_mismatch, target_line
+
+    edge, edge_ev, line_kev = target_line('Cr', 6050.0, 6800.0)
+    assert (edge, round(edge_ev)) == ('K', 5989)
+    # Its rise is not in the scan, so it cannot be called misplaced.
+    assert edge_mismatch('Cr', edge, edge_ev, line_kev, 6080.0, 6050.0, 6800.0) is None
+
+
+def test_a_scan_far_above_the_targets_last_edge_is_refused_not_crashed():
+    from xraylarch_web.athena_xrf_xas import target_line
+
+    with pytest.raises(ScientificError, match=r'K edge \(5989 eV\) lies far below'):
+        target_line('Cr', 6300.0, 6800.0)
+
+
+def test_a_curve_rising_at_another_elements_edge_names_the_line_that_blends_with_the_target():
+    # Mn on a Cr scan: Mn K-alpha sits 50 eV from Cr K-beta, so the fit
+    # returned Cr's edge as Mn's.
+    from xraylarch_web.athena_xrf_xas import edge_mismatch, target_line
+
+    edge, edge_ev, line_kev = target_line('Mn', 5839.0, 6629.0)
+    warning = edge_mismatch('Mn', edge, edge_ev, line_kev, 5989.0, 5839.0, 6629.0)
+    assert 'Cr K edge (5989 eV)' in warning and 'Add Cr as a matrix element' in warning
+    assert 'Make Cr the target' in edge_mismatch('Mn', edge, edge_ev, line_kev, 5989.0,
+                                                 5839.0, 6629.0, matrix=['Cr'])
+    assert edge_mismatch('Mn', edge, edge_ev, line_kev, edge_ev + 8.0, 5839.0, 6629.0) is None

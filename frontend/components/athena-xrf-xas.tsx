@@ -67,7 +67,7 @@ type Result={version:number;scan_id:string;display_name:string;energy_ev:number[
   quality:{fit:Indicator;roi:Indicator;detector_agreement:Agreement|null;elements_without_edge?:number[];limits:Limits};
   metadata:{points:number;detectors:number;engine:string;engine_notes:string[];elements?:number[];excluded_elements?:number[];
     mu_units?:'edge_step';raw_edge_steps?:{fit:number;roi:number};
-    channel_range?:number[];roi_range?:number[];windows?:Windows;notes?:string[];request?:Request}}
+    channel_range?:number[];roi_range?:number[];windows?:Windows;notes?:string[];warnings?:string[];request?:Request}}
 type Trace={x:number[];y:number[];name:string;dash?:'dot'|'dash';markers?:boolean}
 type Shape=Record<string,unknown>
 
@@ -477,6 +477,8 @@ export function AthenaXrfXas({project,onSaved,setBusy,initialFile,onViewRaw}: {
         <label className="ath-check"><input type="checkbox" checked={normalized} onChange={e=>setNormalized(e.target.checked)} />Normalized <SectionHelp label="Normalized">Compare the fitted and window-sum curves after normalization. Turn off to inspect their fluorescence yields and detector contributions.</SectionHelp></label>
         <label className="ath-check"><input type="checkbox" disabled={normalized} checked={showDetectors} onChange={e=>setShowDetectors(e.target.checked)} />Each detector element (contributions) <SectionHelp label="Each detector element (contributions)">Overlay each detector element’s contribution to the extracted yield. Available with Normalized off; useful for spotting an inconsistent element.</SectionHelp></label>
       </div>
+      {/* Said before the curves, not under them: the curve may not be the target's. */}
+      {meta?.warnings?.map((warning,i)=><p key={i} role="alert" className="ath-warning">{warning}</p>)}
       <div className={styles.pair}>
         <div><h4>Fitted extraction</h4>
           <Figure label="Fluorescence XAS preview" traces={fitTraces} xlabel="Incident energy (eV)" ylabel={yieldLabel} revision={`${revision}:xas`}
