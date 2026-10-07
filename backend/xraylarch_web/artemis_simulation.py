@@ -8,6 +8,7 @@ import logging
 from typing import Literal
 
 from fastapi import Header
+import numpy as np
 from pydantic import Field, field_validator, model_validator
 
 from .artemis import FitPath, FitTransform, PathPreviewRequest, StrictModel, preview_paths
@@ -30,6 +31,10 @@ def register_simulation_route(router, jobs, store):
                         "One absorbing site, native FEFF degeneracies; no automatic site-population average. Inspect warnings for omitted paths.",
                         "Full replies include unweighted k.chi, weighted k.total, complex Fourier curves and exact CIF/FEFF/path sources. Summary elides arrays and omits source files. Nothing is saved to the project.",
                     ],
+                    saved_view=dict(post="/api/artemis/projects/{project_id}/groups/{group_id}/simulation-view?view=summary",
+                                    body=_model_options("artemis_simulation:SimulationViewRequest"),
+                                    notes=["Read-only reconstruction from the theory group's saved FEFF files and original simulation parameters; no fit and no live FEFF job required.",
+                                           "Display kweight accepts 0–4; null uses the saved simulation weight. Does not change the project or its processing recipe."]),
                     add_to_project=dict(post="/api/artemis/projects/{project_id}/simulation?view=summary",
                                         body=_model_options("artemis_simulation:AddSimulationRequest"),
                                         notes=["Send the completed simulation's request, not current unsimulated form values. The server recreates the exact unweighted chi(k) from the completed FEFF job.",
@@ -49,6 +54,20 @@ def register_simulation_route(router, jobs, store):
             idempotency_key: str | None = Header(default=None, min_length=1, max_length=200, alias="Idempotency-Key")):
         from .agent_views import project_view
         return project_view(add_simulation(store, jobs, ident, request, idempotency_key=idempotency_key), view)
+
+    @router.post("/projects/{ident}/groups/{group_id}/simulation-view")
+    def simulation_view(ident: str, group_id: str, request: SimulationViewRequest,
+                        view: Literal["full", "summary"] = "full"):
+        from .artemis_attachments import local_project
+        project = local_project(store, ident)
+        store.check(project, request.version)
+        result = view_simulation(store.group(project, group_id), request.kweight)
+        store.check(store.load(ident), request.version)
+        result.update(project_id=ident, group_id=group_id, version=request.version)
+        if view == "summary":
+            from .agent_views import elide_arrays
+            return elide_arrays(result)
+        return result
 
 
 class SimulationTransform(FitTransform):
@@ -174,6 +193,66 @@ class SimulationPaths(PathPreviewRequest):
     # Forward sums can use the complete job; the 24-path fit limit still applies
     # to fitting and its interactive model preview.
     paths: list[FitPath] = Field(min_length=1, max_length=100)
+
+
+class SimulationViewRequest(StrictModel):
+    version: int = Field(ge=0)
+    kweight: int | None = Field(default=None, ge=0, le=4)
+
+
+def view_simulation(group: dict, kweight: int | None = None) -> dict:
+    """Replay saved theory sources, including after FEFF job expiry or project exchange.
+
+    These are the original simulation and Fourier settings, not a fit or the
+    current processing recipe. No project state or saved parameters are changed.
+    """
+    source = group.get("source", {})
+    info, feff = source.get("simulation"), source.get("feff")
+    if (group.get("data_type") != "chi" or not isinstance(source.get("tags"), list) or "theory" not in source["tags"]
+            or not isinstance(info, dict) or info.get("kind") != "cif-exafs"
+            or type(info.get("schema_version")) is not int or info["schema_version"] != 1
+            or not isinstance(feff, dict)):
+        _fail("This spectrum has no saved EXAFS simulation sources for path contributions.", "source")
+    try:
+        if not isinstance(info["request"], dict) or not {"s02", "sigma2", "e0", "deltar", "transform", "path_ids"} <= info["request"].keys():
+            raise ValueError("Missing simulation parameters")
+        request = SimulationRequest.model_validate(info["request"])
+        scalars = {key: str(getattr(request, key)) for key in ("s02", "sigma2", "e0", "deltar")}
+        files = feff["paths"]
+        if not isinstance(files, list) or not 1 <= len(files) <= 100:
+            raise ValueError("Invalid path files")
+        paths = [FitPath.model_validate(dict(path, **scalars)) for path in files]
+        ids = [path.id for path in paths]
+        if (len(set(ids)) != len(ids) or ids != info["path_ids"]
+                or (request.path_ids is not None and request.path_ids != ids)
+                or not all(path.enabled for path in paths)):
+            raise ValueError("Inconsistent path selection")
+        available, total = info["available_paths"], info["total_paths"]
+        if type(available) is not int or type(total) is not int or not len(ids) <= available <= 100 or total < available:
+            raise ValueError("Invalid path counts")
+        assumptions = info["assumptions"]
+        warnings = source.get("warnings", [])
+        if any(not isinstance(items, list) or not all(isinstance(item, str) for item in items)
+               for items in (assumptions, warnings)):
+            raise ValueError("Invalid simulation notes")
+        model = SimulationPaths(paths=paths, transform=request.transform)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise WebInputError("invalid_artemis_simulation", "The saved simulation sources are incomplete or inconsistent.",
+                            fields=("source",), recovery="Recreate the theory spectrum from its CIF and FEFF paths.") from exc
+    result = preview_paths(model, display_kweight=kweight)
+    result["warnings"] = list(dict.fromkeys([*warnings, *result["warnings"]]))
+    # Edits may retain provenance. Never imply its original decomposition is a
+    # decomposition of a subsequently modified spectrum.
+    matches = all(len(group[key]) == len(result["k"][curve]) and
+                  np.allclose(group[key], result["k"][curve], rtol=1e-10, atol=1e-12)
+                  for key, curve in (("energy", "x"), ("mu", "chi")))
+    if not matches:
+        result["warnings"].append("This spectrum differs from its saved simulation. The curves show the original theory and its path contributions.")
+    result["group_label"] = group["label"]
+    result["simulation"] = dict(request=request.model_dump(), path_ids=ids,
+                                available_paths=available, total_paths=total, assumptions=list(assumptions))
+    result["metadata"]["note"] = "Saved theoretical EXAFS; no fit. Uses the original simulation Fourier settings."
+    return result
 
 
 def _fail(message: str, field: str):

@@ -13,7 +13,7 @@ from larch.xafs import feffpath, ff2chi, find_exe, xftf
 from pydantic import ValidationError
 
 from xraylarch_web import artemis
-from xraylarch_web.artemis_simulation import AddSimulationRequest, SimulationRequest, add_simulation, simulate_job
+from xraylarch_web.artemis_simulation import AddSimulationRequest, SimulationRequest, add_simulation, simulate_job, view_simulation
 from xraylarch_web.artemis_attachments import RenameRequest, rename_structure, structure_attachment
 from xraylarch_web.artemis_structures import structure_details
 from xraylarch_web.athena import AthenaStore, Command
@@ -207,6 +207,10 @@ def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation,
     assert reopened["source"]["feff"] == group["source"]["feff"]
     assert reopened["mu"] == group["mu"] and reopened["parameters"] == group["parameters"]
     assert reopened["processing_error"] is None
+    replay = view_simulation(reopened)
+    np.testing.assert_allclose(replay["k"]["chi"], group["mu"], atol=1e-12)
+    assert len(replay["paths"]) == 4
+    assert replay["simulation"]["request"] == group["source"]["simulation"]["request"]
 
 
 def test_addition_is_undoable_and_redoable(owned_simulation):
@@ -278,3 +282,85 @@ def test_addition_route_summary_and_validation(owned_simulation, monkeypatch):
         assert invalid.status_code == 422, invalid.text
         invalid = client.post(url, json=addition(original, job).model_dump() | {"feff_job_id": "../bad"})
         assert invalid.status_code == 422, invalid.text
+
+
+@pytest.mark.parametrize("weight", [None, 0, 4])
+def test_saved_theory_view_preserves_recipe_and_native_path_sums(owned_simulation, weight):
+    store, jobs, original, job = owned_simulation
+    request = addition(original, job, s02=0.82, sigma2=0.006, e0=2.5, deltar=0.01,
+                       path_ids=[job["paths"][i]["id"] for i in (2, 0)],
+                       transform=dict(kmin=2, kmax=14, kweight=[1], dk=3, window="parzen"))
+    saved = add_simulation(store, jobs, original["id"], request)
+    group = saved["groups"][0]
+    before = copy.deepcopy(group)
+    jobs.get = lambda ident: pytest.fail("Saved theory must not need a live FEFF job")
+    result = view_simulation(group, weight)
+    effective_weight = 1 if weight is None else weight
+    assert result["k"]["weight"] == effective_weight
+    assert result["simulation"]["request"] == request.simulation.model_dump()
+    np.testing.assert_allclose(result["k"]["chi"], group["mu"], atol=1e-12)
+    np.testing.assert_allclose(result["k"]["total"], np.array(group["mu"]) * np.array(group["energy"]) ** effective_weight, atol=1e-12)
+    np.testing.assert_allclose(np.sum([p["k"]["chi"] for p in result["paths"]], axis=0), result["k"]["total"], atol=1e-12)
+    native = Group()
+    xftf(np.array(group["energy"]), np.array(group["mu"]), group=native, kmin=2, kmax=14, dk=3,
+         kweight=effective_weight, window="parzen", nfft=2048, kstep=0.05, rmax_out=10)
+    np.testing.assert_allclose(result["r"]["total_re"], native.chir.real, atol=1e-12)
+    for part in ("re", "im"):
+        np.testing.assert_allclose(np.sum([p["r"][part] for p in result["paths"]], axis=0), result["r"][f"total_{part}"], atol=1e-12)
+    assert group == before and store.load(saved["id"]) == saved
+    assert not {"statistics", "report", "correlations", "success"} & result.keys()
+
+
+def test_saved_theory_view_exceeds_fit_path_limit_and_labels_modified_data(owned_simulation):
+    store, jobs, original, job = owned_simulation
+    job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(30)]
+    job["total_paths"] = 30
+    saved = add_simulation(store, jobs, original["id"], addition(original, job))
+    group = saved["groups"][0]
+    group["mu"][20] += 0.01
+    group["parameters"]["kmax"] = 8
+    result = view_simulation(group)
+    assert len(result["paths"]) == 30
+    assert result["transform"]["kmax"] == 12
+    assert any("original theory" in warning for warning in result["warnings"])
+
+
+@pytest.mark.parametrize("broken", ["no-files", "bad-files", "duplicate", "selection", "request", "tags", "version"])
+def test_saved_theory_view_rejects_incomplete_sources(owned_simulation, broken):
+    store, jobs, original, job = owned_simulation
+    group = add_simulation(store, jobs, original["id"], addition(original, job))["groups"][0]
+    source = group["source"]
+    if broken == "no-files":
+        del source["feff"]["paths"]
+    elif broken == "bad-files":
+        source["feff"]["paths"] = [None]
+    elif broken == "duplicate":
+        source["feff"]["paths"][1] = source["feff"]["paths"][0]
+    elif broken == "selection":
+        source["simulation"]["path_ids"].reverse()
+    elif broken == "request":
+        source["simulation"]["request"] = {}
+    elif broken == "tags":
+        source["tags"] = None
+    else:
+        source["simulation"]["schema_version"] = 2
+    with pytest.raises(WebInputError):
+        view_simulation(group)
+
+
+def test_saved_theory_view_http_is_read_only_and_version_checked(owned_simulation, monkeypatch):
+    from xraylarch_web.artemis_structures import FeffJobs
+    store, jobs, original, job = owned_simulation
+    saved = add_simulation(store, jobs, original["id"], addition(original, job))
+    group_id = saved["groups"][0]["id"]
+    monkeypatch.setattr(FeffJobs, "get", lambda *args: pytest.fail("Expired FEFF jobs must not be needed"))
+    with TestClient(create_app(store.settings)) as client:
+        url = f"/api/artemis/projects/{saved['id']}/groups/{group_id}/simulation-view"
+        response = client.post(url, json=dict(version=saved["version"], kweight=4))
+        assert response.status_code == 200, response.text
+        assert response.json()["group_id"] == group_id and response.json()["k"]["weight"] == 4
+        summary = client.post(url + "?view=summary", json=dict(version=saved["version"])).json()
+        assert isinstance(summary["k"]["total"], str)
+        assert client.post(url, json=dict(version=saved["version"] - 1)).status_code == 409
+        assert client.post(url, json=dict(version=saved["version"], kweight=5)).status_code == 422
+    assert store.load(saved["id"]) == saved

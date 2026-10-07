@@ -128,6 +128,19 @@ the group. Mark it to compare it with other groups in the multiple-spectra
 viewer. Save project retains the spectrum and its sources; Undo removes the
 addition. Simulation previews save nothing until this action is chosen.
 
+Highlight a theory group to show it in the **EXAFS fit viewer**, which switches
+to **EXAFS theory**. It displays the total theory and individual path contributions
+in k space or R-space magnitude, real, and imaginary components. Display k-weight
+(0–4), path visibility, and vertical offsets do not change the saved simulation.
+The details show supplied simulation parameters and path lengths; no data,
+residual, fitted uncertainty, correlation, or fit statistic is presented.
+Contributions use the original simulation Fourier settings and are restored from
+the saved FEFF files after project reload or FEFF job expiry. A warning identifies
+spectra whose arrays have since changed. Individual path magnitudes do not add
+to the total magnitude; the complex contributions add before taking magnitude.
+If a real fit has also been saved for the theory group, **Fit result** and
+**Theory** switch between that fit and the original simulation.
+
 The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
 example, `{"s02": 0.85, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
 for all available paths or supply a nonempty list of IDs from the completed job.
@@ -141,6 +154,10 @@ with `{version, feff_job_id, simulation}`; `simulation` is the captured
 `result.simulation.request`. It checks the project version and attached CIF,
 supports `Idempotency-Key` for retries, and returns the updated project with
 `last_operation.simulation.group_id`. The saved spectrum survives FEFF job expiry.
+`POST /api/artemis/projects/{project_id}/groups/{group_id}/simulation-view`
+with `{version, kweight}` reconstructs these saved contributions without saving
+or fitting. Omit `kweight` or use null for the original simulation weight;
+`?view=summary` elides arrays.
 
 ### Attach and calculate paths
 

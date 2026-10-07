@@ -579,6 +579,14 @@ describe("ArtemisFittingPanel", () => {
 })
 
 describe("ArtemisFitResultViewer", () => {
+  it("keeps an actual fit of a theory spectrum accessible", () => {
+    const source = { ...group(), data_type: "chi" as const, source: { tags: ["theory"] } }
+    render(<ArtemisFitResultViewer projectId="p" version={4} group={source} result={resultWithPaths()} />)
+    expect(screen.getByRole("region", { name: "Fit report" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Fit result" })).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("button", { name: "Theory" })).toBeInTheDocument()
+    expect(api).not.toHaveBeenCalled()
+  })
   it("changes this viewer's k/R/path curves from saved-fit transforms without changing fit settings or statistics", async () => {
     const result = resultWithPaths()
     const original = JSON.stringify(result)
