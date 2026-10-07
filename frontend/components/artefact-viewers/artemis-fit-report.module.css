@@ -74,6 +74,42 @@
 .report .wrap { white-space: normal; min-width: 90px; overflow-wrap: anywhere; }
 .pathName { display: flex; align-items: baseline; gap: 6px; }
 .pathIndex { flex-shrink: 0; display: inline-grid; place-items: center; min-width: 20px; height: 20px; border-radius: 6px; background: var(--ath-gold-soft); color: var(--ath-gold-ink); font-size: var(--text-caption); }
+.fitSummary { margin-top: 16px; border: 1px solid var(--ath-line); border-radius: 12px; overflow: hidden; background: var(--ath-surface); }
+.summaryHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 14px 16px; border-bottom: 1px solid var(--ath-gold-line); background: var(--ath-gold-soft); }
+.summaryEyebrow { display: block; margin-bottom: 4px; color: var(--ath-gold-ink); font-size: 10px; letter-spacing: .12em; font-weight: 600; }
+.summaryHeading h5 { margin: 0; font-size: var(--text-section); font-weight: 600; }
+.summaryHeading > span { color: var(--ath-gold-ink); font-size: var(--text-caption); }
+.summarySection { min-width: 0; padding: 12px; }
+.summarySection + .summarySection { border-top: 1px solid var(--ath-line); }
+.summarySection .sectionHeading { margin-bottom: 8px; }
+.summaryNote { margin: 9px 2px 0; color: var(--ath-muted); font-size: var(--text-caption); line-height: 1.55; }
+.report .pathTable { table-layout: fixed; }
+.pathTable th:first-child { width: 49%; }
+.report .pathTable td { white-space: normal; overflow-wrap: anywhere; padding-block: 14px; }
+.pathIdentity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pathDescription { min-width: 0; }
+.pathName strong { font-size: var(--text-label); font-weight: 600; }
+.pathLabel { display: block; margin-top: 7px; color: var(--ath-muted); font-size: var(--text-caption); line-height: 1.5; overflow-wrap: anywhere; }
+.pathType { display: block; margin-top: 8px; color: var(--ath-muted); font-size: var(--text-caption); font-weight: 400; }
+.pathValue { display: block; font-size: var(--text-body); font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.pathUncertainty { display: block; margin-top: 3px; color: var(--ath-muted); font-size: var(--text-caption); }
+.pathMeta { display: block; margin-top: 8px; color: var(--ath-muted); font-size: var(--text-caption); line-height: 1.45; }
+@container (max-width: 800px) { .pathIdentity { flex-direction: column; align-items: flex-start; gap: 8px; } .pathTable th:first-child { width: 43%; } }
+@container (max-width: 520px) {
+  .summaryHeading { padding: 12px; }
+  .summarySection { padding: 10px; }
+  .report .pathTable, .pathTable tbody { display: block; }
+  .pathTable thead { position: absolute; width: 1px; height: 1px; clip-path: inset(50%); overflow: hidden; white-space: nowrap; }
+  .pathTable tbody tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-bottom: 1px solid var(--ath-line); }
+  .pathTable tbody tr:last-child { border-bottom: 0; }
+  .report .pathTable tbody th { grid-column: 1 / -1; width: auto; padding: 10px; border: 0; }
+  .report .pathTable tbody td { border: 0; padding: 6px 8px 12px; text-align: left; }
+  .pathTable td::before { display: block; content: attr(data-label); margin-bottom: 5px; font-size: var(--text-caption); color: var(--ath-muted); }
+  .pathIdentity { flex-direction: row; align-items: center; }
+  .pathName { flex-wrap: wrap; }
+  .pathMeta { margin-top: 5px; }
+  .summarySection table:not(.pathTable) th, .summarySection table:not(.pathTable) td { white-space: normal; overflow-wrap: anywhere; }
+}
 .correlationList { list-style: none; padding: 0; margin: 8px 0 0; }
 .correlationList li { display: grid; grid-template-columns: minmax(110px, 1.5fr) minmax(50px, 1fr) 54px 62px; align-items: center; gap: 10px; padding: 8px 0; }
 .pair { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; }

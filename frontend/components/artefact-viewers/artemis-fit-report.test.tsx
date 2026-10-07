@@ -10,6 +10,9 @@ vi.mock("@/lib/artemis-fit-utils", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/artemis-fit-utils")>(), download: vi.fn(),
 }))
 
+// Rendering/lifecycle of the real 3D previews has its own suite.
+vi.mock("3dmol", () => ({ createViewer: () => { throw new Error("WebGL unavailable in report unit tests") } }))
+
 function fitResult(): ArtemisFitResult {
   return {
     project_id: "project", group_id: "copper", group_label: "Cu foil · 300 K", version: 4,
@@ -25,7 +28,7 @@ function fitResult(): ArtemisFitResult {
     ],
     correlations: [{ left: "amp", right: "sig2", value: 0.2 }],
     paths: [{ id: "path1", label: "Cu–Cu", filename: "feff0001.dat", sigma2_expression: "sig2",
-      metadata: { reff: 2.5527, degen: 12, nleg: 2, absorber: "Cu", edge: "K", geometry: [], kmin: 0, kmax: 20 },
+      metadata: { reff: 2.5527, degen: 12, nleg: 2, absorber: "Cu", edge: "K", geometry: [{ atom: "Cu", x: 0, y: 0, z: 0, ipot: 0 }, { atom: "Cu", x: 2.5527, y: 0, z: 0, ipot: 1 }], kmin: 0, kmax: 20 },
       values: { s02: 0.85, e0: 2.5, deltar: 0.01, sigma2: 0.003 } }],
     transform: { fitspace: "r", kmin: 3, kmax: 12, rmin: 1, rmax: 3, kweight: [1, 2], dk: 1, dr: 0, window: "hanning" },
     k: { x: [3, 4], data: [1, 2], model: [0.9, 1.9], residual: [0.1, 0.1], weight: 1 },
@@ -44,6 +47,27 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(cleanup)
 
 describe("Artemis fit report", () => {
+  it("combines saved path previews, key values and the parameter table in one summary", () => {
+    const result = fitResult()
+    const original = structuredClone(result)
+    render(<ArtemisFitReport result={result} />)
+    const summary = screen.getByRole("region", { name: "Fit summary" })
+    expect(within(summary).getByRole("button", { name: "Open 3D preview for feff0001.dat" })).toBeVisible()
+    expect(within(summary).getByRole("table", { name: "Fitted parameters" })).toBeVisible()
+    expect(within(summary).getByRole("columnheader", { name: "CN" })).toBeVisible()
+    expect(within(summary).getByText("FEFF N", { exact: true })).toBeVisible()
+    expect(result).toEqual(original)
+  })
+
+  it("shows an honest placeholder for missing geometry while retaining the numerical results", () => {
+    const result = fitResult()
+    result.paths[0].metadata.geometry = []
+    render(<ArtemisFitReport result={result} />)
+    expect(screen.getByText("Preview unavailable")).toBeVisible()
+    expect(screen.getByText("2.5627", { exact: true })).toBeVisible()
+    expect(screen.queryByRole("img", { name: /FEFF path preview/ })).not.toBeInTheDocument()
+  })
+
   it("distinguishes unavailable uncertainties, fixed values and propagated uncertainties", () => {
     const result = fitResult()
     // Imported results can carry a numeric stderr on a fixed parameter. It is still fixed.
@@ -154,8 +178,8 @@ describe("Artemis fit report", () => {
 
     const region = screen.getByRole("region", { name: "Fitted path lengths and disorder" })
     const rows = within(region).getAllByRole("row").slice(1)
-    expect(within(rows[0]).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["2.5627", "0.01", "0.003"])
-    expect(within(rows[1]).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["—", "—", "—"])
+    expect(within(rows[0]).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["2.5627ΔR 0.01 Å", "12FEFF N", "0.003± Unavailablesig2"])
+    expect(within(rows[1]).getAllByRole("cell").map(cell => cell.textContent)).toEqual(["—ΔR — Å", "—Not applicable", "—sig2"])
     expect(rows[1]).toHaveTextContent("Multiple scattering")
     expect(screen.getByText(/For multiple scattering, R is half the total path length/)).toBeInTheDocument()
   })

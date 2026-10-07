@@ -2,6 +2,8 @@ import { expect, test } from "@playwright/test"
 import { readFile, writeFile } from "node:fs/promises"
 import type { AthenaProject } from "../../lib/athena"
 
+test.use({ launchOptions: { args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"] } })
+
 test("real EXAFS fit has a readable report and preserves original downloads", async ({ page }, info) => {
   test.setTimeout(180_000)
   const errors: string[] = []
@@ -31,6 +33,42 @@ test("real EXAFS fit has a readable report and preserves original downloads", as
   await expect(report.getByText("R factor", { exact: true })).toBeVisible()
   await expect(report.getByText("Independent points", { exact: true })).toBeVisible()
   await expect(report.getByText(String(Number(result.statistics.r_factor!.toPrecision(5))), { exact: true })).toBeVisible()
+  const summary = report.getByRole("region", { name: "Fit summary", exact: true })
+  await expect(summary.getByRole("img", { name: /^FEFF path preview for/ })).toHaveCount(result.paths.length)
+  await expect(summary.getByRole("columnheader", { name: "CN", exact: true })).toBeVisible()
+  await expect(page.locator("[data-feff-snapshot-host] canvas")).toHaveCount(0)
+  const thumbnail = summary.getByRole("img", { name: /^FEFF path preview for/ }).first()
+  await expect(thumbnail).toHaveJSProperty("complete", true)
+  expect(await thumbnail.evaluate(element => (element as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+  const initialImage = await thumbnail.getAttribute("src")
+  const openPreview = summary.getByRole("button", { name: /^Open 3D preview for/ }).first()
+  await openPreview.click()
+  const previewDialog = page.getByRole("dialog", { name: /^3D path preview/ })
+  await expect(previewDialog.getByRole("button", { name: "Reset view", exact: true })).toBeEnabled()
+  await expect(page.locator("[data-feff-preview-surface] canvas")).toHaveCount(1)
+  await expect(page.locator("[data-feff-snapshot-host] canvas")).toHaveCount(0)
+  const surface = page.locator("[data-feff-preview-surface]")
+  const bounds = (await surface.boundingBox())!
+  await page.mouse.move(bounds.x + bounds.width * .45, bounds.y + bounds.height * .5)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width * .7, bounds.y + bounds.height * .6, { steps: 12 })
+  await page.mouse.up()
+  await page.mouse.wheel(0, -70)
+  await previewDialog.screenshot({ path: info.outputPath("fit-path-3d-preview.png") })
+  await previewDialog.getByRole("button", { name: "Done", exact: true }).click()
+  await expect(previewDialog).toHaveCount(0)
+  await expect(thumbnail).not.toHaveAttribute("src", initialImage!)
+  await expect(page.locator("[data-feff-snapshot-host] canvas")).toHaveCount(0)
+  await expect(page.locator("[data-feff-preview-surface] canvas")).toHaveCount(0)
+  const updatedImage = await thumbnail.getAttribute("src")
+  await openPreview.click()
+  await expect(previewDialog.getByRole("button", { name: "Reset view", exact: true })).toBeEnabled()
+  await page.keyboard.press("Escape")
+  await expect(previewDialog).toHaveCount(0)
+  await expect(openPreview).toBeFocused()
+  await expect(page.locator("[data-feff-snapshot-host] canvas")).toHaveCount(0)
+  await expect(thumbnail).toHaveAttribute("src", updatedImage!)
+  await expect(summary.getByText("FEFF N", { exact: true }).first()).toBeVisible()
   const parameters = report.getByRole("table", { name: "Fitted parameters", exact: true })
   await expect(parameters.getByRole("row")).toHaveCount(result.parameters.length + 1)
   for (const parameter of result.parameters) {
@@ -43,6 +81,7 @@ test("real EXAFS fit has a readable report and preserves original downloads", as
   await expect(rawText).toBeHidden()
   const screenshotStyle = "nextjs-portal { visibility: hidden; }"
   await report.screenshot({ path: info.outputPath("fit-report-desktop.png"), style: screenshotStyle })
+  await summary.screenshot({ path: info.outputPath("fit-summary-desktop.png"), style: screenshotStyle })
   await report.locator("summary").filter({ hasText: "Larch fit report" }).click()
   await expect(rawText).toBeVisible()
   expect(await rawText.textContent()).toBe(result.report)
@@ -73,8 +112,11 @@ test("real EXAFS fit has a readable report and preserves original downloads", as
   await report.locator("summary").filter({ hasText: /^Parameter correlations/ }).click()
   await report.locator("summary").filter({ hasText: /^Parameter correlations/ }).click()
 
+  const lightThumbnail = await thumbnail.getAttribute("src")
   await page.getByRole("radio", { name: "Dark theme", exact: true }).click()
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark")
+  await expect(thumbnail).not.toHaveAttribute("src", lightThumbnail!)
+  await expect(page.locator("[data-feff-snapshot-host] canvas")).toHaveCount(0)
   await report.screenshot({ path: info.outputPath("fit-report-dark.png"), style: screenshotStyle })
   await page.getByRole("radio", { name: "Light theme", exact: true }).click()
   await page.setViewportSize({ width: 1100, height: 1000 })

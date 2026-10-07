@@ -425,8 +425,8 @@ constraint. The edit uses normal model autosave and project Undo/Redo.
 Models, history and project exports preserve these expressions; Larix exports
 translate the two Artemis aliases to native Larch function names. Native Larix
 execution still depends on its installed Larch and compatible FEFF libraries.
-The fit viewer's **Path disorder** table reports each path's final σ² alongside
-its expression.
+The fit viewer's **Fit summary** reports each path's final σ² alongside its
+expression, with **Path values & disorder expressions** for the full details.
 
 σ² is the variance of relative displacement, with EXAFS damping
 `exp(-2*k**2*sigma2)`; it is neither σ nor a crystallographic B factor.
@@ -626,7 +626,29 @@ magnitude, real, and imaginary components. The magnitude residual is
 `abs(FT(data - model))`, not the difference between the data and model magnitudes.
 Plots use the first selected fit k weight; the optimizer uses all selected
 weights. Statistics, fitted parameter values, uncertainties, correlations,
-and the complete Larch report appear below the plot.
+and the complete Larch report appear below the plot. **Fit summary** combines
+FEFF path thumbnails with fitted R, CN and σ², followed by the parameter values,
+uncertainties, initial values and treatment in the same card. Thumbnails use the same 3D atoms, bonds and path arrows as the FEFF viewer,
+rendered from the original saved geometry (before fitted ΔR), with verified FEFF
+input context from that fit's archived model. **Explore 3D** opens one enlarged
+preview: drag to rotate, scroll or pinch to zoom, or reset the view. Closing it
+updates its thumbnail and remembers that path's camera while the result stays
+open. The table keeps static images; a single temporary renderer generates them
+in sequence and releases its resources, and only one interactive preview opens
+at a time. Theme changes refresh the images. Previews do not use the current
+edited model or trigger a fit. Missing geometry and unavailable WebGL show
+explicit placeholders. Narrow panels stack each path above its three numeric
+columns.
+
+For the **Set / fit coordination number** model with fixed S₀², the CN column
+shows the saved CN parameter and its uncertainty. Otherwise a single-scattering
+path shows structural degeneracy labeled **FEFF N**, which is not a fitted CN;
+multiple-scattering paths show no neighbor CN. The evaluated amplitude expression
+is never multiplied by FEFF degeneracy and called CN. R and σ² show standard
+errors only when a saved direct parameter reference supplies them; composite
+expressions do not have inferred error bars. The full parameter table retains
+status colors, bounds and expressions, and the original report/JSON downloads
+remain unchanged.
 
 Model edits automatically save in the selected local Athena group, including
 incomplete numeric fields and expressions. The editor shows pending, saving,

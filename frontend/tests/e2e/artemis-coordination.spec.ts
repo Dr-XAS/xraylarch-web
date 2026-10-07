@@ -80,6 +80,11 @@ test("discovers, saves, reopens and fits an explicit coordination number", async
   const parameters = viewer.getByRole("table", { name: "Fitted parameters", exact: true })
   await expect(parameters.getByRole("rowheader", { name: "cn_1", exact: true })).toBeVisible()
   await expect(parameters.getByRole("rowheader", { name: "s02_1", exact: true })).toBeVisible()
+  const pathSummary = viewer.getByRole("table", { name: "Fitted path summary", exact: true })
+  const cnCell = pathSummary.getByRole("row").nth(1).getByRole("cell").nth(1)
+  await expect(cnCell).toContainText(String(Number(cn.value.toPrecision(6))))
+  await expect(cnCell).toContainText("Varied · cn_1")
+  await expect(cnCell).not.toContainText("FEFF N")
 
   await page.getByRole("button", { name: "Collapse path 1 details", exact: true }).click()
   await page.setViewportSize({ width: 390, height: 844 })

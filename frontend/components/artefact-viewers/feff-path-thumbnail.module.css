@@ -1,0 +1,28 @@
+.thumbnail, .unavailable { flex: 0 0 152px; width: 152px; height: 138px; border: 1px solid var(--ath-line); border-radius: 9px; background: var(--ath-canvas); overflow: hidden; }
+.thumbnail { display: flex; flex-direction: column; position: relative; padding: 0; color: var(--ath-muted); cursor: pointer; }
+.thumbnail:hover { border-color: var(--ath-plum-line); box-shadow: 0 2px 8px #0000000a; }
+.thumbnail:focus-visible { outline: 2px solid var(--ath-plum-ink); outline-offset: 3px; }
+.thumbnail img { display: block; width: 100%; height: 114px; object-fit: contain; }
+.expand { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; padding: 4px; font-size: 10px; line-height: 14px; background: var(--ath-surface); border-top: 1px solid var(--ath-line); }
+.placeholder { display: grid; place-content: center; flex: 1; padding: 10px; font-size: var(--text-caption); text-align: center; }
+.unavailable { display: grid; place-content: center; padding: 8px; color: var(--ath-muted); font-size: var(--text-caption); text-align: center; font-weight: 400; }
+.snapshotHost { position: fixed; left: -10000px; top: 0; width: 304px; height: 228px; pointer-events: none; background: var(--ath-canvas); color: var(--ath-ink); }
+.dialog { width: min(760px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); overflow: auto; margin: auto; padding: 0; border: 1px solid var(--ath-line); border-radius: 14px; background: var(--ath-surface); color: var(--ath-ink); box-shadow: 0 20px 80px #0004; }
+.dialog::backdrop { background: #15182080; backdrop-filter: blur(3px); }
+.dialog header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; }
+.dialog h2 { margin: 3px 0 0; font-size: var(--text-section); font-weight: 600; }
+.eyebrow { color: var(--ath-gold-ink); font-size: 10px; letter-spacing: .12em; font-weight: 600; }
+.dialog button { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 32px; padding: 5px 10px; border: 1px solid var(--ath-line); border-radius: 7px; color: var(--ath-ink); background: var(--ath-surface); font-size: var(--text-label); cursor: pointer; }
+.dialog button:focus-visible, .dialog input:focus-visible { outline: 2px solid var(--ath-plum-ink); outline-offset: 2px; }
+.dialog button:disabled { opacity: .5; cursor: default; }
+.dialog header button { border: 0; padding: 6px; }
+.legend { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; padding: 0 18px 12px; font-size: var(--text-caption); color: var(--ath-muted); }
+.stage { position: relative; width: 100%; aspect-ratio: 4 / 3; background: var(--ath-canvas); border-block: 1px solid var(--ath-line); }
+.surface { position: absolute; inset: 0; touch-action: none; }
+.overlay { position: absolute; inset: 0; margin: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; font-size: var(--text-label); color: var(--ath-muted); }
+.controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 10px 18px; font-size: var(--text-caption); color: var(--ath-muted); }
+.controls label { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+.dialog footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-top: 1px solid var(--ath-line); }
+.dialog footer p { margin: 0; color: var(--ath-muted); font-size: var(--text-caption); }
+@container (max-width: 520px) { .thumbnail, .unavailable { flex-basis: 112px; width: 112px; height: 108px; } .thumbnail img { height: 84px; } }
+@media (max-width: 520px) { .dialog { width: calc(100vw - 20px); } .dialog header, .dialog footer, .controls { padding: 10px 12px; } .legend { padding-inline: 12px; } }

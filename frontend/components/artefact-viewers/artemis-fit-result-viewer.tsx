@@ -152,6 +152,6 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       </ViewerDisplayControls>}
       {warnings.length > 0 && <ul className={styles.warnings}>{warnings.map(warning => <li key={warning}>{warning}</li>)}</ul>}
     </ResizablePlotCard>
-    {theory ? <ArtemisTheorySummary result={theory} /> : fit && <ArtemisFitReport result={fit} />}
+    {theory ? <ArtemisTheorySummary result={theory} /> : fit && <ArtemisFitReport result={fit} savedPaths={fit.archive ? group?.artemis?.history.find(record => record.id === fit.archive!.id)?.model.paths : undefined} />}
   </ViewerPanel>
 }

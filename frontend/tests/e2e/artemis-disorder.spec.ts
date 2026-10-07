@@ -39,7 +39,7 @@ test("inserts, saves, reopens and fits Einstein and Debye path models", async ({
   let result = (await response.json()).project.groups.find((group: { label: string }) => group.label === "Cu₂O · room temperature").artemis.history.at(-1).result
   expect(result.paths[0].sigma2_expression).toBe(expression)
   expect(result.paths[0].values.sigma2).toBeGreaterThan(0)
-  await expect(page.getByText("Path disorder", { exact: true })).toBeVisible()
+  await expect(page.getByRole("table", { name: "Fitted path summary", exact: true })).toBeVisible()
   await page.getByText("Insert Debye–Waller factor", { exact: true }).first().click()
   await page.getByLabel("Path 1 disorder model", { exact: true }).selectOption("debye")
   await page.getByLabel("Path 1 sample temperature (K)", { exact: true }).fill("300")

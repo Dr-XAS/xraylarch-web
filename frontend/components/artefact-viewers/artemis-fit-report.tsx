@@ -1,10 +1,13 @@
 "use client"
 
 import { Check, CircleAlert, Download, FileJson, FileText, LockKeyhole, Minus, TriangleAlert } from "lucide-react"
-import type { ArtemisFitResult } from "@/lib/artemis"
+import { useMemo } from "react"
+import type { ArtemisFitResult, ArtemisPath } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
+import { directPathParameter, fitPathCoordination, fitPreviewMetadata } from "@/lib/artemis-fit-summary"
 import { correlationHealth, independentPointsHealth, parameterHealth, rFactorHealth, type FitHealth } from "@/lib/artemis-fit-health"
 import { SectionHelp } from "../section-help"
+import { FeffPathPreviews, FeffPathThumbnail } from "./feff-path-thumbnail"
 import styles from "./artemis-fit-report.module.css"
 
 const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value)
@@ -38,8 +41,19 @@ function parameterBound(parameter: ArtemisFitResult["parameters"][number]) {
   return null
 }
 
-export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
+const NO_PATHS: ArtemisPath[] = []
+
+function PathValue({ value, parameter, errorbars }: {
+  value: number | null | undefined; parameter?: ArtemisFitResult["parameters"][number]; errorbars: boolean
+}) {
+  return <><span className={styles.pathValue}>{format(value, 6)}</span>{finite(value) && parameter && parameter.kind !== "set" &&
+    <span className={styles.pathUncertainty}>{errorbars && finite(parameter.stderr) && parameter.stderr >= 0 ? `± ${format(parameter.stderr, 3)}` : "± Unavailable"}</span>}</>
+}
+
+export function ArtemisFitReport({ result, savedPaths = NO_PATHS }: { result: ArtemisFitResult; savedPaths?: readonly ArtemisPath[] }) {
   const { statistics: stats, transform } = result
+  const previewPaths = useMemo(() => result.paths.map(path => ({ id: path.id, filename: path.filename,
+    metadata: fitPreviewMetadata(path, savedPaths) })), [result.paths, savedPaths])
   const agreementHealth = rFactorHealth(stats.r_factor)
   const informationHealth = independentPointsHealth(stats.n_independent, stats.n_varys)
   const fitPaths = result.request?.paths.filter(path => result.paths.some(fitted => fitted.id === path.id))
@@ -96,7 +110,40 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
       <ul>{reviewNotes.map(note => <li key={note}>{note}</li>)}</ul>
     </aside>}
 
-    <section className={styles.section} aria-label="Fitted parameters">
+    <FeffPathPreviews paths={previewPaths}><section className={styles.fitSummary} aria-label="Fit summary">
+      <header className={styles.summaryHeading}><div><span className={styles.summaryEyebrow}>EXAFS MODEL</span><h5>Fit summary</h5></div><span>{result.paths.length} paths · {result.parameters.length} parameters</span></header>
+    {result.paths.length > 0 && <section className={styles.summarySection} aria-label="Fitted paths">
+      <div className={styles.sectionHeading}><h5>Fitted paths<SectionHelp label="Fitted path lengths">R = Rₑff + ΔR. For multiple scattering, R is half the total path length. For single scattering, R is the absorber–scatterer distance with the scattering phase accounted for. It is different from an uncorrected peak position in |χ(R)|. Thumbnails show the saved FEFF geometry, before fitted ΔR. An em dash means the saved fit does not include this value.</SectionHelp></h5><span>Saved FEFF geometry</span></div>
+      <div className={styles.tableScroll} role="region" aria-label="Fitted path lengths and disorder" tabIndex={0}><table className={styles.pathTable} aria-label="Fitted path summary">
+        <thead><tr><th scope="col">FEFF path / preview</th><th scope="col">R (Å)</th><th scope="col">CN<SectionHelp label="Coordination number">For the Set / fit coordination number model, CN is the saved parameter with fixed S₀². Otherwise FEFF N is the structural degeneracy of this single-scattering path, not a fitted CN. Multiple-scattering degeneracy is not a neighbor count.</SectionHelp></th><th scope="col">σ² (Å²)</th></tr></thead>
+        <tbody>{result.paths.map((path, index) => {
+          const cn = fitPathCoordination(result, path)
+          const r = finite(path.metadata.reff) && finite(path.values?.deltar) ? path.metadata.reff + path.values.deltar : null
+          return <tr key={path.id}>
+            <th scope="row"><div className={styles.pathIdentity}>
+              <FeffPathThumbnail pathId={path.id} />
+              <div className={styles.pathDescription}><span className={styles.pathName}><span className={styles.pathIndex}>{index + 1}</span><strong>{path.filename}</strong></span>
+                {path.label && path.label !== path.filename && <span className={styles.pathLabel}>{path.label}</span>}
+                <span className={styles.pathType}>{path.metadata.nleg === 2 ? "Single scattering" : "Multiple scattering"} · {path.metadata.nleg} legs</span>
+              </div>
+            </div></th>
+            <td data-label="R (Å)"><PathValue value={r} parameter={directPathParameter(result, path, "deltar")} errorbars={stats.errorbars} /><span className={styles.pathMeta}>ΔR {format(path.values?.deltar, 5)} Å</span></td>
+            <td data-label="CN"><PathValue value={cn.value} parameter={cn.parameter} errorbars={stats.errorbars} /><span className={styles.pathMeta}>{cn.source === "parameter" ? `${kindLabels[cn.parameter!.kind]} · ${cn.parameter!.name}` : cn.source === "feff" ? "FEFF N" : cn.source === "multiple" ? "Not applicable" : "Unavailable"}</span></td>
+            <td data-label="σ² (Å²)"><PathValue value={path.values?.sigma2} parameter={directPathParameter(result, path, "sigma2")} errorbars={stats.errorbars} /><span className={styles.pathMeta}>{path.sigma2_expression || "Path disorder"}</span></td>
+          </tr>
+        })}</tbody>
+      </table></div>
+      <p className={styles.summaryNote}>CN marked FEFF N is a structural reference, not a fitted coordination number. Previews show the original FEFF geometry.</p>
+      <details className={styles.detail}>
+        <summary>Path values &amp; disorder expressions</summary>
+        <div className={styles.tableScroll} role="region" aria-label="Path values and disorder expressions" tabIndex={0}><table>
+          <thead><tr><th scope="col">Path</th><th scope="col">Rₑff (Å)</th><th scope="col">Degeneracy</th><th scope="col">Amplitude (s02)</th><th scope="col">ΔE₀ (eV)</th><th scope="col">σ² expression</th></tr></thead>
+          <tbody>{result.paths.map(path => <tr key={path.id}><th scope="row" className={styles.wrap}>{path.label || path.filename}</th><td>{format(path.metadata.reff, 6)}</td><td>{format(path.metadata.degen)}</td><td>{format(path.values?.s02, 6)}</td><td>{format(path.values?.e0, 6)}</td><td className={styles.wrap}>{path.sigma2_expression || "—"}</td></tr>)}</tbody>
+        </table></div>
+      </details>
+    </section>}
+
+    <section className={styles.summarySection} aria-label="Fitted parameters">
       <div className={styles.sectionHeading}><h5>Fitted parameters<SectionHelp label="Parameter treatment">Uncertainty is Larch’s estimated standard error. Fixed values have no fitted uncertainty. Varied = Guess, optimized by the fit. Fixed = Set, held at its supplied value. Derived = Def, calculated from an expression. Parameter names are user defined.</SectionHelp></h5><span>{result.parameters.length} total</span></div>
       <div className={styles.tableScroll} role="region" aria-label="Fitted parameter values" tabIndex={0}><table aria-label="Fitted parameters">
         <thead><tr><th scope="col">Parameter</th><th scope="col">Value ± uncertainty</th><th scope="col">Initial value</th><th scope="col">Treatment</th></tr></thead>
@@ -116,25 +163,7 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
       </details>
     </section>
 
-    {result.paths.length > 0 && <section className={styles.section} aria-label="Fitted paths">
-      <div className={styles.sectionHeading}><h5>Fitted paths<SectionHelp label="Fitted path lengths">R = Rₑff + ΔR. For multiple scattering, R is half the total path length. For single scattering, R is the absorber–scatterer distance with the scattering phase accounted for. It is different from an uncorrected peak position in |χ(R)|. An em dash means the saved fit does not include this value.</SectionHelp></h5><span>{result.paths.length} {result.paths.length === 1 ? "path" : "paths"}</span></div>
-      <div className={styles.tableScroll} role="region" aria-label="Fitted path lengths and disorder" tabIndex={0}><table>
-        <caption className={styles.tableCaption}>Path disorder</caption>
-        <thead><tr><th scope="col">Path</th><th scope="col">R (Å)</th><th scope="col">ΔR (Å)</th><th scope="col">σ² (Å²)</th></tr></thead>
-        <tbody>{result.paths.map((path, index) => <tr key={path.id}>
-          <th scope="row"><span className={styles.pathName}><span className={styles.pathIndex}>{index + 1}</span>{path.label || path.filename}</span><span className={styles.expression}>{path.filename} · {path.metadata.nleg === 2 ? "Single scattering" : "Multiple scattering"}</span></th>
-          <td className={styles.value}>{finite(path.metadata.reff) && finite(path.values?.deltar) ? format(path.metadata.reff + path.values.deltar, 6) : "—"}</td>
-          <td>{format(path.values?.deltar, 5)}</td><td>{format(path.values?.sigma2, 5)}</td>
-        </tr>)}</tbody>
-      </table></div>
-      <details className={styles.detail}>
-        <summary>Path values &amp; disorder expressions</summary>
-        <div className={styles.tableScroll} role="region" aria-label="Path values and disorder expressions" tabIndex={0}><table>
-          <thead><tr><th scope="col">Path</th><th scope="col">Rₑff (Å)</th><th scope="col">Degeneracy</th><th scope="col">S₀²</th><th scope="col">ΔE₀ (eV)</th><th scope="col">σ² expression</th></tr></thead>
-          <tbody>{result.paths.map(path => <tr key={path.id}><th scope="row" className={styles.wrap}>{path.label || path.filename}</th><td>{format(path.metadata.reff, 6)}</td><td>{format(path.metadata.degen)}</td><td>{format(path.values?.s02, 6)}</td><td>{format(path.values?.e0, 6)}</td><td className={styles.wrap}>{path.sigma2_expression || "—"}</td></tr>)}</tbody>
-        </table></div>
-      </details>
-    </section>}
+    </section></FeffPathPreviews>
 
     <details className={`${styles.section} ${styles.correlations}`} open>
       <summary>Parameter correlations ({correlations.length})<SectionHelp label="Parameter correlations">Values near −1 or +1 indicate parameters that change together. Bar length shows the absolute correlation.</SectionHelp></summary>
