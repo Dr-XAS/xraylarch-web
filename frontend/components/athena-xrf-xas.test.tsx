@@ -486,3 +486,18 @@ it('says why Fit preview cannot run, next to the button',async()=>{
   expect(screen.getByRole('button',{name:'Fit preview'})).toBeDisabled()
   expect(screen.getByLabelText('Why the fit cannot run')).toHaveTextContent('Name the target element by its symbol')
 })
+
+// Catches a curve that is not the target's being drawn with nothing said
+// beside it: the warning comes before the plots, not among the notes below.
+it('shows a misplaced-edge warning as an alert before the extraction plots',async()=>{
+  const warning="The extracted curve rises at 5989 eV, 550 eV from the Mn K edge (6539 eV), so it is not Mn's edge."
+  api.mockImplementation((url:string)=>url.endsWith('/preview')
+    ? Promise.resolve(result({metadata:{points:40,detectors:4,engine:'larch',engine_notes:[],warnings:[warning]}}))
+    : handler(url))
+  await setup();await click('Fit preview')
+  const alert=screen.getByRole('alert')
+  expect(alert).toHaveTextContent(warning)
+  expect(alert).toHaveClass('ath-warning')
+  const plots=screen.getByRole('heading',{name:'Fitted extraction'})
+  expect(alert.compareDocumentPosition(plots)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+})

@@ -636,6 +636,37 @@ AUTO_ROI_HALF_WIDTH_FWHM = 1.2
 AUTO_PREVIEW_ABOVE_EDGE_EV = 20.0
 
 
+# A scan that starts no further than this above an edge still measures it:
+# the edge step is a little below its first point. Further above, the edge
+# is not in the scan, and an edge further down (an L edge a few keV below a
+# K-edge scan) is not what the scan measures.
+EDGE_BELOW_SCAN_EV = 200.0
+# A curve whose edge rises further than this from the target's tabulated
+# edge is not the target's edge; chemical shifts and monochromator offsets
+# are tens of eV.
+EDGE_MISMATCH_EV = 50.0
+# Another element is named as the source of a misplaced edge when the scan
+# crosses its K or L3 edge and one of its lines lies this close to the
+# target line the fit takes, where the two blend at the detector's
+# resolution.
+LINE_OVERLAP_KEV = 0.15
+
+
+def _k_l3_edges(low_ev, high_ev):
+    """The K and L3 edges of sodium to uranium in [low_ev, high_ev):
+    (symbol, edge name, eV), lowest first."""
+    import xraydb
+
+    found = []
+    for z in range(11, 93):
+        symbol = xraydb.atomic_symbol(z)
+        for name in ('K', 'L3'):
+            edge = xraydb.xray_edge(symbol, name)
+            if edge is not None and low_ev <= edge.energy < high_ev:
+                found.append((symbol, name, float(edge.energy)))
+    return sorted(found, key=lambda item: item[2])
+
+
 def target_line(target, low_ev, high_ev):
     """The target edge this scan crosses, its energy in eV, and the energy in
     keV of the strongest line family that edge feeds (intensity-weighted over
@@ -645,12 +676,22 @@ def target_line(target, low_ev, high_ev):
     edges = subshell_edges(target)
     crossed = [(kev, name) for name, kev in edges.items() if low_ev <= 1000 * kev < high_ev]
     if not crossed:
-        # A scan that starts above the edge still measures it.
-        crossed = [max(((kev, name) for name, kev in edges.items() if 1000 * kev < high_ev),
-                       default=None)]
-    if not crossed or crossed[0] is None:
-        raise ScientificError(f'This scan crosses no absorption edge of {target}. '
-                              'Check the target element and the energy range.')
+        crossed = [(kev, name) for name, kev in edges.items()
+                   if low_ev - EDGE_BELOW_SCAN_EV <= 1000 * kev < low_ev]
+        crossed = [max(crossed)] if crossed else []
+    if not crossed:
+        above = min(((kev, name) for name, kev in edges.items() if 1000 * kev >= high_ev), default=None)
+        below = max(((kev, name) for name, kev in edges.items() if 1000 * kev < low_ev), default=None)
+        where = ' and '.join(
+            f'its {item[1]} edge ({1000 * item[0]:.0f} eV) lies {side} it'
+            for item, side in ((above, 'above'), (below, 'far below')) if item is not None)
+        others = [f'{symbol} {name} ({energy:.0f} eV)'
+                  for symbol, name, energy in _k_l3_edges(low_ev, high_ev) if symbol != target]
+        raise ScientificError(
+            f'This scan, {low_ev:.0f} to {high_ev:.0f} eV, crosses no absorption edge of {target}'
+            + (f': {where}' if where else '') + '. '
+            + (f'Edges it does cross: {", ".join(others)}. ' if others else '')
+            + 'Choose a target whose edge the scan crosses.')
     edge_kev, edge = min(crossed)
     lines = [line for line in xray_lines(target, initial_level=edge).values()
              if line.intensity > 0]
@@ -661,6 +702,37 @@ def target_line(target, low_ev, high_ev):
     weight = sum(line.intensity for line in family)
     line_kev = 0.001 * sum(line.energy * line.intensity for line in family) / weight
     return edge, 1000.0 * edge_kev, line_kev
+
+
+def edge_mismatch(target, edge, edge_ev, line_kev, found_ev, low_ev, high_ev, matrix=()):
+    """A warning when the extracted curve rises far from the target's edge,
+    naming the element whose edge the scan crosses and whose line blends with
+    the target line, or None when the curve rises at the target's edge."""
+    from xraydb import xray_lines
+
+    if abs(found_ev - edge_ev) <= EDGE_MISMATCH_EV or not low_ev <= edge_ev < high_ev:
+        # A scan that starts above the edge has no rise of its own to compare.
+        return None
+    lead = (f'The extracted curve rises at {found_ev:.0f} eV, {abs(found_ev - edge_ev):.0f} eV '
+            f'from the {target} {edge} edge ({edge_ev:.0f} eV), so it is not {target}\'s edge. ')
+    blends = []
+    for symbol, name, energy in _k_l3_edges(low_ev, high_ev):
+        if symbol == target:
+            continue
+        lines = [(label, line) for label, line in xray_lines(symbol, initial_level=name).items()
+                 if line.intensity > 0 and abs(0.001 * line.energy - line_kev) <= LINE_OVERLAP_KEV]
+        if lines:
+            label, line = max(lines, key=lambda item: item[1].intensity)
+            blends.append((abs(energy - found_ev), symbol, name, energy, label, 0.001 * line.energy))
+    if blends:
+        _, symbol, name, energy, label, kev = min(blends)
+        advice = (f'Make {symbol} the target, or check that {target} is in the sample.'
+                  if symbol in matrix else
+                  f'Add {symbol} as a matrix element, or make {symbol} the target.')
+        return (lead + f'The scan crosses the {symbol} {name} edge ({energy:.0f} eV), and the {symbol} '
+                f'{label} line at {kev:.3f} keV lies {abs(kev - line_kev):.3f} keV from the {target} '
+                f'line the fit takes ({line_kev:.3f} keV). ' + advice)
+    return lead + 'Check the target, the matrix elements and e0.'
 
 
 def with_default_calibration(options):
@@ -1774,7 +1846,7 @@ def extract(scan: dict, counts: np.ndarray, options: XrfXasOptions,
     point = min(options.preview_point // options.point_stride, points - 1)
     preview_index = keep[point]
     batch_size = max(1, MAX_BASIS_VALUES // (len(fitter.names) * channels.size))
-    _, _, line_kev = target_line(options.target, float(energy_ev.min()), float(energy_ev.max()))
+    edge, edge_ev, line_kev = target_line(options.target, float(energy_ev.min()), float(energy_ev.max()))
     per_detector, parameters, reports, lost = [], [], [], []
     preview = None
     fits = (fit_provider(fitter, counts, indices, batch_size, preview_index, preview_detector)
@@ -1854,6 +1926,17 @@ def extract(scan: dict, counts: np.ndarray, options: XrfXasOptions,
         indicators[name]['signed_jump'] /= raw_steps[name]
         indicators[name]['norm'] = indicators[name]['norm'][keep]
 
+    # Warnings say the curve may not be what was asked for; the panel shows
+    # them beside the plots, apart from the notes about how it was made.
+    warnings = []
+    if options.e0 is None:
+        # A typed e0 places the edge by hand; only Larch's own finds where
+        # the curve really rises.
+        mismatch = edge_mismatch(options.target, edge, edge_ev, line_kev, indicators['fit']['e0'],
+                                 float(energy_ev.min()), float(energy_ev.max()), options.matrix_elements)
+        if mismatch:
+            warnings.append(mismatch)
+
     energy_ev, counts = energy_ev[keep], counts[keep]
     drawn = preview['basis'] * preview['amplitudes'][:, None]
     fitted = {name: drawn[k].tolist() for k, name in enumerate(fitter.names)}
@@ -1931,7 +2014,7 @@ def extract(scan: dict, counts: np.ndarray, options: XrfXasOptions,
             channel_shifts=options.channel_shifts,
             deadtime_corrected=scan['deadtime_corrected'].get(options.detector, 0),
             energy_reordered=bool(scan['reordered']),
-            layout=scan.get('layout', 'nexus'), notes=scan.get('notes', []),
+            layout=scan.get('layout', 'nexus'), notes=scan.get('notes', []), warnings=warnings,
             source_file=scan['filename'], source_entry=scan['entry'],
         ),
     )
