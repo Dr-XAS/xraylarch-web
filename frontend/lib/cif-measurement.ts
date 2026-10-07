@@ -12,6 +12,27 @@ export function measurementAngle(a: Point, b: Point, c: Point): number | null {
   return Math.acos(Math.max(-1, Math.min(1, cosine))) * 180 / Math.PI
 }
 
+function selectionOutline(viewer: GLViewer, center: Point, color: string) {
+  const vertexArr: Point[] = [], normalArr: Point[] = [], faceArr: number[] = []
+  const rings = 16, segments = 32, radius = 0.62
+  for (let ring = 0; ring <= rings; ring++) {
+    const theta = Math.PI * ring / rings
+    for (let segment = 0; segment <= segments; segment++) {
+      const phi = 2 * Math.PI * segment / segments
+      const x = Math.sin(theta) * Math.cos(phi), y = Math.cos(theta), z = Math.sin(theta) * Math.sin(phi)
+      vertexArr.push({ x: center.x + radius * x, y: center.y + radius * y, z: center.z + radius * z })
+      // Light the inside of the shell: its back faces form the visible rim.
+      normalArr.push({ x: -x, y: -y, z: -z })
+      if (ring < rings && segment < segments) {
+        const a = ring * (segments + 1) + segment, b = a + segments + 1
+        faceArr.push(a, a + 1, b, a + 1, b + 1, b)
+      }
+    }
+  }
+  // BackSide = 1. The original atom hides the rear shell, preserving its color.
+  return viewer.addCustom({ vertexArr, normalArr, faceArr, color, opacity: 1, side: 1 })
+}
+
 /** Own only measurement objects: hover and the structure keep their own lifetimes. */
 export function drawCifMeasurement(viewer: GLViewer, atoms: Point[]) {
   const labels: ReturnType<GLViewer["addLabel"]>[] = []
@@ -22,7 +43,7 @@ export function drawCifMeasurement(viewer: GLViewer, atoms: Point[]) {
     backgroundOpacity: 0.95, inFront: true, alignment,
   }))
   atoms.forEach((atom, index) => {
-    shapes.push(viewer.addSphere({ center: atom, radius: 0.56, color, opacity: 0.22 }))
+    shapes.push(selectionOutline(viewer, atom, color))
     label(String(index + 1), { x: atom.x, y: atom.y + 0.55, z: atom.z })
     if (index === 0) return
     const previous = atoms[index - 1]
