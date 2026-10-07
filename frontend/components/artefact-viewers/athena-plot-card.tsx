@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
+import { useEffect, useId, useRef, useState, type CSSProperties, type KeyboardEvent, type PointerEvent, type ReactNode } from "react"
 
 export const athenaPlotHeightKey = "athena.plot.height.v1"
 const minimumHeight = 280
@@ -32,6 +32,8 @@ export function ResizablePlotCard({
   children, className = "", storageKey = athenaPlotHeightKey, plotSelector = ".ath-plot, .ath-no-plot",
   defaultHeight = 380, minHeight = minimumHeight, resizeLabel = "Resize spectrum plot height", controlsId = "athena-spectrum-viewer",
 }: Props) {
+  const instanceId = useId()
+  const cardId = `${controlsId}-${instanceId}`
   const cardRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<{ pointerId: number; startY: number; startHeight: number; preferred: number | null } | null>(null)
   const heightRef = useRef<number | null>(null)
@@ -154,10 +156,10 @@ export function ResizablePlotCard({
   }, [dragging, storageKey, plotSelector, defaultHeight, minHeight])
 
   const style = height === null ? undefined : { "--ath-plot-height": `${height}px` } as CSSProperties
-  return <div ref={cardRef} className={`ath-plot-card ${className}`.trim()} style={style} data-plot-resizing={dragging || undefined} data-plot-height={height ?? undefined}>
+  return <div id={cardId} ref={cardRef} className={`ath-plot-card ${className}`.trim()} style={style} data-plot-resizing={dragging || undefined} data-plot-height={height ?? undefined}>
     {children}
     <div className="ath-plot-height-resizer" role="separator" tabIndex={0}
-      aria-label={resizeLabel} aria-controls={controlsId} aria-orientation="horizontal"
+      aria-label={resizeLabel} aria-controls={cardId} aria-orientation="horizontal"
       aria-valuemin={minHeight} aria-valuemax={maximumHeight} aria-valuenow={height ?? measuredHeight}
       aria-valuetext={`${height ?? measuredHeight} pixels`}
       title="Drag up or down to resize the plot. Use Up/Down arrows for precise control; double-click or press Enter to reset."

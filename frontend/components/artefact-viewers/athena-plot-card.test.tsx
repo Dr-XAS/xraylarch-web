@@ -149,3 +149,24 @@ describe("ResizablePlotCard", () => {
     expect(card.style.getPropertyValue("--ath-plot-height")).toBe("396px")
   })
 })
+
+
+it("gives every resizer a unique existing controlled card, including repeated viewer IDs", () => {
+  const { container } = render(<>
+    <ResizablePlotCard controlsId="athena-single-spectrum-viewer"><div>First plot</div></ResizablePlotCard>
+    <ResizablePlotCard controlsId="athena-single-spectrum-viewer"><div>Second plot</div></ResizablePlotCard>
+    <ResizablePlotCard><div>Default plot</div></ResizablePlotCard>
+  </>)
+  const grips = screen.getAllByRole("separator")
+  const targets = grips.map(grip => grip.getAttribute("aria-controls"))
+  expect(new Set(targets).size).toBe(3)
+  grips.forEach((grip, index) => {
+    const target = document.getElementById(targets[index]!)
+    expect(target).not.toBeNull()
+    expect(target).toBe(grip.closest(".ath-plot-card"))
+    expect(container).toContainElement(target)
+    expect(grip).toHaveAttribute("aria-valuemin", "280")
+    expect(grip).toHaveAttribute("aria-valuemax", "1600")
+    expect(grip).toHaveAttribute("aria-valuenow", "380")
+  })
+})

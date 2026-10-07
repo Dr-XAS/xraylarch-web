@@ -2,7 +2,7 @@
 
 import { SectionHelp } from "../section-help"
 import { ThemedPlot as Plot } from "../themed-plot"
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 import { defaultPlotColors, spectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { AthenaContextMenu } from "../athena-context-menu"
@@ -285,11 +285,29 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${[rangeStart, rangeEnd].join()}-${plotScope}-${plotScope === "current" ? activeId ?? "" : ""}-${kWeight ?? "auto"}`,
     }
   }, [xTitle, yTitle, showGrid, analysisVisible, analysis?.kind, showLegend, space, energyMode, component, rangeStart, rangeEnd, plotScope, activeId, kWeight])
+  const descriptionId = useId()
+  const description = useMemo(() => {
+    const traces = data.map(trace => {
+      const x = trace.x as number[]
+      const y = trace.y as number[]
+      let points = 0, xmin = Infinity, xmax = -Infinity, ymin = Infinity, ymax = -Infinity
+      for (let index = 0; index < x.length; index++) {
+        if (!Number.isFinite(x[index]) || !Number.isFinite(y[index])) continue
+        points++
+        xmin = Math.min(xmin, x[index]); xmax = Math.max(xmax, x[index])
+        ymin = Math.min(ymin, y[index]); ymax = Math.max(ymax, y[index])
+      }
+      const label = String(trace.name ?? "Unnamed series")
+      const format = (value: number) => String(Number(value.toPrecision(6)))
+      return points ? `${label}: ${points} points; x data ${format(xmin)} to ${format(xmax)}; y data ${format(ymin)} to ${format(ymax)}.` : `${label}: no finite points.`
+    })
+    return `Horizontal axis: ${xTitle}. Vertical axis: ${yTitle}. ${traces.join(" ")}${xTitle === "R (Å)" ? " R peaks are not phase-corrected bond lengths." : ""}`
+  }, [data, xTitle, yTitle])
   const config = useMemo(() => ({ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }), [])
   if (!hasData) return <><div ref={plotRef} className="ath-no-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}<SectionHelp label="Spectrum plot">{noSelection ? "Check data groups to compare spectra. The Single spectrum viewer shows the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or load the copper examples to begin."}</SectionHelp></h3></div>{options}</>
   const canPick = picking && !analysisVisible && space !== "q"
-  return <><div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><Plot data={plotData} onClick={event => {
+  return <><div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-describedby={descriptionId} aria-label={`${space}-space spectrum plot`} {...plotInteraction}><Plot data={plotData} onClick={event => {
     const x = event.points?.[0]?.x
     if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
-  }} layout={layout} config={config} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>{options}</>
+  }} layout={layout} config={config} useResizeHandler style={{ width: "100%", height: "100%" }} /><span id={descriptionId} className="ath-sr-only">{description}</span></div>{options}</>
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest"
 
+import { plotDataForTheme } from "./plot-theme"
 import { ATHENA_COLORMAPS, colormapOptions } from "./athena-colormaps"
 import { defaultPlotColors, isPlotPalette, normalizePlotColorRange, plotPaletteOptions, spectrumColors } from "./athena-plot-colors"
 
@@ -14,8 +15,9 @@ describe("spectrum plot palettes", () => {
 
   it("offers every wavelet map with matching labels and previews, plus Classic", () => {
     for (const reversed of [false, true]) {
-      const [classic, ...continuous] = plotPaletteOptions(reversed)
+      const [classic, colorblind, ...continuous] = plotPaletteOptions(reversed)
       expect(classic).toMatchObject({ value: "classic", label: "Classic · categorical" })
+      expect(colorblind).toMatchObject({ value: "colorblind", label: "Colorblind · Okabe–Ito" })
       expect(continuous).toEqual(colormapOptions(reversed))
       expect(continuous.map(option => option.value)).toEqual(ATHENA_COLORMAPS.map(option => option.value))
     }
@@ -72,4 +74,27 @@ describe("spectrum plot palettes", () => {
     expect(forward.every(color => /^#[0-9a-f]{6}$/.test(color))).toBe(true)
     expect(spectrumColors(17, { palette: value, reversed: true })).toEqual([...forward].reverse())
   })
+})
+
+
+it("uses the Okabe–Ito categorical palette without cropping, with reversal", () => {
+  expect(isPlotPalette("colorblind")).toBe(true)
+  const settings = { palette: "colorblind" as const, reversed: false }
+  const expected = ["#0072b2", "#e69f00", "#009e73", "#cc79a7", "#d55e00", "#56b4e9", "#000000"]
+  expect(spectrumColors(7, settings)).toEqual(expected)
+  expect(spectrumColors(7, { ...settings, vmin: 0.4, vmax: 0.6 })).toEqual(expected)
+  expect(spectrumColors(7, { ...settings, reversed: true })).toEqual([...expected].reverse())
+  expect(spectrumColors(9, settings).slice(7)).toEqual(expected.slice(0, 2))
+})
+
+
+it("adapts the colorblind palette for dark plots without changing data or line styles", () => {
+  const colors = spectrumColors(7, { palette: "colorblind", reversed: false })
+  const data = colors.map(color => ({ x: [1, 2], y: [3, 4], line: { color, dash: "dash" } }))
+  const dark = plotDataForTheme(data, "dark")
+  expect(dark.at(-1)!.line).not.toMatchObject({ color: "#000000" })
+  dark.forEach((trace, index) => {
+    expect(trace).toMatchObject({ x: data[index].x, y: data[index].y, line: { dash: "dash" } })
+  })
+  expect(data.at(-1)!.line.color).toBe("#000000")
 })

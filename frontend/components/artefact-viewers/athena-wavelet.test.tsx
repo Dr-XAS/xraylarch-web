@@ -280,7 +280,7 @@ describe("AthenaWavelet", () => {
     serve()
     const view = render(<AthenaWavelet kWeight={null} projectId="p" version={4} group={group()} />)
     const grip = screen.getByRole("separator", { name: "Resize wavelet plot height" })
-    expect(grip).toHaveAttribute("aria-controls", "athena-wavelet-viewer")
+    expect(document.getElementById(grip.getAttribute("aria-controls")!)).toBe(grip.closest(".ath-plot-card"))
     await calculate()
     expect(handoff().layout).toMatchObject({ width: 800, height: 430 })
 

@@ -900,3 +900,28 @@ describe('Detector signal plots', () => {
     expect(screen.getByText('No data in this plot space')).toBeVisible()
   })
 })
+
+
+describe("AthenaPlot accessible descriptions", () => {
+  it("describes the displayed axes, trace names and finite sample ranges", () => {
+    const sample = group("Copper foil")
+    show({ groups: [sample], active: sample })
+    const plot = screen.getByTestId("athena-plot")
+    expect(plot).toHaveAccessibleDescription(expect.stringContaining("Energy (eV)"))
+    expect(plot).toHaveAccessibleDescription(expect.stringContaining("μ(E)"))
+    expect(plot).toHaveAccessibleDescription(expect.stringContaining("Copper foil: 3 points"))
+    expect(plot).toHaveAccessibleDescription(expect.stringContaining("8960 to 9000"))
+    expect(plot).toHaveAccessibleDescription(expect.stringContaining("1 to 3"))
+  })
+
+  it("updates the description with the displayed plot space and excludes nonfinite points", () => {
+    const sample = group("Copper foil")
+    sample.result!.arrays.mu = [1, Number.NaN, 3]
+    const rendered = show({ groups: [sample], active: sample })
+    expect(screen.getByTestId("athena-plot")).toHaveAccessibleDescription(expect.stringContaining("2 points"))
+    rendered.unmount()
+    show({ groups: [sample], active: sample, space: "R" })
+    expect(screen.getByTestId("athena-plot")).toHaveAccessibleDescription(expect.stringContaining("R (Å)"))
+    expect(screen.getByTestId("athena-plot")).toHaveAccessibleDescription(expect.stringContaining("phase-corrected"))
+  })
+})
