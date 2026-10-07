@@ -614,7 +614,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   }
   const working = busy === "job" || job?.status === "running"
   const structures = <section className={styles.panel} aria-label="Project CIF structures">
-    <div className={styles.toolbar}><button type="button" className={styles.openButton} disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>{uploadControl()}<button type="button" disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Simulate EXAFS from CIF</button></div>
+    <div className={`${styles.toolbar} ${styles.structureToolbar}`}><button type="button" disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>{uploadControl()}<button type="button" className={styles.simulationButton} disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Simulate EXAFS from CIF</button></div>
     {listLoading && !attachments.length && <p className={styles.help}>Loading attached CIFs…</p>}
     {!projectId ? <p className={styles.help}>Select a project to attach crystal structures.</p> : !listLoading && !attachments.length && <p className={styles.help}>No CIF structures attached to this project.</p>}
     {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}>

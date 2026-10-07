@@ -1,5 +1,4 @@
 .panel { margin: 0 0 18px; padding: 10px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 5px; background: var(--ath-canvas, #f5f8f5); }
-.panel .openButton { width: 100%; min-height: 34px; }
 .attachedList { list-style: none; margin: 10px 0 0; padding: 0; max-height: 180px; overflow-y: auto; overscroll-behavior: contain; }
 .attachedList li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; justify-content: space-between; padding: 7px 0; }
 .attachedList li + li { border-top: 1px solid var(--ath-line, #dce5dc); }
@@ -60,6 +59,9 @@
 .structure h4 { font-size: var(--text-section); font-weight: 500; margin: 0 0 6px; overflow-wrap: anywhere; line-height: var(--leading-heading); }
 .structure h4 > span:not([data-section-help]) { display: block; color: var(--ath-muted, #647669); font-size: var(--text-caption); margin-top: 4px; }
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+.structureToolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
+.panel .structureToolbar > button { width: 100%; min-width: 0; min-height: 32px; white-space: normal; }
+.structureToolbar .simulationButton { grid-column: 1 / -1; }
 .textDetails { margin: 9px 0; font-size: var(--text-label); }
 .textDetails summary { cursor: pointer; margin: 6px 0; font-size: var(--text-label); }
 .textDetails pre { padding: 9px; background: var(--ath-canvas, #f5f8f5); max-height: 200px; overflow: auto; white-space: pre; font-size: var(--text-label); line-height: var(--leading-body); }
