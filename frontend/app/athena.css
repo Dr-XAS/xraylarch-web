@@ -174,11 +174,11 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="theory"] { border-color: 
 .ath-viewer-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .ath-app .ath-viewer-chip { min-height: 34px; padding: 5px 10px; gap: 6px; border: 1px solid var(--ath-line); border-radius: 999px; background: var(--ath-surface); color: var(--ath-muted); white-space: normal; text-align: left; line-height: 1.2; transition: background-color .16s ease, border-color .16s ease, box-shadow .16s ease; }
 .ath-viewer-chip[data-viewer-theme="single"],
-.ath-viewer-chip[data-viewer-theme="multiple"] { --viewer-accent: #48305f; --viewer-ink: #48305f; --viewer-soft: #f5f0f8; --viewer-border: #d6c3df; }
+.ath-viewer-chip[data-viewer-theme="multiple"] { --viewer-accent: #48305f; --viewer-ink: var(--ath-plum-ink); --viewer-soft: var(--ath-plum-soft); --viewer-border: var(--ath-plum-line); }
 .ath-viewer-chip[data-viewer-theme="wavelet"] { --viewer-accent: #a35f9c; --viewer-ink: #813678; --viewer-soft: #fbf1f9; --viewer-border: #e8c9e1; }
 .ath-viewer-chip[data-viewer-theme="cif"] { --viewer-accent: #be3ea3; --viewer-ink: #942c7d; --viewer-soft: #fff0f9; --viewer-border: #edc1df; }
-.ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #ea7e63; --viewer-ink: #9d3f2d; --viewer-soft: #fff2ee; --viewer-border: #f1c1b4; }
-.ath-viewer-chip[data-viewer-theme="fit"] { --viewer-accent: #a66d1b; --viewer-ink: #795011; --viewer-soft: #fff8e9; --viewer-border: #ead2a4; }
+.ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #ea7e63; --viewer-ink: var(--ath-coral-ink); --viewer-soft: var(--ath-coral-soft); --viewer-border: var(--ath-coral-line); }
+.ath-viewer-chip[data-viewer-theme="fit"] { --viewer-accent: #a66d1b; --viewer-ink: var(--ath-gold-ink); --viewer-soft: var(--ath-gold-soft); --viewer-border: var(--ath-gold-line); }
 .ath-viewer-chip-icon { display: grid; place-items: center; flex: 0 0 20px; width: 20px; height: 20px; color: var(--ath-muted); }
 .ath-app .ath-viewer-chip[data-viewer-theme][data-shown="true"] { border-color: var(--viewer-border); background: var(--viewer-soft); color: var(--viewer-ink); box-shadow: 0 1px 3px rgb(30 20 35 / 5%); font-weight: 600; }
 .ath-viewer-chip[data-viewer-theme][data-shown="true"] .ath-viewer-chip-icon { color: var(--viewer-accent); }
@@ -198,11 +198,11 @@ html[data-theme="dark"] .ath-measurement-tag[data-tag="theory"] { border-color: 
 .ath-app .ath-viewer-all[aria-pressed="true"] { background: var(--ath-surface-muted); color: var(--ath-ink); }
 .ath-app .ath-viewer-all:hover:not(:disabled) { border-color: var(--ath-muted); background: var(--ath-surface-muted); }
 html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="single"],
-html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="multiple"] { --viewer-accent: #b99ad1; --viewer-ink: #e5c9ef; --viewer-soft: #2d2435; --viewer-border: #675371; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="multiple"] { --viewer-accent: #b99ad1; --viewer-ink: var(--ath-plum-ink); --viewer-soft: var(--ath-plum-soft); --viewer-border: var(--ath-plum-line); }
 html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="wavelet"] { --viewer-accent: #d49acb; --viewer-ink: #f0cfe9; --viewer-soft: #312330; --viewer-border: #76546f; }
 html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="cif"] { --viewer-accent: #e784c1; --viewer-ink: #f8cce7; --viewer-soft: #372331; --viewer-border: #814d70; }
-html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #f19b83; --viewer-ink: #ffd6ca; --viewer-soft: #382722; --viewer-border: #865447; }
-html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-accent: #efc978; --viewer-ink: #ffe3ad; --viewer-soft: #382e20; --viewer-border: #806d48; }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="feff"] { --viewer-accent: #f19b83; --viewer-ink: var(--ath-coral-ink); --viewer-soft: var(--ath-coral-soft); --viewer-border: var(--ath-coral-line); }
+html[data-theme="dark"] .ath-viewer-chip[data-viewer-theme="fit"] { --viewer-accent: #efc978; --viewer-ink: var(--ath-gold-ink); --viewer-soft: var(--ath-gold-soft); --viewer-border: var(--ath-gold-line); }
 .ath-viewer-order-hint { margin: 10px 0 0; color: var(--ath-muted); font-size: var(--text-caption); }
 .ath-viewer-empty { padding: 26px 16px; border: 1px dashed var(--ath-line); border-radius: 7px; color: var(--ath-muted); background: var(--ath-surface); text-align: center; }
 .ath-viewer-stack { display: flex; flex-direction: column; gap: var(--ath-panel-gap); }

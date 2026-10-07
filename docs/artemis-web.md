@@ -526,6 +526,18 @@ parameter uncertainties are reported as unavailable rather than as zero.
 Convergence alone does not establish that the structural model is adequate;
 check the residuals, correlations, bounds, and parameter meaning.
 
+The fit report uses the viewer palette for compact status badges and includes an
+always-visible **Status color guide**, even when **Show instruction** is off.
+Olive green means **In range**, gold **Borderline**, coral **Out of range**, slate
+**S₀² at bound**, and gray **Not assessed**. Each badge includes text and an icon;
+numeric values retain a neutral background. The gold report heading and R-factor
+card identify the EXAFS report; their status is given by the badge.
+**Reference ranges & thresholds** expands the criteria used for the displayed
+statistics and parameters. These checks are heuristics, not a verdict on fit
+validity. Parameter checks include ±1σ when available; without an uncertainty,
+only the value is checked. Colors, reference criteria, and labels do not alter
+the fitted values, scientific calculation, or downloaded report.
+
 Noise is estimated by Larch from the high-R region, 15–30 Å. The existing Athena
 processed arrays do not retain `delta_chi`, so this iteration does not propagate
 that background uncertainty into the fit. There is no user-specified noise

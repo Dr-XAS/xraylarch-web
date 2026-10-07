@@ -1,6 +1,6 @@
 "use client"
 
-import { Download, FileJson, FileText, TriangleAlert } from "lucide-react"
+import { Check, CircleAlert, Download, FileJson, FileText, LockKeyhole, Minus, TriangleAlert } from "lucide-react"
 import type { ArtemisFitResult } from "@/lib/artemis"
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import { correlationHealth, independentPointsHealth, parameterHealth, rFactorHealth, type FitHealth } from "@/lib/artemis-fit-health"
@@ -9,7 +9,20 @@ import styles from "./artemis-fit-report.module.css"
 
 const finite = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value)
 const kindLabels = { guess: "Varied", set: "Fixed", def: "Derived" }
-const healthLabels = { good: "In range", caution: "Borderline", bad: "Out of range", railed: "Railed on bound", neutral: "Not assessed" }
+const healthLabels = { good: "In range", caution: "Borderline", bad: "Out of range", railed: "S₀² at bound", neutral: "Not assessed" }
+const healthIcons = { good: Check, caution: CircleAlert, bad: TriangleAlert, railed: LockKeyhole, neutral: Minus }
+const healthLegend: { state: FitHealth["state"]; description: string }[] = [
+  { state: "good", description: "Within reference criteria" },
+  { state: "caution", description: "Near a limit, or ±1σ crosses it" },
+  { state: "bad", description: "Outside reference criteria; review" },
+  { state: "railed", description: "Varied S₀² at its saved bound" },
+  { state: "neutral", description: "No applicable criterion or value" },
+]
+
+function HealthBadge({ health }: { health: FitHealth }) {
+  const Icon = healthIcons[health.state]
+  return <span className={styles.healthBadge} {...healthAttributes(health)}><Icon size={12} aria-hidden="true" />{healthLabels[health.state]}</span>
+}
 
 function healthAttributes(health: FitHealth) {
   const description = `${healthLabels[health.state]}: ${health.reason}`
@@ -27,8 +40,10 @@ function parameterBound(parameter: ArtemisFitResult["parameters"][number]) {
 
 export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
   const { statistics: stats, transform } = result
+  const agreementHealth = rFactorHealth(stats.r_factor)
   const informationHealth = independentPointsHealth(stats.n_independent, stats.n_varys)
   const fitPaths = result.request?.paths.filter(path => result.paths.some(fitted => fitted.id === path.id))
+  const assessedParameters = result.parameters.map(parameter => ({ parameter, health: parameterHealth(parameter, { errorbars: stats.errorbars, paths: fitPaths }) }))
   const correlations = result.correlations.filter(pair => finite(pair.value)).slice().sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
   const strongCorrelations = correlations.filter(pair => Math.abs(pair.value) >= 0.9)
   const reviewNotes: string[] = []
@@ -41,23 +56,40 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
 
   return <section className={styles.report} aria-label="Fit report">
     <header className={styles.header}>
-      <div className={styles.heading}><FileText size={18} aria-hidden="true" /><div><h4>Fit report</h4><p>{result.group_label}</p></div></div>
-      <span className={styles.status} data-converged={result.success}>{result.success ? "Converged" : "Did not converge"}
+      <div className={styles.heading}><span className={styles.headingMark}><FileText size={18} aria-hidden="true" /></span><div><h4>Fit report</h4><p>{result.group_label}</p></div></div>
+      <span className={styles.status} data-converged={result.success}>{result.success ? <Check size={13} aria-hidden="true" /> : <TriangleAlert size={13} aria-hidden="true" />}{result.success ? "Converged" : "Did not converge"}
         <SectionHelp label="Fit convergence">Convergence describes the optimizer stopping. Assess the residual, uncertainties and correlations before interpreting the model.</SectionHelp>
       </span>
     </header>
 
     {!result.success && <p className={styles.failure} role="alert">Fit did not converge: {result.message}</p>}
     <dl className={styles.metrics}>
-      <div className={styles.primaryMetric} data-review={finite(stats.r_factor) && stats.r_factor > 0.05}>
+      <div className={styles.primaryMetric}>
         <dt>R factor<SectionHelp label="R factor">Normalized squared residual in the fit space. Lower values indicate closer agreement; a small R factor alone does not validate the model.</SectionHelp></dt>
-        <dd {...healthAttributes(rFactorHealth(stats.r_factor))}>{format(stats.r_factor, 5)}</dd><span className={styles.metricHint}>Model–data agreement</span>
+        <dd {...healthAttributes(agreementHealth)}>{format(stats.r_factor, 5)}</dd><span className={styles.metricHint}>Model–data agreement</span><HealthBadge health={agreementHealth} />
       </div>
       <div><dt>Reduced χ²<SectionHelp label="Reduced chi square">Chi square scaled by the fit's degrees of freedom. Its size depends on the noise estimate as well as the residual.</SectionHelp></dt><dd>{format(stats.reduced_chi_square, 5)}</dd><span className={styles.metricHint}>Depends on noise estimate</span></div>
-      <div><dt>Free parameters</dt><dd {...healthAttributes(informationHealth)}>{format(stats.n_varys)}</dd><span className={styles.metricHint}>Varied in this fit</span></div>
-      <div><dt>Independent points<SectionHelp label="Independent points">The information available over the fit range. This is different from the number of sampled data points.</SectionHelp></dt><dd {...healthAttributes(informationHealth)}>{format(stats.n_independent, 4)}</dd><span className={styles.metricHint}>Available information</span></div>
+      <div><dt>Free parameters</dt><dd {...healthAttributes(informationHealth)}>{format(stats.n_varys)}</dd><span className={styles.metricHint}>Varied in this fit</span><HealthBadge health={informationHealth} /></div>
+      <div><dt>Independent points<SectionHelp label="Independent points">The information available over the fit range. This is different from the number of sampled data points.</SectionHelp></dt><dd {...healthAttributes(informationHealth)}>{format(stats.n_independent, 4)}</dd><span className={styles.metricHint}>Available information</span><HealthBadge health={informationHealth} /></div>
       <div><dt>Noise ε(k)<SectionHelp label="Noise estimate">χ² and the uncertainties are measured against this noise ε(k), estimated from the high-R part of the transform. Two fits are only comparable on χ² when they share that scale.</SectionHelp></dt><dd>{format(stats.epsilon_k)}</dd><span className={styles.metricHint}>Scale of χ² and uncertainties</span></div>
     </dl>
+
+    <aside className={styles.legend} aria-label="Fit color guide">
+      <div className={styles.legendHeading}><h5>Status color guide</h5><span>Reference checks</span></div>
+      <ul className={styles.legendItems}>{healthLegend.map(({ state, description }) => <li key={state}>
+        <HealthBadge health={{ state, reason: description }} /><span>{description}</span>
+      </li>)}</ul>
+      <p className={styles.legendNote}>Status colors flag reference checks, not fit validity. Parameter checks include ±1σ when available. Without an uncertainty, only the value is checked.</p>
+      <details className={styles.criteria}>
+        <summary>Reference ranges &amp; thresholds</summary>
+        <dl>
+          <div><dt>R-factor check</dt><dd>{agreementHealth.reason}</dd></div>
+          <div><dt>Information check</dt><dd>{informationHealth.reason}</dd></div>
+          <div><dt>Correlation check</dt><dd>{correlationHealth(0).reason}</dd></div>
+          {assessedParameters.map(({ parameter, health }) => <div key={parameter.name}><dt><code>{parameter.name}</code></dt><dd>{health.reason}</dd></div>)}
+        </dl>
+      </details>
+    </aside>
 
     {reviewNotes.length > 0 && <aside className={styles.review} aria-label="Fit review notes">
       <strong><TriangleAlert size={15} aria-hidden="true" /> Review before interpreting</strong>
@@ -68,9 +100,9 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
       <div className={styles.sectionHeading}><h5>Fitted parameters<SectionHelp label="Parameter treatment">Uncertainty is Larch’s estimated standard error. Fixed values have no fitted uncertainty. Varied = Guess, optimized by the fit. Fixed = Set, held at its supplied value. Derived = Def, calculated from an expression. Parameter names are user defined.</SectionHelp></h5><span>{result.parameters.length} total</span></div>
       <div className={styles.tableScroll} role="region" aria-label="Fitted parameter values" tabIndex={0}><table aria-label="Fitted parameters">
         <thead><tr><th scope="col">Parameter</th><th scope="col">Value ± uncertainty</th><th scope="col">Initial value</th><th scope="col">Treatment</th></tr></thead>
-        <tbody>{result.parameters.map(parameter => <tr key={parameter.name}>
+        <tbody>{assessedParameters.map(({ parameter, health }) => <tr key={parameter.name}>
           <th scope="row"><code>{parameter.name}</code>{parameter.expression && <span className={styles.expression}>{parameter.expression}</span>}</th>
-          <td {...healthAttributes(parameterHealth(parameter, { errorbars: stats.errorbars, paths: fitPaths }))}><span className={styles.value}>{format(parameter.value, 7)}</span><span className={styles.uncertainty}>{parameter.kind === "set" ? " —" : stats.errorbars && finite(parameter.stderr) ? ` ± ${format(parameter.stderr, 3)}` : " ± Unavailable"}</span></td>
+          <td {...healthAttributes(health)}><span className={styles.parameterNumber}><span className={styles.value}>{format(parameter.value, 7)}</span><span className={styles.uncertainty}>{parameter.kind === "set" ? " —" : stats.errorbars && finite(parameter.stderr) ? ` ± ${format(parameter.stderr, 3)}` : " ± Unavailable"}</span></span><HealthBadge health={health} /></td>
           <td className={styles.secondary}>{format(parameter.initial, 7)}</td>
           <td><span className={styles.kind} data-kind={parameter.kind}>{kindLabels[parameter.kind]}</span>{parameterBound(parameter) && <span className={styles.bound}>At {parameterBound(parameter)} bound</span>}</td>
         </tr>)}</tbody>
@@ -106,11 +138,11 @@ export function ArtemisFitReport({ result }: { result: ArtemisFitResult }) {
 
     <details className={`${styles.section} ${styles.correlations}`} open>
       <summary>Parameter correlations ({correlations.length})<SectionHelp label="Parameter correlations">Values near −1 or +1 indicate parameters that change together. Bar length shows the absolute correlation.</SectionHelp></summary>
-      {correlations.length ? <ul className={styles.correlationList}>{correlations.map(pair => <li key={`${pair.left}:${pair.right}`} data-strong={Math.abs(pair.value) >= 0.9}>
+      {correlations.length ? <ul className={styles.correlationList}>{correlations.map(pair => <li key={`${pair.left}:${pair.right}`} data-strong={Math.abs(pair.value) >= 0.9} data-health={correlationHealth(pair.value).state}>
         <span className={styles.pair}><code>{pair.left}</code><span aria-hidden="true">↔</span><code>{pair.right}</code></span>
         <span className={styles.correlationBar} aria-hidden="true"><span style={{ width: `${Math.min(1, Math.abs(pair.value)) * 100}%` }} /></span>
         <span className={styles.correlationValue} {...healthAttributes(correlationHealth(pair.value))}>{pair.value > 0 ? "+" : ""}{pair.value.toFixed(3)}</span>
-        <span className={styles.correlationLabel}>{Math.abs(pair.value) >= 0.9 ? "Strong" : ""}</span>
+        <span className={styles.correlationLabel}>{Math.abs(pair.value) >= 0.9 ? "Strong" : Math.abs(pair.value) >= 0.8 ? "Borderline" : "In range"}</span>
       </li>)}</ul> : <p className={styles.note}>No parameter correlations were reported for this fit.</p>}
     </details>
 

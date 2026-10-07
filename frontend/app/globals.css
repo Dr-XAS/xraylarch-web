@@ -46,6 +46,22 @@
   --ath-popover: var(--ath-surface);
   --ath-surface-muted: hsl(240 4.8% 95.9%);
   --ath-canvas: hsl(42 33% 97%);
+  /* Shared subdued palette for viewer chips and fit-report reference checks. */
+  --ath-olive-ink: #56652e;
+  --ath-olive-soft: #f2f5e8;
+  --ath-olive-line: #ccd5b2;
+  --ath-plum-ink: #48305f;
+  --ath-plum-soft: #f5f0f8;
+  --ath-plum-line: #d6c3df;
+  --ath-gold-ink: #795011;
+  --ath-gold-soft: #fff8e9;
+  --ath-gold-line: #ead2a4;
+  --ath-coral-ink: #9d3f2d;
+  --ath-coral-soft: #fff2ee;
+  --ath-coral-line: #f1c1b4;
+  --ath-slate-ink: #475569;
+  --ath-slate-soft: #eef1f5;
+  --ath-slate-line: #cbd3df;
   color-scheme: light;
   color: var(--ath-ink);
   background: var(--ath-canvas);
@@ -69,6 +85,21 @@ html[data-theme="dark"] {
   --ath-popover: hsl(240 5% 13%);
   --ath-surface-muted: hsl(240 3.7% 15.9%);
   --ath-canvas: hsl(240 10% 10%);
+  --ath-olive-ink: #c4d59b;
+  --ath-olive-soft: #29301f;
+  --ath-olive-line: #647548;
+  --ath-plum-ink: #e5c9ef;
+  --ath-plum-soft: #2d2435;
+  --ath-plum-line: #675371;
+  --ath-gold-ink: #ffe3ad;
+  --ath-gold-soft: #382e20;
+  --ath-gold-line: #806d48;
+  --ath-coral-ink: #ffd6ca;
+  --ath-coral-soft: #382722;
+  --ath-coral-line: #865447;
+  --ath-slate-ink: #d7dfeb;
+  --ath-slate-soft: #262e3b;
+  --ath-slate-line: #58667a;
   /* Light components retain their existing semantic colors through fallbacks. */
   --ath-error-ink: hsl(8 90% 78%);
   --ath-error-bg: hsl(8 35% 17%);
