@@ -131,6 +131,9 @@ colors, legends, and heights. For an individual **μ(E)** plot, use
 separately shows the fitted μ₀(E) background when available.
 Each normalization-line toggle also marks its interval's start and end on
 μ(E). Hover a marker to see its energy and offset from E₀.
+Use **⌖** beside a processing parameter, then click a point on the curve in
+the **Single spectrum viewer** to update it and process automatically. Relative
+energy limits use E − E₀. Press Escape or **Cancel pick** to leave picking mode.
 
 Drag the handle below any artifact viewer to resize its plot or 3D structure;
 double-click it to restore the default. Each viewer remembers its own height,

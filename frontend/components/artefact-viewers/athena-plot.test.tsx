@@ -100,7 +100,7 @@ describe("AthenaPlot redraw boundaries", () => {
     expect(handoff().data).toBe(first.data)
     expect(handoff().layout).toBe(first.layout)
     expect(handoff().config).toBe(first.config)
-    handoff().onClick?.({ points: [{ x: 8980 }] })
+    first.onClick?.({ points: [{ x: 8980 }] })
     expect(nextPick).toHaveBeenCalledWith(8980, "E")
     expect(firstPick).not.toHaveBeenCalled()
 
@@ -309,6 +309,64 @@ describe("AthenaPlot difference signal labels", () => {
 })
 
 describe("AthenaPlot coordinate picking", () => {
+  it.each<Space>(["E", "k", "R"])("arms, changes target and cancels through the retained %s plot listener without a redraw", space => {
+    const sample = group()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space, energyMode: "mu", component: "mag",
+      background: false, window: false, offset: 0, analysis: null, analysisVisible: false, range: [null, null],
+    }
+    const firstPick = vi.fn(), nextPick = vi.fn()
+    const { rerender } = render(<AthenaPlot {...props} />)
+    // react-plotly.js retains this listener while data/layout/config stay equal.
+    const initial = handoff()
+    const click = initial.onClick!
+    const x = { E: 8980, k: 2, R: 1, q: 2 }[space]
+    click({ points: [{ x }] })
+
+    rerender(<AthenaPlot {...props} picking onPickX={firstPick} />)
+    expect(handoff().data).toBe(initial.data)
+    expect(handoff().layout).toBe(initial.layout)
+    expect(handoff().config).toBe(initial.config)
+    click({ points: [{ x }] })
+    expect(firstPick).toHaveBeenCalledExactlyOnceWith(x, space)
+
+    rerender(<AthenaPlot {...props} picking onPickX={nextPick} />)
+    click({ points: [{ x: x + 1 }] })
+    expect(nextPick).toHaveBeenCalledExactlyOnceWith(x + 1, space)
+    expect(firstPick).toHaveBeenCalledTimes(1)
+
+    rerender(<AthenaPlot {...props} />)
+    click({ points: [{ x }] })
+    expect(firstPick).toHaveBeenCalledTimes(1)
+    expect(nextPick).toHaveBeenCalledTimes(1)
+  })
+
+  it("ignores retained listeners from a previous plot space or spectrum during redraw", () => {
+    const sample = group()
+    const onPickX = vi.fn()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space: "E", energyMode: "mu", component: "mag",
+      background: false, window: false, offset: 0, analysis: null, analysisVisible: false,
+      range: [null, null], picking: true, onPickX,
+    }
+    const { rerender } = render(<AthenaPlot {...props} />)
+    const energyClick = handoff().onClick!
+    rerender(<AthenaPlot {...props} space="k" />)
+    energyClick({ points: [{ x: 8980 }] })
+    expect(onPickX).not.toHaveBeenCalled()
+    const kClick = handoff().onClick!
+    kClick({ points: [{ x: 2 }] })
+    expect(onPickX).toHaveBeenCalledExactlyOnceWith(2, "k")
+
+    const other = group("Other spectrum")
+    rerender(<AthenaPlot {...props} groups={[other]} active={other} space="k" />)
+    kClick({ points: [{ x: 3 }] })
+    expect(onPickX).toHaveBeenCalledTimes(1)
+    handoff().onClick!({ points: [{ x: 4 }] })
+    expect(onPickX).toHaveBeenLastCalledWith(4, "k")
+    expect(onPickX).toHaveBeenCalledTimes(2)
+  })
+
   it.each<Space>(["E", "k", "R"])("reports the finite plotted x in %s space without applying offsets to it", space => {
     const onPickX = vi.fn()
     const active = group()

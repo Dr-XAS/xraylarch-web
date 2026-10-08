@@ -9,10 +9,10 @@ import { plotDataWithTypography, plotLayoutWithTypography } from "@/lib/plot-typ
 import { loadPlotly } from "@/lib/plotly-runtime"
 
 const Plot = dynamic(async () => {
-  const [{ default: createPlotlyComponent }, plotly] = await Promise.all([
-    import("react-plotly.js/factory"), loadPlotly(),
+  const [{ createRemountSafePlotlyComponent }, plotly] = await Promise.all([
+    import("@/lib/plotly-component"), loadPlotly(),
   ])
-  return createPlotlyComponent(plotly)
+  return createRemountSafePlotlyComponent(plotly)
 }, {
   ssr: false, loading: () => <div className="ath-plot-loading">Loading plot…</div>,
 })

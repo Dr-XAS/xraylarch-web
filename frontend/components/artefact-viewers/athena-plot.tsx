@@ -2,7 +2,7 @@
 
 import { SectionHelp } from "../section-help"
 import { ThemedPlot as Plot } from "../themed-plot"
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from "react"
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type MouseEvent } from "react"
 import { isDifferenceGroup, type AthenaGroup, type Analysis } from "@/lib/athena"
 import { defaultPlotColors, spectrumColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
 import { AthenaContextMenu } from "../athena-context-menu"
@@ -286,10 +286,18 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     }
   }, [xTitle, yTitle, showGrid, analysisVisible, analysis?.kind, showLegend, space, energyMode, component, rangeStart, rangeEnd, plotScope, activeId, kWeight])
   const config = useMemo(() => ({ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }), [])
-  if (!hasData) return <><div ref={plotRef} className="ath-no-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}<SectionHelp label="Spectrum plot">{noSelection ? "Check data groups to compare spectra. The Single spectrum viewer shows the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or load the copper examples to begin."}</SectionHelp></h3></div>{options}</>
   const canPick = picking && !analysisVisible && space !== "q"
-  return <><div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><Plot data={plotData} onClick={event => {
+  // react-plotly.js only refreshes listeners when the figure changes. Arming a
+  // picker need not redraw it, so the retained listener reads committed state.
+  const pickState = useRef({ canPick, onPickX, space, data: plotData })
+  useLayoutEffect(() => { pickState.current = { canPick, onPickX, space, data: plotData } }, [canPick, onPickX, space, plotData])
+  const onPlotClick = useCallback<NonNullable<ComponentProps<typeof Plot>["onClick"]>>(event => {
     const x = event.points?.[0]?.x
-    if (canPick && typeof x === "number" && Number.isFinite(x)) onPickX?.(x, space)
-  }} layout={layout} config={config} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>{options}</>
+    const current = pickState.current
+    // Plotly redraws asynchronously; ignore the old figure's queued clicks.
+    if (current.data !== plotData || current.space !== space) return
+    if (current.canPick && typeof x === "number" && Number.isFinite(x)) current.onPickX?.(x, space)
+  }, [plotData, space])
+  if (!hasData) return <><div ref={plotRef} className="ath-no-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}<SectionHelp label="Spectrum plot">{noSelection ? "Check data groups to compare spectra. The Single spectrum viewer shows the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or load the copper examples to begin."}</SectionHelp></h3></div>{options}</>
+  return <><div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><Plot data={plotData} onClick={onPlotClick} layout={layout} config={config} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>{options}</>
 }
