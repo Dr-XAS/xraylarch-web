@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { artemisApi, type ArtemisTransform } from "@/lib/artemis"
 import type { ArtemisFeffJob } from "@/lib/artemis-structures"
-import { simulationDefaults, simulationRequest, validSimulation, type SimulationFields, type SimulationResult } from "@/lib/artemis-simulation"
+import { simulationDefaults, simulationLimits, simulationRequest, validSimulation, type SimulationFields, type SimulationResult } from "@/lib/artemis-simulation"
 import { ArtemisSimulationViewer } from "./artefact-viewers/artemis-simulation-viewer"
 import { SectionHelp } from "./section-help"
 import styles from "./artemis-structures.module.css"
@@ -73,7 +73,7 @@ export function ArtemisSimulation({ job, selectedIds, onSelectionChange, disable
       <label><span>Simulation paths<SectionHelp label="Simulation paths">All available paths checks every generated path below. Uncheck paths to simulate a subset. A truncated job does not contain every path FEFF generated.</SectionHelp></span><select aria-label="Simulation paths" value={selection} onChange={event => onSelectionChange(event.target.value === "all" ? null : selectedIds ?? job.paths.map(path => path.id))} disabled={controlsDisabled}>
         <option value="all">All available paths ({job.paths.length})</option><option value="selected">Selected paths ({selectedIds?.length ?? job.paths.length})</option>
       </select></label>
-      {fields.map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help}</SectionHelp></span><input aria-label={`Simulation ${label}`} inputMode="decimal" value={values[key]} disabled={controlsDisabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
+      {fields.map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help} Supported values: {simulationLimits[key].min}–{simulationLimits[key].max}.</SectionHelp></span><input aria-label={`Simulation ${label}`} type="number" {...simulationLimits[key]} inputMode="decimal" value={values[key]} disabled={controlsDisabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
       <label><span>FT k-weight<SectionHelp label="Simulation k-weight">Power of k multiplying χ(k) before Fourier transformation and in the weighted k plot. Higher powers emphasize high-k oscillations.</SectionHelp></span><select aria-label="Simulation k-weight" value={weight} disabled={controlsDisabled} onChange={event => setWeight(Number(event.target.value))}>{[0, 1, 2, 3].map(item => <option key={item}>{item}</option>)}</select></label>
       <label><span>FT window<SectionHelp label="Simulation window">Taper shape used over the chosen k interval. Window shape affects Fourier peak width and ringing, not the underlying FEFF paths.</SectionHelp></span><select aria-label="Simulation window" value={window} disabled={controlsDisabled} onChange={event => setWindow(event.target.value as ArtemisTransform["window"])}>{["hanning", "kaiser", "parzen", "welch"].map(item => <option key={item}>{item}</option>)}</select></label>
     </div>

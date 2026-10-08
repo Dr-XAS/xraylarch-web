@@ -12,7 +12,7 @@ merged curve with scaled standard deviation. Normalized merges can switch
 between normalization and flattening. Energy merges' scaled-spread view
 can display raw, normalized or flattened μ(E); this exposes the energy
 normalization state inherited by the original variance plot. χ merges can
-use the group's current k weight or a display-only value from zero to four,
+use the group's current k weight or a display-only value from zero to three,
 including fractional weights. The existing Plotly toolbar provides zoom,
 pan, legend toggles and PNG download.
 

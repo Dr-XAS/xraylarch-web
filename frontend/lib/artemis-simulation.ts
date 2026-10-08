@@ -1,6 +1,7 @@
 import type { ArtemisTransform } from "./artemis"
 import type { ArtemisFeffJob } from "./artemis-structures"
 import { validArtemisPreview, type ArtemisPreview } from "./artemis-path-preview"
+import { validateArtemisTransform } from "./artemis-transform-limits"
 
 export interface SimulationRequest {
   path_ids: string[] | null
@@ -21,18 +22,30 @@ export interface SimulationResult extends ArtemisPreview {
 }
 export const simulationDefaults = { s02: "0.85", sigma2: "0.003", e0: "0", deltar: "0", kmin: "3", kmax: "12", dk: "2" }
 export type SimulationFields = typeof simulationDefaults
+export const simulationLimits = {
+  s02: { min: 0, max: 2, step: "any" },
+  sigma2: { min: 0, max: 0.1, step: "any" },
+  e0: { min: -50, max: 50, step: "any" },
+  deltar: { min: -1, max: 1, step: "any" },
+  kmin: { min: 0, max: 19, step: "any" },
+  kmax: { min: 1, max: 20, step: "any" },
+  dk: { min: 0, max: 10, step: "any" },
+} as const
 
 export function simulationRequest(fields: SimulationFields, weight: number, window: ArtemisTransform["window"], pathIds: string[] | null): SimulationRequest {
-  const value = (key: keyof SimulationFields, min: number, max: number) => {
+  const value = (key: keyof SimulationFields) => {
+    const { min, max } = simulationLimits[key]
     const number = Number(fields[key])
     if (!fields[key].trim() || !Number.isFinite(number) || number < min || number > max) throw new Error(`${key}: enter a number from ${min} to ${max}.`)
     return number
   }
-  const s02 = value("s02", 0, 2), sigma2 = value("sigma2", 0, 0.1), e0 = value("e0", -50, 50), deltar = value("deltar", -1, 1)
-  const kmin = value("kmin", 0, 19), kmax = value("kmax", 1, 20), dk = value("dk", 0, 10)
+  const s02 = value("s02"), sigma2 = value("sigma2"), e0 = value("e0"), deltar = value("deltar")
+  const kmin = value("kmin"), kmax = value("kmax"), dk = value("dk")
   if (kmax - kmin < 1 - 1e-12) throw new Error("Use a Fourier k interval of at least 1 Å⁻¹.")
   if (pathIds !== null && !pathIds.length) throw new Error("Select at least one generated path, or use all available paths.")
-  return { path_ids: pathIds, s02, sigma2, e0, deltar, transform: { kmin, kmax, dk, kweight: [weight], window, fitspace: "r", rmin: 1, rmax: 3, dr: 0 } }
+  const transform: ArtemisTransform = { kmin, kmax, dk, kweight: [weight], window, fitspace: "r", rmin: 1, rmax: 3, dr: 0 }
+  validateArtemisTransform(transform)
+  return { path_ids: pathIds, s02, sigma2, e0, deltar, transform }
 }
 
 export function validSimulation(result: SimulationResult, job: ArtemisFeffJob, request: SimulationRequest) {

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import Literal, Mapping
 
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class ColumnInfo(BaseModel):
@@ -76,6 +76,13 @@ class RecipeDraft(BaseModel):
     nfft: int = 2048
     kstep: float = 0.05
     rmax_out: float = 10.0
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def numeric_not_boolean(cls, value):
+        if isinstance(value, (bool, np.bool_)):
+            raise ValueError("Use a number, not a boolean.")
+        return value
 
 
 class PreviewRequest(BaseModel):

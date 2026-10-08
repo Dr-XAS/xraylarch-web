@@ -18,7 +18,7 @@ class SpecialPlotOptions(BaseModel):
     version: int = Field(ge=0)
     view: Literal['quad', 'biquad', 'kq'] = 'quad'
     group_ids: list[str] = Field(min_length=1, max_length=2)
-    kweight: float | None = Field(default=None, ge=0, le=4)
+    kweight: float | None = Field(default=None, ge=0, le=3)
     q_component: Literal['re', 'im', 'mag'] = 're'
 
     @model_validator(mode='after')
@@ -56,8 +56,8 @@ def special_plot(groups, options):
     if options.view != 'kq' and any(g['data_type'] in ('chi', 'xanes', 'detector') for g in groups):
         raise ScientificError('Quad and Bi-Quad need energy spectra with EXAFS processing, including all four plot spaces.')
     weight = groups[0]['parameters']['kweight'] if options.kweight is None else options.kweight
-    if not np.isfinite(weight) or not 0 <= weight <= 4:
-        raise ScientificError('Choose a finite plot k weight from zero to four.')
+    if not np.isfinite(weight) or not 0 <= weight <= 3:
+        raise ScientificError('Choose a finite plot k weight from zero to three.')
     notes = []
     arrays = [_arrays(g, weight, notes) for g in groups]
     panels = []

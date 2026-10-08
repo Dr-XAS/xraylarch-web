@@ -17,7 +17,7 @@ class MergePlotOptions(BaseModel):
     view: Literal['stddev', 'variance'] = 'stddev'
     flatten: bool | None = None
     energy_display: Literal['mu', 'norm', 'flat'] = 'mu'
-    kweight: float | None = Field(default=None, ge=0, le=4)
+    kweight: float | None = Field(default=None, ge=0, le=3)
 
 
 def merge_identity(group):
@@ -66,8 +66,8 @@ def saved_merge_plot(group, options):
     notes = []
     if not np.isfinite([multiplier, offset]).all():
         raise ScientificError('The group needs finite plot scale and offset values.')
-    if space == 'chi' and (np.any(x < 0) or not np.isfinite(weight) or not 0 <= weight <= 4):
-        raise ScientificError('A chi merge needs nonnegative k and a plot weight between zero and four.')
+    if space == 'chi' and (np.any(x < 0) or not np.isfinite(weight) or not 0 <= weight <= 3):
+        raise ScientificError('A chi merge needs nonnegative k and a plot weight between zero and three.')
     # Data::points uses `scale ||= 1`, including the spread template's scale.
     scale = multiplier or 1.
     if multiplier == 0:

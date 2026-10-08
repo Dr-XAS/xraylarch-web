@@ -7,6 +7,20 @@ import { DEFAULT_RECIPE } from "@/lib/contracts"
 import { ProcessingInspector } from "@/components/processing-inspector"
 
 describe("ProcessingInspector", () => {
+  it.each([
+    ["kweight", 9], ["kweight", 1.5], ["nnorm", 4], ["rbkg", -1], ["ft_dk", 0],
+    ["nfft", 129], ["kstep", 0.0001], ["rmax_out", 32], ["pre1", 100], ["norm2", -100],
+  ])("blocks preview and apply for invalid %s=%s", (field, value) => {
+    const onPreview = vi.fn(), onApply = vi.fn()
+    render(<ProcessingInspector recipe={{ ...DEFAULT_RECIPE, [field]: value }} canPreview canApply isPreviewing={false}
+      statusText="Review controls" error={null} onChange={vi.fn()} onPreview={onPreview} onCancelPreview={vi.fn()} onApply={onApply} />)
+    expect(screen.getByTestId("preview-button")).toBeDisabled()
+    expect(screen.getByTestId("apply-button")).toBeDisabled()
+    fireEvent.click(screen.getByTestId("preview-button"))
+    fireEvent.click(screen.getByTestId("apply-button"))
+    expect(onPreview).not.toHaveBeenCalled()
+    expect(onApply).not.toHaveBeenCalled()
+  })
   it("binds advanced backend validation recovery to every affected control", () => {
     const error = new ApiRequestError({
       code: "invalid_recipe",

@@ -11,7 +11,7 @@ from .athena_science import AthenaParameters, ScientificError, _pair, _transform
 class PlotTransformOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     version: int = Field(ge=0)
-    kweight: float = Field(ge=0, le=4)
+    kweight: float = Field(ge=0, le=3)
     kmin: float | None = Field(default=None, ge=0, le=100)
     kmax: float | None = Field(default=None, gt=0, le=100)
 

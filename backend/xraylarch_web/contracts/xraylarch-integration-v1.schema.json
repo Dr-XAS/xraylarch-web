@@ -123,7 +123,7 @@
         },
         "kweight": {
           "default": 2.0,
-          "maximum": 4,
+          "maximum": 3,
           "minimum": 0,
           "title": "Kweight",
           "type": "number"
@@ -137,7 +137,8 @@
         },
         "nknots": {
           "default": 0,
-          "maximum": 10000,
+          "description": "0 selects automatic knots; explicit counts must be 5 through 128.",
+          "maximum": 128,
           "minimum": 0,
           "title": "Nknots",
           "type": "integer"
@@ -392,7 +393,7 @@
         },
         "kweight": {
           "default": 2.0,
-          "maximum": 4,
+          "maximum": 3,
           "minimum": 0,
           "title": "Kweight",
           "type": "number"
@@ -1038,6 +1039,6 @@
   ],
   "title": "IntegrationContractBundle",
   "type": "object",
-  "x-schema-sha256": "44164b8ecbeef7985dc06967b8c51daaae6e2daeb0c34d24dfe716802d465e1b",
+  "x-schema-sha256": "32d52c89df4c4371cae9333c51d1a32586c215cf9d0242bbfba4b1cedb12aa26",
   "x-schema-version": 1
 }

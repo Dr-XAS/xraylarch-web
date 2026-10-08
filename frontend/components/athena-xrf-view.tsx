@@ -107,18 +107,20 @@ export function AthenaXrfView({project,setBusy,initialFile}: {
   const numbers=REQUIRED.every(f=>form[f].trim()!==''&&Number.isFinite(value(f)))
     &&INTEGERS.every(f=>Number.isInteger(value(f)))
     &&OPTIONAL_NUMBERS.every(f=>optional(f)===null||Number.isFinite(optional(f)))
-  const windows=value('channel_lo')>=0&&value('channel_hi')>value('channel_lo')
+  const windows=value('channel_lo')>=0&&value('channel_hi')>value('channel_lo')&&value('channel_hi')<=(chosenDetector?.channels??0)
     &&value('roi_lo')>=value('channel_lo')&&value('roi_hi')>value('roi_lo')
     &&value('roi_hi')<=value('channel_hi')
   const sizes=value('rebin')>=1&&value('rebin')<=64&&value('average')>=1&&value('average')<=1024
-    &&value('point')>=0&&value('point')<(inspection?.points??0)&&(optional('cal_slope')===null||optional('cal_slope')!>0)
+    &&value('point')>=0&&value('point')<(inspection?.points??0)
+    &&(optional('cal_offset')===null||Math.abs(optional('cal_offset')!)<=0.5)
+    &&(optional('cal_slope')===null||(optional('cal_slope')!>0.0001&&optional('cal_slope')!<=0.1))
   const valid=!!inspection&&!!chosenDetector&&selected.length>0&&numbers&&windows&&sizes
   const problem=!inspection?''
     : !chosenDetector?'Choose the detector to look at.'
     : selected.length===0?'Choose at least one detector element. With none selected there is nothing to add up.'
     : !numbers?'Every setting must be a finite number, and the channel, point and bin fields whole numbers.'
-    : !windows?'The window of interest must increase and lie inside the channels read.'
-    : !sizes?'The scan point must lie inside the file, and the energy per channel must be positive.'
+    : !windows?'The window of interest must increase and lie inside the channels read. All channels must lie inside the detector.'
+    : !sizes?'Use a scan point inside the file, averaging 1–1024, rebinning 1–64, calibration offset −0.5–0.5 keV, and gain above 0.0001 and at most 0.1 keV/channel.'
     : ''
 
   // Sending every element explicitly and sending none mean the same thing to
@@ -251,16 +253,16 @@ export function AthenaXrfView({project,setBusy,initialFile}: {
         <label className={styles.slider}><span>Move through the scan <SectionHelp label="Move through the scan">Move to a zero-based scan point to inspect its fluorescence spectrum and the selected averaging window.</SectionHelp></span>
           <input type="range" min={0} max={Math.max(0,inspection.points-1)} step={1}
             value={form.point} onChange={e=>edit('point',e.target.value)} /></label>
-        <div className="ath-fields">{field('channel_lo',1)}{field('channel_hi',1)}{field('rebin',1,{min:1,max:64})}</div>
+        <div className="ath-fields">{field('channel_lo',1,{min:0,max:chosenDetector?.channels??0})}{field('channel_hi',1,{min:0,max:chosenDetector?.channels??0})}{field('rebin',1,{min:1,max:64})}</div>
         <p className="ath-hint">Reading fewer channels makes the file quicker to open; binning sums neighbouring channels, so a bin holds the counts of all of them and a weak line stays visible.</p>
-        <div className="ath-fields">{field('roi_lo',1)}{field('roi_hi',1)}</div>
+        <div className="ath-fields">{field('roi_lo',1,{min:0,max:chosenDetector?.channels??0})}{field('roi_hi',1,{min:0,max:chosenDetector?.channels??0})}</div>
         <p className="ath-hint">The window of interest is summed at every point to make the trace, and the image when the file holds a raster. At the calibration below it covers {kev(value('roi_lo'))}–{kev(value('roi_hi'))} keV.</p>
         {fileCalibration&&<p className={fileCalibration.source==='default'?'ath-warning':'ath-hint'} aria-label="Energy calibration"><strong>Energy calibration</strong> · {form.cal_offset.trim()!==''||form.cal_slope.trim()!==''
           ? <>as typed below; the file&apos;s own reading is {describeCalibration(fileCalibration)}.</>
           : fileCalibration.source==='default'
             ? <>no calibration could be read from this file, so the energy axis assumes 10 eV per channel. Type the detector&apos;s calibration below if the lines are not where they belong.</>
             : <>{describeCalibration(fileCalibration)}, read from the file{fileCalibration.of?` (${fileCalibration.found_for} of ${fileCalibration.of} elements)`:''}.</>}</p>}
-        <details><summary>Energy calibration</summary><div className="ath-fields">{field('cal_offset','any',undefined,'From the file')}{field('cal_slope','any',undefined,'From the file')}</div>
+        <details><summary>Energy calibration</summary><div className="ath-fields">{field('cal_offset','any',{min:-0.5,max:0.5},'From the file')}{field('cal_slope','any',{min:0.0001,max:0.1},'From the file')}</div>
           <p className="ath-hint">Channel to energy, as a straight line. This is a label for the abscissa only: it is not fitted here, and changing it moves no counts. Left empty, it is read from the file (the beamline&apos;s own line windows, the elastic peak); the fitting panel then solves for each element&apos;s own calibration against the measured lines.</p></details>
         <details><summary>Detector file</summary><AthenaDownloadButton path={`/projects/${project.id}/uploads/${inspection.upload_id}/file`}>Download original detector file</AthenaDownloadButton></details>
       </>}

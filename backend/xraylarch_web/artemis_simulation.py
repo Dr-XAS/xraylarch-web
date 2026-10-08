@@ -34,7 +34,7 @@ def register_simulation_route(router, jobs, store):
                     saved_view=dict(post="/api/artemis/projects/{project_id}/groups/{group_id}/simulation-view?view=summary",
                                     body=_model_options("artemis_simulation:SimulationViewRequest"),
                                     notes=["Read-only reconstruction from the theory group's saved FEFF files and original simulation parameters; no fit and no live FEFF job required.",
-                                           "Display kweight accepts 0–4; null uses the saved simulation weight. Does not change the project or its processing recipe."]),
+                                           "Display kweight accepts 0–3; null uses the saved simulation weight. Does not change the project or its processing recipe."]),
                     add_to_project=dict(post="/api/artemis/projects/{project_id}/simulation?view=summary",
                                         body=_model_options("artemis_simulation:AddSimulationRequest"),
                                         notes=["Send the completed simulation's request, not current unsimulated form values. The server recreates the exact unweighted chi(k) from the completed FEFF job.",
@@ -197,7 +197,7 @@ class SimulationPaths(PathPreviewRequest):
 
 class SimulationViewRequest(StrictModel):
     version: int = Field(ge=0)
-    kweight: int | None = Field(default=None, ge=0, le=4)
+    kweight: int | None = Field(default=None, ge=0, le=3)
 
 
 def view_simulation(group: dict, kweight: int | None = None) -> dict:

@@ -76,7 +76,7 @@ describe("theory spectra in the EXAFS viewer", () => {
     render(<ArtemisFitResultViewer projectId="p" version={4} group={source} />)
     await calculate()
     fireEvent.click(screen.getByRole("button", { name: "k space" }))
-    for (const weight of [0, 4, 2]) {
+    for (const weight of [0, 3, 2]) {
       fireEvent.change(screen.getByLabelText("EXAFS theory k-weight"), { target: { value: String(weight) } })
       await calculate()
       expect(lastPlot().data[0].y).toEqual(result("theory", weight).k.total)

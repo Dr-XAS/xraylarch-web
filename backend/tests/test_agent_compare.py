@@ -1,4 +1,5 @@
 """The comparison read: several groups against the first, without arrays."""
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
@@ -6,6 +7,22 @@ from xraylarch_web import agent_suite
 from xraylarch_web.agent_suite import FOILS
 from xraylarch_web.config import Settings
 from xraylarch_web.main import create_app
+
+
+@pytest.mark.parametrize("saved_weight", [0, 1.5, 3, None])
+def test_chi_amplitude_honors_zero_and_only_defaults_an_absent_weight(saved_weight):
+    from xraylarch_web.agent_compare import _chi_amplitude
+
+    k = np.linspace(0, 2, 5)
+    reference = {"result": {"arrays": {"k": k.tolist(), "chi": np.ones(5).tolist()},
+                            "effective": {"kweight": saved_weight, "kmin": 0}}}
+    target = {"result": {"arrays": {"k": k.tolist(), "chi": k.tolist()}}}
+    result = _chi_amplitude(target, reference)
+    expected_weight = 2 if saved_weight is None else saved_weight
+    weighted = k ** expected_weight
+    expected_ratio = np.sqrt(np.mean((k * weighted) ** 2) / np.mean(weighted ** 2))
+    assert result["kweight"] == expected_weight
+    assert result["bins"] == [{"k": [0, 2], "ratio": round(float(expected_ratio), 3)}]
 
 
 @pytest.fixture

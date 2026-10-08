@@ -148,8 +148,14 @@ The focused handle also supports Up/Down arrows and Enter to reset.
 right. All plot legends use fully transparent backgrounds, including image exports
 and CIF/FEFF structure legends. The **k-weight** selector above the viewer controls the k, R,
 back-transform, and wavelet views together. **Auto** uses each spectrum’s
-processed weight; choosing 0–4 updates the display without changing saved
+processed weight; choosing 0–3 updates the display without changing saved
 processing parameters.
+
+Numeric processing fields enforce their physical signs, integer counts, and
+ordered intervals before processing. FT, spline, viewer, and export k-weights
+are limited to 0–3. Invalid edits remain visible for correction without changing
+the saved calculation. See [parameter ranges](docs/parameter-ranges.md) for
+units, meaningful starting values, and spectrum-dependent limits.
 
 The spectrum's **Color legend** selector offers classic categorical colors and
 viridis, plasma, inferno, cividis, and coolwarm gradients, with a **Reverse**

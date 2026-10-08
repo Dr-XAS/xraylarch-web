@@ -59,6 +59,9 @@ it('keeps choices after preview errors and invalid weights cannot download an ol
   fireEvent.change(screen.getByLabelText('Arbitrary output k weight'), { target: { value: '' } })
   expect(screen.getByRole('alert')).toHaveTextContent('finite output weight')
   expect(screen.getByRole('button', { name: 'Download column file' })).toBeDisabled()
+  fireEvent.change(screen.getByLabelText('Arbitrary output k weight'), { target: { value: '4' } })
+  expect(screen.getByRole('alert')).toHaveTextContent('from 0 through 3')
+  expect(screen.getByRole('button', { name: 'Download column file' })).toBeDisabled()
 })
 
 it('ignores late previews and rejects malformed output data', async () => {

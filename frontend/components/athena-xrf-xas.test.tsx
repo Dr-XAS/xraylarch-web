@@ -78,6 +78,22 @@ const requests=(suffix:string)=>api.mock.calls.filter(c=>c[0].endsWith(suffix))
 beforeEach(()=>{vi.useFakeTimers();api.mockReset().mockImplementation(handler);busy.mockClear();saved.mockClear()})
 afterEach(()=>{cleanup();vi.useRealTimers()})
 
+it.each([
+  ['Crystal thickness (mm)','-1'], ['Crystal thickness (mm)','11'],
+  ['Energy offset (keV)','0.6'], ['Energy per channel (keV)','0.0001'],
+  ['Energy per channel (keV)','0.2'], ['Compton scattering angle (°)','181'],
+  ['Scatter tail length (peak widths)','0'], ['Calibration scan points','33'],
+  ['Preview point stride','65'], ['Spectrum at scan point','40'],
+  ['Spectrum from detector element','4'],
+])('blocks an invalid %s=%s before requesting a fit',async(label,value)=>{
+  await setup()
+  fireEvent.change(screen.getByLabelText(label),{target:{value}})
+  await tick()
+  expect(screen.getByRole('button',{name:'Fit preview'})).toBeDisabled()
+  expect(requests('/preview')).toHaveLength(0)
+  expect(screen.getByLabelText('Why the fit cannot run')).not.toBeEmptyDOMElement()
+})
+
 it('renders only the preview that matches the current settings',async()=>{
   await setup();await click('Fit preview')
   expect(screen.getAllByTestId('plot')).toHaveLength(3)

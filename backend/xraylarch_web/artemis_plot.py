@@ -18,7 +18,7 @@ def _fail(message):
 
 class PlotTransformRequest(StrictModel):
     version: int = Field(ge=0)
-    kweight: int = Field(ge=0, le=4)
+    kweight: int = Field(ge=0, le=3)
     result: dict
 
     @field_validator("result")
@@ -35,8 +35,8 @@ def transform_result(result: dict, kweight: int) -> dict:
     A zero display weight requires an actual saved unweighted value.
     """
     validate_result(result)
-    if type(kweight) is not int or kweight not in range(5):
-        _fail("Display k weight must be an integer from 0 to 4.")
+    if type(kweight) is not int or kweight not in range(4):
+        _fail("Display k weight must be an integer from 0 to 3.")
     metadata = result["metadata"]
     if not isinstance(metadata, dict):
         _fail("The saved fit does not include its Fourier transform metadata.")

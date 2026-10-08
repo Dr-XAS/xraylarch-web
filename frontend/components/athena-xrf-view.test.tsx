@@ -61,6 +61,18 @@ const traces=(figure:string)=>JSON.parse(within(screen.getByLabelText(figure)).g
 beforeEach(()=>{vi.useFakeTimers();file={...inspection,raster:null};api.mockReset().mockImplementation(handler);busy.mockClear()})
 afterEach(()=>{cleanup();vi.useRealTimers()})
 
+it.each([
+  ['Last channel read','401'], ['Energy offset (keV)','0.6'],
+  ['Energy per channel (keV)','0.0001'], ['Energy per channel (keV)','0.2'],
+])('rejects invalid %s=%s before reading another frame',async(label,value)=>{
+  await setup()
+  expect(frames()).toHaveLength(1)
+  fireEvent.change(screen.getByLabelText(label),{target:{value}})
+  await tick()
+  expect(frames()).toHaveLength(1)
+  expect(screen.getByRole('alert')).not.toBeEmptyDOMElement()
+})
+
 
 it('says the spectrum is being read, not "choose a file", while the first frame is on its way',async()=>{
   // The demo screenshot was taken in the gap between the file's inspection

@@ -95,7 +95,7 @@ def test_option_tables_come_from_the_validator_not_a_copy(client):
     from xraylarch_web.athena_science import AthenaParameters
 
     assert set(options) == set(AthenaParameters.model_fields)
-    assert "le 4" in options["kweight"], "numeric bounds should survive"
+    assert "le 3" in options["kweight"], "numeric bounds should survive"
     assert "'hanning'" in options["window"], "choices should be listed"
     assert "PydanticUndefined" not in repr(options), "internals must not leak"
 

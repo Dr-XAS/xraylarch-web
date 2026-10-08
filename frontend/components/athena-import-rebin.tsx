@@ -11,14 +11,14 @@ export function AthenaImportRebin({ value = defaultRebin, chi, onChange }: {
     <label className="ath-check"><input type="checkbox" checked={value.enabled} disabled={chi}
       onChange={e => onChange({ ...value, enabled: e.target.checked })} />Perform rebinning <SectionHelp label="Perform rebinning">Resample the imported energy scan onto the three-region grid below. Review the rebinned and original curves; the source data remain retained in the project.</SectionHelp></label>
     <fieldset disabled={chi || !value.enabled} style={{ border: 0, padding: 0, margin: 0 }}><div className="ath-fields">
-      <label className="ath-field"><span>Rebin grid E₀ · eV <SectionHelp label="Rebin grid E₀">Grid E₀ is in eV even when the file uses keV. Leave it blank to find the edge. References find their own grid E₀. Original data and columns are retained in the project.</SectionHelp></span><input type="number" step="any" placeholder="Automatic" value={value.e0 ?? ''}
+      <label className="ath-field"><span>Rebin grid E₀ · eV <SectionHelp label="Rebin grid E₀">Grid E₀ is in eV even when the file uses keV. Leave it blank to find the edge. References find their own grid E₀. Original data and columns are retained in the project.</SectionHelp></span><input type="number" min="0" max="10000000" step="any" placeholder="Automatic" value={value.e0 ?? ''}
         onChange={e => onChange({ ...value, e0: e.target.value === '' ? null : Number(e.target.value) })} /></label>
       {([
         ['emin', 'Rebin edge start · eV relative to E₀'], ['emax', 'Rebin edge end · eV relative to E₀'],
         ['pre', 'Rebin pre-edge step · eV'], ['xanes', 'Rebin XANES step · eV'],
         ['exafs', 'Rebin EXAFS step · Å⁻¹'], ['width', 'Rebin smoothing width · points'],
       ] as const).map(([key, label]) => <label key={key} className="ath-field"><span>{label} <SectionHelp label={label}>{rebinInstructions[key]}</SectionHelp></span>
-        <input type="number" step={key === 'width' ? 1 : 'any'} value={value[key]}
+        <input type="number" min={key === 'width' ? 1 : ['pre', 'xanes', 'exafs'].includes(key) ? 0 : undefined} max={key === 'width' ? 11 : undefined} step={key === 'width' ? 1 : 'any'} value={value[key]}
           onChange={e => onChange({ ...value, [key]: e.target.value === '' ? '' : Number(e.target.value) })} /></label>)}
     </div></fieldset>
 

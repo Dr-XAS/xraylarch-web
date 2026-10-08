@@ -79,12 +79,14 @@ it('keeps failed-save choices, clears approval of the old preview and releases b
   expect(p.setBusy).toHaveBeenLastCalledWith('');expect(screen.getByLabelText('Energy shift (eV)')).toHaveValue(122)
 })
 
-it('rejects incomplete curves and permits negative amplitude/width for native clamping',async()=>{
+it('rejects incomplete curves and stops invalid physical corrections before previewing',async()=>{
   const result=preview();result.results[0].traces.E[1].y=[NaN]
   api.mockResolvedValue(result);render(<AthenaMEE {...props()}/>);shift()
   expect(await screen.findByRole('alert')).toHaveTextContent('invalid numerical data')
   fireEvent.change(screen.getByLabelText('Scale by (edge-step fraction)'),{target:{value:'-1'}})
   fireEvent.change(screen.getByLabelText('Broadening (eV)'),{target:{value:'0'}})
-  await waitFor(()=>expect(api).toHaveBeenCalledTimes(2))
-  expect(api.mock.calls[1][1]).toEqual(expect.objectContaining({options:expect.objectContaining({amplitude:-1,width:0})}))
+  expect(screen.getByRole('button',{name:'Preview again'})).toBeDisabled()
+  expect(saveButton()).toBeDisabled()
+  expect(screen.getByRole('status')).toHaveTextContent('nonnegative amplitude and broadening of at least 0.01 eV')
+  expect(api).toHaveBeenCalledTimes(1)
 })

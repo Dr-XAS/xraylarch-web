@@ -284,7 +284,7 @@ def test_addition_route_summary_and_validation(owned_simulation, monkeypatch):
         assert invalid.status_code == 422, invalid.text
 
 
-@pytest.mark.parametrize("weight", [None, 0, 4])
+@pytest.mark.parametrize("weight", [None, 0, 3])
 def test_saved_theory_view_preserves_recipe_and_native_path_sums(owned_simulation, weight):
     store, jobs, original, job = owned_simulation
     request = addition(original, job, s02=0.82, sigma2=0.006, e0=2.5, deltar=0.01,
@@ -356,11 +356,11 @@ def test_saved_theory_view_http_is_read_only_and_version_checked(owned_simulatio
     monkeypatch.setattr(FeffJobs, "get", lambda *args: pytest.fail("Expired FEFF jobs must not be needed"))
     with TestClient(create_app(store.settings)) as client:
         url = f"/api/artemis/projects/{saved['id']}/groups/{group_id}/simulation-view"
-        response = client.post(url, json=dict(version=saved["version"], kweight=4))
+        response = client.post(url, json=dict(version=saved["version"], kweight=3))
         assert response.status_code == 200, response.text
-        assert response.json()["group_id"] == group_id and response.json()["k"]["weight"] == 4
+        assert response.json()["group_id"] == group_id and response.json()["k"]["weight"] == 3
         summary = client.post(url + "?view=summary", json=dict(version=saved["version"])).json()
         assert isinstance(summary["k"]["total"], str)
         assert client.post(url, json=dict(version=saved["version"] - 1)).status_code == 409
-        assert client.post(url, json=dict(version=saved["version"], kweight=5)).status_code == 422
+        assert client.post(url, json=dict(version=saved["version"], kweight=4)).status_code == 422
     assert store.load(saved["id"]) == saved

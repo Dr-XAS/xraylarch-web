@@ -43,7 +43,7 @@ class DataExport(BaseModel):
     group_id: str | None = Field(default=None, min_length=1, max_length=200)
     form: Form = 'xmu'
     kweight: Literal['all', '0', '1', '2', '3', 'kw'] = 'all'
-    arbitrary_kweight: float | None = Field(default=None, ge=0, le=4)
+    arbitrary_kweight: float | None = Field(default=None, ge=0, le=3)
     with_multipliers: bool = False
 
     @model_validator(mode='after')
@@ -174,8 +174,8 @@ def _arbitrary_weight(group, options):
         weight = float(value)
     except (ValueError, TypeError) as exc:
         raise ValueError('The saved arbitrary k weight is invalid; choose an explicit output weight.') from exc
-    if not np.isfinite(weight) or not 0 <= weight <= 4:
-        raise ValueError('The saved arbitrary k weight is outside 0 through 4; choose an explicit output weight.')
+    if not np.isfinite(weight) or not 0 <= weight <= 3:
+        raise ValueError('The saved arbitrary k weight is outside 0 through 3; choose an explicit output weight.')
     return weight
 
 

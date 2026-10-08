@@ -17,7 +17,7 @@ from .athena_science import MAX_MATRIX_VALUES, MAX_NFFT, ScientificError
 class WaveletOptions(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
     version: int = Field(ge=0)
-    kweight: float | None = Field(default=None, ge=0, le=4)
+    kweight: float | None = Field(default=None, ge=0, le=3)
     rmax: float = Field(default=6, ge=0.1, le=10)
 
 
@@ -45,8 +45,8 @@ def wavelet_plot(group: dict, options: WaveletOptions) -> dict:
     weight = options.kweight
     if weight is None:
         weight = effective.get("kweight", group.get("parameters", {}).get("kweight", 2))
-    if isinstance(weight, bool) or weight is None or not np.isfinite(weight) or not 0 <= weight <= 4:
-        raise ScientificError("The wavelet k weight must be a finite number between zero and four.")
+    if isinstance(weight, bool) or weight is None or not np.isfinite(weight) or not 0 <= weight <= 3:
+        raise ScientificError("The wavelet k weight must be a finite number between zero and three.")
     weight = float(weight)
 
     # Larch only reads nfft/2 input samples. Retain Dr.XAS's 2048 default,

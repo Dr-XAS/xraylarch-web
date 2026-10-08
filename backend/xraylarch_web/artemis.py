@@ -793,8 +793,8 @@ def preview_paths(request: PathPreviewRequest, *, display_kweight: int | None = 
         _fail("The total FEFF file content must not exceed 4 MB.", "paths")
     definitions, values, _, _ = _initial_values(request.parameters)
     trees, _ = _path_trees(request.paths, set(definitions))
-    if display_kweight is not None and (type(display_kweight) is not int or display_kweight not in range(5)):
-        _fail("Display k weight must be an integer from 0 to 4.", "kweight")
+    if display_kweight is not None and (type(display_kweight) is not int or display_kweight not in range(4)):
+        _fail("Display k weight must be an integer from 0 to 3.", "kweight")
     options, weight, warnings = request.transform, request.transform.kweight[0] if display_kweight is None else display_kweight, []
     with _LARCH_LOCK, tempfile.TemporaryDirectory(prefix="artemis-preview-") as directory:
         loaded = [(definition, *_read_path(definition, Path(directory), index))

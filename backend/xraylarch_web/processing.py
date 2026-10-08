@@ -147,6 +147,19 @@ def validate_recipe(
                 recovery="Choose an edge energy within the uploaded spectrum.",
             )
         )
+    if recipe.e0 is not None and recipe.e0 <= 0:
+        issues.append(_issue("e0_invalid", "e0 must be greater than zero (eV).", "e0", recovery="Use a positive edge energy or leave it automatic."))
+    # These offsets are relative to E0, not absolute photon energies.
+    for field, valid, description in (
+        ("pre1", lambda value: value < 0, "below E0"),
+        ("pre2", lambda value: value <= 0, "at or below E0"),
+        ("norm1", lambda value: value >= 0, "at or above E0"),
+        ("norm2", lambda value: value > 0, "above E0"),
+    ):
+        value = getattr(recipe, field)
+        if value is not None and _finite(value) and not valid(value):
+            issues.append(_issue("normalization_side_invalid", f"{field} must be {description}.", field,
+                                 recovery="Enter normalization limits as offsets from E0."))
     if recipe.step is not None and recipe.step <= 0:
         issues.append(_issue("step_invalid", "step must be greater than zero.", "step", recovery="Use a positive edge step or leave it automatic."))
     if recipe.rbkg <= 0:
@@ -155,8 +168,8 @@ def validate_recipe(
         issues.append(_issue("kmin_invalid", "kmin must be zero or greater.", "kmin", recovery="Use a non-negative k minimum."))
     if recipe.kmax is not None and recipe.kmax <= recipe.kmin:
         issues.append(_issue("k_range_invalid", "kmax must be greater than kmin.", "kmin", "kmax", recovery="Increase kmax or lower kmin."))
-    if recipe.kweight not in (0, 1, 2, 3, 4):
-        issues.append(_issue("kweight_invalid", "kweight must be an integer from 0 to 4.", "kweight", recovery="Choose a supported k-weight."))
+    if recipe.kweight not in (0, 1, 2, 3):
+        issues.append(_issue("kweight_invalid", "kweight must be an integer from 0 to 3.", "kweight", recovery="Choose a supported k-weight."))
     if recipe.nnorm is not None and recipe.nnorm not in (0, 1, 2, 3):
         issues.append(_issue("nnorm_invalid", "nnorm must be an integer from 0 to 3.", "nnorm", recovery="Choose a supported normalization degree."))
     if recipe.nfft < 128 or recipe.nfft & (recipe.nfft - 1):

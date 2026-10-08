@@ -23,7 +23,7 @@ def saved_fit(model, spectrum):
     return dict(project_id="original-project", version=1, **fit_group(spectrum, FitRequest(**model)))
 
 
-@pytest.mark.parametrize("weight", range(5))
+@pytest.mark.parametrize("weight", range(4))
 def test_saved_raw_curves_reproduce_native_transform_for_each_display_weight(saved_fit, weight):
     before = copy.deepcopy(saved_fit)
     result = transform_result(saved_fit, weight)
@@ -51,7 +51,7 @@ def test_saved_raw_curves_reproduce_native_transform_for_each_display_weight(sav
             np.testing.assert_allclose(result["r"][name], values, rtol=1e-12, atol=1e-12)
 
 
-@pytest.mark.parametrize("weight", [1, 2, 3, 4])
+@pytest.mark.parametrize("weight", [1, 2, 3])
 def test_older_weighted_archives_transform_exactly_at_positive_weights(saved_fit, weight):
     old = copy.deepcopy(saved_fit)
     del old["plot_source"]
@@ -72,7 +72,7 @@ def test_older_unweighted_archive_retains_zero_and_supports_every_weight(model, 
     model["transform"]["kweight"] = [0]
     saved = dict(project_id="original-project", version=1, **fit_group(spectrum, FitRequest(**model)))
     del saved["plot_source"]
-    for weight in range(5):
+    for weight in range(4):
         result = transform_result(saved, weight)
         np.testing.assert_allclose(result["k"]["data"], np.asarray(saved["k"]["data"]) * np.asarray(saved["k"]["x"]) ** weight)
 
@@ -100,7 +100,7 @@ def test_http_transform_uses_saved_snapshot_is_read_only_and_checks_version(work
     store, client, project, group_id = workspace
     endpoint = f"/api/artemis/projects/{project['id']}/groups/{group_id}/plot-transform"
     before = store.load(project["id"])
-    request = dict(version=project["version"], kweight=4, result=saved_fit)
+    request = dict(version=project["version"], kweight=3, result=saved_fit)
     # The input is an archive with original project/group IDs and different
     # data from the current project. Neither current science nor FEFF is read.
     import xraylarch_web.artemis as fitting
@@ -108,11 +108,11 @@ def test_http_transform_uses_saved_snapshot_is_read_only_and_checks_version(work
     response = client.post(endpoint, json=request)
     assert response.status_code == 200, response.text
     result = response.json()
-    expected = transform_result(saved_fit, 4)
+    expected = transform_result(saved_fit, 3)
     assert result == dict(project_id=project["id"], group_id=group_id, version=project["version"], **expected)
     assert store.load(project["id"]) == before
     assert client.post(endpoint, json=request | {"version": project["version"] - 1}).status_code == 409
-    assert client.post(endpoint, json=request | {"kweight": 5}).status_code == 422
+    assert client.post(endpoint, json=request | {"kweight": 4}).status_code == 422
 
 
 def test_http_transform_rechecks_revision_and_blocks_integration(workspace, saved_fit, monkeypatch):

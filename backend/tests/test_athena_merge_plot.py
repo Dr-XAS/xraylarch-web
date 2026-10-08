@@ -31,6 +31,11 @@ def probe(row):
 @pytest.mark.parametrize('row',NATIVE['rows'],ids=lambda r:str(r['id']))
 def test_original_plot_dispatch_templates_and_points_writer(row):
     g=probe(row);before=copy.deepcopy(g)
+    if row['how'] == 'k' and row['weight'] > 3:
+        with pytest.raises(ValueError, match='weight'):
+            saved_merge_plot(g, MergePlotOptions(version=0, view=row['view']))
+        assert g == before
+        return
     view=saved_merge_plot(g,MergePlotOptions(version=0,view=row['view'],energy_display=row['display'] if row['display'] in ('norm','flat') else 'mu'))
     assert g==before
     if row['native']['error']:

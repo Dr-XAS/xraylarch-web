@@ -39,13 +39,13 @@ pre-edge tail is retained for arctangent. Width is the Lorentzian HWHM in eV;
 amplitude is a fraction of the normalized edge step. The three parameters
 remain manual, with no automatic identification or fitting.
 
-Native parameter behavior is retained: negative amplitude becomes zero,
-and any width below 0.01 eV becomes 0.01 eV. A notice shows either adjustment.
-Amplitude is not artificially capped at one. One explicit upstream defect is
-not reproduced: Perl `amp ||= 1` substitutes one for an explicitly requested
-zero. The web preserves zero, matching the manual's disabled-removal meaning.
-The executed reference records this discrepancy, including negative values
-that correctly become zero in the native implementation.
+New web requests require nonnegative amplitude and width of at least 0.01 eV.
+Values outside those ranges are rejected before calculation, rather than
+silently changed to the native limits. Amplitude is not capped at one.
+Perl `amp ||= 1` substitutes one for an explicitly requested zero; the web
+preserves zero, matching the manual's disabled-removal meaning. Historical
+native fixtures retain their original values and expected native behavior;
+web tests verify rejection of the cases requiring a native clamp.
 
 The project command accepts `method`, `shift`, `amplitude`, `width`, and an
 optional explicit `e0` for API clients handling signed energy differences.

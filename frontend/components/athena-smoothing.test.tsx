@@ -40,6 +40,23 @@ function savedProject(result: SmoothingPreview) {
 }
 afterEach(() => { cleanup(); vi.clearAllMocks(); api.mockReset() })
 
+it.each([
+  ['boxcar', 'Kernel size · points', '502'],
+  ['gaussian', 'Gaussian σ · samples', '1001'],
+  ['three_point', 'Repetitions', '1001'],
+])('blocks %s settings above the supported bounds before preview', async (method, label, value) => {
+  api.mockResolvedValue(preview())
+  render(<AthenaSmoothing {...props()} />)
+  await ready()
+  const calls = api.mock.calls.length
+  change('Algorithm', method)
+  change(label, value)
+  expect(screen.getByRole('button', {name: 'Plot data and smoothed'})).toBeDisabled()
+  expect(saveButton()).toBeDisabled()
+  expect(screen.getByRole('status')).toHaveTextContent('Use kernel sizes up to 501')
+  expect(api).toHaveBeenCalledTimes(calls)
+})
+
 it('a late SG preference load does not invalidate an already confirmed boxcar preview', async () => {
   let resolve!: (v: Awaited<ReturnType<typeof loadSmoothingPreferences>>) => void
   vi.mocked(loadSmoothingPreferences).mockImplementationOnce(() => new Promise(r => {resolve = r}))

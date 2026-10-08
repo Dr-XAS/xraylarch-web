@@ -24,7 +24,7 @@ def processed_group():
                 result=process_spectrum(k, chi, parameters, data_type="chi"))
 
 
-@pytest.mark.parametrize("weight", [0, 1, 1.5, 2, 3, 4])
+@pytest.mark.parametrize("weight", [0, 1, 1.5, 2, 3])
 def test_weight_recomputes_forward_and_back_transform_without_double_weighting_or_mutation(weight):
     group = processed_group()
     before = deepcopy(group)

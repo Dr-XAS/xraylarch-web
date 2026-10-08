@@ -4580,6 +4580,35 @@ describe("AthenaWorkbench automatic normalization values", () => {
 })
 
 describe("AthenaWorkbench group selection and drafts", () => {
+  it("rejects a typed out-of-range k-weight before automatic processing and recovers after correction", async () => {
+    const project = await openSaved()
+    const weight = screen.getByRole("spinbutton", { name: "FT k-weight" })
+    expect(weight).toHaveAttribute("min", "0")
+    expect(weight).toHaveAttribute("max", "3")
+    editNumber(/^FT k-weight$/, 9)
+    expect(weight).toHaveAttribute("aria-invalid", "true")
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("FT k-weight must be at most 3"))
+    expect(api).toHaveBeenCalledTimes(1)
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: { ...parameters, kweight: 3 } } }))
+    editNumber(/^FT k-weight$/, 3)
+    await waitForCommand(project.id, {
+      version: project.version, action: "parameters", group_ids: ["foil"], options: { kweight: 3 },
+    })
+    expect(weight).toHaveAttribute("aria-invalid", "false")
+  })
+
+  it.each([
+    [/^Edge step$/, 0, /Edge step must be greater than 0/],
+    [/^Pre-edge start/, 5, /Pre-edge start must be less than 0/],
+    [/^Clamp points$/, 2.5, /Clamp points must be a whole number/],
+    [/^FT k min/, 13, /FT k max must be greater than FT k min/],
+  ])("blocks invalid processing values for %s", async (label, value, message) => {
+    await openSaved()
+    editNumber(label, value)
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(message))
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
   it("keeps restored scalar drafts clean across reordered standard and undo recipes, preserving other groups' edits", async () => {
     const project = projectFixture()
     project.groups[0].parameters = { ...parameters, e0: null, fnorm: false }
@@ -4683,7 +4712,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
     const multipleSelector = screen.getByRole("combobox", { name: "Multiple spectra k-weight" })
     expect(selector).toHaveValue("2")
     expect(plotProps().kWeight).toBeNull()
-    expect(within(selector).getAllByRole("option").map(option => option.textContent)).toEqual(["0", "1", "2", "3", "4"])
+    expect(within(selector).getAllByRole("option").map(option => option.textContent)).toEqual(["0", "1", "2", "3"])
     expect(screen.getByRole("region", { name: "Single spectrum viewer" })).toContainElement(selector)
     expect(screen.getByRole("region", { name: "Multiple spectra viewer" })).toContainElement(multipleSelector)
     expect(document.querySelector(".ath-viewer-picker-heading")).not.toContainElement(selector)
@@ -5683,6 +5712,7 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
   it("adds, edits and removes peaks, then submits the remaining model for only the current group", async () => {
     const project = await openSaved()
     const dialog = await openTool("Analysis", /xanes peak fitting/i)
+    editNumber(/^Range maximum/, 9010, dialog)
     expect(within(dialog).getByRole("button", { name: /remove peak 1/i })).toBeDisabled()
     editNumber(/^Peak 1 center/i, 8982, dialog)
     fireEvent.click(within(dialog).getByRole("button", { name: /add peak/i }))

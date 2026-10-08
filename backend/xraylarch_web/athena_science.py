@@ -35,7 +35,7 @@ COLLINEAR_STANDARDS = ("The chosen standards are nearly linearly dependent over 
                        "themselves still describe the data; use fewer or more distinct standards to resolve them.")
 UNCERTAINTY_UNAVAILABLE = "The fit succeeded but produced no usable covariance, so the weights are shown without uncertainties."
 Window = Literal["hanning", "parzen", "welch", "gaussian", "sine", "kaiser"]
-Weight = Annotated[float, Field(ge=0, le=4)]
+Weight = Annotated[float, Field(ge=0, le=3)]
 ARRAY_NAMES = (
     "energy", "mu", "norm", "flat", "pre_edge", "post_edge", "bkg", "dmude", "d2mude",
     "k", "chi", "weighted_chi", "kwin", "r", "chir_mag", "chir_re", "chir_im", "chir_pha",
@@ -53,7 +53,7 @@ class AthenaParameters(BaseModel):
     Normalization limits are relative to e0. dk/window/kweight apply to the
     forward transform; bkg_dk/bkg_window/bkg_kweight independently control the
     AUTOBK spline objective. Taper widths are in inverse angstroms, weights are
-    finite real exponents from 0 through 4. nclamp (0..100) counts samples at
+    finite real exponents from 0 through 3. nclamp (0..100) counts samples at
     each end of AUTOBK's uniform k grid; zero disables its endpoint clamps.
     Missing saved fields use Athena defaults bkg_dk=1, bkg_window=hanning,
     nclamp=5, overriding this checkout's lower-level Larch defaults.
@@ -81,7 +81,7 @@ class AthenaParameters(BaseModel):
     bkg_kweight: Weight = 2.0
     bkg_dk: float = Field(default=1, ge=0, le=20)
     bkg_window: Window = "hanning"
-    nknots: int = Field(default=0, ge=0, le=10_000)
+    nknots: int = Field(default=0, ge=0, le=128, description="0 selects automatic knots; explicit counts must be 5 through 128.")
     nclamp: int = Field(default=5, ge=0, le=100)
     clamp_lo: float = Field(default=0, ge=0, le=1000)
     clamp_hi: float = Field(default=1, ge=0, le=1000)
@@ -122,7 +122,13 @@ class AthenaParameters(BaseModel):
             raise ValueError("Use an integer, not a boolean.")
         return value
 
-    @field_validator("kweight", "bkg_kweight", "bkg_dk", mode="before")
+    @field_validator(
+        "e0", "step", "pre1", "pre2", "norm1", "norm2", "rbkg",
+        "bkg_kmin", "bkg_kmax", "kweight", "bkg_kweight", "bkg_dk",
+        "clamp_lo", "clamp_hi", "kmin", "kmax", "dk", "dk2", "rmax_out",
+        "rmin", "rmax", "dr", "dr2", "qmax_out", "reverse_kstep", "energy_shift", "kstep",
+        mode="before",
+    )
     @classmethod
     def number_not_boolean(cls, value):
         if isinstance(value, (bool, np.bool_)):
@@ -131,6 +137,9 @@ class AthenaParameters(BaseModel):
 
     @model_validator(mode="after")
     def ordered_ranges(self):
+        # AUTOBK otherwise silently clips the requested count to 5..128.
+        if self.nknots != 0 and self.nknots < 5:
+            raise ValueError("nknots must be 0 (automatic) or an integer from 5 through 128.")
         for low, high in (("pre1", "pre2"), ("norm1", "norm2"),
                           ("bkg_kmin", "bkg_kmax"), ("kmin", "kmax"),
                           ("rmin", "rmax")):

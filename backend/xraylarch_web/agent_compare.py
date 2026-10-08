@@ -94,7 +94,8 @@ def _chi_amplitude(group, reference) -> dict | None:
     if k.size < 2 or rk.size < 2 or k.size != chi.size or rk.size != rchi.size:
         return None
     effective = (reference.get("result") or {}).get("effective") or {}
-    kweight = float(effective.get("kweight") or 2.0)
+    saved_weight = effective.get("kweight")
+    kweight = float(2.0 if saved_weight is None else saved_weight)
     start = float(effective.get("kmin") or 0.0)
     stop = min(float(k[-1]), float(rk[-1]))
     on_grid = np.interp(rk, k, chi)

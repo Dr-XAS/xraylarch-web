@@ -55,7 +55,7 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
   const reason = groups.length !== (view === 'biquad' ? 2 : 1) ? 'Close this window and mark exactly two groups for Bi-Quad, or choose a current-group plot.'
     : groups.some(g => !g.result?.effective.exafs || g.processing_error) ? 'Process or reprocess valid EXAFS parameters for every selected spectrum before making this plot.'
     : view !== 'kq' && groups.some(g => ['chi', 'xanes', 'detector'].includes(g.data_type)) ? 'Quad and Bi-Quad require energy spectra with all four plot spaces.'
-    : options.kweight !== null && (!Number.isFinite(options.kweight) || options.kweight < 0 || options.kweight > 4) ? 'Choose a finite plot k weight from zero to four.' : ''
+    : options.kweight !== null && (!Number.isFinite(options.kweight) || options.kweight < 0 || options.kweight > 3) ? 'Choose a finite plot k weight from zero to three.' : ''
   const key = JSON.stringify([project.id, options]), current = data?.key === key && !reason ? data.value : null
   useLayoutEffect(() => { currentKey.current = key; generation.current++; setData(null); setError(''); setLoading(false) }, [key])
   useEffect(() => {
@@ -91,7 +91,7 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
         <option value="quad">Quad · current group</option><option value="biquad">Bi-Quad · two marked groups</option><option value="kq">k / q · current group</option>
       </select></label>
       {view !== 'biquad' && <label className="ath-field"><span>Current spectrum <SectionHelp label="Current spectrum">Choose the group whose saved processing results appear in the diagnostic panels. Marked-group comparisons use the marked set.</SectionHelp></span><select aria-label="Diagnostic spectrum" value={groupId} onChange={e => selectGroup(e.target.value)}>{project.groups.map(g => <option key={g.id} value={g.id}>{g.label}</option>)}</select></label>}
-      <label className="ath-field"><span>Plot k weight <SectionHelp label="Plot k weight">Use a shared exponent from 0 through 4 for the diagnostic χ(k) and transforms. Leave blank to use the first group’s saved weight; saved parameters stay unchanged.</SectionHelp></span><input aria-label="Diagnostic k weight" type="number" min="0" max="4" step="any" value={weight} placeholder={`First group: ${groups[0]?.parameters.kweight ?? '—'}`} onChange={e => setWeight(e.target.value)} /></label>
+      <label className="ath-field"><span>Plot k weight <SectionHelp label="Plot k weight">Use a shared exponent from 0 through 3 for the diagnostic χ(k) and transforms. Leave blank to use the first group’s saved weight; saved parameters stay unchanged.</SectionHelp></span><input aria-label="Diagnostic k weight" type="number" min="0" max="3" step="any" value={weight} placeholder={`First group: ${groups[0]?.parameters.kweight ?? '—'}`} onChange={e => setWeight(e.target.value)} /></label>
       {view === 'kq' && <label className="ath-field"><span>Back-transform component <SectionHelp label="Back-transform component">Choose the real, imaginary or magnitude component of the Fourier-filtered χ(q) curve for comparison with χ(k). Real χ(q) retains the oscillating sign.</SectionHelp></span><select aria-label="Diagnostic q component" value={component} onChange={e => setComponent(e.target.value as Options['q_component'])}>
         <option value="re">Real part</option><option value="im">Imaginary part</option><option value="mag">Magnitude</option>
       </select></label>}

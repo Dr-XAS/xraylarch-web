@@ -22,6 +22,18 @@ const renderSimulation = (onAddToDataList?: (result: ReturnType<typeof simulatio
 const run = () => fireEvent.click(screen.getByRole("button", { name: "Run EXAFS simulation" }))
 
 describe("CIF simulation controls", () => {
+  it("exposes physical scalar limits and blocks invalid disorder before calculation", () => {
+    renderSimulation()
+    const disorder = screen.getByRole("spinbutton", { name: "Simulation σ² (Å²)" })
+    expect(disorder).toHaveAttribute("min", "0")
+    expect(disorder).toHaveAttribute("max", "0.1")
+    expect(screen.getByRole("spinbutton", { name: "Simulation ΔE₀ (eV)" })).toHaveAttribute("min", "-50")
+    expect(screen.getByRole("spinbutton", { name: "Simulation FT k max (Å⁻¹)" })).toHaveAttribute("max", "20")
+    fireEvent.change(disorder, { target: { value: "-0.01" } })
+    expect(screen.getByRole("status")).toHaveTextContent("sigma2: enter a number from 0 to 0.1")
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeDisabled()
+    expect(api).not.toHaveBeenCalled()
+  })
   it("shows instructions for each input only when enabled, without requesting a simulation", () => {
     const panel = (visible: boolean) => <InstructionVisibility.Provider value={visible}>
       <ArtemisSimulation job={simulationJob} selectedIds={null} onSelectionChange={vi.fn()} disabled={false} />
@@ -33,7 +45,7 @@ describe("CIF simulation controls", () => {
       expect(screen.getByRole("button", { name: `About ${name}` })).toBeVisible()
     fireEvent.click(screen.getByRole("button", { name: "About Simulation σ² (Å²)" }))
     expect(screen.getByRole("tooltip")).toHaveTextContent("not derived from CIF displacement factors")
-    expect(screen.getByLabelText("Simulation σ² (Å²)")).toHaveValue("0.003")
+    expect(screen.getByLabelText("Simulation σ² (Å²)")).toHaveValue(0.003)
     view.rerender(panel(false))
     expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
     expect(api).not.toHaveBeenCalled()
@@ -43,7 +55,7 @@ describe("CIF simulation controls", () => {
     expect(api).not.toHaveBeenCalled()
     run()
     await screen.findByTestId("simulation-plot")
-    expect(screen.getByLabelText("Simulation S₀²")).toHaveValue("0.85")
+    expect(screen.getByLabelText("Simulation S₀²")).toHaveValue(0.85)
     expect(api).toHaveBeenCalledWith(`/feff/jobs/${simulationJob.id}/simulate`, expect.objectContaining({ path_ids: null, s02: 0.85, sigma2: 0.003 }), expect.any(AbortSignal))
     fireEvent.click(screen.getByRole("button", { name: "Download χ(k) CSV" }))
     expect(downloadArtemisText).toHaveBeenCalledWith(expect.stringContaining("simulation-k.csv"), expect.stringContaining("0,0.125,0\n"), "text/csv")

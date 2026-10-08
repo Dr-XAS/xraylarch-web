@@ -17,6 +17,13 @@ describe("CIF simulation contract", () => {
     expect(() => simulationRequest(simulationDefaults, 2, "hanning", [])).toThrow("Select at least")
     expect(() => simulationRequest({ ...simulationDefaults, kmin: "12" }, 2, "hanning", null)).toThrow("interval")
   })
+  it.each([-1, 1.5, 4, 9, NaN, Infinity])("refuses invalid simulation k-weight %s", weight => {
+    expect(() => simulationRequest(simulationDefaults, weight, "hanning", null)).toThrow("k-weights from 0 to 3")
+  })
+  it("retains signed energy and distance corrections without allowing negative disorder", () => {
+    expect(simulationRequest({ ...simulationDefaults, e0: "-5", deltar: "-0.05" }, 0, "hanning", null)).toMatchObject({ e0: -5, deltar: -0.05 })
+    expect(() => simulationRequest({ ...simulationDefaults, sigma2: "-0.003" }, 2, "hanning", null)).toThrow("sigma2")
+  })
   it.each(["job", "weight", "parameter", "transform", "pathValue", "raw", "source"])("rejects a response with mismatched %s", key => {
     const result = structuredClone(simulationFixture()), request = simulationRequest(simulationDefaults, 2, "hanning", null)
     expect(validSimulation(result, simulationJob, request)).toBe(true)

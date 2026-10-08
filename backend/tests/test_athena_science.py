@@ -116,16 +116,16 @@ def test_fractional_weights_survive_saved_recipe_and_model_assignment():
     parameters = AthenaParameters(kweight=1.25, bkg_kweight=2.75)
     restored = AthenaParameters.model_validate_json(parameters.model_dump_json())
     assert restored.kweight == 1.25 and restored.bkg_kweight == 2.75
-    restored.kweight = 3.125
+    restored.kweight = 2.875
     restored.bkg_kweight = 0.125
-    assert restored.kweight == 3.125 and restored.bkg_kweight == 0.125
+    assert restored.kweight == 2.875 and restored.bkg_kweight == 0.125
     with pytest.raises(ValidationError):
         restored.kweight = np.nan
 
 
 def test_forward_controls_do_not_change_the_background_solution(xas_arrays):
     first = process_spectrum(*xas_arrays, {"kweight": 1.25, "dk": 0.5, "window": "parzen"})
-    second = process_spectrum(*xas_arrays, {"kweight": 3.5, "dk": 1.5, "window": "welch"})
+    second = process_spectrum(*xas_arrays, {"kweight": 2.5, "dk": 1.5, "window": "welch"})
     for key in ("norm", "bkg", "k", "chi"):
         np.testing.assert_array_equal(first["arrays"][key], second["arrays"][key])
     for key in ("bkg_dk", "bkg_window", "nclamp", "bkg_kweight"):
@@ -162,7 +162,7 @@ def test_background_window_and_fractional_weight_match_direct_autobk(xas_arrays,
     assert {key: effective[key] for key in params} == params
 
 
-@pytest.mark.parametrize("weight", [0.0, 0.5, 1.75, 3.125, 4.0])
+@pytest.mark.parametrize("weight", [0.0, 0.5, 1.75, 2.875, 3.0])
 def test_real_forward_weight_matches_low_level_larch_fft(weight):
     k = np.arange(0, 14.0001, 0.05)
     chi = np.sin(4.6 * k + 0.3) * np.exp(-0.015 * k**2)

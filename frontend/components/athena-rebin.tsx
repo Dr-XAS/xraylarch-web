@@ -86,7 +86,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
         ['emin', 'Edge region start · eV relative to E₀'], ['emax', 'Edge region end · eV relative to E₀'],
         ['pre', 'Pre-edge grid · eV'], ['xanes', 'XANES grid · eV'], ['exafs', 'EXAFS grid · Å⁻¹'], ['width', 'Smoothing width · points'],
       ] as const).map(([name, title]) => <label className="ath-field" key={name}><span>{title} <SectionHelp label={title}>{rebinInstructions[name]}</SectionHelp></span>
-        <input type="number" step={name === 'width' ? 1 : 'any'} value={grid[name]}
+        <input type="number" min={name === 'width' ? 1 : ['pre', 'xanes', 'exafs'].includes(name) ? 0 : undefined} max={name === 'width' ? 11 : undefined} step={name === 'width' ? 1 : 'any'} value={grid[name]}
           onChange={e => setGrid({ ...grid, [name]: e.target.value === '' ? '' : Number(e.target.value) })} />
       </label>)}</div>
       <label className="ath-check"><input type="checkbox" checked={previewMarked} onChange={e => setPreviewMarked(e.target.checked)} />Preview marked groups ({marked.length}) <SectionHelp label="Rebin batch">New groups follow their sources and start unmarked. χ(k) and already-rebinned groups are skipped in a marked batch. Undo restores the entire batch.</SectionHelp></label>

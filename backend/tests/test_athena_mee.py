@@ -21,6 +21,12 @@ NATIVE = json.loads(gzip.decompress((FIXTURES / 'athena-mee-native.json.gz').rea
 @pytest.mark.parametrize('case', NATIVE['cases'], ids=lambda c: c['id'])
 def test_models_against_executed_native_templates_and_perl_padding(case):
     before = deepcopy(case)
+    if case['options']['amplitude'] < 0 or case['options']['width'] < .01:
+        # New requests reject values that the native templates would clamp.
+        with pytest.raises(ValueError):
+            MEEOptions(**case['options'])
+        assert case == before
+        return
     out = subtract(case['energy'], case['norm'], case['e0'], MEEOptions(**case['options']))
     if case['options']['amplitude'] == 0:
         # Native `amp ||= 1` turns explicit zero into one. Keep the documented
@@ -125,11 +131,14 @@ def test_invalid_later_group_is_atomic_and_valid_batch_uses_list_order(workspace
     assert [g['source']['parent'] for g in after['groups'][1::2]] == list(reversed(ids))
 
 
-def test_native_clamps_high_amplitude_and_work_limit():
+def test_invalid_clamps_rejected_high_amplitude_and_work_limit():
     x = np.linspace(5400,5800,401); y = np.ones(len(x))
-    out = subtract(x,y,5488,MEEOptions(method='arctangent',shift=122,amplitude=-1,width=0))
+    for invalid in ({'amplitude': -1}, {'width': 0}):
+        with pytest.raises(ValueError):
+            MEEOptions(method='arctangent', shift=122, **invalid)
+    out = subtract(x,y,5488,MEEOptions(method='arctangent',shift=122,amplitude=0,width=.01))
     np.testing.assert_array_equal(out['mu'],y)
-    assert len(out['details']['warnings']) == 2
+    assert out['details']['warnings'] == []
     assert subtract(x,y,5488,MEEOptions(method='arctangent',shift=122,amplitude=1.2))['mu']
     x[1]=x[0]+.0001
     with pytest.raises(ValueError,match='work limit'):

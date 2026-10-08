@@ -17,8 +17,8 @@ class MEEOptions(BaseModel):
     model_config = ConfigDict(extra='forbid', allow_inf_nan=False)
     method: Literal['reflection', 'arctangent'] = 'reflection'
     shift: float = Field(gt=0, strict=True)
-    amplitude: float = Field(default=.01, strict=True)
-    width: float = Field(default=.5, strict=True)
+    amplitude: float = Field(default=.01, ge=0, strict=True)
+    width: float = Field(default=.5, ge=.01, strict=True)
     # Explicit API reference for signed energy differences without a fitted E0.
     # The Athena panel uses the group's accepted E0 and never guesses it.
     e0: float | None = Field(default=None, gt=0, strict=True)
@@ -30,12 +30,8 @@ def subtract(energy, normalized_mu, e0, choice: MEEOptions):
         raise ValueError('MEE removal needs a saved absorption edge inside the measured range.')
     if not e0 + choice.shift < x[-1]:
         raise ValueError('Place the secondary edge inside the measured range.')
-    amplitude, width = max(0., choice.amplitude), max(.01, choice.width)
+    amplitude, width = choice.amplitude, choice.width
     warnings = []
-    if choice.amplitude < 0:
-        warnings.append('Negative amplitude was reset to zero, as in Athena.')
-    if choice.width < .01:
-        warnings.append('Broadening was raised to Athena’s minimum of 0.01 eV.')
     if choice.method == 'reflection':
         # Larch smooth uses a dense convolution on a uniform internal grid.
         # Bound that actual work before allocating; never coarsen the data.

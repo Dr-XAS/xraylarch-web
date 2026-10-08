@@ -12,6 +12,7 @@ import {
 import { download, exportBundle, format } from "@/lib/artemis-fit-utils"
 import type { ArtemisPreviewRequest } from "@/lib/artemis-path-preview"
 import { planArtemisParameterSync } from "@/lib/artemis-parameters"
+import { artemisTransformLimits, validateArtemisTransform } from "@/lib/artemis-transform-limits"
 import { planDisorderInsertion, type DisorderOptions } from "@/lib/artemis-disorder"
 import { ArtemisDisorderControl } from "./artemis-disorder"
 import { planCoordinationInsertion, type CoordinationOptions } from "@/lib/artemis-coordination"
@@ -114,10 +115,7 @@ function transformFromDraft(t: TransformDraft): ArtemisTransform {
   const transform: ArtemisTransform = { fitspace: t.fitspace, window: t.window, kweight: t.kweight.slice(),
     kmin: numberValue(t.kmin, "k minimum"), kmax: numberValue(t.kmax, "k maximum"),
     dk: numberValue(t.dk, "k taper dk"), rmin: numberValue(t.rmin, "R minimum"), rmax: numberValue(t.rmax, "R maximum"), dr: numberValue(t.dr, "R taper dr") }
-  if (transform.kmin < 0 || transform.kmax <= transform.kmin) throw new Error("The k range must have 0 ≤ minimum < maximum.")
-  if (transform.rmin < 0 || transform.rmax <= transform.rmin) throw new Error("The R range must have 0 ≤ minimum < maximum.")
-  if (transform.dk < 0 || transform.dr < 0) throw new Error("Window tapers dk and dr cannot be negative.")
-  if (!transform.kweight.length) throw new Error("Select at least one fit k-weight.")
+  validateArtemisTransform(transform)
   return transform
 }
 /** Read the editor's text fields as numbers. Only the rules a model must obey to
@@ -759,7 +757,7 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
           ["rmin", "R min (Å)", "Lower Fourier-distance limit for R-space fitting. This axis is not phase corrected, so its peaks are not bond lengths."],
           ["rmax", "R max (Å)", "Upper Fourier-distance limit for R-space fitting. Include the region represented by your paths; both R bounds also set the independent-point estimate."],
           ["dk", "k taper dk (Å⁻¹)", "Width of the smooth k-window taper at the interval edges. A larger taper reduces sharp-edge artifacts while reducing effective k support."],
-        ] as const).map(([field, label, help]) => <label key={field} data-transform-field={field}><span>{label}<SectionHelp label={`Fit ${label}`}>{help}</SectionHelp></span><input aria-label={label} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
+        ] as const).map(([field, label, help]) => <label key={field} data-transform-field={field}><span>{label}<SectionHelp label={`Fit ${label}`}>{help} Supported values: {artemisTransformLimits[field].min}–{artemisTransformLimits[field].max}; keep the k interval at least 1 Å⁻¹ and the R interval at least 0.1 Å wide.</SectionHelp></span><input aria-label={label} type="number" {...artemisTransformLimits[field]} inputMode="decimal" value={draft.transform[field]} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, [field]: event.target.value } }))} /></label>)}
         <label data-transform-field="window"><span>k window<SectionHelp label="Fit k window">Window shape applied before the Fourier transform. It balances Fourier peak width and ringing; use consistent windows when comparing fits.</SectionHelp></span><select value={draft.transform.window} aria-label="Fit k window" onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, window: event.target.value as ArtemisTransform["window"] } }))}><option value="hanning">Hanning</option><option value="kaiser">Kaiser–Bessel</option><option value="parzen">Parzen</option><option value="welch">Welch</option></select></label>
       </div>
       <div className={styles.weights} role="group" aria-label="Fit k-weight" data-transform-field="kweight"><span>Fit k-weight<SectionHelp label="Fit k-weight">Multiply χ(k) by k to each selected power before fitting. Higher weights emphasize high-k oscillations. Multiple weights constrain one model without creating independent data.</SectionHelp></span>{[0, 1, 2, 3].map(weight => <label key={weight}><input type="checkbox" aria-label={`Fit k-weight ${weight}`} checked={draft.transform.kweight.includes(weight)} onChange={event => edit(previous => ({ ...previous, transform: { ...previous.transform, kweight: (event.target.checked ? [...previous.transform.kweight, weight] : previous.transform.kweight.filter(value => value !== weight)).sort() } }))} />{weight}</label>)}</div>

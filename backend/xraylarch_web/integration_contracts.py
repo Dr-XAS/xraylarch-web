@@ -42,7 +42,7 @@ LaunchHandle = Annotated[
 Sha256 = Annotated[str, StringConstraints(strict=True, pattern=r"^[0-9a-f]{64}$")]
 Window = Literal["hanning", "parzen", "welch", "gaussian", "sine", "kaiser"]
 FiniteFloat = Annotated[float, Field(strict=True, allow_inf_nan=False)]
-Weight = Annotated[float, Field(strict=True, ge=0, le=4, allow_inf_nan=False)]
+Weight = Annotated[float, Field(strict=True, ge=0, le=3, allow_inf_nan=False)]
 TaperWidth = Annotated[float, Field(strict=True, ge=0, le=20, allow_inf_nan=False)]
 SchemaVersion = Literal[1]
 
@@ -123,7 +123,7 @@ class AutobkParameters(IntegrationModel):
     kweight: Weight = 2.0
     dk: TaperWidth = 1.0
     window: Window = "hanning"
-    nknots: int = Field(default=0, strict=True, ge=0, le=10_000)
+    nknots: int = Field(default=0, strict=True, ge=0, le=128, description="0 selects automatic knots; explicit counts must be 5 through 128.")
     nclamp: int = Field(default=5, strict=True, ge=0, le=100)
     clamp_lo: Annotated[
         float, Field(strict=True, ge=0, le=1000, allow_inf_nan=False)
@@ -134,6 +134,8 @@ class AutobkParameters(IntegrationModel):
 
     @model_validator(mode="after")
     def valid_window_and_range(self):
+        if self.nknots != 0 and self.nknots < 5:
+            raise ValueError("nknots must be 0 (automatic) or an integer from 5 through 128.")
         _ordered(self, "kmin", "kmax")
         _positive_special_window(self.window, self.dk, "dk")
         return self
