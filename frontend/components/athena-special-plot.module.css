@@ -4,11 +4,12 @@
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .viewer .actions > button { border-color: var(--ath-line); background: var(--ath-surface); }
 .plot { height: 430px; min-width: 0; }
-.legend { list-style: none; padding: 6px 10px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 2px 16px; max-height: 144px; overflow-y: auto; border-top: 1px solid var(--ath-line); background: var(--ath-canvas); }
+.legend { list-style: none; padding: 6px 10px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 2px 16px; max-height: 144px; overflow-y: auto; border-top: 1px solid transparent; background: transparent; }
 .legend li { min-width: 0; max-width: 100%; }
 .legend li button { display: flex; align-items: baseline; gap: 6px; max-width: 100%; border: 0; padding: 4px 0; background: none; color: var(--ath-muted); text-align: left; font: inherit; font-size: var(--text-label); cursor: pointer; line-height: var(--leading-control); }
 .legend button > span:first-child { width: 24px; height: 2px; flex: 0 0 24px; align-self: center; }
 .legend button > span:last-child { overflow-wrap: anywhere; }
+.legend li button:hover:not(:disabled) { background: transparent; }
 .legend button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
 .legend button:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 3px; }
 .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }

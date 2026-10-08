@@ -5,7 +5,7 @@ describe("scientific plot themes", () => {
   it("retains the existing light presentation and data", () => {
     const layout = { paper_bgcolor: "white", xaxis: { range: [3, 12] } }
     const data = [{ x: [1, 2], y: [3, 4], line: { color: "#16736b" } }]
-    expect(plotLayoutForTheme(layout, "light")).toBe(layout)
+    expect(plotLayoutForTheme(layout, "light")).toMatchObject(layout)
     expect(plotDataForTheme(data, "light")).toBe(data)
   })
 

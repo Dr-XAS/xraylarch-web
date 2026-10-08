@@ -113,13 +113,14 @@ export function plotDataForTheme(data: PlotObject[], theme: PlotTheme): PlotObje
 }
 
 export function plotLayoutForTheme(layout: PlotObject = {}, theme: PlotTheme): PlotObject {
-  if (theme === "light") return layout
-  const legend = object(layout.legend), hover = object(layout.hoverlabel)
+  const legend: PlotObject = { ...object(layout.legend), bgcolor: "rgba(0,0,0,0)", borderwidth: 0 }
+  if (theme === "light") return { ...layout, legend }
+  const hover = object(layout.hoverlabel)
   const result: PlotObject = {
     ...layout, paper_bgcolor: dark.canvas, plot_bgcolor: dark.canvas, font: font(layout.font),
     colorway: ["#a78bfa", "#fb923c", "#5eead4", "#f472b6", "#60a5fa", "#d9e879"],
     hoverlabel: { ...hover, bgcolor: dark.hover, bordercolor: dark.border, font: font(hover.font) },
-    legend: { ...legend, bgcolor: "rgba(0,0,0,0)", bordercolor: dark.grid, font: font(legend.font) },
+    legend: { ...legend, font: font(legend.font) },
     modebar: { ...object(layout.modebar), bgcolor: "rgba(0,0,0,0)", color: dark.muted, activecolor: dark.accent },
     xaxis: axis(layout.xaxis), yaxis: axis(layout.yaxis),
   }

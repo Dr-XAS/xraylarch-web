@@ -6,7 +6,7 @@ import { type AthenaGroup } from "@/lib/athena"
 import { useAthenaApi } from "@/lib/athena-context"
 import { AthenaDiagnosticPlot } from "./athena-diagnostic-plot"
 import { useTheme } from "./theme-provider"
-import { plotColorForTheme, plotDataForTheme } from "@/lib/plot-theme"
+import { plotColorForTheme, plotDataForTheme, plotLayoutForTheme } from "@/lib/plot-theme"
 import { plotLayoutWithTypography } from "@/lib/plot-typography"
 import { loadPlotly } from "@/lib/plotly-runtime"
 import styles from "./athena-special-plot.module.css"
@@ -90,8 +90,8 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
         return { x: c.x, y: c.y, name, type: 'scatter', mode: 'lines', line: { color: colors[current.result.curves.indexOf(c) % colors.length], width: 1.8 } }
       })
       const height = Math.max(700, 100 + traces.reduce((total, t) => total + t.name.split('<br>').length * 18 + 12, 0))
-      const url = await Plotly.toImage({ data: plotDataForTheme(traces, theme), layout: plotLayoutWithTypography({ ...graph.layout, autosize: false, width: 1400, height,
-        margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v' } }) }, { format: 'svg', width: 1400, height })
+      const url = await Plotly.toImage({ data: plotDataForTheme(traces, theme), layout: plotLayoutForTheme(plotLayoutWithTypography({ ...graph.layout, autosize: false, width: 1400, height,
+        margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v' } }), theme) }, { format: 'svg', width: 1400, height })
       if (currentKey.current !== requestedKey) return
       const link = document.createElement('a'); link.href = url; link.download = `athena-${kind}.svg`
       document.body.appendChild(link); link.click(); link.remove()

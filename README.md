@@ -137,7 +137,8 @@ double-click it to restore the default. Each viewer remembers its own height,
 including CIF previews, FEFF structures, path contributions, and simulations.
 The focused handle also supports Up/Down arrows and Enter to reset.
 **Show legend** toggles the single-column legend on the
-right. The **k-weight** selector above the viewer controls the k, R,
+right. All plot legends use fully transparent backgrounds, including image exports
+and CIF/FEFF structure legends. The **k-weight** selector above the viewer controls the k, R,
 back-transform, and wavelet views together. **Auto** uses each spectrum’s
 processed weight; choosing 0–4 updates the display without changing saved
 processing parameters.

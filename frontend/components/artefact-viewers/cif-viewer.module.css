@@ -33,7 +33,7 @@
 .options label { display: inline-flex; align-items: center; gap: 5px; }
 .options input { margin: 0; accent-color: var(--ath-primary); }
 .options > span { color: var(--ath-muted); margin-left: auto; }
-.legendCorner { position: absolute; z-index: 1; top: 10px; left: 10px; max-width: calc(100% - 20px); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 6px; border-radius: 6px; background: var(--ath-popover); }
+.legendCorner { position: absolute; z-index: 1; top: 10px; left: 10px; max-width: calc(100% - 20px); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 4px 6px; border-radius: 6px; background: transparent; }
 .centerLabel { position: absolute; bottom: 10px; left: 12px; max-width: calc(100% - 24px); padding: 3px 6px; border-radius: 4px; background: var(--ath-popover); color: var(--ath-ink); font-size: var(--text-caption); pointer-events: none; }
 .help, .warning { margin: 6px 12px; font-size: var(--text-caption); line-height: var(--leading-body); color: var(--ath-muted); }
 .warning { color: var(--ath-warning-ink, #9a6700); }
