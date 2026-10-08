@@ -17,6 +17,7 @@ export interface ArtemisStructureSummary {
 export interface ArtemisStructureSearchResult {
   query: string
   source: string
+  warnings?: string[]
   results: ArtemisStructureSummary[]
   count: number
   limited: boolean

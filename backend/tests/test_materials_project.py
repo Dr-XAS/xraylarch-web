@@ -62,7 +62,90 @@ def test_search_contract_key_confinement_and_cache(upstream, query, element, exp
     assert request.headers["x-api-key"] == "test-server-only-secret"
     assert "secret" not in str(request.url) and "secret" not in str(response)
     assert mp.search_structures(query, element, 5) == response
-    assert len(requests) == 1
+    if query == "Cu2O":
+        assert len(requests) == 2
+        assert requests[1].url.params["chemsys"] == "Cu-O"
+        assert "formula" not in requests[1].url.params
+        if element:
+            assert requests[1].url.params["elements"] == element
+    else:
+        assert len(requests) == 1
+
+
+def _search_upstream(monkeypatch, exact, broad, *, broad_total=None):
+    """Serve separate bounded pages, just as the upstream formula/system filters do."""
+    monkeypatch.setenv("MP_API_KEY", "test-server-only-secret")
+    mp._CACHE.clear()
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        rows = exact if "formula" in request.url.params else broad
+        metadata = {"total_doc": len(rows)}
+        if "chemsys" in request.url.params and broad_total is not None:
+            metadata["total_doc"] = broad_total
+        return httpx.Response(200, json={"data": rows, "meta": metadata})
+
+    monkeypatch.setattr(mp.httpx, "Client", lambda **kwargs: HttpClient(transport=httpx.MockTransport(handler), **kwargs))
+    return requests
+
+
+def _search_document(ident, formula):
+    return dict(material_id=ident, formula_pretty=formula, symmetry={"symbol": "P1"})
+
+
+def test_formula_search_finds_different_proportions_and_preserves_exact_priority(monkeypatch):
+    exact = _search_document("mp-1", "LiMnNiO2")
+    fractional = _search_document("mp-2", "LiMn0.5Ni0.5O2")
+    other = _search_document("mp-3", "Li2MnNiO3")
+    # The exact result is outside the fetched chemical-system page.
+    requests = _search_upstream(monkeypatch, [exact], [fractional, other], broad_total=100)
+    response = mp.search_structures("LiMnNiO2", "Ni", limit=2)
+    assert [row["id"] for row in response["results"]] == ["mp-1", "mp-2"]
+    assert response["limited"] is True
+    assert len(requests) == 2
+    assert requests[0].url.params["formula"] == "LiMnNiO2"
+    assert requests[1].url.params["chemsys"] == "Li-Mn-Ni-O"
+    for request in requests:
+        assert request.url.params["elements"] == "Ni"
+        assert request.url.params["_limit"] == "3"
+        assert request.url.params["_skip"] == "0"
+        assert "structure" not in request.url.params["_fields"].split(",")
+
+
+def test_formula_search_uses_reduced_integer_formula_and_ranks_equivalent_stoichiometry(monkeypatch):
+    equivalent = _search_document("mp-1", "Li2MnNiO4")
+    different = _search_document("mp-2", "LiMnNiO2")
+    exact_reordered = _search_document("mp-3", "Ni0.5Mn0.5LiO2")
+    requests = _search_upstream(monkeypatch, [equivalent], [different, equivalent, exact_reordered])
+    response = mp.search_structures("LiMn0.5Ni0.5O2", limit=3)
+    assert requests[0].url.params["formula"] == "Li2MnNiO4"
+    assert [row["id"] for row in response["results"]] == ["mp-3", "mp-1", "mp-2"]
+    assert response["count"] == 3
+    assert response["limited"] is False  # The overlapping MP ID is one result.
+
+
+def test_formula_search_with_no_exact_match_still_returns_the_chemical_system(monkeypatch):
+    _search_upstream(monkeypatch, [], [_search_document("mp-1", "LiMn0.5Ni0.5O2")])
+    response = mp.search_structures("LiMnNiO2")
+    assert response["results"][0]["formula"] == "LiMn0.5Ni0.5O2"
+    assert response["limited"] is False
+
+
+def test_search_limited_uses_upstream_total_when_page_is_short(monkeypatch):
+    row = _search_document("mp-1", "LiMnNiO2")
+    _search_upstream(monkeypatch, [row], [row], broad_total=10)
+    response = mp.search_structures("LiMnNiO2", limit=5)
+    assert response["count"] == 1
+    assert response["limited"] is True
+
+
+def test_duplicate_records_do_not_create_false_truncation(monkeypatch):
+    row = _search_document("mp-1", "Cu")
+    _search_upstream(monkeypatch, [row, row], [])
+    response = mp.search_structures("Cu", limit=1)
+    assert response["count"] == 1
+    assert response["limited"] is False
 
 
 @pytest.mark.parametrize("query,element", [("copper", ""), ("", ""), ("Cu-*", ""), ("Cu-XX", ""), ("Cu", "Xx"), ("mp-invalid", "")])
@@ -131,7 +214,10 @@ def test_search_truncation_and_detail_without_database_version(monkeypatch, upst
     def handler(request):
         if request.url.path == "/heartbeat":
             return httpx.Response(503)
-        return httpx.Response(200, json={"data": [document] * (2 if "structure" not in request.url.params["_fields"].split(",") else 1)})
+        rows = [document]
+        if "structure" not in request.url.params["_fields"].split(","):
+            rows.append(document | {"material_id": "mp-2"})
+        return httpx.Response(200, json={"data": rows})
     monkeypatch.setattr(mp.httpx, "Client", lambda **kwargs: HttpClient(transport=httpx.MockTransport(handler), **kwargs))
     result = mp.search_structures("Cu", limit=1)
     assert result["count"] == 1 and result["limited"] is True

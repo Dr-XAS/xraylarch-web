@@ -39,6 +39,7 @@ from .artemis import PathInput, StrictModel, inspect_path
 from .artemis_coordination import FirstShellRequest, first_shell
 from .artemis_shells import RadialShellRequest, radial_shells
 from .errors import WebInputError
+from .structure_search import formula_match_rank, parse_formula
 
 _DATABASE = Path(larixite.__file__).parent / "amcsd_cif1.db"
 _SOURCE = "Bundled curated AMCSD database (larixite amcsd_cif1.db; not the full online archive)"
@@ -151,6 +152,7 @@ def search_structures(query: str = "", element: str = "", limit: int = 25):
     literal = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     compact = re.sub(r"\s+", "", query)
     compact_literal = re.sub(r"\s+", "", literal)
+    composition = parse_formula(query)
     clauses, args = [], []
     if query:
         if query.isdigit():
@@ -163,12 +165,26 @@ def search_structures(query: str = "", element: str = "", limit: int = 25):
             pattern = "%" + literal + "%"
             clauses.append("(m.name LIKE ? ESCAPE '\\' OR replace(c.formula, ' ', '') LIKE ? ESCAPE '\\' OR c.pub_title LIKE ? ESCAPE '\\')")
             args += [pattern, "%" + compact_literal + "%", pattern]
+            if composition is not None:
+                # Match the complete chemical system even when occupancies or
+                # element order differ. Text queries keep their existing matches.
+                symbols = sorted(item.symbol for item in composition.elements)
+                placeholders = ",".join("?" for _ in symbols)
+                # The bundled element table is not indexed: group it once,
+                # rather than scanning it again for every CIF candidate.
+                clauses[-1] = "(" + clauses[-1] + f""" OR c.id IN (
+                  SELECT ce.cif_id FROM cif_elements ce GROUP BY ce.cif_id
+                  HAVING count(DISTINCT ce.element)=?
+                    AND count(DISTINCT CASE WHEN ce.element IN ({placeholders})
+                                           THEN ce.element END)=?))"""
+                args += [len(symbols)] + symbols + [len(symbols)]
     if element.strip():
         clauses.append("EXISTS (SELECT 1 FROM cif_elements ce WHERE ce.cif_id=c.id AND ce.element=?)")
         args.append(_element(element))
     where = " WHERE " + " AND ".join(clauses) if clauses else ""
     with _connection() as connection:
-        ranking = """ ORDER BY CASE WHEN lower(m.name)=lower(?) THEN 0
+        connection.create_function("formula_rank", 1, lambda formula: formula_match_rank(query, formula or ""))
+        ranking = """ ORDER BY formula_rank(c.formula), CASE WHEN lower(m.name)=lower(?) THEN 0
           WHEN lower(replace(c.formula, ' ', ''))=lower(?) THEN 1 WHEN m.name LIKE ? ESCAPE '\\' THEN 2
           WHEN m.name LIKE ? ESCAPE '\\' THEN 3 WHEN replace(c.formula, ' ', '') LIKE ? ESCAPE '\\' THEN 4
           ELSE 5 END, m.name, c.id LIMIT ?"""
@@ -178,6 +194,35 @@ def search_structures(query: str = "", element: str = "", limit: int = 25):
     results = [_summary(row) | dict(measured_at=_measured_at(row["title"] or "")) for row in rows[:limit]]
     return dict(query=query, source=_SOURCE, results=results,
                 count=min(limit, len(rows)), limited=len(rows) > limit)
+
+
+def search_all_structures(query: str = "", element: str = "", limit: int = 25):
+    """Search MP first, then AMCSD, keeping useful results if one is unavailable."""
+    from .materials_project import search_structures as mp_search
+
+    results, warnings, failures = [], [], []
+    limited = False
+    for provider, search in (("materials_project", mp_search), ("amcsd", search_structures)):
+        try:
+            response = search(query, element, limit)
+        except WebInputError as error:
+            failures.append(error)
+            # Mineral names and numeric AMCSD IDs are valid local-only queries.
+            local_query = query.strip() and parse_formula(query) is None and "-" not in query
+            if not (provider == "materials_project" and local_query
+                    and error.code == "invalid_materials_project_query"):
+                warnings.append(error.message)
+            continue
+        results.extend(dict(item, provider=provider) for item in response["results"])
+        limited |= response["limited"]
+    if len(failures) == 2:
+        raise failures[1] if failures[0].code == "invalid_materials_project_query" else failures[0]
+    # Python's stable sort preserves each source's mineral/ID ordering.
+    results.sort(key=lambda item: (formula_match_rank(query, item["formula"]),
+                                   item["provider"] != "materials_project"))
+    return dict(query=query.strip(), source="Materials Project, then American Mineralogist Crystal Structure Database (AMCSD; bundled curated snapshot)",
+                provider="auto", results=results[:limit], count=min(limit, len(results)),
+                limited=limited or len(results) > limit, warnings=warnings)
 
 
 def _native_cif(ident):
@@ -663,7 +708,9 @@ def build_structures_router(store, jobs=None):
 
     @router.get("/structures")
     def search(q: str = Query(default="", max_length=120), element: str = Query(default="", max_length=2),
-               limit: int = Query(default=25, ge=1, le=50), provider: Literal["amcsd", "materials_project"] = "amcsd"):
+               limit: int = Query(default=25, ge=1, le=50), provider: Literal["auto", "amcsd", "materials_project"] = "amcsd"):
+        if provider == "auto":
+            return search_all_structures(q, element, limit)
         if provider == "materials_project":
             from .materials_project import search_structures as mp_search
             return mp_search(q, element, limit)

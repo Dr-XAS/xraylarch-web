@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 import httpx
 
 from .errors import WebInputError
+from .structure_search import formula_match_rank, parse_formula
 
 _BASE = "https://api.materialsproject.org"
 _ID = re.compile(r"^mp-(?:[1-9][0-9]{0,11}|[a-z]{8})$")
@@ -112,11 +113,12 @@ def _documents(response):
 
 
 def search_structures(query="", element="", limit=25):
-    from pymatgen.core import Composition, Element
+    from pymatgen.core import Element
 
     query = query.strip()
     params = {"_fields": "material_id,formula_pretty,symmetry", "_limit": limit + 1,
               "_skip": 0, "deprecated": "false"}
+    composition = None
     try:
         if element.strip():
             params["elements"] = Element(element.strip().capitalize()).symbol
@@ -126,21 +128,45 @@ def search_structures(query="", element="", limit=25):
             elements = query.split("-")
             params["chemsys"] = "-".join(sorted({Element(item).symbol for item in elements}))
         elif query:
-            compact = re.sub(r"\s+", "", query)
-            composition = Composition(compact, strict=True)
-            if not composition.valid or any(amount <= 0 for amount in composition.values()):
+            composition = parse_formula(query)
+            if composition is None:
                 raise ValueError("Invalid formula")
-            params["formula"] = compact
+            # MP stores reduced formulas, including integer formulas for partial
+            # occupancies (LiMn0.5Ni0.5O2 is stored as Li2MnNiO4).
+            params["formula"] = composition.get_integer_formula_and_factor()[0]
         elif not element.strip():
             raise ValueError("Empty search")
     except (ValueError, TypeError, KeyError):
         _fail("Use a chemical formula (Cu2O), chemical system (Cu-O), element filter (Cu), or MP ID (mp-30).",
               "invalid_materials_project_query", "q")
-    response = _get("/materials/summary/", params)
-    documents = _documents(response)
-    results = [_summary(document) for document in documents[:limit]]
+    searches = [params]
+    if composition is not None and len(composition.elements) > 1:
+        broad = dict(params)
+        del broad["formula"]
+        broad["chemsys"] = "-".join(sorted(item.symbol for item in composition.elements))
+        searches.append(broad)
+
+    # The independent formula request prevents a full chemical-system page from
+    # hiding the requested stoichiometry. Both pages remain bounded and cached.
+    unique = {}
+    limited = False
+    for search in searches:
+        response = _get("/materials/summary/", search)
+        documents = _documents(response)
+        metadata = response.get("meta")
+        total = metadata.get("total_doc") if isinstance(metadata, dict) else None
+        if isinstance(total, int) and total > len(documents):
+            limited = True
+        for document in documents:
+            result = _summary(document)
+            unique.setdefault(result["id"], result)
+    results = list(unique.values())
+    if composition is not None:
+        results.sort(key=lambda result: formula_match_rank(query, result["formula"]))
+    limited = limited or len(results) > limit
+    results = results[:limit]
     return dict(query=query, source="Materials Project · DFT-relaxed structures", provider="materials_project",
-                results=results, count=len(results), limited=len(documents) > limit)
+                results=results, count=len(results), limited=limited)
 
 
 def structure_details(ident):

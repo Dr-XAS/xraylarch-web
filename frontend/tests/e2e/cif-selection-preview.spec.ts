@@ -56,6 +56,7 @@ test("database CIF selection renders an interactive preview before attachment", 
 
   await page.getByRole("region", { name: "Project CIF structures", exact: true }).getByRole("button", { name: "Search / attach CIF", exact: true }).click()
   const dialog = page.getByRole("dialog", { name: "Crystal structures", exact: true })
+  await dialog.getByRole("combobox", { name: "Structure source", exact: true }).selectOption("amcsd")
   await dialog.getByRole("textbox", { name: "AMCSD search query", exact: true }).fill("copper")
   await dialog.getByRole("button", { name: "Search AMCSD", exact: true }).click()
   const first = dialog.getByRole("button", { name: /Copper.*AMCSD 0011145/ })

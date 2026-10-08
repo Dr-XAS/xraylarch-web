@@ -161,8 +161,9 @@ or fitting. Omit `kweight` or use null for the original simulation weight;
 
 ### Attach and calculate paths
 
-The structure workflow uses the local AMCSD database packaged with Larixite.
-This is a curated snapshot rather than a live search of the full online AMCSD:
+The structure search defaults to Materials Project first, followed by the
+American Mineralogist Crystal Structure Database (AMCSD) packaged with Larixite.
+The local AMCSD database is a curated snapshot rather than a live search of the full online AMCSD:
 the installed `amcsd_cif1.db` contains 9,275 structures and identifies itself as
 the trimmed 2021-05-16 release. The application does not implicitly download or
 replace this database. A missing entry in this snapshot does not establish that
@@ -184,8 +185,13 @@ The name appears in the attached list and CIF selectors and survives reloads,
 JSON/PRJ exchange, and Undo/Redo. The original CIF text, mineral name, source ID,
 upload filename, and existing FEFF paths are preserved.
 
-Open **Search / attach CIF** from **Crystal structures** in the fitting panel. Search by mineral, formula, or AMCSD ID,
-optionally adding a **Contains element** filter. Text searches use literal
+Open **Search / attach CIF** from **Crystal structures** in the fitting panel. Search by formula, mineral, chemical system, or source ID,
+optionally adding a **Contains element** filter. Formula searches include the same
+set of elements with different proportions: `LiMnNiO2` can find
+`LiMn0.5Ni0.5O2`. Exact element counts rank first, equivalent scaled formulas
+next (such as `Li2MnNiO4` for `LiMn0.5Ni0.5O2`), then other proportions.
+Element order and whitespace do not affect this ranking. At each relevance
+level, Materials Project results precede AMCSD. Text searches use literal
 substrings of mineral names, formulas, and publication titles; a numeric query
 selects an AMCSD ID. Results are limited to 25 in the UI; refine the query when
 more matches exist. Inspect the formula and publication, and select the
@@ -205,8 +211,8 @@ settings, and select **Run FEFF calculation**. Review the generated paths and
 choose **Add selected paths** to include them in the model. Both dialogs can be
 closed and reopened while retaining the selected structure and calculation state.
 
-Select **Source → Materials Project** to search the live Materials Project
-database. Use a formula such as `Cu2O`, an exact chemical system such as `Cu-O`,
+Select **Source → Materials Project** or **Source → AMCSD** to search only that
+database. Materials Project accepts a formula such as `Cu2O`, an exact chemical system such as `Cu-O`,
 or an MP identifier such as `mp-30`. The **Contains element** filter finds
 compounds containing that element; a formula query of `Cu` finds elemental
 copper. Mineral-name searches remain available under AMCSD. Both older numeric
@@ -219,7 +225,10 @@ deployment supplies it as `mp_api_key` in the private
 `/local/apps/xraylarch-web/config/integration.json` read by the backend-only
 launcher (see the deployment manifest); the standalone public instance reads it
 from its own private `config/backend.env`. Missing or rejected keys, rate limits,
-and connection failures produce an actionable message in the popup. The backend
+and connection failures produce an actionable message in the popup. In the default
+combined search, AMCSD results remain available if Materials Project fails;
+Materials Project results likewise remain available if the local database fails.
+The backend
 uses the official REST summary endpoint through the existing `httpx` dependency,
 requests compact result metadata, and fetches the selected structure on demand.
 Requests have timeouts and response-size limits; successful responses are cached
@@ -754,7 +763,7 @@ Structure search and calculation use:
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/artemis/structures?q=...&element=...&limit=...` | Search AMCSD by default; add `provider=materials_project` for MP. `element` is one optional symbol and `limit` is 1–50. |
+| `GET /api/artemis/structures?q=...&element=...&limit=...` | API default remains AMCSD; `provider=materials_project` searches MP and `provider=auto` (the UI default) searches MP then AMCSD with formula relevance ranking and per-source warnings. `element` is one optional symbol and `limit` is 1–50. |
 | `GET /api/artemis/structures/{id}` | Retrieve CIF text, citation, lattice parameters, native site indices, and supported/unsupported status. MP IDs require `provider=materials_project`. |
 | `GET /api/artemis/projects/{id}/structures` | List the current project's saved CIF snapshots and project version. |
 | `POST /api/artemis/projects/{id}/structures` | Attach using `{version, amcsd_id}`, `{version, provider: "materials_project", material_id}`, or `{version, provider: "uploaded", filename, cif}` with full CIF text; return the updated project. |

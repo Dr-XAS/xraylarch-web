@@ -18,7 +18,7 @@ import { artemisApi, type ArtemisInspectedPath } from "@/lib/artemis"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import {
   attachmentName, downloadArtemisText, sameFeffRequest, sameStructure, structureLabel, type ArtemisFeffJob, type ArtemisFeffRequest, type ArtemisGeneratedPath,
-  type ArtemisStructure, type ArtemisStructureSearchResult, type ArtemisStructureAttachment, type ArtemisProjectStructures,
+  type ArtemisStructure, type ArtemisStructureSummary, type ArtemisStructureSearchResult, type ArtemisStructureAttachment, type ArtemisProjectStructures,
 } from "@/lib/artemis-structures"
 import styles from "./artemis-structures.module.css"
 
@@ -64,7 +64,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const [listError, setListError] = useState("")
   const [listLoading, setListLoading] = useState(false)
   const [query, setQuery] = useState("")
-  const [provider, setProvider] = useState<"amcsd" | "materials_project">("amcsd")
+  const [provider, setProvider] = useState<"auto" | "materials_project" | "amcsd">("auto")
+  const searchProviderLabel = provider === "auto" ? "CIF" : provider === "materials_project" ? "Materials Project" : "AMCSD"
   const [element, setElement] = useState("")
   const [search, setSearch] = useState<ArtemisStructureSearchResult | null>(null)
   const [structure, setStructure] = useState<ArtemisStructure | null>(null)
@@ -318,9 +319,9 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     } catch (error) { if (!abort.signal.aborted && sequence.current === request && context.current === requestContext) setError(errorText(error)) }
     finally { if (!abort.signal.aborted && sequence.current === request && context.current === requestContext) setBusy(null) }
   }
-  async function selectStructure(id: number | string) {
+  async function selectStructure(selected: ArtemisStructureSummary) {
     if (controlsDisabled) return
-    const attached = attachments.find(item => sameStructure(item.structure, { ...item.structure, id, provider }))
+    const attached = attachments.find(item => sameStructure(item.structure, selected))
     if (attached) { openAttachment(attached); return }
     manualAbsorber.current = false
     lookupAbort.current?.abort()
@@ -335,9 +336,9 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     setAbsorber("")
     setSite("")
     try {
-      const response = await artemisApi<ArtemisStructure>(`/structures/${encodeURIComponent(id)}${provider === "materials_project" ? "?provider=materials_project" : ""}`, undefined, abort.signal)
+      const response = await artemisApi<ArtemisStructure>(`/structures/${encodeURIComponent(selected.id)}${selected.provider === "materials_project" ? "?provider=materials_project" : ""}`, undefined, abort.signal)
       if (abort.signal.aborted || sequence.current !== request || context.current !== requestContext) return
-      if (response.id !== id || (response.provider ?? "amcsd") !== provider) throw new Error("The returned CIF does not match the selected record. Select the structure again.")
+      if (!sameStructure(response, selected)) throw new Error("The returned CIF does not match the selected record. Select the structure again.")
       setStructure(response)
       const defaults = spectrumDefaults(response, spectrumIdentity.current)
       setAbsorber(defaults.absorber)
@@ -647,18 +648,20 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       {dialogMode === "structure" && <div className={styles.searchColumn}>
       <div className={styles.toolbar}>{uploadControl(true)}<SectionHelp label="Upload your CIF">Attach one .cif file (up to 500 KB). The project retains the original CIF and filename. FEFF requires an ordered crystal structure.</SectionHelp></div>
       {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
-      <label className={styles.provider}><span>Source<SectionHelp label="Structure source">AMCSD searches the bundled crystal-structure database. Materials Project searches its online catalogue and requires a configured API key on the server.</SectionHelp></span><select aria-label="Structure source" value={provider} disabled={controlsDisabled} onChange={event => {
+      <label className={styles.provider}><span>Source<SectionHelp label="Structure source">Search Materials Project first, then the American Mineralogist Crystal Structure Database (AMCSD). Materials Project uses its online catalogue; AMCSD uses the bundled database. Among equally close formula matches, Materials Project results appear first.</SectionHelp></span><select aria-label="Structure source" value={provider} disabled={controlsDisabled} onChange={event => {
         clearSelectedAttachment(); setBusy(null); setSearch(null); setProvider(event.target.value as typeof provider)
-      }}><option value="amcsd">AMCSD</option><option value="materials_project">Materials Project</option></select></label>
+      }}><option value="auto">Materials Project, then AMCSD</option><option value="materials_project">Materials Project</option><option value="amcsd">AMCSD</option></select></label>
       <div className={styles.searchFields}>
-        <label><span>{provider === "materials_project" ? "Formula, chemical system, or MP ID" : "Mineral, formula, or AMCSD ID"}<SectionHelp label="Structure search">{provider === "materials_project" ? "Search Materials Project: Cu2O for a formula, Cu-O for that chemical system, or mp-30 for a material. The element filter includes compounds containing that element." : "Search the local AMCSD database snapshot."}</SectionHelp></span><input aria-label={provider === "materials_project" ? "Materials Project search query" : "AMCSD search query"} value={query} placeholder={provider === "materials_project" ? "e.g. Cu2O, Cu-O, mp-30" : "e.g. copper or 13088"} disabled={controlsDisabled}
+        <label><span>{provider === "auto" ? "Formula, mineral, or structure ID" : provider === "materials_project" ? "Formula, chemical system, or MP ID" : "Mineral, formula, or AMCSD ID"}<SectionHelp label="Structure search">{provider === "amcsd" ? "Search the local AMCSD database snapshot by mineral, formula, or AMCSD ID." : "Search by formula such as Cu2O, chemical system such as Cu-O, or material ID such as mp-30. AMCSD also supports mineral names and numeric IDs."} Formula searches include structures with the same elements in different proportions, with exact formula matches first. For example, LiMnNiO2 also finds LiMn0.5Ni0.5O2.</SectionHelp></span><input aria-label={`${searchProviderLabel} search query`} value={query} placeholder={provider === "amcsd" ? "e.g. copper or 13088" : "e.g. LiMnNiO2, Cu-O, mp-30"} disabled={controlsDisabled}
           onChange={event => setQuery(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
-        <label><span>Contains element<SectionHelp label="Structure element filter">Filter for structures containing this chemical symbol, for example Cu. This does not select the absorbing element or restrict the structure to a pure element.</SectionHelp></span><input aria-label={provider === "materials_project" ? "Materials Project element filter" : "AMCSD element filter"} value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
+        <label><span>Contains element<SectionHelp label="Structure element filter">Filter for structures containing this chemical symbol, for example Cu. This does not select the absorbing element or restrict the structure to a pure element.</SectionHelp></span><input aria-label={`${searchProviderLabel} element filter`} value={element} placeholder="e.g. Cu" maxLength={2} disabled={controlsDisabled} onChange={event => setElement(event.target.value)} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void findStructures() } }} /></label>
       </div>
-      <button type="button" disabled={controlsDisabled || busy === "search" || (!query.trim() && !element.trim())} onClick={findStructures}><Search size={13} />{busy === "search" ? "Searching…" : provider === "materials_project" ? "Search Materials Project" : "Search AMCSD"}</button>
+      <p className={styles.help}>Exact formula matches appear first, followed by other proportions of the same elements.</p>
+      <button type="button" disabled={controlsDisabled || busy === "search" || (!query.trim() && !element.trim())} onClick={findStructures}><Search size={13} />{busy === "search" ? "Searching…" : provider === "auto" ? "Search structures" : `Search ${searchProviderLabel}`}</button>
       {search && <div className={styles.searchResults}>
+        {search.warnings?.map((warning, index) => <p key={index} className={styles.warning} role="status">{warning}</p>)}
         <p className={styles.help}>{search.results.length ? `${search.results.length} result${search.results.length === 1 ? "" : "s"}${search.limited ? " · refine the search for more" : ""}` : "No matching structures. Try another formula, element, or source ID."}</p>
-        {search.results.map(item => <button type="button" key={item.id} disabled={controlsDisabled} className={styles.result} aria-pressed={!!structure && sameStructure(structure, item)} onClick={() => selectStructure(item.id)}>
+        {search.results.map(item => <button type="button" key={`${item.provider ?? "amcsd"}:${item.id}`} disabled={controlsDisabled} className={styles.result} aria-pressed={!!structure && sameStructure(structure, item)} onClick={() => selectStructure(item)}>
           <strong>{item.mineral || item.formula}</strong><span>{item.formula} · {item.space_group}</span><small>{structureLabel(item)}{item.provider === "materials_project" ? " · DFT-relaxed" : item.year ? ` · ${item.year}` : ""}</small>
         </button>)}
         {search.source && <p className={styles.source}>{search.source}</p>}

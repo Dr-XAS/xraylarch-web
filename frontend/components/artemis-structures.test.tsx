@@ -57,6 +57,7 @@ function setup(availableSlots = 24, onAddPaths = addPathsMock()) {
   return { ...view, onAddPaths }
 }
 async function findAndSelect(attach = true) {
+  fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "amcsd" } })
   fireEvent.change(screen.getByLabelText("AMCSD search query"), { target: { value: "copper" } })
   await click("Search AMCSD")
   await click(/Copper.*AMCSD/)
@@ -431,7 +432,79 @@ describe("ArtemisStructures", () => {
     expect(finish).toHaveBeenCalledOnce()
   })
 
-  it("searches, attaches and generates paths with Materials Project identity", async () => {
+  it("defaults to Materials Project then AMCSD and preserves the server's formula ranking when opening either source", async () => {
+    const exact = structure({ mineral: "", formula: "LiMnNiO2" })
+    const broad = structure({ id: "mp-123", provider: "materials_project", mineral: "", formula: "LiMn0.5Ni0.5O2" })
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "LiMnNiO2", source: "Materials Project and AMCSD", results: [exact, broad], count: 2, limited: false }
+      if (url === "/structures/13088") return exact
+      if (url === "/structures/mp-123?provider=materials_project") return broad
+      return fallback(url, body, signal)
+    })
+    setup()
+    const source = screen.getByLabelText("Structure source")
+    expect(source).toHaveValue("auto")
+    expect(within(source).getAllByRole("option").map(option => option.textContent)).toEqual(["Materials Project, then AMCSD", "Materials Project", "AMCSD"])
+    fireEvent.change(screen.getByLabelText("CIF search query"), { target: { value: "LiMnNiO2" } })
+    await click("Search structures")
+    expect(api).toHaveBeenCalledWith("/structures?q=LiMnNiO2&limit=25&provider=auto", undefined, expect.any(AbortSignal))
+    const results = screen.getAllByRole("button", { name: /^LiMn/ })
+    expect(results[0]).toHaveTextContent("LiMnNiO2")
+    expect(results[1]).toHaveTextContent("LiMn0.5Ni0.5O2")
+    await click(/LiMnNiO2.*AMCSD/)
+    expect(api).toHaveBeenCalledWith("/structures/13088", undefined, expect.any(AbortSignal))
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-provider", "amcsd")
+    await click(/LiMn0.5Ni0.5O2.*Materials Project/)
+    expect(api).toHaveBeenCalledWith("/structures/mp-123?provider=materials_project", undefined, expect.any(AbortSignal))
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-provider", "materials_project")
+    expect(results[0]).toHaveAttribute("aria-pressed", "false")
+    expect(results[1]).toHaveAttribute("aria-pressed", "true")
+  })
+
+  it("reuses the correct attached snapshot for each provider in combined search results", async () => {
+    const amcsd = attachment()
+    const mp: ArtemisStructureAttachment = { ...attachment(), id: "mp-cif", provider: "materials_project", material_id: "mp-30", structure: structure({ id: "mp-30", provider: "materials_project", cif: "data_saved_mp" }) }
+    savedAttachments = [amcsd, mp]
+    const fallback = api.getMockImplementation()!
+    api.mockImplementation(async (url, body, signal) => {
+      if (url.startsWith("/structures?")) return { query: "Cu", source: "Materials Project and AMCSD", results: [mp.structure, amcsd.structure], count: 2, limited: false }
+      return fallback(url, body, signal)
+    })
+    const onViewStructure = vi.fn()
+    render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />)
+    await click("Search / attach CIF")
+    fireEvent.change(screen.getByLabelText("CIF search query"), { target: { value: "Cu" } })
+    await click("Search structures")
+    await click(/Copper.*Materials Project mp-30/)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", "data_saved_mp")
+    expect(onViewStructure).toHaveBeenLastCalledWith("mp-cif", undefined)
+    await click(/Copper.*AMCSD 0013088/)
+    expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", amcsd.structure.cif)
+    expect(onViewStructure).toHaveBeenLastCalledWith("cif1", undefined)
+    expect(api.mock.calls.some(([url]) => url.startsWith("/structures/"))).toBe(false)
+  })
+
+  it("displays fallback warnings with usable AMCSD results and clears them on a new search or source change", async () => {
+    setup()
+    const warning = "Materials Project is unavailable. Showing AMCSD results."
+    const response = { query: "Cu", source: "AMCSD", results: [structure()], count: 1, limited: false, warnings: [warning] }
+    fireEvent.change(screen.getByLabelText("CIF search query"), { target: { value: "Cu" } })
+    api.mockResolvedValueOnce(response)
+    await click("Search structures")
+    expect(screen.getByRole("status")).toHaveTextContent(warning)
+    expect(screen.getByRole("button", { name: /Copper.*AMCSD/ })).toBeEnabled()
+    const next = deferred<unknown>()
+    api.mockReturnValueOnce(next.promise)
+    await click("Search structures")
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    await act(async () => next.resolve(response))
+    expect(screen.getByText(warning)).toBeVisible()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "amcsd" } })
+    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+  })
+
+  it.each(["auto", "materials_project"])("searches, attaches and generates paths with Materials Project identity from %s search", async provider => {
     const mp = structure({ id: "mp-aaaaaaft", provider: "materials_project", mineral: "Cu", formula: "Cu",
       provenance: { database_version: "2026.04.13", retrieved_at: "2026-10-02T00:00:00Z", task_id: "task-Cu", structure_type: "dft_relaxed" } })
     const mpAttachment: ArtemisStructureAttachment = { id: "mp-cif", provider: "materials_project", material_id: String(mp.id), attached_at: "2026-10-02T00:00:00Z", sha256: "mp-hash", structure: mp }
@@ -444,11 +517,12 @@ describe("ArtemisStructures", () => {
       return fallback(url, body, signal)
     })
     const { onAddPaths } = setup()
-    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "materials_project" } })
-    fireEvent.change(screen.getByLabelText("Materials Project search query"), { target: { value: "Cu" } })
-    await click("Search Materials Project")
-    expect(api).toHaveBeenCalledWith("/structures?q=Cu&limit=25&provider=materials_project", undefined, expect.any(AbortSignal))
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: provider } })
+    fireEvent.change(screen.getByLabelText(provider === "auto" ? "CIF search query" : "Materials Project search query"), { target: { value: "Cu" } })
+    await click(provider === "auto" ? "Search structures" : "Search Materials Project")
+    expect(api).toHaveBeenCalledWith(`/structures?q=Cu&limit=25&provider=${provider}`, undefined, expect.any(AbortSignal))
     await click(/Cu.*Materials Project mp-aaaaaaft/)
+    expect(api).toHaveBeenCalledWith("/structures/mp-aaaaaaft?provider=materials_project", undefined, expect.any(AbortSignal))
     expect(screen.getByText(/Database version: 2026.04.13/)).toBeInTheDocument()
     expect(screen.getByRole("region", { name: "CIF structure viewer" })).toBeVisible()
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-structure-id", mp.id)
@@ -469,6 +543,7 @@ describe("ArtemisStructures", () => {
 
   it("discards a pending search when the structure source changes", async () => {
     setup()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "amcsd" } })
     const late = deferred<unknown>()
     api.mockReturnValueOnce(late.promise)
     fireEvent.change(screen.getByLabelText("AMCSD search query"), { target: { value: "copper" } })
@@ -1062,6 +1137,7 @@ describe("ArtemisStructures", () => {
 
   it("searches only on request and supports an element filter with literal URL encoding", async () => {
     setup()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "amcsd" } })
     expect(api.mock.calls.some(([url]) => url.startsWith("/structures?"))).toBe(false)
     expect(screen.getByRole("button", { name: "Search AMCSD" })).toBeDisabled()
     fireEvent.change(screen.getByLabelText("AMCSD search query"), { target: { value: "Cu & iron" } })
@@ -1090,6 +1166,7 @@ describe("ArtemisStructures", () => {
 
   it("keeps unsupported CIF view/attachment available even when cell metadata is missing", async () => {
     setup()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "amcsd" } })
     fireEvent.change(screen.getByLabelText("AMCSD search query"), { target: { value: "copper" } })
     await click("Search AMCSD")
     api.mockResolvedValueOnce(structure({ supported: false, ordered: false, cell: {}, sites: [], elements: [], warnings: ["The CIF cannot be parsed."] }))
@@ -1316,6 +1393,7 @@ describe("ArtemisStructures", () => {
 
   it("ignores an old structure lookup after another result or spectrum is selected", async () => {
     const { rerender, onAddPaths } = setup()
+    fireEvent.change(screen.getByLabelText("Structure source"), { target: { value: "amcsd" } })
     fireEvent.change(screen.getByLabelText("AMCSD search query"), { target: { value: "copper" } })
     await click("Search AMCSD")
     const late = deferred<ArtemisStructure>()
