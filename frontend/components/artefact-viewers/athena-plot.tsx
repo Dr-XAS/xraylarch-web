@@ -63,7 +63,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
   const { palette, reversed, vmin, vmax } = colorSettings
   // Plotly uses data/layout identities to decide whether to redraw. Keep the
   // spectrum transforms stable during unrelated workbench and menu updates.
-  const { data, xTitle, yTitle } = useMemo(() => {
+  const { data, xTitle, yTitle, e0 } = useMemo(() => {
     const compareK = space === "q" && component === "re"
     const data: Record<string, unknown>[] = []
     // Assign before filtering by plot space so a group keeps its color across E/k/R/q.
@@ -113,6 +113,13 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     }
     const current = displayed.find(trace => trace.g.id === activeId)
     const a = current?.arrays
+    // E0 belongs to the displayed result and already uses the shifted energy axis.
+    const effectiveE0 = current?.g.result?.effective.e0
+    const e0 = current && plotScope === "current" && space === "E" && !analysisVisible
+      && current.g.data_type !== "detector" && current.g.data_type !== "chi" && !isDifferenceGroup(current.g)
+      && typeof effectiveE0 === "number" && Number.isFinite(effectiveE0)
+      && effectiveE0 >= current.x[0] && effectiveE0 <= current.x[current.x.length - 1]
+      ? effectiveE0 : null
     if (current && a && background && space === "E" && energyMode === "mu") {
       if (a.bkg?.length === a.energy.length) add(a.energy, current.transform(a.bkg), `Background μ₀(E) · ${current.g.label}`, "#ddaa58", "dash")
     }
@@ -214,7 +221,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
         yTitle = "Signal / fit"
       }
     }
-    return { data, xTitle, yTitle }
+    return { data, xTitle, yTitle, e0 }
   }, [groups, activeId, space, energyMode, background, showWindow, component, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, vmin, vmax, analysis, analysisVisible, seriesTarget])
   const hasData = data.some(d => (d.x as number[])?.length)
   useEffect(() => {
@@ -274,7 +281,12 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
         : rangeStart !== null
           ? { range: [rangeStart, null], autorange: "max" as const }
           : { range: [null, rangeEnd], autorange: "min" as const }
+    const showE0 = e0 !== null
     return {
+      shapes: showE0 ? [{ type: "line", xref: "x", yref: "paper", x0: e0, x1: e0, y0: 0, y1: 1,
+        line: { color: "#64748b", width: 1.5, dash: "dot" }, layer: "below" }] : [],
+      annotations: showE0 ? [{ x: e0, xref: "x", y: 1, yref: "paper", text: `E₀ = ${e0.toFixed(3)} eV`,
+        showarrow: false, xanchor: "auto", yanchor: "bottom", yshift: 3, font: { size: 12, color: "#64748b" } }] : [],
       autosize: true, margin: { l: 72, r: 25, t: 24, b: 60 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
       font: { color: "#586661" },
       hoverlabel: { namelength: -1 },
@@ -284,7 +296,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       showlegend: showLegend, legend: { orientation: "v", x: 0.99, xanchor: "right", y: 0.99, yanchor: "top", maxheight: 1, bgcolor: "rgba(0,0,0,0)" },
       hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${[rangeStart, rangeEnd].join()}-${plotScope}-${plotScope === "current" ? activeId ?? "" : ""}-${kWeight ?? "auto"}`,
     }
-  }, [xTitle, yTitle, showGrid, analysisVisible, analysis?.kind, showLegend, space, energyMode, component, rangeStart, rangeEnd, plotScope, activeId, kWeight])
+  }, [xTitle, yTitle, e0, showGrid, analysisVisible, analysis?.kind, showLegend, space, energyMode, component, rangeStart, rangeEnd, plotScope, activeId, kWeight])
   const config = useMemo(() => ({ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }), [])
   const canPick = picking && !analysisVisible && space !== "q"
   // react-plotly.js only refreshes listeners when the figure changes. Arming a
