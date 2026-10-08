@@ -54,7 +54,7 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
     <div className={styles.plot} aria-label="Imported signal preview plot" aria-busy={!paused && !isCurrent && !problem}>
       {value ? <Plot data={traces.map((trace, index) => ({ x: trace.x.slice(), y: trace.y.slice(), name: trace.label,
         type: "scatter", mode: "lines", opacity: trace.stage === 'original' ? .45 : 1,
-        line: { color: trace.role === "reference" ? "#b96342" : colors[index % colors.length], dash: trace.stage === 'original' ? 'dot' : trace.role === "reference" ? "dash" : "solid", width: 1.8 },
+        line: { color: trace.role === "reference" ? "#b96342" : colors[index % colors.length], dash: trace.role === "reference" ? "solid" : trace.stage === 'original' ? 'dot' : "solid", width: 1.8 },
         yaxis: trace.role === "reference" ? "y2" : "y", hovertemplate: "%{x:.4f}, %{y:.6g}<extra>%{fullData.name}</extra>" }))}
         layout={{ autosize: true, margin: { l: 60, r: plottedReference ? 60 : 25, t: traces.length > 1 ? 65 : 15, b: 60 },
           paper_bgcolor: "white", plot_bgcolor: "white", font: { color: "#43513d" },
