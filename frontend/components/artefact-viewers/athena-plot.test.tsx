@@ -454,8 +454,9 @@ describe("AthenaPlot backgrounds and displayed groups", () => {
       "First", "Scaled", "Background μ₀(E) · Scaled",
     ])
     expect(data[1].y).toEqual([15, 17, 19])
-    expect(data[2].y).toEqual([14, 15, 16])
-    data.slice(1).forEach(trace => expect(trace.x).toEqual([8960, 8980, 9000]))
+    expect(data[1].x).toEqual([8960, 8980, 9000])
+    expect(data[2].y).toEqual([15, 16])
+    expect(data[2].x).toEqual([8980, 9000])
     expect(sample).toEqual(before)
     expect(data[1].x).not.toBe(sample.result!.arrays.energy)
     expect(data[1].y).not.toBe(sample.result!.arrays.mu)
@@ -482,8 +483,54 @@ describe("AthenaPlot backgrounds and displayed groups", () => {
     current.multiplier = 2
     const staleActive = group()
     staleActive.offset = 100
+    staleActive.parameters.bkg_kmax = 1
     show({ groups: [current], active: staleActive, background: true })
-    expect(handoff().data.find(trace => trace.name.startsWith("Background"))?.y).toEqual([1, 2, 3])
+    expect(handoff().data.find(trace => trace.name.startsWith("Background"))).toMatchObject({ x: [8980, 9000], y: [2, 3] })
+  })
+
+  it("clips the background to effective spline bounds without trimming the measured spectrum", () => {
+    const sample = group()
+    sample.parameters = { ...sample.parameters, e0: 8900, bkg_kmin: 0, bkg_kmax: 10, energy_shift: 80 }
+    sample.result!.effective = { e0: 8980, bkg_kmin: Math.sqrt(5 / 3.8099821109685847), bkg_kmax: Math.sqrt(15 / 3.8099821109685847) }
+    const before = structuredClone(sample)
+    freeze(sample)
+    show({ groups: [sample], active: sample, background: true })
+    const [signal, background] = handoff().data
+    expect(signal.x).toEqual([8960, 8980, 9000])
+    expect(signal.y).toEqual([1, 2, 3])
+    expect(background.x[0]).toBeCloseTo(8985, 10)
+    expect(background.x[1]).toBeCloseTo(8995, 10)
+    expect(background.y[0]).toBeCloseTo(1.125, 10)
+    expect(background.y[1]).toBeCloseTo(1.375, 10)
+    expect(sample).toEqual(before)
+  })
+
+  it("uses the processed automatic spline maximum and retains interior background samples", () => {
+    const sample = group()
+    sample.parameters.bkg_kmax = null
+    sample.result!.effective = { e0: 8960, bkg_kmin: 0, bkg_kmax: Math.sqrt(30 / 3.8099821109685847) }
+    show({ groups: [sample], active: sample, background: true })
+    const background = handoff().data.find(trace => trace.name.startsWith("Background"))!
+    expect(background.x).toEqual([8960, 8980, 8990])
+    expect(background.y).toEqual([0.5, 1, 1.25])
+  })
+
+  it("includes a spline endpoint coinciding with a measured energy only once", () => {
+    const sample = group()
+    sample.result!.effective = { e0: 8960, bkg_kmin: 0, bkg_kmax: Math.sqrt(20 / 3.8099821109685847) }
+    show({ groups: [sample], active: sample, background: true })
+    expect(handoff().data[1]).toMatchObject({ x: [8960, 8980], y: [0.5, 1] })
+  })
+
+  it.each([
+    { e0: null, bkg_kmin: 0, bkg_kmax: 2 },
+    { e0: 8980, bkg_kmin: null, bkg_kmax: 2 },
+    { e0: 8980, bkg_kmin: 0, bkg_kmax: null },
+  ])("does not show an unfitted background as measured data ($e0/$bkg_kmin/$bkg_kmax)", effective => {
+    const sample = group()
+    sample.result!.effective = effective
+    show({ groups: [sample], active: sample, background: true })
+    expect(handoff().data.map(trace => trace.name)).toEqual(["Sample"])
   })
 
   it.each(["norm", "flat", "dmude", "d2mude"])("does not overlay raw-mu backgrounds on %s", energyMode => {

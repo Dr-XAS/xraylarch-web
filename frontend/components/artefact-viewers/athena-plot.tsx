@@ -55,6 +55,30 @@ function signalAtEnergy(energy: number[], mu: number[], target: number) {
   return { x, y: mu[right - 1] + fraction * (mu[right] - mu[right - 1]) }
 }
 
+function backgroundInSplineRange(group: AthenaGroup, energy: number[], background: number[]) {
+  if (!Array.isArray(energy) || !Array.isArray(background) || !energy.length || background.length !== energy.length) return null
+  const effective = group.result?.effective ?? {}
+  const value = (key: "e0" | "bkg_kmin" | "bkg_kmax") => {
+    const resolved = key in effective ? effective[key] : group.parameters[key]
+    return typeof resolved === "number" && Number.isFinite(resolved) ? resolved : null
+  }
+  const e0 = value("e0"), kmin = value("bkg_kmin"), kmax = value("bkg_kmax")
+  if (e0 === null || kmin === null || kmin < 0 || (kmax !== null && kmax <= kmin)) return null
+  // Older automatic results may omit the effective upper bound. An explicit
+  // null means AUTOBK did not run, so it must not fall back to requested values.
+  const automaticMax = !("bkg_kmax" in effective) && group.parameters.bkg_kmax === null
+  if (kmax === null && !automaticMax) return null
+  const ktoe = 3.8099821109685847
+  const lower = Math.max(energy[0], e0 + kmin * kmin * ktoe)
+  const upper = Math.min(energy[energy.length - 1], kmax === null ? energy[energy.length - 1] : e0 + kmax * kmax * ktoe)
+  if (lower >= upper) return null
+  const first = signalAtEnergy(energy, background, lower), last = signalAtEnergy(energy, background, upper)
+  if (!first || !last) return null
+  const start = energy.findIndex(point => point > lower)
+  const end = energy.findIndex(point => point >= upper)
+  return { x: [first.x, ...energy.slice(start, end), last.x], y: [first.y, ...background.slice(start, end), last.y] }
+}
+
 export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colorSettings = defaultPlotColors, analysis, analysisVisible, range, picking = false, onPickX, seriesTarget }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
@@ -121,7 +145,10 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       && effectiveE0 >= current.x[0] && effectiveE0 <= current.x[current.x.length - 1]
       ? effectiveE0 : null
     if (current && a && background && space === "E" && energyMode === "mu") {
-      if (a.bkg?.length === a.energy.length) add(a.energy, current.transform(a.bkg), `Background μ₀(E) · ${current.g.label}`, "#ddaa58", "dash")
+      // Larch fills bkg outside its fitted support with mu. Show only the
+      // selected spline interval, on the already shifted result energy axis.
+      const fitted = a.bkg && backgroundInSplineRange(current.g, a.energy, a.bkg)
+      if (fitted) add(fitted.x, current.transform(fitted.y), `Background μ₀(E) · ${current.g.label}`, "#ddaa58", "dash")
     }
     if (current && a && current.g.result && plotScope === "current" && space === "E" && energyMode === "mu"
       && current.g.data_type !== "detector" && current.g.data_type !== "chi" && !isDifferenceGroup(current.g)) {

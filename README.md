@@ -128,7 +128,10 @@ its checkbox. The **Multiple spectra viewer** plots the checked data groups.
 Both panels can stay open together and keep independent plot spaces, ranges,
 colors, legends, and heights. For an individual **μ(E)** plot, use
 **Pre-edge line** and **Post-edge line** to show either fitted normalization line. **Background**
-separately shows the fitted μ₀(E) background when available.
+separately shows the fitted μ₀(E) background within the selected spline range.
+Clamp values are dimensionless endpoint penalties: start with low 0, high 1,
+and 5 clamp points. See [spline ranges and clamps](docs/athena-background-clamps.md)
+for tuning guidance and the meaning of the background cutoff.
 Each normalization-line toggle also marks its interval's start and end on
 μ(E). Hover a marker to see its energy and offset from E₀.
 Single-spectrum energy plots also mark the processed E₀ with a vertical dotted
