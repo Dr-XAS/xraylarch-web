@@ -173,6 +173,9 @@ describe("integration mode", () => {
     api.mockImplementation(async path => path === "/projects/integrated-project" ? projectFixture({ id: "integrated-project" }) : Promise.reject(new Error(`unexpected ${path}`)))
     render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ["read_project", "copy_parameters"] }} />)
     await waitForIntegratedProject()
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Processing parameters' }))
+    expect(screen.getByRole('menuitem', { name: 'Set marked groups to current processing parameters' })).toBeEnabled()
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
     fireEvent.click(screen.getByRole("button", { name: /copy \/ reset parameters/i }))
     const dialog = screen.getByRole("dialog", { name: /copy \/ reset parameters/i })
     expect(within(dialog).getByRole("button", { name: /copy parameters/i })).toBeEnabled()
@@ -2017,6 +2020,135 @@ describe("AthenaWorkbench native context actions", () => {
     fireEvent.click(screen.getByRole('button', { name: `Actions for ${label}` }))
     return screen.getByRole('menu', { name: 'Actions for Foil scan' })
   }
+
+  it.each(['marked', 'all'] as const)('copies every Processing section to %s groups from the heading or tab', async scope => {
+    const initial = projectFixture()
+    initial.groups[0].marked = true
+    initial.groups[0].frozen = true // A frozen source can still supply its parameters.
+    initial.groups[0].parameters = { ...parameters, pre1: -180, rbkg: 2.5, bkg_dk: 2, nclamp: 8, fnorm: true, kmax: null, bkg_kmax: null, rmin: 1.5, nfft: 4096, kstep: 0.025 }
+    initial.groups[0].result!.effective = { e0: 8979, edge_step: 1, kmax: 24, bkg_kmax: 25.019 }
+    initial.groups[0].background_standard_id = 'unused'
+    initial.groups[2].frozen = true
+    for (const group of initial.groups.slice(2)) group.result!.arrays.chi = [0, 0.1, 0]
+    const project = await openSaved(initial)
+    // An unapplied destination standard must not mask the copied saved standard.
+    selectGroup('Sample scan')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Background removal standard' }), { target: { value: 'oxide' } })
+    selectGroup('Foil scan')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: 'Foil' } })
+    const pending = deferred<AthenaProject>()
+    api.mockReturnValueOnce(pending.promise)
+    fireEvent.contextMenu(scope === 'marked'
+      ? screen.getByRole('heading', { name: 'Processing parameters' })
+      : screen.getByRole('tab', { name: 'Processing' }), { clientX: 250, clientY: 300 })
+    fireEvent.click(screen.getByRole('menuitem', { name: `Set ${scope} groups to current processing parameters` }))
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'copy_parameters',
+      group_ids: scope === 'all' ? ['sample', 'oxide', 'unused'] : ['sample', 'oxide'],
+      options: { section: 'all', source_id: 'foil', values: initial.groups[0].parameters },
+    })
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent('Processing spectra')
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Processing parameters' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    const copied = { ...initial.groups[0].parameters, energy_shift: project.groups[1].parameters.energy_shift }
+    const next = nextProject(project, { sample: { parameters: copied, background_standard_id: 'unused' } })
+    next.last_operation = { action: 'copy_parameters', skipped_group_ids: scope === 'all' ? ['oxide', 'unused'] : ['oxide'] }
+    await act(async () => pending.resolve(next))
+    await waitForWorkbenchIdle()
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: '' } })
+    selectGroup('Sample scan')
+    expect(plotProps().active?.parameters).toEqual(copied)
+    expect(screen.getByRole('combobox', { name: 'Background removal standard' })).toHaveValue('unused')
+    selectGroup('Oxide standard')
+    expect(plotProps().active?.parameters).toEqual(project.groups[2].parameters)
+    selectGroup('Foil scan')
+    expect(plotProps().active?.parameters).toEqual(project.groups[0].parameters)
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['marked', 'all'] as const)('copies the collapsed Transform grid section to %s groups without other settings', async scope => {
+    const initial = projectFixture()
+    initial.groups[0].marked = true
+    initial.groups[0].frozen = true
+    initial.groups[0].parameters = { ...parameters, nfft: 4096, kstep: 0.025 }
+    initial.groups[2].frozen = true
+    initial.groups[2].result!.arrays.chi = [0, 0.1, 0]
+    const project = await openSaved(initial)
+    selectGroup('Sample scan')
+    fireEvent.change(screen.getByRole('combobox', { name: 'Background removal standard' }), { target: { value: 'oxide' } })
+    selectGroup('Foil scan')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: 'Foil' } })
+    const title = screen.getByText('Transform grid', { exact: true })
+    expect(title.closest('details')).not.toHaveAttribute('open')
+    fireEvent.contextMenu(title, { clientX: 250, clientY: 300 })
+    expect(screen.getByRole('menuitem', { name: 'Restore default transform grid parameters' })).toBeDisabled()
+    const copied = (group: AthenaGroup) => ({ parameters: { ...group.parameters, nfft: 4096, kstep: 0.025 } })
+    const next = nextProject(project, { sample: copied(project.groups[1]), ...(scope === 'all' ? { unused: copied(project.groups[3]) } : {}) })
+    next.last_operation = { action: 'copy_parameters', skipped_group_ids: ['oxide'] }
+    api.mockResolvedValueOnce(next)
+    fireEvent.click(screen.getByRole('menuitem', { name: `Set ${scope} groups to current transform grid parameters` }))
+    await waitForWorkbenchIdle()
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'copy_parameters',
+      group_ids: scope === 'all' ? ['sample', 'oxide', 'unused'] : ['sample', 'oxide'],
+      options: { section: 'grid', source_id: 'foil', values: initial.groups[0].parameters },
+    })
+    expect(title.closest('details')).not.toHaveAttribute('open')
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: '' } })
+    selectGroup('Sample scan')
+    expect(plotProps().active?.parameters).toEqual(copied(project.groups[1]).parameters)
+    expect(screen.getByRole('combobox', { name: 'Background removal standard' })).toHaveValue('oxide')
+    selectGroup('Oxide standard')
+    expect(plotProps().active?.parameters).toEqual(project.groups[2].parameters)
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
+  it('restores only the current Transform grid defaults from its actions button', async () => {
+    const initial = projectFixture()
+    initial.groups[0].parameters = { ...parameters, rbkg: 2.5, nfft: 4096, kstep: 0.025 }
+    const project = await openSaved(initial)
+    const reset = { ...initial.groups[0].parameters, nfft: 2048, kstep: 0.05 }
+    api.mockResolvedValueOnce(nextProject(project, { foil: { parameters: reset } }))
+    fireEvent.click(within(fieldContext('Transform grid')).getByRole('menuitem', { name: 'Restore default transform grid parameters' }))
+    await waitForWorkbenchIdle()
+    expect(api).toHaveBeenLastCalledWith(`/projects/${project.id}/command`, {
+      version: project.version, action: 'reset_parameters', group_ids: ['foil'], options: { section: 'grid' },
+    })
+    expect(plotProps().active?.parameters).toEqual(reset)
+    expect(screen.getByRole('spinbutton', { name: 'Rbkg Å' })).toHaveValue(2.5)
+    expect(api).toHaveBeenCalledTimes(2)
+  })
+
+  it.each(['none marked', 'only current marked', 'marked frozen'])('disables Processing copy to marked groups when %s', async condition => {
+    const project = projectFixture()
+    for (const group of project.groups) {
+      if (condition === 'none marked') group.marked = false
+      if (condition === 'only current marked') group.marked = group.id === 'foil'
+      if (condition === 'marked frozen' && group.marked) group.frozen = true
+    }
+    await openSaved(project)
+    const menu = fieldContext('Processing parameters')
+    expect(within(menu).getByRole('menuitem', { name: 'Set marked groups to current processing parameters' })).toBeDisabled()
+    expect(within(menu).getByRole('menuitem', { name: 'Set all groups to current processing parameters' })).toBeEnabled()
+    expect(api).toHaveBeenCalledOnce()
+  })
+
+  it('opens Processing actions with the keyboard and keeps EXAFS fitting separate', async () => {
+    await openSaved()
+    const tab = screen.getByRole('tab', { name: 'Processing' })
+    tab.focus()
+    fireEvent.keyDown(tab, { key: 'F10', shiftKey: true })
+    const menu = screen.getByRole('menu')
+    expect(within(menu).getByRole('menuitem', { name: 'Set marked groups to current processing parameters' })).toBeEnabled()
+    fireEvent.keyDown(menu, { key: 'Escape' })
+    expect(tab).toHaveFocus()
+    fireEvent.click(screen.getByRole('tab', { name: 'EXAFS fitting' }))
+    fireEvent.contextMenu(screen.getByRole('heading', { name: 'EXAFS fitting' }))
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Actions for Processing parameters' })).toBeNull()
+    expect(api).toHaveBeenCalledOnce()
+  })
 
   it('keeps the selected group when right-clicking another row and closes the menu when selection changes', async () => {
     await openSaved()

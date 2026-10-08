@@ -2,7 +2,7 @@ import type { AthenaGroup, Parameters } from '@/lib/athena'
 
 export type NativeSection = 'all' | 'group' | 'background' | 'forward' | 'reverse' | 'plot'
 export type NativeField = keyof Parameters | 'spline_energy' | 'background_standard_id' | 'element' | 'edge' | 'importance' | 'multiplier' | 'offset' | 'fix_step'
-export type ContextTarget = { kind: 'group' } | { kind: 'field'; field: NativeField } | { kind: 'section'; section: NativeSection } | { kind: 'peak'; index: number }
+export type ContextTarget = { kind: 'group' } | { kind: 'processing'; section?: 'all' | 'grid' } | { kind: 'field'; field: NativeField } | { kind: 'section'; section: NativeSection } | { kind: 'peak'; index: number }
 export type ContextReportKind = 'about' | 'yaml' | 'source' | 'shifts' | 'steps' | 'measurement_uncertainty' | 'edge_step_uncertainty'
 
 // Native Athena attaches range menus to the shared label for both endpoints.

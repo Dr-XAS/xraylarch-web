@@ -1,17 +1,18 @@
 "use client"
 
-import { useId, useRef, type ReactNode } from "react"
+import { useId, useRef, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { SlidersHorizontal } from "lucide-react"
 import { FitCurvesIcon } from "./athena-viewer-icons"
 
 export type ParameterTab = "processing" | "fitting"
 
-export function AthenaParameterTabs({ tab, select, processing, fitting }: {
+export function AthenaParameterTabs({ tab, select, processing, fitting, onProcessingContextMenu }: {
   tab: ParameterTab
   select: (tab: ParameterTab) => void
   processing: ReactNode
   /** Pass null to drop the fitting tab entirely: a linked integration project cannot be fitted. */
   fitting: ReactNode | null
+  onProcessingContextMenu?: (event: MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>) => void
 }) {
   const id = useId()
   const buttons = useRef<(HTMLButtonElement | null)[]>([])
@@ -23,7 +24,12 @@ export function AthenaParameterTabs({ tab, select, processing, fitting }: {
         ref={element => { buttons.current[index] = element }}
         id={`${id}-${value}-tab`} role="tab" aria-selected={tab === value}
         aria-controls={`${id}-${value}-panel`} tabIndex={tab === value ? 0 : -1}
+        onContextMenu={value === "processing" ? onProcessingContextMenu : undefined}
         onClick={() => select(value)} onKeyDown={event => {
+          if (value === "processing" && onProcessingContextMenu && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
+            onProcessingContextMenu(event)
+            return
+          }
           const next = event.key === "Home" ? 0 : event.key === "End" ? 1
             : ["ArrowLeft", "ArrowRight"].includes(event.key) ? 1 - index : null
           if (next === null) return

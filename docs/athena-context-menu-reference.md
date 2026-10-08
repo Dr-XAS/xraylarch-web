@@ -17,6 +17,19 @@ target. This follows the native selection rule rather than silently changing
 the active group. Normal text and number inputs retain their browser editing
 menus.
 
+Right-click the **Processing parameters** heading or the **Processing** tab,
+or use the heading's **⋯** button, to copy the current group's complete processing
+parameters to all or marked groups in one command. This includes normalization,
+background removal and its saved standard, both Fourier transforms, and the
+transform grid. Automatic values remain automatic. The current group and frozen
+destinations are skipped; energy shifts, group identity and plot settings stay
+unchanged. This web-wide copy uses the same scope as **All processing parameters**
+in the Copy / reset parameters dialog, broader than the native section menus below.
+
+The **Transform grid** heading also has a right-click menu and **⋯** button.
+Copy just **FFT points** and **k step** to all or marked groups, or restore the
+current group's grid defaults. The section can stay collapsed while using its menu.
+
 Right-click an E/k/R/q plot tab for its native default shortcut. **Plot
 shortcuts…** also exposes the alternative energy plots, quad plot and bi-quad
 plot. Reader rows in **Plugin registry** offer documentation and, where
