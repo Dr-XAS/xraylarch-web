@@ -13,6 +13,9 @@
 .ath-bulk-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ath-app .ath-bulk-actions button { border: 1px solid var(--ath-line); }
 .ath-e0-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ath-e0-control { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ath-e0-control > button { align-self: flex-start; }
+.ath-fields:has(> .ath-e0-control) { align-items: start; }
 .ath-spline-group { min-width: 0; margin: 0 0 10px; padding: 0; border: 0; }
 .ath-spline-group > legend { padding: 0 0 6px; font-size: var(--text-label); color: var(--ath-ink); }
 .ath-spline-group > .ath-fields { padding-bottom: 0; }

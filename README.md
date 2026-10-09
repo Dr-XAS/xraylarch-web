@@ -217,6 +217,15 @@ The current group's element and absorption edge are shown automatically, using
 saved file metadata when available or inference from E₀. No manual identity
 selection is required.
 
+Use **Select E₀…** beside the E₀ field in **Processing → Normalization** to
+choose an E₀ method for the current, marked, or all groups. In **Import data →
+Advanced import settings**, **Enforce element and edge** sets the element,
+absorption edge, and edge-step fraction for future raw-file batches. Turn the
+same checkbox off to stop applying the policy to new batches. The import window
+shows both the next-batch setting and the current batch's fixed policy; changing
+the setting leaves the current batch, existing spectra, and restored projects
+unchanged.
+
 Use **Group → Change data type** to correct current, marked, or all energy
 groups after import. The type button next to Freeze also supports Athena's
 Ctrl+Alt-click μ(E)/XANES toggle, preserving the normalized-input flag. Legacy

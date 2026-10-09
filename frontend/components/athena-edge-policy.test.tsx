@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest"
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react"
+import { useState } from "react"
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest"
-import { athenaApi, type EdgeCatalog } from "@/lib/athena"
-import { EdgePolicyDialog } from "./athena-edge-policy"
+import { athenaApi, type EdgeCatalog, type EdgePolicy } from "@/lib/athena"
+import { EdgePolicyControls, EdgePolicyDialog } from "./athena-edge-policy"
 
 vi.mock("@/lib/athena", async original => ({ ...await original<typeof import("@/lib/athena")>(), athenaApi: vi.fn() }))
 const api = vi.mocked(athenaApi)
@@ -47,6 +48,68 @@ function deferred<T>() {
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no })
   return { promise, resolve, reject }
 }
+
+function ImportControls({ initial = null, busy = false, apply, close }: {
+  initial?: EdgePolicy | null; busy?: boolean; apply: (policy: EdgePolicy | null) => void; close?: () => void
+}) {
+  const [policy, setPolicy] = useState(initial)
+  return <dialog open aria-label="Import spectra" onCancel={close}>
+    <EdgePolicyControls policy={policy} busy={busy} apply={next => { setPolicy(next); apply(next) }} />
+  </dialog>
+}
+
+describe("Athena import policy controls", () => {
+  it("keeps the import dialog open on cancel and activates only after applying the editor", async () => {
+    const apply = vi.fn(), close = vi.fn()
+    render(<ImportControls apply={apply} close={close} />)
+    const details = screen.getByText("Advanced import settings").closest("details")!
+    expect(details).not.toHaveAttribute("open")
+    fireEvent.click(screen.getByText("Advanced import settings"))
+    const checkbox = screen.getByRole("checkbox", { name: "Enforce element and edge" })
+    fireEvent.click(checkbox)
+    let editor = screen.getByRole("dialog", { name: "Enforce element and edge" })
+    expect(checkbox).not.toBeChecked()
+    fireEvent(editor, new Event("cancel", { cancelable: true, bubbles: true }))
+    expect(close).not.toHaveBeenCalled()
+    expect(apply).not.toHaveBeenCalled()
+    expect(screen.getByRole("dialog", { name: "Import spectra" })).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Enforce element and edge" })).not.toBeInTheDocument()
+    fireEvent.click(checkbox)
+    editor = screen.getByRole("dialog", { name: "Enforce element and edge" })
+    await lookupCu()
+    fireEvent.click(within(editor).getByRole("button", { name: "Apply enforcement" }))
+    expect(apply).toHaveBeenCalledExactlyOnceWith({ element: "Cu", edge: "K", fraction: 0.5 })
+    expect(checkbox).toBeChecked()
+    expect(screen.getByText("Cu K · fraction 0.5")).toBeInTheDocument()
+    expect(screen.queryByRole("dialog", { name: "Enforce element and edge" })).not.toBeInTheDocument()
+  })
+
+  it("allows an active policy to be disabled during import while blocking enabling and editing", () => {
+    const apply = vi.fn()
+    render(<ImportControls initial={{ element: "Cu", edge: "K", fraction: 0.5 }} busy apply={apply} />)
+    expect(screen.getByText("Advanced import settings").closest("details")).toHaveAttribute("open")
+    const checkbox = screen.getByRole("checkbox", { name: "Enforce element and edge" })
+    expect(checkbox).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Edit element and edge…" })).toBeDisabled()
+    fireEvent.click(checkbox)
+    expect(apply).toHaveBeenCalledExactlyOnceWith(null)
+    expect(checkbox).not.toBeChecked()
+    expect(checkbox).toBeDisabled()
+  })
+
+  it("opens the current policy for editing without changing it on cancel", () => {
+    const apply = vi.fn()
+    render(<ImportControls initial={{ element: "Fe", edge: "K", fraction: 0.7 }} apply={apply} />)
+    fireEvent.click(screen.getByRole("button", { name: "Edit element and edge…" }))
+    const editor = within(screen.getByRole("dialog", { name: "Enforce element and edge" }))
+    expect(editor.getByRole("textbox", { name: "Element symbol" })).toHaveValue("Fe")
+    expect(editor.getByRole("spinbutton", { name: "Edge-step fraction" })).toHaveValue(0.7)
+    fireEvent.click(editor.getByRole("button", { name: "Cancel" }))
+    expect(apply).not.toHaveBeenCalled()
+    expect(screen.getByRole("checkbox", { name: "Enforce element and edge" })).toBeChecked()
+    expect(screen.getByText("Fe K · fraction 0.7")).toBeInTheDocument()
+  })
+})
 
 describe("Athena edge policy catalog", () => {
   it("requires a catalog edge choice, canonicalizes the symbol, and only activates on Apply", async () => {

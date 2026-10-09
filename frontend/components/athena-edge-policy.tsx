@@ -46,6 +46,24 @@ export function edgePolicyDescription(policy: EdgePolicy | null) {
   return policy ? `${policy.element} ${policy.edge} · fraction ${policy.fraction}` : "Off"
 }
 
+export function EdgePolicyControls({ policy, apply, busy = false }: {
+  policy: EdgePolicy | null; apply: (policy: EdgePolicy | null) => void; busy?: boolean
+}) {
+  const [editing, setEditing] = useState(false)
+  return <>
+    <details open={!!policy}>
+      <summary>Advanced import settings</summary>
+      <label className="ath-check"><input type="checkbox" checked={!!policy} disabled={busy && !policy} onChange={event => {
+        if (event.target.checked) setEditing(true)
+        else apply(null)
+      }} />Enforce element and edge</label>
+      <p>Next batch: <strong>{edgePolicyDescription(policy)}</strong><SectionHelp label="Import edge policy">Applies to future raw-file import batches in this tab. Existing groups and restored projects are unchanged; χ(k) imports ignore it.</SectionHelp></p>
+      {policy && <button type="button" disabled={busy} onClick={() => setEditing(true)}>Edit element and edge…</button>}
+    </details>
+    {editing && <EdgePolicyDialog policy={policy} apply={apply} close={() => setEditing(false)} />}
+  </>
+}
+
 export function EdgePolicyDialog({ policy, apply, close }: {
   policy: EdgePolicy | null; apply: (policy: EdgePolicy) => void; close: () => void
 }) {
@@ -64,7 +82,7 @@ export function EdgePolicyDialog({ policy, apply, close }: {
     apply({ ...selection, fraction: value })
     close()
   }
-  return <dialog ref={dialog} className="ath-modal" aria-label="Enforce element and edge" onCancel={event => { event.preventDefault(); dismiss() }}>
+  return <dialog ref={dialog} className="ath-modal" aria-label="Enforce element and edge" onCancel={event => { event.preventDefault(); event.stopPropagation(); dismiss() }}>
     <header><h2>Enforce element and edge <SectionHelp label="Import policy lifetime">Applies to new batches in this browser tab. Existing groups and restored projects are unchanged. It is separate from project saves and Undo, and survives refresh in this tab.<br /><br />Choose the absorber, edge, and edge-step fraction for subsequent raw-file imports, including reference channels. χ(k) imports ignore this policy.</SectionHelp></h2><button type="button" aria-label="Close dialog" onClick={dismiss}>×</button></header>
     <form className="ath-modal-body" noValidate onSubmit={event => { event.preventDefault(); submit() }}>
 

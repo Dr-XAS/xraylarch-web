@@ -37,7 +37,7 @@ web JSON project for a portable copy.
 - Copy or reset individual parameters, scientific sections or full recipes.
   Full-recipe copies preserve per-scan energy shifts; global operations skip
   frozen groups. Sample/reference energy shifts propagate in both directions.
-- Energy → Select E₀ offers derivative, atomic, edge-fraction, second-derivative
+- Processing → Normalization → Select E₀ offers derivative, atomic, edge-fraction, second-derivative
   zero-crossing, white-line and manual methods for current/marked/all groups.
   Values use the shifted energy axis, retain calibration, and preserve other
   parameter drafts. Per-group reports show accepted values and skipped groups.
@@ -318,8 +318,9 @@ every absorption edge.
 ## Import enforcement and XDAC checkpoint, 2026-09-07
 
 The raw import API now accepts a nullable `edge_policy` with absorber, edge and
-fraction. The Energy menu controls a preference for this browser tab; file
-selection snapshots it for the batch and its retries. Enable/Stop, project
+fraction. Import data → Advanced import settings controls a preference for this
+browser tab (formerly the Energy menu); file selection snapshots it for the
+batch and its retries. Toggling the policy, project
 restore and Undo do not rewrite that preference into existing spectra.
 Forced initialization uses tabulated E0, source-based automatic ranges, then
 fraction refinement. It records the seed, selected identity, final E0 and any

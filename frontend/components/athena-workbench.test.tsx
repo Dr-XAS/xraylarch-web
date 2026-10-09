@@ -209,7 +209,7 @@ describe("integration mode", () => {
     fireEvent.click(screen.getByRole("button", { name: "Plot" }))
     expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /diagnostic plots/i })).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "Energy" }))
+    expect(screen.queryByRole("button", { name: "Energy" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: /select e₀/i })).toBeDisabled()
     fireEvent.click(screen.getByRole("button", { name: "Group" }))
     expect(screen.getByRole("button", { name: /mark \/ freeze groups/i })).toBeDisabled()
@@ -584,7 +584,6 @@ async function openGroupControls() {
 }
 
 async function openE0Dialog() {
-  fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" }))
   fireEvent.click(screen.getByRole("button", { name: "Select E₀…" }))
   return screen.findByRole("dialog", { name: "Select E₀" })
 }
@@ -594,17 +593,36 @@ function chooseE0Method(dialog: HTMLElement, method: E0Method) {
 }
 
 const copperPolicy = { element: "Cu", edge: "K", fraction: 0.5 }
-function expectPolicyMenuState(enabled: boolean) {
-  const energyMenu = within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" })
-  fireEvent.click(energyMenu)
-  const stop = screen.getByRole("button", { name: "Stop enforcing element and edge" })
-  if (enabled) expect(stop).toBeEnabled()
-  else expect(stop).toBeDisabled()
-  fireEvent.click(energyMenu)
+function openImportSettings() {
+  let dialog = screen.queryByRole("dialog", { name: "Import spectra" })
+  if (!dialog) {
+    fireEvent.click(screen.getByRole("button", { name: "Import spectra" }))
+    dialog = screen.getByRole("dialog", { name: "Import spectra" })
+  }
+  const summary = within(dialog).getByText("Advanced import settings")
+  if (!summary.closest("details")!.open) fireEvent.click(summary)
+  return dialog
+}
+function expectPolicyControlsState(enabled: boolean) {
+  const alreadyOpen = !!screen.queryByRole("dialog", { name: "Import spectra" })
+  const dialog = openImportSettings()
+  const toggle = within(dialog).getByRole("checkbox", { name: "Enforce element and edge" })
+  if (enabled) {
+    expect(toggle).toBeChecked()
+    expect(within(dialog).getByRole("button", { name: "Edit element and edge…" })).toBeEnabled()
+    expect(within(dialog).getByText(/Next batch:/)).toHaveTextContent("Cu K · fraction 0.5")
+  } else {
+    expect(toggle).not.toBeChecked()
+    expect(within(dialog).queryByRole("button", { name: "Edit element and edge…" })).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/Next batch:/)).toHaveTextContent("Off")
+  }
+  if (!alreadyOpen) fireEvent.click(within(dialog).getByRole("button", { name: "Close dialog" }))
 }
 async function openEdgePolicyDialog() {
-  fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" }))
-  fireEvent.click(screen.getByRole("button", { name: "Enforce element and edge…" }))
+  const dialog = openImportSettings()
+  const toggle = within(dialog).getByRole("checkbox", { name: "Enforce element and edge" })
+  if ((toggle as HTMLInputElement).checked) fireEvent.click(within(dialog).getByRole("button", { name: "Edit element and edge…" }))
+  else fireEvent.click(toggle)
   return screen.getByRole("dialog", { name: "Enforce element and edge" })
 }
 async function enableCopperPolicy() {
@@ -617,9 +635,12 @@ async function enableCopperPolicy() {
   expect(within(dialog).getByRole("option", { name: "K · 8979 eV" })).toBeInTheDocument()
   fireEvent.change(within(dialog).getByRole("combobox", { name: "Enforced edge" }), { target: { value: "K" } })
   fireEvent.click(within(dialog).getByRole("button", { name: "Apply enforcement" }))
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument()
+  expect(screen.queryByRole("dialog", { name: "Enforce element and edge" })).not.toBeInTheDocument()
+  const importDialog = screen.getByRole("dialog", { name: "Import spectra" })
+  expect(importDialog).toBeVisible()
   expect(sessionStorage.getItem(edgePolicyStorageKey)).toBe(JSON.stringify(copperPolicy))
-  expectPolicyMenuState(true)
+  expectPolicyControlsState(true)
+  fireEvent.click(within(importDialog).getByRole("button", { name: "Close dialog" }))
 }
 
 function identityBar() { return screen.getByRole("region", { name: "Current absorber and edge" }) }
@@ -839,6 +860,8 @@ describe("AthenaWorkbench branding", () => {
     expect(screen.queryByText("Explore your XAS data")).not.toBeInTheDocument()
     expect(screen.queryByText("Familiar Athena workflows. Scientific calculations by Larch.")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Tutorials & reference" })).not.toBeInTheDocument()
+    expect(within(screen.getByRole("navigation", { name: /main menu/i })).queryByRole("button", { name: "Energy" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Select E₀…" })).toBeVisible()
     expect(screen.queryByRole("region", { name: "Import edge policy" })).not.toBeInTheDocument()
     expect(screen.queryByText("Foils · 10, 50 & 300 K · Cu₂O at room temperature")).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Load copper examples" })).toBeVisible()
@@ -2699,7 +2722,7 @@ describe("AthenaWorkbench absorber and edge identity", () => {
     expect(within(screen.getByRole("navigation", { name: /main menu/i })).queryByRole("button", { name: "Edit absorber and edge…" })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Group" }))
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
-    expectPolicyMenuState(false)
+    expectPolicyControlsState(false)
     selectGroup("Sample scan")
     expect(identityBar()).toHaveTextContent("Zn L3")
     expect(within(identityBar()).queryByRole("button")).not.toBeInTheDocument()
@@ -2739,7 +2762,7 @@ describe("AthenaWorkbench import edge policy", () => {
     vi.useFakeTimers()
     editNumber(/^Rbkg/, 2.7)
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
-    expectPolicyMenuState(false)
+    expectPolicyControlsState(false)
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
     await enableCopperPolicy()
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/edges?element=Cu"]])
@@ -2749,24 +2772,24 @@ describe("AthenaWorkbench import edge policy", () => {
     const dialog = await openEdgePolicyDialog()
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Element symbol" }), { target: { value: "Fe" } })
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
-    expectPolicyMenuState(true)
+    expectPolicyControlsState(true)
     expect(JSON.parse(sessionStorage.getItem(edgePolicyStorageKey)!)).toEqual(copperPolicy)
     expect(api.mock.calls.filter(([path]) => path.startsWith("/edges?"))).toHaveLength(1)
   })
 
-  it.each(["empty", "frozen"] as const)("can enable and stop enforcement with %s groups and no marks", async kind => {
+  it.each(["empty", "frozen"] as const)("can enable and disable enforcement in import settings with %s groups and no marks", async kind => {
     const project = projectFixture({ groups: kind === "empty" ? [] : [{ ...group("frozen", "Frozen foil"), frozen: true }] })
     localStorage.setItem(storageKey, project.id)
     api.mockResolvedValueOnce(project)
     render(<AthenaWorkbench />)
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Opening project · complete"))
     await enableCopperPolicy()
-    fireEvent.click(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Energy" }))
-    const stop = screen.getByRole("button", { name: "Stop enforcing element and edge" })
-    expect(stop).toBeEnabled()
-    fireEvent.click(stop)
+    const dialog = openImportSettings()
+    const toggle = within(dialog).getByRole("checkbox", { name: "Enforce element and edge" })
+    expect(toggle).toBeEnabled()
+    fireEvent.click(toggle)
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
-    expectPolicyMenuState(false)
+    expectPolicyControlsState(false)
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/edges?element=Cu"]])
   })
 
@@ -2777,7 +2800,7 @@ describe("AthenaWorkbench import edge policy", () => {
     api.mockResolvedValueOnce(project)
     render(<AthenaWorkbench />)
     await waitForWorkbenchIdle()
-    expectPolicyMenuState(true)
+    expectPolicyControlsState(true)
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/edges?element=Cu"], [`/projects/${project.id}`]])
     const loaded = projectFixture({ id: "different-project", name: "Different project", version: 2, undo: ["Before edit"] })
     loaded.groups[0].source.edge_policy = { element: "Fe", edge: "K", fraction: 1 }
@@ -2788,19 +2811,19 @@ describe("AthenaWorkbench import edge policy", () => {
     await waitFor(() => expect(recent).toBeEnabled())
     fireEvent.click(recent)
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
-    expectPolicyMenuState(true)
+    expectPolicyControlsState(true)
     api.mockResolvedValueOnce({ ...loaded, version: 3, undo: [] })
     fireEvent.click(screen.getByRole("button", { name: "Undo" }))
     await waitForWorkbenchIdle()
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 2, action: "undo", group_ids: [], options: {} })
-    expectPolicyMenuState(true)
+    expectPolicyControlsState(true)
     expect(JSON.parse(sessionStorage.getItem(edgePolicyStorageKey)!)).toEqual(copperPolicy)
   })
 
   it.each(["", "{broken", "null", "[]", '{"element":"","edge":"K","fraction":0.5}', '{"element":"Cu","edge":"K","fraction":0}', '{"element":"Cu","edge":"K","fraction":1.1}', '{"element":"Cu","edge":"K","fraction":"0.5"}'])("recovers malformed stored policy %j as off without a lookup", async stored => {
     sessionStorage.setItem(edgePolicyStorageKey, stored)
     const project = await openSaved()
-    expectPolicyMenuState(false)
+    expectPolicyControlsState(false)
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`]])
   })
 
@@ -2809,7 +2832,7 @@ describe("AthenaWorkbench import edge policy", () => {
     const project = projectFixture()
     project.groups[0].source.edge_policy = { element: "Fe", edge: "K", fraction: 1 }
     await openSaved(project)
-    expectPolicyMenuState(enabled)
+    expectPolicyControlsState(enabled)
     api.mockResolvedValueOnce([])
     fireEvent.click(screen.getByRole("button", { name: "Open project" }))
     const dialog = await screen.findByRole("dialog", { name: "Open a project" })
@@ -2819,11 +2842,11 @@ describe("AthenaWorkbench import edge policy", () => {
     restored.groups.at(-1)!.source.edge_policy = { element: "Zn", edge: "L3", fraction: 0.7 }
     act(() => { panelProps().onImported(restored, true); panelProps().onComplete() })
     expect(dialog).not.toBeInTheDocument()
-    expectPolicyMenuState(enabled)
+    expectPolicyControlsState(enabled)
     expect(api.mock.calls).toEqual([[`/projects/${project.id}`], ["/projects"]])
   })
 
-  it("keeps one policy across sample/reference batch requests and failed retries after Stop, then uses off for a new batch", async () => {
+  it("keeps one policy across sample/reference batch requests and failed retries after disabling enforcement, then uses off for a new batch", async () => {
     const project = await openSaved()
     await enableCopperPolicy()
     const inspections = ["first.dat", "second.dat", "third.dat"].map(name => inspectionFixture(name))
@@ -2833,8 +2856,8 @@ describe("AthenaWorkbench import edge policy", () => {
     const first = deferred<AthenaProject>()
     api.mockReturnValueOnce(first.promise).mockResolvedValueOnce(inspections[1]).mockRejectedValueOnce(new Error("Second sample normalization failed"))
     submitImport(dialog)
-    // Stopping is local, so it remains usable during an import. The accepted batch keeps its snapshot.
-    fireEvent.click(within(dialog).getByRole("button", { name: "Stop enforcing element and edge" }))
+    // Disabling enforcement is local and remains usable during an import. The batch keeps its snapshot.
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Enforce element and edge" }))
     expect(sessionStorage.getItem(edgePolicyStorageKey)).toBeNull()
     await act(async () => first.resolve(afterFirst))
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Second sample normalization failed")
@@ -2865,7 +2888,7 @@ describe("AthenaWorkbench import edge policy", () => {
     submitImport(dialog)
     await within(dialog).findByText(second.display_name)
     await waitFor(() => expect(within(dialog).getByRole("button", { name: "Import spectrum" })).toBeEnabled())
-    fireEvent.click(within(dialog).getByRole("button", { name: "Stop enforcing element and edge" }))
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Enforce element and edge" }))
     api.mockResolvedValueOnce(importedProject(afterFirst, second.display_name))
     submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
@@ -2882,7 +2905,7 @@ describe("AthenaWorkbench import edge policy", () => {
     api.mockResolvedValueOnce(afterFirst).mockRejectedValueOnce(new Error("Inspection unavailable"))
     submitImport(dialog)
     await within(dialog).findByRole("alert")
-    fireEvent.click(within(dialog).getByRole("button", { name: "Stop enforcing element and edge" }))
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Enforce element and edge" }))
     api.mockResolvedValueOnce(second)
     fireEvent.click(within(dialog).getByRole("button", { name: "Retry file inspection" }))
     await within(dialog).findByText(second.display_name)
@@ -2918,7 +2941,7 @@ describe("AthenaWorkbench import edge policy", () => {
     const first = inspectionFixture('first.dat'), tail = inspectionFixture('tail.dat')
     const { dialog, files } = await chooseImportFiles([first, tail])
     fireEvent.click(within(dialog).getByRole('checkbox', { name: 'This is reference' }))
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Stop enforcing element and edge' }))
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Enforce element and edge' }))
     const next = { ...first, upload_id: 'reinspected-upload' }
     api.mockResolvedValueOnce(next)
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reinspect selected file' }))
@@ -2961,7 +2984,7 @@ describe("AthenaWorkbench import edge policy", () => {
     const { dialog } = await chooseImportFiles([inspection])
     fireEvent.change(within(dialog).getByRole("combobox", { name: "Input format" }), { target: { value: "chi" } })
     fireEvent.click(screen.getByRole("checkbox", { name: "Show instruction" }))
-    expect(within(dialog).getByRole("button", { name: "About Import edge policy" })).toHaveAccessibleDescription(/χ\(k\) ignores it/)
+    expect(within(dialog).getByRole("button", { name: "About Import edge policy" })).toHaveAccessibleDescription(/χ\(k\) imports ignore it/)
     api.mockResolvedValueOnce(importedProject(project, inspection.display_name))
     submitImport(dialog)
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument())
@@ -3207,15 +3230,22 @@ describe("AthenaWorkbench E₀ selection", () => {
     expect(api.mock.calls.at(-1)?.[1]).toEqual({ version: 7, action: "set_e0", group_ids: ["sample"], options: { method: "manual", value: 8986 } })
   })
 
-  it.each(["empty", "chi", "difference", "frozen", "unmarked"] as const)("disables Apply for %s selections without sending an empty or unsupported request", async kind => {
+  it("omits the E₀ selector when the project has no spectra", async () => {
+    const initial = projectFixture({ groups: [] })
+    localStorage.setItem(storageKey, initial.id)
+    api.mockResolvedValueOnce(initial)
+    render(<AthenaWorkbench />)
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Opening project · complete"))
+    expect(screen.queryByRole("button", { name: "Select E₀…" })).not.toBeInTheDocument()
+    expect(api.mock.calls).toEqual([[`/projects/${initial.id}`]])
+  })
+
+  it.each(["chi", "difference", "frozen", "unmarked"] as const)("disables Apply for %s selections without sending an empty or unsupported request", async kind => {
     const initial = projectFixture()
-    if (kind === "empty") initial.groups = []
-    else {
-      if (kind === "chi") initial.groups.forEach(g => { g.data_type = "chi" })
-      if (kind === "difference") initial.groups.forEach(g => { g.source.operation = "difference" })
-      if (kind === "frozen") initial.groups.forEach(g => { g.frozen = true })
-      if (kind === "unmarked") initial.groups.forEach(g => { g.marked = false })
-    }
+    if (kind === "chi") initial.groups.forEach(g => { g.data_type = "chi" })
+    if (kind === "difference") initial.groups.forEach(g => { g.source.operation = "difference" })
+    if (kind === "frozen") initial.groups.forEach(g => { g.frozen = true })
+    if (kind === "unmarked") initial.groups.forEach(g => { g.marked = false })
     localStorage.setItem(storageKey, initial.id)
     api.mockResolvedValueOnce(initial)
     render(<AthenaWorkbench />)
