@@ -4,7 +4,7 @@ import styles from "./drxas-logo.module.css"
 
 export function DrXasLogo() {
   return <span className={styles.logo} role="img" aria-label="Dr.XAS logo">
-    <Image className={styles.light} src={appUrl("/logos/drxas-wordmark-light.png")} alt="" width={4260} height={1404} sizes="(max-width: 620px) 144px, 176px" loading="eager" />
-    <Image className={styles.dark} src={appUrl("/logos/drxas-wordmark-dark.png")} alt="" width={2547} height={843} sizes="(max-width: 620px) 144px, 176px" loading="eager" />
+    <Image className={styles.light} src={appUrl("/logos/drxas-mark-light.png")} alt="" width={1623} height={1491} sizes="44px" loading="eager" />
+    <Image className={styles.dark} src={appUrl("/logos/drxas-mark-dark.png")} alt="" width={1623} height={1491} sizes="44px" loading="eager" />
   </span>
 }

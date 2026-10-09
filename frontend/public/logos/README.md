@@ -9,4 +9,4 @@ Original PNG exports copied from `Dr_XAS/00_project_materials/UI_design_docs` on
 | `drxas-wordmark-light.png` | `1000ppi/Asset 10bare.png` | 4260 × 1404 |
 | `drxas-wordmark-dark.png` | `dark_mode_logo/600ppi/DrXAS_logo_darkbare.png` | 2547 × 843 |
 
-The workbench header uses the full wordmarks through `DrXasLogo`, which follows the app's `data-theme` setting. They display at 176 px wide on desktop and 144 px on small screens, retaining each original aspect ratio and transparency. The compact marks remain available for reuse. Public asset URLs go through `appUrl` so the logos also load when the app is mounted under `/advanced-xas/app`; Next.js serves optimized sizes for the header.
+The workbench header uses the compact circular marks through `DrXasLogo`, which follows the app's `data-theme` setting. They display at 44 px wide, retaining each original aspect ratio and transparency. The full wordmarks remain available for reuse. Public asset URLs go through `appUrl` so the logos also load when the app is mounted under `/advanced-xas/app`; Next.js serves optimized sizes for the header.
