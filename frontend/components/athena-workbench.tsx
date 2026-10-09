@@ -2471,7 +2471,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
 
   return <InstructionVisibility value={showInstruction}><main className="ath-app" onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (!busy && !registryPending && project) void queueFiles(Array.from(e.dataTransfer.files)) }}>
     <header className="ath-header"><div className="ath-brand"><DrXasLogo /><div className="ath-brand-copy">
-      <h1>XAScraft</h1>
+      <h1 aria-label="XAScraft">XAS<span className="ath-brand-craft">craft</span></h1>
       <p className="ath-brand-credits"><span>powered by <a href="https://xraypy.github.io/xraylarch/" target="_blank" rel="noreferrer">Xraylarch</a>, inspired by <a href="https://bruceravel.github.io/demeter/" target="_blank" rel="noreferrer">Demeter</a>,</span>{" "}<span>and developed by the Dr. XAS team.</span></p>
     </div></div>
       <nav aria-label="Main menu">
