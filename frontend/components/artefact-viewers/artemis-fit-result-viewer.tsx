@@ -9,22 +9,43 @@ import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
 import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls, ViewerToggle } from "./viewer-display-controls"
 import { ViewerKWeightControl } from "./viewer-kweight-control"
+import { ViewerComplexComponents } from "./viewer-complex-components"
+import type { ComplexComponent } from "./athena-plot"
 import { useArtemisPlotWeight } from "./artemis-plot-weight"
 import { ArtemisFitReport } from "./artemis-fit-report"
 import { useArtemisTheoryResult, type ArtemisTheoryResult } from "./artemis-theory-result"
 import { ArtemisTheorySummary } from "./artemis-theory-summary"
 import styles from "../artemis-fitting.module.css"
 
+const componentLabels: Record<ComplexComponent, string> = { mag: "|χ(R)|", re: "Re χ(R)", im: "Im χ(R)", pha: "Phase χ(R)" }
+const componentDashes: Record<ComplexComponent, string> = { mag: "solid", re: "dash", im: "dot", pha: "dashdot" }
+
+function rComponent(values: { mag: number[]; re: number[]; im: number[] }, component: ComplexComponent): number[] {
+  if (component !== "pha") return values[component]
+  if (!Array.isArray(values.re) || !Array.isArray(values.im) || values.re.length !== values.im.length ||
+    !values.re.every(Number.isFinite) || !values.im.every(Number.isFinite)) return []
+  // Match the spectrum viewer's np.unwrap(np.angle(chi(R))) in athena_science.py.
+  let previous = 0, correction = 0
+  return values.re.map((real, index) => {
+    const phase = Math.atan2(values.im[index], real)
+    const delta = phase - previous
+    if (index && Math.abs(delta) > Math.PI) correction -= Math.sign(delta) * 2 * Math.PI
+    previous = phase
+    return phase + correction
+  })
+}
+
 export function ArtemisFitResultViewer({ result, group, projectId, version, pending = false }: {
   result?: ArtemisFitResult | null; group?: AthenaGroup; projectId?: string; version?: number; pending?: boolean
 }) {
   const [space, setSpace] = useState<"k" | "r">("r")
-  const [component, setComponent] = useState<"mag" | "re" | "im">("mag")
+  const [components, setComponents] = useState<ComplexComponent[]>(["mag"])
+  const componentKey = space === "r" ? components.join(",") : "k"
   const [showPaths, setShowPaths] = useState(true)
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
   const [offsetPlot, setOffsetPlot] = useState(true)
-  const [offsetDraft, setOffsetDraft] = useState<{ result: ArtemisFitResult | ArtemisTheoryResult; space: "k" | "r"; component: "mag" | "re" | "im"; value: string } | null>(null)
+  const [offsetDraft, setOffsetDraft] = useState<{ result: ArtemisFitResult | ArtemisTheoryResult; space: "k" | "r"; componentKey: string; value: string } | null>(null)
   const [plotError, setPlotError] = useState(false)
   const [kWeight, setKWeight] = useState<number | null>(null)
   const [theoryChoice, setTheoryChoice] = useState<ArtemisFitResult | null>(null)
@@ -42,7 +63,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const retry = isTheory ? theoryPlot.retry : weightedPlot.retry
   const warnings = theory?.warnings ?? weightedPlot.warnings
   const plottedWeight = plotted?.k.weight ?? visible?.k.weight ?? 0
-  useEffect(() => { setPlotError(false) }, [visible, space, component, showPaths, offsetPlot, kWeight])
+  useEffect(() => { setPlotError(false) }, [visible, space, componentKey, showPaths, offsetPlot, kWeight])
   useEffect(() => {
     const element = plotRef.current
     if (!element) return
@@ -53,37 +74,48 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
     return () => observer?.disconnect()
   }, [])
   const fitted = weightedPlot.result
-  const series = theory ? space === "k" ? { x: theory.k.x, model: theory.k.total, data: null, residual: null }
-    : { x: theory.r.x, model: theory.r[`total_${component}`], data: null, residual: null }
-    : fitted ? space === "k" ? { x: fitted.k.x, data: fitted.k.data, model: fitted.k.model, residual: fitted.k.residual }
-    : { x: fitted.r.x, data: fitted.r[`data_${component}`], model: fitted.r[`model_${component}`], residual: fitted.r[`residual_${component}`] } : null
+  const x = plotted?.[space].x
+  const selectedComponents: ComplexComponent[] = space === "r" ? components : ["mag"]
+  const multipleComponents = space === "r" && components.length > 1
+  const separatePhase = multipleComponents && components.includes("pha")
   const paths = plotted?.paths ?? []
-  const pathCurves = paths.map(path => space === "k" ? path.k?.chi : path.r?.[component])
-  const pathsAvailable = paths.length > 0 && pathCurves.every(values => Array.isArray(values) && values.length === series?.x.length && values.every(Number.isFinite))
+  const series = selectedComponents.map(component => {
+    const data = theory ? space === "k" ? { model: theory.k.total, data: null, residual: null }
+      : { model: rComponent({ mag: theory.r.total_mag, re: theory.r.total_re, im: theory.r.total_im }, component), data: null, residual: null }
+      : fitted ? space === "k" ? { data: fitted.k.data, model: fitted.k.model, residual: fitted.k.residual }
+      : { data: rComponent({ mag: fitted.r.data_mag, re: fitted.r.data_re, im: fitted.r.data_im }, component),
+        model: rComponent({ mag: fitted.r.model_mag, re: fitted.r.model_re, im: fitted.r.model_im }, component),
+        residual: rComponent({ mag: fitted.r.residual_mag, re: fitted.r.residual_re, im: fitted.r.residual_im }, component) } : null
+    return { component, data, paths: paths.map(path => space === "k" ? path.k?.chi : path.r ? rComponent(path.r, component) : undefined) }
+  })
+  const pathSeries = series.length ? series.map(entry => entry.paths) : [paths.map(path => path.r?.mag)]
+  const pathsAvailable = paths.length > 0 && pathSeries.every(curves => curves.every(values => Array.isArray(values) && values.length === x?.length && values.every(Number.isFinite)))
   const pathsShown = showPaths && pathsAvailable
-  const curves = series ? [
-    ...(series.data ? [{ name: "Data", y: series.data, color: "#166d8d", dash: "solid", width: 2.4, tier: 0 }] : []),
-    { name: isTheory ? "Total theory" : "Model", y: series.model, color: "#db7835", dash: "solid", width: 2.4, tier: 0 },
-    ...(series.residual ? [{ name: "Residual", y: series.residual, color: "#8d5bab", dash: "dot", width: 1.4, tier: 1 }] : []),
+  const curves = series.flatMap(({ component, data, paths: pathCurves }) => data ? [
+    ...(data.data ? [{ name: "Data", y: data.data, color: "#166d8d", dash: "solid", width: 2.4, tier: 0 }] : []),
+    { name: isTheory ? "Total theory" : "Model", y: data.model, color: "#db7835", dash: "solid", width: 2.4, tier: 0 },
+    ...(data.residual ? [{ name: "Residual", y: data.residual, color: "#8d5bab", dash: "dot", width: 1.4, tier: 1 }] : []),
     ...(pathsShown ? paths.map((path, i) => ({ name: `Path ${i + 1} · ${path.label || path.filename}`, y: pathCurves[i]!,
       color: `hsl(${((i * 137.508 + 145) % 360).toFixed(1)}, 58%, 40%)`, dash: "solid", width: 1, tier: i + (isTheory ? 1 : 2) })) : []),
-  ] : []
+  ].map(curve => ({ ...curve, component, name: multipleComponents ? `${componentLabels[component]} · ${curve.name}` : curve.name,
+    dash: multipleComponents ? componentDashes[component] : curve.dash })) : [])
   // Include zero when measuring signed/magnitude curves, then use a compact
   // baseline step: a 0.14-high peak gets about 0.01 spacing at any plot weight.
   const largestSpan = curves.reduce((span, curve) => {
+    if (separatePhase && curve.component === "pha") return span
     let low = 0, high = 0
     for (const value of curve.y) { low = Math.min(low, value); high = Math.max(high, value) }
     return Math.max(span, high - low)
   }, 0)
   const automaticSpacing = largestSpan > 0 && Number.isFinite(largestSpan * 0.07) ? Number((largestSpan * 0.07).toPrecision(4)) : 1
-  const offsetText = offsetDraft && offsetDraft.result === plotted && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
+  const offsetText = offsetDraft && offsetDraft.result === plotted && offsetDraft.space === space && offsetDraft.componentKey === componentKey ? offsetDraft.value : String(automaticSpacing)
   const validSpacing = offsetText.trim() !== "" && Number.isFinite(Number(offsetText)) && Number(offsetText) >= 0 && Number(offsetText) <= Number.MAX_VALUE / Math.max(curves.length, 1)
   const spacing = validSpacing ? Number(offsetText) : automaticSpacing
   // Match the spectrum viewers' right-side legend and label wrapping.
   // Only display names wrap; hover labels retain the original full name.
   const legendLineLength = Math.max(10, Math.floor((plotWidth * 0.4 - 48) / 7))
-  const traces = series ? curves.map(curve => {
-    const offset = offsetPlot ? -curve.tier * spacing : 0
+  const traces = x ? curves.map(curve => {
+    const offset = offsetPlot && !(separatePhase && curve.component === "pha") ? -curve.tier * spacing : 0
     const characters = Array.from(curve.name)
     const lines: string[] = []
     if (plotWidth) {
@@ -91,17 +123,23 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
     }
     // The residual is drawn by default: a misfit is the first thing a reader of
     // an EXAFS fit should be able to see, not something to find in the legend.
-    return { type: "scatter", mode: "lines", name: lines.length ? lines.join("<br>") : curve.name, meta: { legendLabel: curve.name }, x: series.x.slice(), y: curve.y.map(value => value + offset),
+    return { type: "scatter", mode: "lines", name: lines.length ? lines.join("<br>") : curve.name, meta: { legendLabel: curve.name }, x: x.slice(), y: curve.y.map(value => value + offset),
+      yaxis: separatePhase && curve.component === "pha" ? "y2" : "y",
       visible: true,
       customdata: curve.y.map(value => [value, offset]),
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{meta.legendLabel}</extra>`,
       line: { color: curve.color, width: curve.width, dash: curve.dash } }
   }) : []
+  const amplitudeTitle = components.filter(component => component !== "pha").map(component => componentLabels[component]).join(", ")
+  const yTitle = space === "k" ? `k<sup>${plottedWeight}</sup>χ(k) (Å<sup>−${plottedWeight}</sup>)`
+    : amplitudeTitle ? `${amplitudeTitle} (Å<sup>−${plottedWeight + 1}</sup>)` : "Phase χ(R) (rad)"
   return <ViewerPanel title={isTheory ? "EXAFS theory" : "EXAFS fit"} label={isTheory ? "EXAFS theory results" : "EXAFS fit results"} viewerId="fit" className={styles.viewer} help={<>
     {isTheory ? "The saved FEFF paths are summed at the supplied simulation parameters. No measured data or fit is involved. The original simulation Fourier settings are used. " : "Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model."}
-    {visible && <>{!isTheory && (space === "r" && component === "mag" ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. ")}
-      {pathsShown && space === "r" && component === "mag" && (isTheory ? "Individual path magnitudes do not add to the total magnitude; the complex path contributions add before taking the magnitude. " : "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. ")}
+    {visible && <>{!isTheory && (space === "r" && components.includes("mag") ? "Residual is |FT(data − model)|, not the difference of magnitudes. " : "Residual = data − model. ")}
+      {!isTheory && space === "r" && components.includes("pha") && "Residual phase is the phase of FT(data − model), not the difference of phases. "}
+      {pathsShown && space === "r" && components.includes("mag") && (isTheory ? "Individual path magnitudes do not add to the total magnitude; the complex path contributions add before taking the magnitude. " : "Individual path magnitudes do not add to the model magnitude; the complex path contributions add before taking the magnitude. ")}
       {offsetPlot && (isTheory ? "Offsets affect display only: Total theory stays at zero offset and each path uses a successively lower baseline. " : "Offsets affect display only: Data and Model share zero offset; Residual and each path use successively lower baselines. ")}
+      {offsetPlot && separatePhase && "Phase curves on the radians axis are not offset. "}
       Plot k-weight {plottedWeight}{fit && <>; fit weights {fit.transform.kweight.join(", ")}</>}.</>}
   </>} actions={<div className={styles.resultActions}>
     {theoryGroup && matchingFit && <div className={styles.choice} role="group" aria-label="EXAFS result type">
@@ -109,7 +147,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       <button type="button" aria-pressed={isTheory} onClick={() => setTheoryChoice(matchingFit)}>Theory</button>
     </div>}
     <div className={styles.choice} role="group" aria-label={isTheory ? "Theory plot space" : "Fit plot space"}>{(["k", "r"] as const).map(value => <button type="button" key={value} aria-pressed={space === value} onClick={() => setSpace(value)}>{value === "r" ? "R space" : "k space"}</button>)}<SectionHelp label={isTheory ? "Theory plot space" : "Fit plot space"}>{isTheory ? "View the theoretical total and its paths in k space or after the Fourier transform in R space." : "Compare the saved data and model in k space or after the Fourier transform in R space. Changing the plot space does not repeat the fit."}</SectionHelp></div>
-    {visible && space === "r" && <div className={styles.choice} role="group" aria-label="R plot component">{([ ["mag", "Magnitude"], ["re", "Real"], ["im", "Imaginary"] ] as const).map(([value, label]) => <button type="button" key={value} aria-pressed={component === value} onClick={() => setComponent(value)}>{label}</button>)}<SectionHelp label="R plot component">Magnitude shows |χ(R)|; Real and Imaginary show its signed complex components. Use the signed components to inspect how paths interfere before their complex sum is converted to magnitude.</SectionHelp></div>}
+    {visible && space === "r" && <ViewerComplexComponents value={components} onChange={setComponents} />}
   </div>}>
     <ResizablePlotCard storageKey="artemis.fit.height.v1" defaultHeight={380} plotSelector="#artemis-fit-plot" resizeLabel={isTheory ? "Resize EXAFS theory plot height" : "Resize EXAFS fit plot height"} controlsId="artemis-fit-plot">
       {fit?.archive && <div className={styles.message} role="status">
@@ -122,14 +160,16 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       <div id="artemis-fit-plot" ref={plotRef} className={styles.plot}>
         {loading ? <p className={styles.empty} role="status">{isTheory ? "Loading theory path contributions…" : "Updating fit plot transform…"}</p>
           : error ? <div className={styles.empty} role="alert"><p>{error}</p><button type="button" onClick={retry}>Try again</button></div>
-          : !visible || !series ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : isTheory ? "No saved theory result" : "No fit result"}</p>
+          : !visible || !x ? <p className={styles.empty} role="status">{pending ? "Waiting for spectrum processing…" : isTheory ? "No saved theory result" : "No fit result"}</p>
+          : !selectedComponents.length ? <p className={styles.empty} role="status">No components selected<SectionHelp label="EXAFS plot components">Select Magnitude, Real, Imaginary, or Phase above to display the curves.</SectionHelp></p>
           : plotError ? <p className={styles.empty} role="alert">Could not render the {isTheory ? "theory" : "fit"} plot. The numerical {isTheory ? "calculation details" : "results and report"} remain available below.</p>
             : <Plot data={traces}
-              layout={{ autosize: true, margin: { l: 65, r: 22, t: 18, b: 56 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+              layout={{ autosize: true, margin: { l: 65, r: separatePhase ? 72 : 22, t: 18, b: 56 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
                 font: { color: "#52665b" },
                 xaxis: { title: { text: space === "k" ? "k (Å⁻¹)" : "R (Å, not phase corrected)" }, gridcolor: "#e6ece4", ...(space === "r" ? { range: [0, Math.max(6, visible.transform.rmax + 1)] } : {}) },
-                yaxis: { title: { text: (space === "k" ? `k<sup>${plottedWeight}</sup>χ(k) (Å<sup>−${plottedWeight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${plottedWeight + 1}</sup>)`) + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
-                legend: { orientation: "v", x: 0.99, xanchor: "right", y: 0.99, yanchor: "top", maxheight: 1, bgcolor: "rgba(0,0,0,0)" }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
+                yaxis: { title: { text: yTitle + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf", automargin: true },
+                ...(separatePhase ? { yaxis2: { title: { text: "Phase χ(R) (rad)" }, overlaying: "y", side: "right", showgrid: false, automargin: true } } : {}),
+                legend: { orientation: "v", x: 0.99, xanchor: "right", y: 0.99, yanchor: "top", maxheight: 1, bgcolor: "rgba(0,0,0,0)" }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${componentKey}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
                 shapes: isTheory && space === "r" ? [] : [{ type: "rect", xref: "x", yref: "paper", x0: space === "k" ? visible.transform.kmin : visible.transform.rmin,
                   x1: space === "k" ? visible.transform.kmax : visible.transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }],
               }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-${isTheory ? "theory" : "fit"}-${space}-k${plottedWeight}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}
@@ -139,7 +179,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
           <ViewerToggle label="Offset plot" help={isTheory ? "Separate the individual paths vertically below the total theory. Offsets only change the display." : "Separate the residual and individual paths vertically. Data and model keep the same baseline; offsets only change the display."} checked={offsetPlot} onChange={setOffsetPlot} />
           {offsetPlot && <>
             <ViewerControlField label="Spacing" help="Set the nonnegative vertical distance between curves, or use Auto to restore automatic spacing. This does not change the calculated amplitudes."><input type="number" min="0" step="any" aria-label="Offset spacing" aria-invalid={!validSpacing} value={offsetText}
-              onChange={event => setOffsetDraft({ result: plotted!, space, component, value: event.target.value })} /></ViewerControlField>
+              onChange={event => setOffsetDraft({ result: plotted!, space, componentKey, value: event.target.value })} /></ViewerControlField>
             <button type="button" onClick={() => setOffsetDraft(null)} title="Use automatic spacing for the visible curves">Auto</button>
           </>}
         </ViewerControlGroup>

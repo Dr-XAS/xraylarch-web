@@ -85,7 +85,7 @@ and up to four legs. The first four files in FEFF order are:
 In the **EXAFS fit** viewer, enable **Show paths** to overlay each included FEFF
 path evaluated with the fitted parameters. Path curves use the same k grid,
 Fourier transform, and plot k-weight as the total model. They are available in
-k space and in the magnitude, real, and imaginary R-space views. The legend
+k space and in the magnitude, real, imaginary, and phase R-space views. The legend
 identifies individual paths and can hide or isolate their curves.
 
 **Offset plot** is enabled by default with compact spacing, about 7% of the
@@ -163,7 +163,7 @@ addition. Simulation previews save nothing until this action is chosen.
 
 Highlight a theory group to show it in the **EXAFS fit viewer**, which switches
 to **EXAFS theory**. It displays the total theory and individual path contributions
-in k space or R-space magnitude, real, and imaginary components. Display k-weight
+in k space or R-space magnitude, real, imaginary, and phase components. Display k-weight
 (0–3), path visibility, and vertical offsets do not change the saved simulation.
 The details show supplied simulation parameters and path lengths; no data,
 residual, fitted uncertainty, correlation, or fit statistic is presented.
@@ -702,9 +702,16 @@ when the saved fit includes individual path curves; uncheck it to hide them.
 The legend uses a transparent, vertical column at the upper right, matching the
 Single and Multiple spectrum viewers. Long labels wrap within that column;
 hover labels retain their complete names.
-R plots offer
-magnitude, real, and imaginary components. The magnitude residual is
+R plots use the same **Magnitude**, **Real**, **Imaginary**, and **Phase**
+checkboxes as the spectrum viewers. Select several to overlay components with
+distinct line styles and shared colors for each data, model, residual, or path
+curve. Selections are retained when switching to k space and back; clearing
+all components shows an empty-plot prompt. Phase is unwrapped in radians from
+the saved real and imaginary curves and uses its own axis when overlaid with
+amplitude. Phase curves on that separate axis receive no amplitude display
+offset. These display choices do not repeat the fit. The magnitude residual is
 `abs(FT(data - model))`, not the difference between the data and model magnitudes.
+The phase residual is the phase of `FT(data - model)`, not the difference of phases.
 Plots use the first selected fit k weight; the optimizer uses all selected
 weights. Statistics, fitted parameter values, uncertainties, correlations,
 and fit settings appear below the plot. The complete original Larch text is
