@@ -230,6 +230,30 @@ def test_conversion_failure_is_terminal_and_releases_capacity(tmp_path, monkeypa
     slot1.close(); slot2.close()
 
 
+@pytest.mark.parametrize("limit, expected", [(None, 101), (60, 60)])
+def test_full_simulation_jobs_retain_every_generated_path(tmp_path, monkeypatch, limit, expected):
+    jobs = FeffJobs(tmp_path)
+    directory = tmp_path / ("d" * 32)
+    directory.mkdir()
+    class Slot:
+        closed = False
+        def close(self): self.closed = True
+    slot = Slot()
+    record = {"id": directory.name, "provenance": {}, "warnings": []}
+    monkeypatch.setattr(structures, "_prepare_input", lambda *_: "TITLE synthetic")
+    monkeypatch.setattr(structures, "inspect_path", lambda path: dict(filename=path.filename, content=path.content, metadata={}))
+    for index in range(101):
+        (directory / f"feff{index + 1:04d}.dat").write_text("synthetic path")
+    jobs._run(directory, record, request(max_paths=limit), {"cif": "data_test"}, {}, slot)
+    assert record["status"] == "complete"
+    assert record["total_paths"] == 101
+    assert record["truncated"] is (limit is not None)
+    paths = json.loads((directory / "paths.json").read_text())
+    assert len(paths) == expected
+    assert paths[-1]["id"] == f"feff{expected:04d}"
+    assert slot.closed
+
+
 def test_failed_status_write_still_releases_job_slot(tmp_path, monkeypatch):
     jobs = FeffJobs(tmp_path)
     class Slot:

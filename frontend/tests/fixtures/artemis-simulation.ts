@@ -3,7 +3,7 @@ import { simulationDefaults, simulationRequest, type SimulationResult } from "@/
 
 export const simulationJob: ArtemisFeffJob = {
   id: "a".repeat(32), status: "complete", stage: "done", message: "Done", log: "", elapsed_seconds: 1,
-  request: { absorber: "Cu", edge: "K", site_index: 1, cluster_radius: 3, path_radius: 3, max_legs: 2, max_paths: 60 },
+  request: { absorber: "Cu", edge: "K", site_index: 1, cluster_radius: 3, path_radius: 3, max_legs: 4, max_paths: null },
   provenance: { cif: "data_copper", feff_input: "TITLE copper", structure: { id: "cif-test", provider: "uploaded", filename: "copper.cif", mineral: "Copper", formula: "Cu", space_group: "Fm-3m", authors: "", year: null, journal: "", title: "" } },
   paths: [{ id: "feff0001", filename: "feff0001.dat", content: "FEFF test path", metadata: { reff: 2.56, degen: 12, nleg: 2, absorber: "Cu", edge: "K", kmin: 0, kmax: 20, geometry: [] } }],
   total_paths: 1, truncated: false, warnings: [],

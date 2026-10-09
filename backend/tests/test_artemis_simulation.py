@@ -58,13 +58,13 @@ def test_native_sum_and_fourier_parity_with_explicit_disorder(job, tmp_path):
 
 
 def test_all_paths_can_exceed_fit_limit_and_scale_linearly(job):
-    job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(30)]
-    job["total_paths"] = 30
+    job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(101)]
+    job["total_paths"] = 101
     result = simulate_job(job, SimulationRequest())
     single = simulate_job(job, SimulationRequest(path_ids=["p0"], s02=0.5))
-    assert len(result["paths"]) == 30
-    np.testing.assert_allclose(result["k"]["chi"], np.array(single["k"]["chi"]) * 51, atol=1e-12)
-    assert "Only 1 of 30" in single["warnings"][0]
+    assert len(result["paths"]) == 101
+    np.testing.assert_allclose(result["k"]["chi"], np.array(single["k"]["chi"]) * (101 * 0.85 / 0.5), atol=1e-12)
+    assert "Only 1 of 101" in single["warnings"][0]
 
 
 @pytest.mark.parametrize("body", [{"path_ids": []}, {"path_ids": ["a", "a"]}, {"s02": -1}, {"sigma2": -0.001},
@@ -193,6 +193,8 @@ def test_addition_uses_current_cif_name_unless_spectrum_name_is_explicit(owned_s
 @pytest.mark.parametrize("format", ["json", "prj"])
 def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation, format):
     store, jobs, original, job = owned_simulation
+    job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(200)]
+    job["total_paths"] = 200
     saved = add_simulation(store, jobs, original["id"], addition(original, job))
     group = saved["groups"][0]
     payload = json.dumps(saved).encode() if format == "json" else store.export_project(saved["id"], format="prj")
@@ -209,7 +211,7 @@ def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation,
     assert reopened["processing_error"] is None
     replay = view_simulation(reopened)
     np.testing.assert_allclose(replay["k"]["chi"], group["mu"], atol=1e-12)
-    assert len(replay["paths"]) == 4
+    assert len(replay["paths"]) == 200
     assert replay["simulation"]["request"] == group["source"]["simulation"]["request"]
 
 
@@ -313,14 +315,14 @@ def test_saved_theory_view_preserves_recipe_and_native_path_sums(owned_simulatio
 
 def test_saved_theory_view_exceeds_fit_path_limit_and_labels_modified_data(owned_simulation):
     store, jobs, original, job = owned_simulation
-    job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(30)]
-    job["total_paths"] = 30
+    job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(101)]
+    job["total_paths"] = 101
     saved = add_simulation(store, jobs, original["id"], addition(original, job))
     group = saved["groups"][0]
     group["mu"][20] += 0.01
     group["parameters"]["kmax"] = 8
     result = view_simulation(group)
-    assert len(result["paths"]) == 30
+    assert len(result["paths"]) == 101
     assert result["transform"]["kmax"] == 12
     assert any("original theory" in warning for warning in result["warnings"])
 

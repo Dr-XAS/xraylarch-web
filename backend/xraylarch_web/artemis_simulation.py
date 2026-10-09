@@ -26,7 +26,7 @@ def register_simulation_route(router, jobs, store):
                     body=_model_options("artemis_simulation:SimulationRequest"),
                     transform=_model_options("artemis_simulation:SimulationTransform"),
                     notes=[
-                        "Requires a completed FEFF job, no measured group or fit. Omit path_ids for all available paths (up to 100).",
+                        "Requires a completed FEFF job, no measured group or fit. Omit path_ids for all available paths. Create the FEFF job with max_paths=null to retain every generated path.",
                         "Shared defaults: S0 squared 0.85, sigma squared 0.003 A squared, delta E0 0 eV and delta R 0 A. Sigma squared is an assumption, not inferred from CIF displacement factors or temperature.",
                         "One absorbing site, native FEFF degeneracies; no automatic site-population average. Inspect warnings for omitted paths.",
                         "Full replies include unweighted k.chi, weighted k.total, complex Fourier curves and exact CIF/FEFF/path sources. Summary elides arrays and omits source files. Nothing is saved to the project.",
@@ -76,7 +76,7 @@ class SimulationTransform(FitTransform):
 
 
 class SimulationRequest(StrictModel):
-    path_ids: list[str] | None = Field(default=None, min_length=1, max_length=100)
+    path_ids: list[str] | None = Field(default=None, min_length=1)
     s02: float = Field(default=0.85, ge=0, le=2)
     sigma2: float = Field(default=0.003, ge=0, le=0.1)
     e0: float = Field(default=0, ge=-50, le=50)
@@ -192,7 +192,7 @@ def add_simulation(store, jobs, ident: str, request: AddSimulationRequest, *, id
 class SimulationPaths(PathPreviewRequest):
     # Forward sums can use the complete job; the 24-path fit limit still applies
     # to fitting and its interactive model preview.
-    paths: list[FitPath] = Field(min_length=1, max_length=100)
+    paths: list[FitPath] = Field(min_length=1)
 
 
 class SimulationViewRequest(StrictModel):
@@ -219,7 +219,7 @@ def view_simulation(group: dict, kweight: int | None = None) -> dict:
         request = SimulationRequest.model_validate(info["request"])
         scalars = {key: str(getattr(request, key)) for key in ("s02", "sigma2", "e0", "deltar")}
         files = feff["paths"]
-        if not isinstance(files, list) or not 1 <= len(files) <= 100:
+        if not isinstance(files, list) or not files:
             raise ValueError("Invalid path files")
         paths = [FitPath.model_validate(dict(path, **scalars)) for path in files]
         ids = [path.id for path in paths]
@@ -228,7 +228,7 @@ def view_simulation(group: dict, kweight: int | None = None) -> dict:
                 or not all(path.enabled for path in paths)):
             raise ValueError("Inconsistent path selection")
         available, total = info["available_paths"], info["total_paths"]
-        if type(available) is not int or type(total) is not int or not len(ids) <= available <= 100 or total < available:
+        if type(available) is not int or type(total) is not int or available < len(ids) or total < available:
             raise ValueError("Invalid path counts")
         assumptions = info["assumptions"]
         warnings = source.get("warnings", [])

@@ -131,35 +131,38 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe("ArtemisStructures", () => {
-  it("opens simulation from the chosen CIF row and clears another CIF's generated paths without calculating automatically", async () => {
+  it("opens a separate simulation form for the chosen CIF and automatically includes all paths", async () => {
     const copper = attachment()
     const cuprite = { ...attachment(), id: "cif2", amcsd_id: 13089, structure: structure({ id: 13089, mineral: "Cuprite", formula: "Cu2O", cif: "data_Cu2O" }) }
     savedAttachments = [copper, cuprite]
-    const onViewStructure = vi.fn()
-    render(<Harness contextKey="p:cu" spectrumEdge={{ element: "Cu", edge: "K" }} availableSlots={24} onAddPaths={addPathsMock()} onViewStructure={onViewStructure} />)
+    const onViewStructure = vi.fn(), onAddPaths = addPathsMock()
+    render(<Harness contextKey="p:cu" spectrumEdge={{ element: "Cu", edge: "K" }} availableSlots={0} onAddPaths={onAddPaths} onViewStructure={onViewStructure} />)
     const region = screen.getByRole("region", { name: "Project CIF structures" })
-    expect(within(region).getByRole("button", { name: "Simulate EXAFS from CIF" })).toBeEnabled()
-    const simulateCuprite = await within(region).findByRole("button", { name: "Simulate EXAFS from Cuprite CIF" })
-    expect(simulateCuprite).toHaveTextContent("Simulate EXAFS")
-    await act(async () => { fireEvent.click(simulateCuprite) })
-    expect(screen.getByLabelText("FEFF crystal structure")).toHaveValue("cif2")
+    const launch = await within(region).findByRole("button", { name: "Simulate EXAFS from Cuprite CIF" })
+    await act(async () => { fireEvent.click(launch) })
+    expect(screen.getByRole("dialog", { name: "Simulate EXAFS" })).toBeVisible()
+    expect(screen.getByLabelText("Simulation crystal structure")).toHaveValue("cif2")
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", cuprite.structure.cif)
     expect(screen.getByRole("radio", { name: "Absorber site 3" })).toBeChecked()
     expect(onViewStructure).toHaveBeenLastCalledWith("cif2", 3)
     expect(api.mock.calls.filter(([, body]) => body !== undefined)).toEqual([])
-
-    await click("Run FEFF calculation")
-    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "cif2", absorber: "Cu", site_index: 3 }), expect.any(AbortSignal))
-    expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
-    await click("Close FEFF paths")
+    expect(screen.queryByRole("button", { name: "Run FEFF calculation" })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("FEFF maximum paths")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Simulation paths")).not.toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText("Simulation maximum R"), { target: { value: "5.5" } })
+    await click("Run EXAFS simulation")
+    expect(api).toHaveBeenCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "cif2", absorber: "Cu", site_index: 3, cluster_radius: 5.5, path_radius: 5.5, max_paths: null, max_legs: 4 }), expect.any(AbortSignal))
+    expect(api).toHaveBeenCalledWith(expect.stringMatching(/\/simulate$/), expect.objectContaining({ path_ids: null }), expect.any(AbortSignal))
+    expect(screen.queryByRole("checkbox", { name: /^Select generated / })).not.toBeInTheDocument()
+    expect(onAddPaths).not.toHaveBeenCalled()
+    await click("Close EXAFS simulation")
     await act(async () => { fireEvent.click(within(region).getByRole("button", { name: "Simulate EXAFS from Copper CIF" })) })
-    expect(screen.getByLabelText("FEFF crystal structure")).toHaveValue("cif1")
+    expect(screen.getByLabelText("Simulation crystal structure")).toHaveValue("cif1")
     expect(screen.getByTestId("cif-viewer")).toHaveAttribute("data-cif", copper.structure.cif)
-    expect(screen.queryByRole("checkbox", { name: "Select generated feff0001.dat" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(api.mock.calls.filter(([url]) => url === "/feff/jobs")).toHaveLength(1)
-    await click("Run FEFF calculation")
-    expect(api).toHaveBeenLastCalledWith("/feff/jobs", expect.objectContaining({ attachment_id: "cif1" }), expect.any(AbortSignal))
-    expect(api.mock.calls.some(([url]) => url.endsWith("/simulate"))).toBe(false)
+    fireEvent.change(screen.getByLabelText("Simulation maximum R"), { target: { value: "" } })
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeDisabled()
   })
 
   it("keeps an unsupported CIF's simulation action visible but disabled", async () => {
@@ -173,33 +176,26 @@ describe("ArtemisStructures", () => {
     expect(api.mock.calls.filter(([, body]) => body !== undefined)).toEqual([])
   })
 
-  it("defaults every generated checkbox to All and keeps custom selection synchronized across reopening", async () => {
+  it("keeps fitting path selection across reopening without exposing simulation controls", async () => {
     setup()
     await findAndSelect()
     await generate()
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
     for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
     expect(screen.getByRole("button", { name: "Add selected paths (2)" })).toBeEnabled()
 
     fireEvent.click(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" }))
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
-    expect(screen.getByRole("option", { name: "Selected paths (1)" })).toBeInTheDocument()
     await click("Close")
     await openFeff()
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).not.toBeChecked()
 
-    fireEvent.change(screen.getByLabelText("Simulation paths"), { target: { value: "all" } })
-    for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
     selectGeneratedPaths("feff0001.dat")
     await generate()
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
     for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
     expect(api.mock.calls.some(([url]) => url.endsWith("/simulate"))).toBe(false)
   })
 
-  it("selects all simulation paths beyond fit capacity while guarding Add and Replace independently", async () => {
+  it("guards Add and Replace independently for generated fitting paths", async () => {
     const existing = [{ filename: "uploaded.dat", content: "uploaded path", enabled: true }]
     const onAddPaths = addPathsMock()
     render(<Harness contextKey="p:cu" availableSlots={23} existingPaths={existing} onAddPaths={onAddPaths} />)
@@ -208,10 +204,9 @@ describe("ArtemisStructures", () => {
     const paths = Array.from({ length: 25 }, (_, index) => ({ ...job().paths[0], id: `path${index + 1}`, filename: `feff${String(index + 1).padStart(4, "0")}.dat`, content: `path ${index + 1}` }))
     api.mockResolvedValueOnce(job("complete", { paths, total_paths: paths.length }))
     await generate()
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
     expect(screen.getAllByRole("checkbox", { name: /^Select generated / })).toHaveLength(25)
     for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
-    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "Run EXAFS simulation" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add selected paths (25)" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /Replace the model’s 1 path with selected \(25\)/ })).toBeDisabled()
 
@@ -237,7 +232,7 @@ describe("ArtemisStructures", () => {
       parameters: {} as AthenaGroup["parameters"], result: null, processing_error: null }
     const defaultApi = api.getMockImplementation()!
     api.mockImplementation(async (url, body, signal, options) => {
-      if (url === "/feff/jobs") return { ...generated, request: body as ArtemisFeffRequest }
+      if (url === "/feff/jobs") { simulation.source.request = body as ArtemisFeffRequest; return { ...generated, request: body as ArtemisFeffRequest } }
       if (url.endsWith("/simulate")) return simulation
       if (url === "/projects/p/simulation") return { ...project(), version: 8, groups: [group], last_operation: { action: "simulation", skipped_group_ids: [], simulation: { group_id: group.id } } }
       return defaultApi(url, body, signal, options)
@@ -245,18 +240,18 @@ describe("ArtemisStructures", () => {
     render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange}
       prepareMutation={vi.fn().mockResolvedValueOnce({ version: 1, finish: () => {} }).mockImplementationOnce(() => preparation.promise)} />)
     fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
-    await findAndSelect(); await generate()
+    await findAndSelect(); await click("Close FEFF paths"); await click("Simulate EXAFS from CIF"); fireEvent.click(screen.getByRole("radio", { name: "Absorber site 3" }))
     await click("Run EXAFS simulation")
     await screen.findByTestId("simulation-result")
     await click("Add to data list")
-    expect(screen.getByRole("button", { name: "Close FEFF paths" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Close EXAFS simulation" })).toBeDisabled()
     expect(api.mock.calls.filter(([url]) => url.endsWith("/simulation"))).toHaveLength(0)
     await act(async () => preparation.resolve({ version: 7, finish }))
     await screen.findByRole("button", { name: "Added to data list" })
     expect(api).toHaveBeenCalledWith("/projects/p/simulation", { version: 7, feff_job_id: generated.id, simulation: simulation.simulation.request }, undefined, { idempotencyKey: expect.any(String) })
     expect(onProjectChange).toHaveBeenLastCalledWith(expect.objectContaining({ version: 8, groups: [group] }))
     expect(finish).toHaveBeenCalledOnce()
-    expect(screen.getByRole("button", { name: "Close FEFF paths" })).toBeEnabled()
+    expect(screen.getByRole("button", { name: "Close EXAFS simulation" })).toBeEnabled()
   })
   it("renames only the chosen CIF and retains the generated paths and source metadata", async () => {
     const original = attachment()
@@ -917,7 +912,7 @@ describe("ArtemisStructures", () => {
     expect(onProjectChange).not.toHaveBeenCalled()
   })
 
-  it("unions shell selections for simulation while enforcing capacity on Add", async () => {
+  it("unions fitting shell selections while enforcing capacity on Add", async () => {
     const generated = job()
     for (const path of generated.paths) path.metadata.geometry.push({ atom: "Cu", ipot: 1, x: path.metadata.reff, y: 0, z: 0 })
     const analysis = { ...radialFixture, cif: structure().cif, absorber: "Cu", site_index: 3,
@@ -940,10 +935,9 @@ describe("ArtemisStructures", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeChecked()
     expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeChecked()
-    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "Run EXAFS simulation" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Add selected paths (2)" })).toBeDisabled()
     await click("Deselect shell 1 paths")
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
     expect(screen.getByRole("checkbox", { name: "Select generated feff0002.dat" })).toBeChecked()
     expect(screen.getByRole("button", { name: "Add selected paths (1)" })).toBeEnabled()
   })
@@ -1197,7 +1191,6 @@ describe("ArtemisStructures", () => {
     expect(screen.getByRole("button", { name: "Calculating FEFF…" })).toBeDisabled()
     await act(async () => { await vi.advanceTimersByTimeAsync(1200) })
     expect(screen.getByText("FEFF calculation complete")).toBeVisible()
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("all")
     for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).toBeChecked()
     expect(screen.getByRole("button", { name: "Add selected paths (2)" })).toBeDisabled()
     selectGeneratedPaths("feff0001.dat")
@@ -1206,12 +1199,11 @@ describe("ArtemisStructures", () => {
     expect(onAddPaths).toHaveBeenCalledExactlyOnceWith([{ ...job().paths[0], id: undefined,
       metadata: { ...job().paths[0].metadata, sourceCif: { sha256: attachment().sha256, attachmentId: "cif1", label: "Copper · AMCSD 0013088", siteIndex: 3 } },
       label: "Copper · AMCSD 0013088 · Cu site 3 · feff0001.dat" }].map(({ id: _id, ...path }) => path))
-    expect(screen.getByLabelText("Simulation paths")).toHaveValue("selected")
     for (const checkbox of screen.getAllByRole("checkbox", { name: /^Select generated / })) expect(checkbox).not.toBeChecked()
     expect(screen.getByRole("checkbox", { name: "Select generated feff0001.dat" })).toBeEnabled()
     selectGeneratedPaths("feff0001.dat")
     expect(screen.getByRole("button", { name: "Add selected paths (0)" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
+    expect(screen.queryByRole("button", { name: "Run EXAFS simulation" })).not.toBeInTheDocument()
     expect(screen.getByText(/Added 1 generated path/)).toBeVisible()
     expect(screen.getByText("FEFF input")).toBeVisible()
   })

@@ -51,7 +51,7 @@ function spectrumDefaults(structure: ArtemisStructure, spectrumEdge?: EdgePair |
 
 export function ArtemisStructures({ children, contextKey, spectrumEdge, projectId, version, onProjectChange, prepareMutation, onViewStructure, onFirstShellChange, onRadialContextChange, disabled = false, availableSlots, existingPaths, onAddPaths }: Props) {
   const [open, setOpen] = useState(false)
-  const [dialogMode, setDialogMode] = useState<"structure" | "feff">("structure")
+  const [dialogMode, setDialogMode] = useState<"structure" | "feff" | "simulation">("structure")
   const dialog = useRef<HTMLDialogElement>(null)
   const viewerAnchor = useRef<HTMLDivElement>(null)
   const uploadInput = useRef<HTMLInputElement>(null)
@@ -93,6 +93,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const previousEdge = useRef(edge)
   const [clusterRadius, setClusterRadius] = useState("5")
   const [pathRadius, setPathRadius] = useState("4")
+  const [simulationRadius, setSimulationRadius] = useState("5")
   const [maxLegs, setMaxLegs] = useState("4")
   const [maxPaths, setMaxPaths] = useState("60")
   const [busy, setBusy] = useState<"search" | "structure" | "job" | "attach" | null>(null)
@@ -101,7 +102,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const [savingName, setSavingName] = useState(false)
   const renamePending = useRef(false)
   const [job, setJob] = useState<ArtemisFeffJob | null>(null)
-  // null selects every path in the current job for both simulation and the list.
+  // null selects every path in the current fitting job.
   const [selectedIds, setSelected] = useState<string[] | null>(null)
   const selected = selectedIds ?? job?.paths.map(path => path.id) ?? []
   const [added, setAdded] = useState<string[]>([])
@@ -131,8 +132,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const mutationPending = attachPending || removingId !== null || savingName || addingSpectrum
   const controlsDisabled = disabled || mutationPending || addingPaths
   const addedIds = existingPaths === undefined ? added : job?.paths.filter(path => existingPaths.some(existing => existing.filename === path.filename && existing.content === path.content)).map(path => path.id) ?? []
-  // Simulation may use every path. Enforce fit capacity only when adding or
-  // replacing the model; Add skips paths already there and fills open slots.
+  // Enforce fit capacity when adding or replacing the model; Add skips paths already there.
   const canReplace = !!existingPaths?.length
   const selectionLimit = canReplace ? availableSlots + existingPaths!.length : availableSlots
   const newSelected = selected.filter(id => !addedIds.includes(id))
@@ -161,7 +161,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     }
   }
 
-  function openDialog(mode: "structure" | "feff" = "structure") {
+  function openDialog(mode: "structure" | "feff" | "simulation" = "structure") {
     setRenaming(null)
     setDialogMode(mode)
     if (!open) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null
@@ -210,7 +210,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     return () => abort.abort()
   }, [projectId, version, listRevision])
 
-  function openAttachment(attachment: ArtemisStructureAttachment, mode: "structure" | "feff" = "structure") {
+  function openAttachment(attachment: ArtemisStructureAttachment, mode: "structure" | "feff" | "simulation" = "structure") {
     if (mutationPending) return
     const defaults = spectrumDefaults(attachment.structure, spectrumEdge)
     if (attachmentId !== attachment.id) {
@@ -232,6 +232,11 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   function openFeffDialog() {
     if (!attachmentId && attachments.length === 1) openAttachment(attachments[0], "feff")
     else openDialog("feff")
+  }
+
+  function openSimulationDialog() {
+    if (!attachmentId && attachments.length === 1) openAttachment(attachments[0], "simulation")
+    else openDialog("simulation")
   }
 
   function invalidateJob() {
@@ -495,7 +500,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     return <button type="button" disabled={controlsDisabled || !attachment.structure.supported}
       aria-label={`Simulate EXAFS from ${name} CIF`}
       title={attachment.structure.supported ? `Simulate EXAFS from ${name} CIF` : "EXAFS simulation requires an ordered structure with supported atomic sites."}
-      onClick={() => openAttachment(attachment, "feff")}>Simulate EXAFS</button>
+      onClick={() => openAttachment(attachment, "simulation")}>Simulate EXAFS</button>
   }
   function renameEditor(attachment: ArtemisStructureAttachment, location: "list" | "dialog") {
     if (renaming?.id !== attachment.id || renaming.location !== location) return null
@@ -518,7 +523,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
     }
     if (!clusterRadius.trim() || !pathRadius.trim() || !maxPaths.trim() || !Number.isFinite(request.cluster_radius) || request.cluster_radius < 3 || request.cluster_radius > 6 ||
       !Number.isFinite(request.path_radius) || request.path_radius < 2 || request.path_radius > 6 || request.path_radius > request.cluster_radius ||
-      !Number.isInteger(request.max_paths) || request.max_paths < 1 || request.max_paths > 100) {
+      request.max_paths === null || !Number.isInteger(request.max_paths) || request.max_paths < 1 || request.max_paths > 100) {
       setError("Use a cluster radius of 3–6 Å, a path radius of 2 Å up to the cluster radius, and 1–100 paths.")
       return
     }
@@ -601,6 +606,13 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   const otherIncluded = (existingPaths ?? []).filter(existing => existing.enabled !== false
     && !job?.paths.some(path => path.filename === existing.filename && path.content === existing.content))
 
+  const radius = Number(simulationRadius)
+  const validRadius = !!simulationRadius.trim() && Number.isFinite(radius) && radius >= 2 && radius <= 6
+  const simulationFeffRequest: ArtemisFeffRequest | null = structure?.supported && attachmentId && projectId && version !== undefined && absorber && edge && site && validRadius
+    ? { project_id: projectId, attachment_id: attachmentId, version, absorber, edge, site_index: Number(site),
+      cluster_radius: Math.max(3, radius), path_radius: radius, max_legs: 4, max_paths: null } : null
+  const dialogTitle = dialogMode === "simulation" ? "Simulate EXAFS" : dialogMode === "feff" ? "FEFF paths" : "Crystal structures"
+  const calculationLabel = dialogMode === "simulation" ? "Simulation" : "FEFF"
   const sites = structure?.sites.filter(item => item.element === absorber) ?? []
   const shellPaths = job?.status === "complete" && structure && shellState.shell && job.provenance.cif === structure.cif && job.request.site_index === shellState.shell.site_index
     ? job.paths.filter(path => isFirstShellPath(path.metadata, structure, shellState.shell!)).map(path => path.id) : []
@@ -615,7 +627,7 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   }
   const working = busy === "job" || job?.status === "running"
   const structures = <section className={styles.panel} aria-label="Project CIF structures">
-    <div className={`${styles.toolbar} ${styles.structureToolbar}`}><button type="button" disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>{uploadControl()}<button type="button" className={styles.simulationButton} disabled={controlsDisabled || !projectId} onClick={openFeffDialog}>Simulate EXAFS from CIF</button></div>
+    <div className={`${styles.toolbar} ${styles.structureToolbar}`}><button type="button" disabled={controlsDisabled || !projectId} onClick={() => openDialog()}><Search size={14} />Search / attach CIF</button>{uploadControl()}<button type="button" className={styles.simulationButton} disabled={controlsDisabled || !projectId} onClick={openSimulationDialog}>Simulate EXAFS from CIF</button></div>
     {listLoading && !attachments.length && <p className={styles.help}>Loading attached CIFs…</p>}
     {!projectId ? <p className={styles.help}>Select a project to attach crystal structures.</p> : !listLoading && !attachments.length && <p className={styles.help}>No CIF structures attached to this project.</p>}
     {attachments.length > 0 && <ul className={styles.attachedList}>{attachments.map(item => <li key={item.id}>
@@ -638,13 +650,13 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
   return <>
     {children ? children({ structures, feff }) : <>{structures}{feff}</>}
     <dialog ref={dialog} className={`${styles.panel} ${styles.dialog}`} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); closeDialog() }} onClose={() => { setOpen(false); if (opener.current?.isConnected) opener.current.focus() }}>
-      <header className={styles.dialogHeader}><div><h3 id={titleId}>{dialogMode === "feff" ? "FEFF paths" : "Crystal structures"}<SectionHelp label={dialogMode === "feff" ? "FEFF path generation" : "Crystal structures"}>{dialogMode === "feff" ? "Choose an attached CIF and absorber site, calculate paths, then add selected paths to the model. Closing this window keeps your calculation progress." : "Search and attach CIF structures to your project. Use Simulate EXAFS beside an attached structure to configure its FEFF calculation and simulation."}</SectionHelp></h3></div><button type="button" aria-label={dialogMode === "feff" ? "Close FEFF paths" : "Close CIF search"} disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
+      <header className={styles.dialogHeader}><div><h3 id={titleId}>{dialogTitle}<SectionHelp label={dialogMode === "simulation" ? "EXAFS simulation" : dialogMode === "feff" ? "FEFF path generation" : "Crystal structures"}>{dialogMode === "simulation" ? "Choose a CIF, absorbing site, maximum R and simulation values, then run. The scattering calculation and complete path sum are automatic." : dialogMode === "feff" ? "Choose an attached CIF and absorber site, calculate paths, then add selected paths to the model. Closing this window keeps your calculation progress." : "Search and attach CIF structures to your project. Use Simulate EXAFS beside an attached structure to calculate a theoretical spectrum."}</SectionHelp></h3></div><button type="button" aria-label={dialogMode === "simulation" ? "Close EXAFS simulation" : dialogMode === "feff" ? "Close FEFF paths" : "Close CIF search"} disabled={mutationPending} onClick={closeDialog}><X size={18} /></button></header>
       {dialogMode === "feff" && attachmentId && (structure?.supported || job?.status === "complete") && <div className={styles.dialogActions} role="group" aria-label="FEFF path actions">
         {structure?.supported && <button type="button" className={styles.primaryButton} onClick={generate} disabled={controlsDisabled || !attachmentId || site === "" || !absorber || !edge || working}>{working ? "Calculating FEFF…" : job?.status === "failed" ? "Retry FEFF calculation" : "Run FEFF calculation"}</button>}
         {job?.status === "complete" && <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !newSelected.length || newSelected.length > availableSlots} onClick={() => addPaths()}>Add selected paths ({newSelected.length})</button>}
         {job?.status === "complete" && canReplace && <button type="button" disabled={controlsDisabled || !selected.length || selected.length > selectionLimit} onClick={() => addPaths(true)}>Replace the model’s {existingPaths.length} path{existingPaths.length === 1 ? "" : "s"} with selected ({selected.length})</button>}
       </div>}
-      <div className={`${styles.content} ${dialogMode === "feff" ? styles.feffContent : ""}`}>
+      <div className={`${styles.content} ${dialogMode !== "structure" ? styles.feffContent : ""}`}>
       {dialogMode === "structure" && <div className={styles.searchColumn}>
       <div className={styles.toolbar}>{uploadControl(true)}<SectionHelp label="Upload your CIF">Attach one .cif file (up to 500 KB). The project retains the original CIF and filename. FEFF requires an ordered crystal structure.</SectionHelp></div>
       {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
@@ -679,30 +691,30 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
       </div>}
       </div>}
       <div className={styles.detailColumn}>
-      {dialogMode === "feff" && <>
-        <label className={styles.provider}><span>Crystal structure<SectionHelp label="FEFF crystal structure">Choose the attached CIF snapshot used to build the FEFF cluster. Check its phase and measurement conditions against your sample before generating paths.</SectionHelp></span><select aria-label="FEFF crystal structure" value={attachmentId ?? ""} disabled={controlsDisabled || listLoading} onChange={event => {
+      {dialogMode !== "structure" && <>
+        <label className={styles.provider}><span>Crystal structure<SectionHelp label={`${calculationLabel} crystal structure`}>Choose the attached CIF snapshot used to build the FEFF cluster. Check its phase and measurement conditions against your sample before generating paths.</SectionHelp></span><select aria-label={`${calculationLabel} crystal structure`} value={attachmentId ?? ""} disabled={controlsDisabled || listLoading} onChange={event => {
           const attachment = attachments.find(item => item.id === event.target.value)
-          if (attachment) openAttachment(attachment, "feff")
+          if (attachment) openAttachment(attachment, dialogMode)
         }}><option value="" disabled>Choose an attached CIF</option>{attachments.map(item => <option key={item.id} value={item.id}>{attachmentName(item)} · {structureLabel(item.structure)}</option>)}</select></label>
         {listError && <p className={styles.error} role="alert">{listError}<button type="button" onClick={() => setListRevision(previous => previous + 1)}>Reload attached CIFs</button></p>}
-        {!attachmentId && <p className={styles.placeholder}>{attachments.length ? "Choose an attached CIF to configure the FEFF calculation." : "Attach a CIF in Crystal structures, then return here to calculate paths."}</p>}
+        {!attachmentId && <p className={styles.placeholder}>{attachments.length ? "Choose an attached CIF to continue." : "Attach a CIF in Crystal structures, then return here."}</p>}
       </>}
       {dialogMode === "structure" && !structure && busy !== "structure" && <p className={styles.placeholder}>Upload a CIF, select a search result, or open a CIF already attached to this project.</p>}
       {busy === "structure" && <p className={styles.status} role="status">Reading CIF and inequivalent atomic sites…</p>}
       {structure && (dialogMode === "structure" || attachmentId) && <div className={styles.structure}>
         <div className={styles.structureHeader}>
         <h4>{attachments.find(item => item.id === attachmentId)?.label || structure.mineral || structure.formula}{structure.title && <SectionHelp label="CIF citation">{structure.title}<br />{structure.authors}{structure.year ? ` (${structure.year})` : ""}{structure.journal ? ` · ${structure.journal}` : ""}</SectionHelp>} <span>{structureLabel(structure)}</span></h4>
-        {dialogMode === "structure" && <div className={styles.structureActions}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={() => void attachStructure()}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button>{attachmentId && structure.supported && <button type="button" disabled={controlsDisabled} onClick={openFeffDialog}>Simulate EXAFS from this CIF</button>}<SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>}
+        {dialogMode === "structure" && <div className={styles.structureActions}><button type="button" className={styles.attachButton} disabled={controlsDisabled || !!attachmentId || !projectId || version === undefined || !onProjectChange} onClick={() => void attachStructure()}>{attachPending ? "Attaching CIF…" : attachmentId ? "Attached to project" : "Attach to project"}</button>{attachmentId && structure.supported && <button type="button" disabled={controlsDisabled} onClick={openSimulationDialog}>Simulate EXAFS from this CIF</button>}<SectionHelp label="Attach CIF">Attach this CIF to the project before generating FEFF paths. The saved CIF belongs to the current project; FEFF uses the attached snapshot.</SectionHelp></div>}
         </div>
         {structure.provider === "materials_project" && <p className={styles.help}>DFT-relaxed structure · <a href={`https://materialsproject.org/materials/${encodeURIComponent(structure.id)}`} target="_blank" rel="noreferrer">View on Materials Project</a><br />Database version: {structure.provenance?.database_version ?? "unavailable"}. Saved CIFs retain the retrieved geometry.</p>}
         {open && <div ref={viewerAnchor}><CifViewer key={`${structure.provider ?? "amcsd"}:${structure.id}`} structure={structure} selectedSite={site ? Number(site) : undefined} analysis={shellState} radialAnalysis={radialState} /></div>}
         <p className={styles.help}>{structure.formula} · {structure.space_group}<br />a {numberText(structure.cell.a)}, b {numberText(structure.cell.b)}, c {numberText(structure.cell.c)} Å<br />α {numberText(structure.cell.alpha)}, β {numberText(structure.cell.beta)}, γ {numberText(structure.cell.gamma)}°</p>
         <details className={styles.textDetails}><summary>View CIF</summary><pre>{structure.cif}</pre></details>
         {structure.warnings.map((warning, i) => <p className={styles.warning} key={i}>{warning}</p>)}
-        {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : dialogMode === "feff" && <>
+        {!structure.supported ? <p className={styles.warning} role="status">This structure cannot be used for FEFF generation. Choose an ordered structure with supported atomic sites.</p> : dialogMode !== "structure" && <>
           <div className={styles.grid}>
-            <label><span>Absorber<SectionHelp label="FEFF absorber">The absorbing element at the center of the FEFF cluster. Choose the element measured by your spectrum, then select its crystallographic site.</SectionHelp></span><select aria-label="FEFF absorber" value={absorber} disabled={controlsDisabled} onChange={event => { manualAbsorber.current = true; invalidateJob(); setAbsorber(event.target.value); setSite("") }}><option value="" disabled>Choose absorber</option>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
-            <label><span>Absorption edge<SectionHelp label="FEFF absorption edge">The core-level edge used in the FEFF calculation. Match the measured absorption edge; paths calculated for another edge are not interchangeable.</SectionHelp></span><select aria-label="FEFF absorption edge" value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}><option value="" disabled>Choose edge</option>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label><span>Absorber<SectionHelp label={`${calculationLabel} absorber`}>The absorbing element at the center of the FEFF cluster. Choose the element measured by your spectrum, then select its crystallographic site.</SectionHelp></span><select aria-label={`${calculationLabel} absorber`} value={absorber} disabled={controlsDisabled} onChange={event => { manualAbsorber.current = true; invalidateJob(); setAbsorber(event.target.value); setSite("") }}><option value="" disabled>Choose absorber</option>{structure.elements.map(item => <option key={item}>{item}</option>)}</select></label>
+            <label><span>Absorption edge<SectionHelp label={`${calculationLabel} absorption edge`}>The core-level edge used in the FEFF calculation. Match the measured absorption edge; paths calculated for another edge are not interchangeable.</SectionHelp></span><select aria-label={`${calculationLabel} absorption edge`} value={edge} disabled={controlsDisabled} onChange={event => setEdgeChoice({ contextKey, projectId, absorber, edge: event.target.value as ArtemisFeffRequest["edge"] })}><option value="" disabled>Choose edge</option>{feffEdges.map(item => <option key={item}>{item}</option>)}</select></label>
           </div>
           {!absorber && spectrumEdge && <p className={styles.warning}>The spectrum absorber {spectrumEdge.element} has no supported site in this CIF. Choose a matching structure or select an absorber manually.</p>}
           {!edge && spectrumEdge && <p className={styles.warning}>The spectrum edge {spectrumEdge.edge} is not supported here. Choose K, L1, L2, or L3 explicitly.</p>}
@@ -710,13 +722,19 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
             {sites.map(item => <label key={item.index}><input type="radio" name={`feff-site-${contextKey}`} checked={site === String(item.index)} onChange={() => chooseSite(item.index)} aria-label={`Absorber site ${item.index}`} /><span><strong>{item.species} · site {item.index} · Wyckoff {item.wyckoff}</strong><small>({numberText(item.x)}, {numberText(item.y)}, {numberText(item.z)}) · multiplicity {item.multiplicity} · occupancy {numberText(item.occupancy)}</small></span></label>)}
             {!sites.length && <p className={styles.help}>No supported sites for this absorber.</p>}
           </fieldset>
-          {site && <details><summary>FEFF shell distance ranges · {absorber} site {site}</summary><RadialShellPanel state={radialState} disabled={controlsDisabled} /></details>}
-          <div className={styles.grid}>
+          {dialogMode === "feff" && site && <details><summary>FEFF shell distance ranges · {absorber} site {site}</summary><RadialShellPanel state={radialState} disabled={controlsDisabled} /></details>}
+          {dialogMode === "feff" && <div className={styles.grid}>
             <label><span>Cluster radius (Å)<SectionHelp label="FEFF cluster radius">Radius of the atomic cluster built around the absorbing site from the periodic CIF. It must cover the paths you request; a larger cluster can increase calculation time.</SectionHelp></span><input aria-label="FEFF cluster radius" type="number" min={3} max={6} step="any" inputMode="decimal" value={clusterRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setClusterRadius(event.target.value) }} /></label>
             <label><span>Max path R (Å)<SectionHelp label="Maximum path R">Maximum effective half-path length in Å. For single scattering this equals the absorbing atom–neighbor distance; for multiple scattering it is half the total path length.</SectionHelp></span><input aria-label="FEFF maximum path radius" type="number" min={2} max={Number.isFinite(Number(clusterRadius)) ? Math.min(6, Math.max(2, Number(clusterRadius))) : 6} step="any" inputMode="decimal" value={pathRadius} disabled={controlsDisabled} onChange={event => { invalidateJob(); setPathRadius(event.target.value) }} /></label>
             <label><span>Maximum legs<SectionHelp label="FEFF maximum legs">Maximum number of segments in a scattering path. Two legs means single scattering; three and four include multiple scattering and can create many more paths.</SectionHelp></span><select aria-label="FEFF maximum legs" value={maxLegs} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxLegs(event.target.value) }}>{[2, 3, 4].map(item => <option key={item}>{item}</option>)}</select></label>
             <label><span>Maximum paths<SectionHelp label="FEFF maximum paths">Limit on the generated paths returned for review. Increase it if the result is truncated; adding many paths to a fit still requires a justified model.</SectionHelp></span><input aria-label="FEFF maximum paths" type="number" min={1} max={100} step={1} inputMode="numeric" value={maxPaths} disabled={controlsDisabled} onChange={event => { invalidateJob(); setMaxPaths(event.target.value) }} /></label>
-          </div>
+          </div>}
+          {dialogMode === "simulation" && <>
+            <div className={styles.grid}><label><span>Maximum R (Å)<SectionHelp label="Simulation maximum R">Include every FEFF-generated path up to this effective half-path length, with up to four legs. For single scattering R is the absorbing atom–neighbor distance; for multiple scattering it is half the total path length. The atomic cluster size is set automatically.</SectionHelp></span><input aria-label="Simulation maximum R" type="number" min={2} max={6} step="any" inputMode="decimal" value={simulationRadius} disabled={controlsDisabled} onChange={event => setSimulationRadius(event.target.value)} /></label></div>
+            {!validRadius && <p className={styles.warning} role="status">Enter a maximum R from 2 to 6 Å.</p>}
+            <ArtemisSimulation key={`${projectId}:${contextKey}:${attachmentId}`} feffRequest={simulationFeffRequest} disabled={controlsDisabled}
+              onAddToDataList={projectId && version !== undefined && onProjectChange ? addSimulationToDataList : undefined} />
+          </>}
         </>}
       </div>}
       {dialogMode === "feff" && job && <div className={styles.job}>
@@ -725,8 +743,6 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
         {job.provenance?.feff_input && <details className={styles.textDetails}><summary>FEFF input</summary><button type="button" onClick={() => downloadArtemisText(`${job.provenance.structure.provider === "uploaded" ? job.provenance.structure.filename?.replace(/\.cif$/i, "") : `${job.provenance.structure.provider === "materials_project" ? "" : "amcsd-"}${job.provenance.structure.id}`}-feff.inp`, job.provenance.feff_input)}>Download feff.inp</button><pre>{job.provenance.feff_input}</pre></details>}
         {job.log && <details className={styles.textDetails}><summary>Calculation log</summary><pre>{job.log}</pre></details>}
         {job.status === "complete" && <>
-          <ArtemisSimulation key={job.id} job={job} selectedIds={selectedIds} onSelectionChange={setSelected} disabled={controlsDisabled}
-            onAddToDataList={projectId && version !== undefined && onProjectChange ? addSimulationToDataList : undefined} />
           <p className={styles.help}>{job.paths.length} path{job.paths.length === 1 ? "" : "s"}{job.truncated ? ` of ${job.total_paths}` : ""} · {availableSlots} open slot{availableSlots === 1 ? "" : "s"}{canReplace ? ` · a replacement can hold up to ${selectionLimit}` : ""}<SectionHelp label="Generated FEFF paths">Select the paths to add. {job.truncated && "Increase Maximum paths to include more. "}Single-scattering paths are grouped by the selected absorber’s radial shells. Multiple scattering is separate. Paths outside the shell search radius or without matching geometry remain unmatched.</SectionHelp></p>
           <button type="button" disabled={controlsDisabled || !shellPaths.length} onClick={() => {
             setSelected(shellPaths); setError("")
@@ -753,8 +769,8 @@ export function ArtemisStructures({ children, contextKey, spectrumEdge, projectI
           {!!otherIncluded.length && <p className={styles.help}>The model already includes {otherIncluded.map(path => path.filename).join(", ")}. Adding keeps {otherIncluded.length === 1 ? "it" : "them"} in the fit; Replace fits only the selected generated paths.</p>}
         </>}
       </div>}
-      {error && <div className={styles.error} role="alert">{error}{job?.status === "running" && <button type="button" onClick={() => { setError(""); setPollRevision(previous => previous + 1) }}>Check status</button>}</div>}
-      {notice && <p className={styles.status} role="status">{notice}</p>}
+      {dialogMode !== "simulation" && error && <div className={styles.error} role="alert">{error}{job?.status === "running" && <button type="button" onClick={() => { setError(""); setPollRevision(previous => previous + 1) }}>Check status</button>}</div>}
+      {dialogMode !== "simulation" && notice && <p className={styles.status} role="status">{notice}</p>}
       </div>
       </div>
       <footer className={styles.dialogFooter}><span>{removingId ? "Removing the CIF from your project…" : attachPending ? "Saving the CIF to your project…" : ""}</span><button type="button" disabled={mutationPending} onClick={closeDialog}>Close</button></footer>

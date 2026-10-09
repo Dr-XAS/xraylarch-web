@@ -357,7 +357,7 @@ class FeffJobRequest(StrictModel):
     cluster_radius: float = Field(default=5, ge=3, le=6)
     path_radius: float = Field(default=4, ge=2, le=6)
     max_legs: int = Field(default=4, ge=2, le=4)
-    max_paths: int = Field(default=60, ge=1, le=100)
+    max_paths: int | None = Field(default=60, ge=1, le=100)
 
     @model_validator(mode="after")
     def validate_settings(self):
@@ -681,7 +681,10 @@ class FeffJobs:
                           total_paths=len(generated), truncated=len(generated) > len(paths))
             if record["truncated"]:
                 record["warnings"].append(f"Only the first {len(paths)} of {len(generated)} generated paths are listed. Increase the path limit or reduce the path radius to inspect a smaller calculation.")
-            record["warnings"].append("FEFF path degeneracies are retained. Select up to 24 paths for fitting; the absorber site's crystallographic multiplicity is not an additional amplitude multiplier.")
+            if request.max_paths is None:
+                record["warnings"].append("FEFF path degeneracies are retained; the absorber site's crystallographic multiplicity is not an additional amplitude multiplier.")
+            else:
+                record["warnings"].append("FEFF path degeneracies are retained. Select up to 24 paths for fitting; the absorber site's crystallographic multiplicity is not an additional amplitude multiplier.")
         except Exception as exc:
             record.update(status="failed", stage="failed", message=str(exc)[:1000])
         finally:

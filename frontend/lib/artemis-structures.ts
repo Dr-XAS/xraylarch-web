@@ -42,7 +42,7 @@ export interface ArtemisFeffRequest {
   cluster_radius: number
   path_radius: number
   max_legs: number
-  max_paths: number
+  max_paths: number | null
 }
 export interface ArtemisStructureAttachment {
   id: string

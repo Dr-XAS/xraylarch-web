@@ -92,17 +92,21 @@ before **Show paths** is available.
 ### Simulate EXAFS from a CIF
 
 An empty project is sufficient. Open **EXAFS fitting → Crystal structures →
-Upload CIF**, then **Simulate EXAFS from this CIF**. A saved structure can also be
-opened with **Simulate EXAFS from CIF** in the FEFF paths section. Choose the
-absorbing element, absorption edge and inequivalent site, and run FEFF. The
-**Simulate EXAFS** controls appear when the calculation completes.
+Upload CIF**, then **Simulate EXAFS from this CIF**. Each attached CIF has a
+**Simulate EXAFS** action, and **Simulate EXAFS from CIF** opens the same form.
+Choose the absorbing element, absorption edge, inequivalent site and **Maximum R**
+(default 5 Å, supported range 2–6 Å), enter the simulation values and click
+**Run EXAFS simulation** once. The scattering calculation and path sum run automatically.
 
-Simulation sums all available paths by default (up to 100), and all checkboxes
-below start checked. Unchecking a path switches to **Selected paths**; choosing
-**All available paths** checks every path again. Simulation selection is independent
-of the 24-path fit-model limit, which still applies when adding or replacing model
-paths. Review any warning that the FEFF job returned only
-part of its generated paths; increase Maximum paths and recalculate if needed.
+Simulation includes every FEFF-generated path within the requested effective
+half-path length, with single and multiple scattering through four legs. For
+single scattering R is the absorbing atom–neighbor distance; for multiple
+scattering it is half the total path length. The atomic cluster radius is set
+automatically to cover this range, with a minimum of 3 Å. There is no path picker,
+maximum returned-path count, or fit-model action in the simulation form. The
+separate **Generate FEFF paths** workflow retains path selection and the 24-path
+fit-model limit. Existing calculation time and byte limits still apply; exceeding
+one reports an error rather than silently dropping paths.
 
 The default shared parameters are S₀² = 0.85, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
 σ² is an explicit disorder assumption, not calculated from CIF displacement
@@ -120,7 +124,7 @@ distances. Changing simulation inputs hides the old result until recalculation.
 **Download χ(k) CSV** includes unweighted χ(k), including its k=0 value, and the
 weighted display curve. **Download χ(R) CSV** includes magnitude, real and
 imaginary components. **Download simulation JSON** retains all curves, the
-original CIF, FEFF input, selected path files, assumptions and parameters.
+original CIF, FEFF input, all included path files, assumptions and parameters.
 After simulation, **Add to data list** saves its unweighted χ(k) as a project
 group with a **theory** tag. It uses the simulation's Fourier parameters and
 retains the exact CIF, FEFF input, path files, assumptions and parameters with
@@ -131,7 +135,7 @@ addition. Simulation previews save nothing until this action is chosen.
 Highlight a theory group to show it in the **EXAFS fit viewer**, which switches
 to **EXAFS theory**. It displays the total theory and individual path contributions
 in k space or R-space magnitude, real, and imaginary components. Display k-weight
-(0–4), path visibility, and vertical offsets do not change the saved simulation.
+(0–3), path visibility, and vertical offsets do not change the saved simulation.
 The details show supplied simulation parameters and path lengths; no data,
 residual, fitted uncertainty, correlation, or fit statistic is presented.
 Contributions use the original simulation Fourier settings and are restored from
@@ -144,6 +148,9 @@ If a real fit has also been saved for the theory group, **Fit result** and
 The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
 example, `{"s02": 0.85, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
 for all available paths or supply a nonempty list of IDs from the completed job.
+The simulation UI creates jobs with `max_paths: null` and sends `path_ids: null`,
+so the full generated set is retained and summed. Simulation and saved replay
+support more than 100 paths, subject to the existing 4 MB total FEFF-file budget.
 `transform` accepts the existing Fourier fields with one `kweight` value, such as
 `[2]`. Full responses include raw `k.chi`, weighted `k.total`, complex R curves,
 and source files. `?view=summary` elides arrays and omits source files. FEFF jobs
@@ -772,7 +779,9 @@ Structure search and calculation use:
 
 The popup's job request specifies `project_id`, `attachment_id`, `version`,
 `absorber`, `edge`, `site_index`,
-`cluster_radius`, `path_radius`, `max_legs`, and `max_paths`. Supported edges
+`cluster_radius`, `path_radius`, `max_legs`, and `max_paths`. `max_paths` defaults
+to 60 (range 1–100) for path review; null retains every generated path for
+simulation. Supported edges
 are K, L1, L2, and L3, subject to availability for the chosen element. Conversion
 and FEFF execution are separate from fitting a spectrum. Native FEFF8L modules
 run with their own working directory; the application does not change the
