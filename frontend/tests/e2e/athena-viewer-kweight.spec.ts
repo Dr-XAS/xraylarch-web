@@ -160,6 +160,9 @@ test("EXAFS fit k-weight retransforms data, model and paths without changing the
   const statistics = await viewer.locator("dl").innerText()
   const parameters = await viewer.getByRole("table", { name: "Fitted parameters", exact: true }).innerText()
   await viewer.getByRole("checkbox", { name: "Show paths", exact: true }).check()
+  await expect(viewer.getByRole("checkbox", { name: "Offset plot", exact: true })).toBeChecked()
+  // Compare physical amplitudes when checking the pointwise k-weight scaling.
+  await viewer.getByRole("checkbox", { name: "Offset plot", exact: true }).uncheck()
   const originalR = await fitCurves(viewer)
   expect(originalR).toHaveLength(7)
   await viewer.getByRole("button", { name: "k space", exact: true }).click()

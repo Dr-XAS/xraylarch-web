@@ -61,7 +61,7 @@ describe("theory spectra in the EXAFS viewer", () => {
     fireEvent.click(screen.getByRole("button", { name: "k space" }))
     expect(lastPlot().data[0].y).toEqual(result().k.total)
     expect(lastPlot().layout.shapes).toHaveLength(1)
-    fireEvent.click(screen.getByRole("checkbox", { name: "Offset plot" }))
+    expect(screen.getByRole("checkbox", { name: "Offset plot" })).toBeChecked()
     fireEvent.change(screen.getByRole("spinbutton", { name: "Offset spacing" }), { target: { value: "2" } })
     expect(lastPlot().data[0].y).toEqual(result().k.total)
     expect(lastPlot().data[1].y).toEqual(result().paths[0].k.chi.map(value => value - 2))

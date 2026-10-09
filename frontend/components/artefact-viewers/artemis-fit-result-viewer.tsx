@@ -23,7 +23,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const [showPaths, setShowPaths] = useState(true)
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
-  const [offsetPlot, setOffsetPlot] = useState(false)
+  const [offsetPlot, setOffsetPlot] = useState(true)
   const [offsetDraft, setOffsetDraft] = useState<{ result: ArtemisFitResult | ArtemisTheoryResult; space: "k" | "r"; component: "mag" | "re" | "im"; value: string } | null>(null)
   const [plotError, setPlotError] = useState(false)
   const [kWeight, setKWeight] = useState<number | null>(null)
@@ -62,19 +62,20 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const pathsAvailable = paths.length > 0 && pathCurves.every(values => Array.isArray(values) && values.length === series?.x.length && values.every(Number.isFinite))
   const pathsShown = showPaths && pathsAvailable
   const curves = series ? [
-    ...(series.data ? [{ name: "Data", y: series.data, color: "#166d8d", dash: "solid", tier: 0 }] : []),
-    { name: isTheory ? "Total theory" : "Model", y: series.model, color: "#db7835", dash: "solid", tier: 0 },
-    ...(series.residual ? [{ name: "Residual", y: series.residual, color: "#8d5bab", dash: "dot", tier: 1 }] : []),
+    ...(series.data ? [{ name: "Data", y: series.data, color: "#166d8d", dash: "solid", width: 2.4, tier: 0 }] : []),
+    { name: isTheory ? "Total theory" : "Model", y: series.model, color: "#db7835", dash: "solid", width: 2.4, tier: 0 },
+    ...(series.residual ? [{ name: "Residual", y: series.residual, color: "#8d5bab", dash: "dot", width: 1.4, tier: 1 }] : []),
     ...(pathsShown ? paths.map((path, i) => ({ name: `Path ${i + 1} · ${path.label || path.filename}`, y: pathCurves[i]!,
-      color: `hsl(${((i * 137.508 + 145) % 360).toFixed(1)}, 58%, 40%)`, dash: "solid", tier: i + (isTheory ? 1 : 2) })) : []),
+      color: `hsl(${((i * 137.508 + 145) % 360).toFixed(1)}, 58%, 40%)`, dash: "solid", width: 1, tier: i + (isTheory ? 1 : 2) })) : []),
   ] : []
-  // Use the full vertical excursion, including zero, so signed and magnitude curves both separate clearly.
+  // Include zero when measuring signed/magnitude curves, then use a compact
+  // baseline step: a 0.14-high peak gets about 0.01 spacing at any plot weight.
   const largestSpan = curves.reduce((span, curve) => {
     let low = 0, high = 0
     for (const value of curve.y) { low = Math.min(low, value); high = Math.max(high, value) }
     return Math.max(span, high - low)
   }, 0)
-  const automaticSpacing = largestSpan > 0 && Number.isFinite(largestSpan * 1.15) ? Number((largestSpan * 1.15).toPrecision(4)) : 1
+  const automaticSpacing = largestSpan > 0 && Number.isFinite(largestSpan * 0.07) ? Number((largestSpan * 0.07).toPrecision(4)) : 1
   const offsetText = offsetDraft && offsetDraft.result === plotted && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
   const validSpacing = offsetText.trim() !== "" && Number.isFinite(Number(offsetText)) && Number(offsetText) >= 0 && Number(offsetText) <= Number.MAX_VALUE / Math.max(curves.length, 1)
   const spacing = validSpacing ? Number(offsetText) : automaticSpacing
@@ -94,7 +95,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
       visible: true,
       customdata: curve.y.map(value => [value, offset]),
       hovertemplate: `${space === "k" ? "k" : "R"} = %{x:.3f} ${space === "k" ? "Å⁻¹" : "Å"}<br>Unshifted value = %{customdata[0]:.5g}<br>Display offset = %{customdata[1]:+.5g}<extra>%{meta.legendLabel}</extra>`,
-      line: { color: curve.color, width: curve.tier > 0 ? 1.4 : 1.8, dash: curve.dash } }
+      line: { color: curve.color, width: curve.width, dash: curve.dash } }
   }) : []
   return <ViewerPanel title={isTheory ? "EXAFS theory" : "EXAFS fit"} label={isTheory ? "EXAFS theory results" : "EXAFS fit results"} viewerId="fit" className={styles.viewer} help={<>
     {isTheory ? "The saved FEFF paths are summed at the supplied simulation parameters. No measured data or fit is involved. The original simulation Fourier settings are used. " : "Build a FEFF path model in the EXAFS fitting tab, then run the fit to compare data and model."}

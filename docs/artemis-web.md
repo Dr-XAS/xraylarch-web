@@ -88,10 +88,13 @@ Fourier transform, and plot k-weight as the total model. They are available in
 k space and in the magnitude, real, and imaginary R-space views. The legend
 identifies individual paths and can hide or isolate their curves.
 
-Enable **Offset plot** to separate the curves vertically. Data and Model stay
-aligned; the residual and individual paths are shifted downward in successive
-steps. **Offset spacing** controls that separation, and **Auto** restores a
-spacing based on the displayed curves. Hover values retain the original signal
+**Offset plot** is enabled by default with compact spacing, about 7% of the
+largest displayed curve's vertical range (including zero). Data and Model stay
+aligned and use thicker lines; the residual and thin individual FEFF paths are
+shifted downward in successive steps. **Offset spacing** controls that separation,
+and **Auto** restores spacing scaled to the displayed curves and k-weight.
+Turn off **Offset plot** to compare every curve on the same baseline.
+Hover values retain the original signal
 and identify the display offset. Offsets do not change fitted parameters,
 statistics, or exported numerical results.
 
