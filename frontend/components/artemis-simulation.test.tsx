@@ -5,6 +5,7 @@ import { artemisApi } from "@/lib/artemis"
 import { ApiRequestError } from "@/lib/backend-client"
 import { downloadArtemisText } from "@/lib/artemis-structures"
 import { simulationFixture, simulationJob } from "@/tests/fixtures/artemis-simulation"
+import type { SimulationRequest } from "@/lib/artemis-simulation"
 import { ArtemisSimulation } from "./artemis-simulation"
 import { InstructionVisibility } from "./section-help"
 
@@ -17,10 +18,42 @@ afterEach(() => { cleanup(); vi.useRealTimers() })
 function SimulationHarness({ onAddToDataList }: { onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void> }) {
   return <ArtemisSimulation feffRequest={simulationJob.request} disabled={false} onAddToDataList={onAddToDataList} />
 }
-const renderSimulation = (onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void>) => render(<SimulationHarness onAddToDataList={onAddToDataList} />)
+const selectFixed = () => fireEvent.change(screen.getByLabelText("Simulation disorder model"), { target: { value: "fixed" } })
+const renderSimulation = (onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void>) => {
+  const view = render(<SimulationHarness onAddToDataList={onAddToDataList} />)
+  selectFixed()
+  return view
+}
 const run = () => fireEvent.click(screen.getByRole("button", { name: "Run EXAFS simulation" }))
 
 describe("CIF simulation controls", () => {
+  it("defaults to Debye at 298 K, requires material ΘD, and reuses FEFF when temperature changes", async () => {
+    api.mockImplementation(async (url, body) => {
+      if (!url.endsWith("/simulate")) return simulationJob
+      const result = simulationFixture()
+      result.simulation.request = body as SimulationRequest
+      result.paths[0].values.sigma2 = 0.005
+      return result
+    })
+    render(<SimulationHarness />)
+    expect(screen.getByLabelText("Simulation disorder model")).toHaveValue("debye")
+    expect(screen.getByLabelText("Simulation Temperature (K)")).toHaveValue(298)
+    expect(screen.getByLabelText("Simulation Debye temperature ΘD (K)")).toHaveValue(null)
+    expect(screen.queryByLabelText("Simulation σ² (Å²)")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText("Simulation Debye temperature ΘD (K)"), { target: { value: "350" } })
+    run(); await screen.findByTestId("simulation-plot")
+    expect(api).toHaveBeenLastCalledWith(expect.stringContaining("/simulate"), expect.objectContaining({ disorder_model: "debye", temperature: 298, debye_temperature: 350, static_sigma2: 0 }), expect.any(AbortSignal))
+    fireEvent.change(screen.getByLabelText("Simulation Temperature (K)"), { target: { value: "100" } })
+    expect(screen.queryByTestId("simulation-plot")).not.toBeInTheDocument()
+    run(); await screen.findByTestId("simulation-plot")
+    expect(api).toHaveBeenLastCalledWith(expect.stringContaining("/simulate"), expect.objectContaining({ temperature: 100 }), expect.any(AbortSignal))
+    expect(api.mock.calls.filter(([url]) => url === "/feff/jobs")).toHaveLength(1)
+    selectFixed()
+    expect(screen.queryByTestId("simulation-plot")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Simulation Temperature (K)")).not.toBeInTheDocument()
+    expect(screen.getByLabelText("Simulation σ² (Å²)")).toHaveValue(0.003)
+  })
   it("exposes physical scalar limits and blocks invalid disorder before calculation", () => {
     renderSimulation()
     const disorder = screen.getByRole("spinbutton", { name: "Simulation σ² (Å²)" })
@@ -38,6 +71,7 @@ describe("CIF simulation controls", () => {
       <ArtemisSimulation feffRequest={simulationJob.request} disabled={false} />
     </InstructionVisibility.Provider>
     const view = render(panel(false))
+    selectFixed()
     expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
     view.rerender(panel(true))
     for (const name of ["Simulation S₀²", "Simulation σ² (Å²)", "Simulation ΔE₀ (eV)", "Simulation ΔR (Å)", "Simulation FT k min (Å⁻¹)", "Simulation FT k max (Å⁻¹)", "Simulation FT dk (Å⁻¹)", "Simulation k-weight", "Simulation window"])
@@ -150,6 +184,7 @@ describe("CIF simulation controls", () => {
   })
   it("invalidates results on radius changes but preserves them after a version-only save", async () => {
     const view = render(<ArtemisSimulation feffRequest={simulationJob.request} disabled={false} />)
+    selectFixed()
     run(); await screen.findByTestId("simulation-plot")
     view.rerender(<ArtemisSimulation feffRequest={{ ...simulationJob.request, version: 4 }} disabled={false} />)
     expect(screen.getByTestId("simulation-plot")).toBeVisible()

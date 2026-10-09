@@ -214,6 +214,7 @@ test("standalone CIF and simulated EXAFS use the same drag control and retain se
     await page.getByRole("tab", { name: "EXAFS fitting", exact: true }).click()
     await page.getByRole("button", { name: "Simulate EXAFS from CIF", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Simulate EXAFS", exact: true })
+    await dialog.getByLabel("Simulation disorder model", { exact: true }).selectOption("fixed")
     await dialog.getByRole("button", { name: "Run EXAFS simulation", exact: true }).click()
     await expect(dialog.getByText(/Simulation complete · 1 path ·/)).toBeVisible()
     await expect(dialog.locator('[aria-label="Simulated EXAFS k plot"] .js-plotly-plot')).toBeVisible()

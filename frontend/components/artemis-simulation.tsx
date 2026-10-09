@@ -12,6 +12,9 @@ import styles from "./artemis-structures.module.css"
 const fields: [keyof SimulationFields, string, string][] = [
   ["s02", "S₀²", "Dimensionless amplitude reduction factor shared by every path. FEFF degeneracies are already included; this value is an assumption unless calibrated from a reference."],
   ["sigma2", "σ² (Å²)", "Shared mean-square relative displacement, damping each path by exp(−2k²σ²). It is not derived from CIF displacement factors; different shells can have different disorder."],
+  ["temperature", "Temperature (K)", "Sample temperature, initially 298 K. Correlated Debye computes a different σ² for each path from its geometry and atomic masses. Temperature changes disorder only; it does not expand the CIF geometry."],
+  ["debye_temperature", "Debye temperature ΘD (K)", "Material-specific characteristic temperature. Enter a value from a suitable reference or calibration; it cannot be determined from sample temperature alone or inferred reliably from an ordinary CIF. Must be greater than zero."],
+  ["static_sigma2", "Static σ² (Å²)", "Optional static disorder added to the Debye contribution of every path. Zero assumes no additional static disorder."],
   ["e0", "ΔE₀ (eV)", "Shared energy correction relative to the FEFF calculation, in eV. It changes the phase of χ(k); zero keeps the FEFF energy reference."],
   ["deltar", "ΔR (Å)", "Shared change to each path’s effective half-path length. Zero uses the CIF geometry; a nonzero value shifts every included path by the same amount."],
   ["kmin", "FT k min (Å⁻¹)", "Lower wavenumber limit for the Fourier transform. It changes χ(R), while the calculated χ(k) remains available over its FEFF support."],
@@ -24,6 +27,7 @@ export function ArtemisSimulation({ feffRequest, disabled, onAddToDataList }: {
   onAddToDataList?: (result: SimulationResult, idempotencyKey: string) => Promise<void>
 }) {
   const [values, setValues] = useState({ ...simulationDefaults })
+  const [model, setModel] = useState<"fixed" | "debye">("debye")
   const [weight, setWeight] = useState(2)
   const [window, setWindow] = useState<ArtemisTransform["window"]>("hanning")
   const [state, setState] = useState<{ key: string; result?: SimulationResult; error?: string; loading?: boolean; progress?: string; addKey?: string } | null>(null)
@@ -32,10 +36,10 @@ export function ArtemisSimulation({ feffRequest, disabled, onAddToDataList }: {
   const abort = useRef<AbortController | null>(null)
   const calculation = useRef<{ controller: AbortController; request: ArtemisFeffRequest; pending: Promise<ArtemisFeffJob>; job?: ArtemisFeffJob } | null>(null)
   let request: ReturnType<typeof simulationRequest> | null = null, validation = ""
-  try { request = simulationRequest(values, weight, window, null) } catch (error) { validation = (error as Error).message }
+  try { request = simulationRequest(values, weight, window, null, model) } catch (error) { validation = (error as Error).message }
   // Saving a spectrum changes the project version, not this simulation.
   const feffKey = JSON.stringify(feffRequest && { ...feffRequest, version: undefined })
-  const key = JSON.stringify([feffKey, values, weight, window])
+  const key = JSON.stringify([feffKey, values, model, weight, window])
   useEffect(() => {
     calculation.current = null
     return () => calculation.current?.controller.abort()
@@ -110,13 +114,15 @@ export function ArtemisSimulation({ feffRequest, disabled, onAddToDataList }: {
     } finally { adding.current = false }
   }
   return <section className={styles.simulation} aria-label="EXAFS simulation from CIF">
-    <h4>Simulate EXAFS<SectionHelp label="EXAFS simulation assumptions">No measured spectrum is required. One absorbing site is simulated, with FEFF degeneracies and shared S₀², ΔE₀, ΔR and σ². The default σ² = 0.003 Å² is an assumption, not inferred from CIF displacement factors or temperature. Inequivalent sites are not averaged.</SectionHelp></h4>
+    <h4>Simulate EXAFS<SectionHelp label="EXAFS simulation assumptions">No measured spectrum is required. One absorbing site is simulated, with FEFF degeneracies and shared S₀², ΔE₀ and ΔR. Correlated Debye calculates σ² for each path using sample temperature and an explicit material ΘD; it is an isotropic approximation best suited to simple solids. Fixed σ² is also available. Inequivalent sites are not averaged.</SectionHelp></h4>
     <p className={styles.help}>All generated paths within the maximum R are included automatically, with single and multiple scattering up to four legs.</p>
     <div className={styles.grid}>
-      {fields.map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help} Supported values: {simulationLimits[key].min}–{simulationLimits[key].max}.</SectionHelp></span><input aria-label={`Simulation ${label}`} type="number" {...simulationLimits[key]} inputMode="decimal" value={values[key]} disabled={controlsDisabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
+      <label><span>Disorder model</span><select aria-label="Simulation disorder model" value={model} disabled={controlsDisabled} onChange={event => setModel(event.target.value as typeof model)}><option value="debye">Correlated Debye</option><option value="fixed">Fixed σ²</option></select></label>
+      {fields.filter(([key]) => key === "sigma2" ? model === "fixed" : ["temperature", "debye_temperature", "static_sigma2"].includes(key) ? model === "debye" : true).map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help}</SectionHelp></span><input aria-label={`Simulation ${label}`} type="number" {...simulationLimits[key]} inputMode="decimal" value={values[key]} disabled={controlsDisabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
       <label><span>FT k-weight<SectionHelp label="Simulation k-weight">Power of k multiplying χ(k) before Fourier transformation and in the weighted k plot. Higher powers emphasize high-k oscillations.</SectionHelp></span><select aria-label="Simulation k-weight" value={weight} disabled={controlsDisabled} onChange={event => setWeight(Number(event.target.value))}>{[0, 1, 2, 3].map(item => <option key={item}>{item}</option>)}</select></label>
       <label><span>FT window<SectionHelp label="Simulation window">Taper shape used over the chosen k interval. Window shape affects Fourier peak width and ringing, not the underlying FEFF paths.</SectionHelp></span><select aria-label="Simulation window" value={window} disabled={controlsDisabled} onChange={event => setWindow(event.target.value as ArtemisTransform["window"])}>{["hanning", "kaiser", "parzen", "welch"].map(item => <option key={item}>{item}</option>)}</select></label>
     </div>
+    {model === "debye" && <p className={styles.help}>σ² for each path = correlated Debye(T, ΘD) + static σ². Enter your material’s ΘD; temperature alone is not sufficient.</p>}
     {validation && <p className={styles.warning} role="status">{validation}</p>}
     <button type="button" className={styles.primaryButton} disabled={controlsDisabled || !feffRequest || !request || current?.loading} onClick={() => void simulate()}>{current?.loading ? "Simulating EXAFS…" : current?.error ? "Retry EXAFS simulation" : "Run EXAFS simulation"}</button>
     {current?.loading && <p className={styles.status} role="status">{current.progress}</p>}

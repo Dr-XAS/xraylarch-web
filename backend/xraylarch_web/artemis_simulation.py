@@ -27,7 +27,8 @@ def register_simulation_route(router, jobs, store):
                     transform=_model_options("artemis_simulation:SimulationTransform"),
                     notes=[
                         "Requires a completed FEFF job, no measured group or fit. Omit path_ids for all available paths. Create the FEFF job with max_paths=null to retain every generated path.",
-                        "Shared defaults: S0 squared 0.85, sigma squared 0.003 A squared, delta E0 0 eV and delta R 0 A. Sigma squared is an assumption, not inferred from CIF displacement factors or temperature.",
+                        "Shared defaults: S0 squared 0.85, delta E0 0 eV and delta R 0 A. Fixed disorder defaults to sigma squared 0.003 A squared for compatibility.",
+                        "For disorder_model=debye, supply the material's positive debye_temperature (K). temperature defaults to 298 K and static_sigma2 to 0 A squared. Each path uses static_sigma2 + sigma2_debye(temperature, debye_temperature), evaluated from its FEFF geometry and masses. No thermal expansion or CIF displacement-factor conversion is applied.",
                         "One absorbing site, native FEFF degeneracies; no automatic site-population average. Inspect warnings for omitted paths.",
                         "Full replies include unweighted k.chi, weighted k.total, complex Fourier curves and exact CIF/FEFF/path sources. Summary elides arrays and omits source files. Nothing is saved to the project.",
                     ],
@@ -79,6 +80,10 @@ class SimulationRequest(StrictModel):
     path_ids: list[str] | None = Field(default=None, min_length=1)
     s02: float = Field(default=0.85, ge=0, le=2)
     sigma2: float = Field(default=0.003, ge=0, le=0.1)
+    disorder_model: Literal["fixed", "debye"] = "fixed"
+    temperature: float = Field(default=298, ge=0)
+    debye_temperature: float | None = Field(default=None, gt=0)
+    static_sigma2: float = Field(default=0, ge=0, le=0.1)
     e0: float = Field(default=0, ge=-50, le=50)
     deltar: float = Field(default=0, ge=-1, le=1)
     transform: SimulationTransform = Field(default_factory=SimulationTransform)
@@ -87,7 +92,16 @@ class SimulationRequest(StrictModel):
     def simulation_ranges(self):
         if self.path_ids is not None and len(set(self.path_ids)) != len(self.path_ids):
             raise ValueError("Select each path only once.")
+        if self.disorder_model == "debye" and self.debye_temperature is None:
+            raise ValueError("Enter the material's Debye temperature (K) for correlated Debye disorder.")
         return self
+
+
+def _path_settings(request: SimulationRequest) -> dict[str, str]:
+    settings = {key: str(getattr(request, key)) for key in ("s02", "sigma2", "e0", "deltar")}
+    if request.disorder_model == "debye":
+        settings["sigma2"] = f"{request.static_sigma2} + sigma2_debye({request.temperature}, {request.debye_temperature})"
+    return settings
 
 
 class AddSimulationRequest(StrictModel):
@@ -113,7 +127,13 @@ def add_simulation(store, jobs, ident: str, request: AddSimulationRequest, *, id
     from .artemis_attachments import local_project, validate_attachments
     from .athena import _exchange_budget, now
 
-    body_sha256 = hashlib.sha256(json.dumps(request.model_dump(exclude={"version"}), sort_keys=True,
+    body = request.model_dump(exclude={"version"})
+    if request.simulation.disorder_model == "fixed":
+        # Preserve receipts made before thermal models were introduced. These
+        # fields do not affect a fixed-sigma simulation.
+        for key in ("disorder_model", "temperature", "debye_temperature", "static_sigma2"):
+            body["simulation"].pop(key)
+    body_sha256 = hashlib.sha256(json.dumps(body, sort_keys=True,
                                            separators=(",", ":"), allow_nan=False).encode()).hexdigest()
     key_sha256 = hashlib.sha256(idempotency_key.encode()).hexdigest() if idempotency_key is not None else None
     receipt_file = f"simulation-add-{key_sha256}.json" if key_sha256 is not None else None
@@ -217,7 +237,7 @@ def view_simulation(group: dict, kweight: int | None = None) -> dict:
         if not isinstance(info["request"], dict) or not {"s02", "sigma2", "e0", "deltar", "transform", "path_ids"} <= info["request"].keys():
             raise ValueError("Missing simulation parameters")
         request = SimulationRequest.model_validate(info["request"])
-        scalars = {key: str(getattr(request, key)) for key in ("s02", "sigma2", "e0", "deltar")}
+        scalars = _path_settings(request)
         files = feff["paths"]
         if not isinstance(files, list) or not files:
             raise ValueError("Invalid path files")
@@ -271,7 +291,7 @@ def simulate_job(job: dict, request: SimulationRequest) -> dict:
     reach = min(float(path["metadata"]["kmax"]) for path in sources)
     if request.transform.kmax > reach:
         _fail(f"These paths reach k = {reach:g} Å⁻¹. Reduce the Fourier kmax to this value or below.", "transform.kmax")
-    settings = {key: str(getattr(request, key)) for key in ("s02", "sigma2", "e0", "deltar")}
+    settings = _path_settings(request)
     paths = [FitPath(id=path["id"], filename=path["filename"], content=path["content"], **settings)
              for path in sources]
     result = preview_paths(SimulationPaths(paths=paths, transform=request.transform))
@@ -285,6 +305,13 @@ def simulate_job(job: dict, request: SimulationRequest) -> dict:
                                   "This simulation omits the remaining paths; increase Maximum paths and recalculate to include more.")
     if len(sources) < len(available):
         result["warnings"].append(f"Only {len(sources)} of {len(available)} available paths are included.")
+    disorder_assumptions = (
+        ["Each path uses σ² = static σ² + correlated Debye σ²(T, ΘD), evaluated with its FEFF geometry and atomic masses.",
+         "ΘD and the shared static σ² are material assumptions, not inferred from the CIF. The isotropic Debye approximation is best suited to simple solids.",
+         "Temperature changes disorder only; the CIF geometry is retained without automatic thermal expansion."]
+        if request.disorder_model == "debye" else
+        ["σ² is shared by all paths: an assumed mean-square relative displacement, not inferred from CIF displacement factors or temperature."]
+    )
     result["simulation"] = dict(
         kind="cif-exafs", schema_version=1, feff_job_id=job["id"],
         request=request.model_dump(), path_ids=selected,
@@ -293,8 +320,8 @@ def simulate_job(job: dict, request: SimulationRequest) -> dict:
         cif_sha256=hashlib.sha256(job["provenance"]["cif"].encode("utf-8")).hexdigest(),
         assumptions=[
             "One selected absorbing site; inequivalent sites are not population averaged.",
-            "FEFF path degeneracies are retained. S0², ΔE0, ΔR and σ² are shared by all included paths.",
-            "σ² is an assumed mean-square relative displacement, not inferred from CIF displacement factors or temperature.",
+            "FEFF path degeneracies are retained. S0², ΔE0 and ΔR are shared by all included paths.",
+            *disorder_assumptions,
             "χ(R) is not phase corrected; its peaks are not bond distances.",
         ],
     )

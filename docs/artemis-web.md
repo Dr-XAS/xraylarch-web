@@ -108,12 +108,22 @@ separate **Generate FEFF paths** workflow retains path selection and the 24-path
 fit-model limit. Existing calculation time and byte limits still apply; exceeding
 one reports an error rather than silently dropping paths.
 
-The default shared parameters are S₀² = 0.85, σ² = 0.003 Å², ΔE₀ = 0 eV and ΔR = 0 Å.
-σ² is an explicit disorder assumption, not calculated from CIF displacement
-factors or temperature. Native FEFF degeneracies are retained. The result is for
-one selected absorbing site; crystallographic multiplicity is not applied again,
-and inequivalent sites are not population averaged. Shared parameters are a
-simple forward model; use the fitting model for path-specific expressions.
+The default shared parameters are S₀² = 0.85, ΔE₀ = 0 eV and ΔR = 0 Å.
+The form defaults to **Correlated Debye**, with sample temperature **298 K**.
+Supply the material's **Debye temperature ΘD** from a suitable reference or
+calibration; temperature alone is insufficient, and ΘD is not inferred from an
+ordinary CIF. Each path uses `static_sigma2 + sigma2_debye(T, ΘD)`, evaluated
+from that path's FEFF geometry and atomic masses. The optional shared static
+σ² defaults to zero. This isotropic approximation is most appropriate for simple
+solids; many paths do not by themselves make it accurate for a complex material.
+Changing temperature changes disorder, without automatically expanding the CIF
+geometry, and reuses the existing scattering calculation.
+
+**Fixed σ²** remains available, initially 0.003 Å² for every path. Neither model
+converts CIF displacement factors to EXAFS disorder. Native FEFF degeneracies are
+retained. The result is for one selected absorbing site; crystallographic
+multiplicity is not applied again, and inequivalent sites are not population
+averaged. Use the fitting model for arbitrary path-specific expressions.
 
 χ(k) is calculated on a 0.05 Å⁻¹ grid through the common FEFF support (at most
 20 Å⁻¹). The Fourier defaults are k = 3–12 Å⁻¹, k-weight 2, a Hanning window and
@@ -125,6 +135,8 @@ distances. Changing simulation inputs hides the old result until recalculation.
 weighted display curve. **Download χ(R) CSV** includes magnitude, real and
 imaginary components. **Download simulation JSON** retains all curves, the
 original CIF, FEFF input, all included path files, assumptions and parameters.
+Debye CSV exports record T, ΘD, the static offset and every path's applied σ²;
+the saved theory details show the same thermal recipe and per-path values.
 After simulation, **Add to data list** saves its unweighted χ(k) as a project
 group with a **theory** tag. It uses the simulation's Fourier parameters and
 retains the exact CIF, FEFF input, path files, assumptions and parameters with
@@ -146,7 +158,10 @@ If a real fit has also been saved for the theory group, **Fit result** and
 **Theory** switch between that fit and the original simulation.
 
 The read-only API is `POST /api/artemis/feff/jobs/{job_id}/simulate` with, for
-example, `{"s02": 0.85, "sigma2": 0.003, "e0": 0, "deltar": 0}`. Omit `path_ids`
+example, `{"disorder_model": "debye", "temperature": 298, "debye_temperature": 350, "static_sigma2": 0}`.
+The example ΘD of 350 K is illustrative, not a universal material default.
+For compatibility, omitted `disorder_model` means fixed σ², initially 0.003 Å²;
+old saved simulations retain their fixed-disorder meaning. Omit `path_ids`
 for all available paths or supply a nonempty list of IDs from the completed job.
 The simulation UI creates jobs with `max_paths: null` and sends `path_ids: null`,
 so the full generated set is retained and summed. Simulation and saved replay

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from larch import Group
 from larch.xafs import feffpath, ff2chi, find_exe, xftf
 from pydantic import ValidationError
+from test_artemis_disorder import independent_debye
 
 from xraylarch_web import artemis
 from xraylarch_web.artemis_simulation import AddSimulationRequest, SimulationRequest, add_simulation, simulate_job, view_simulation
@@ -32,15 +33,24 @@ def job():
                 warnings=[], total_paths=4, truncated=False)
 
 
-def test_native_sum_and_fourier_parity_with_explicit_disorder(job, tmp_path):
+@pytest.mark.parametrize("disorder", [{}, {"disorder_model": "debye", "debye_temperature": 350, "static_sigma2": 0.001}])
+def test_native_sum_and_fourier_parity_with_explicit_disorder(job, tmp_path, disorder):
     before = copy.deepcopy(job)
-    request = SimulationRequest(s02=0.83, e0=2.7, deltar=0.017, sigma2=0.005)
+    request = SimulationRequest(s02=0.83, e0=2.7, deltar=0.017, sigma2=0.005, **disorder)
     result = simulate_job(job, request)
     paths = []
     for source in job["paths"]:
         file = tmp_path / source["filename"]
         file.write_text(source["content"])
         paths.append(feffpath(str(file), s02=request.s02, e0=request.e0, deltar=request.deltar, sigma2=request.sigma2))
+        if disorder:
+            expected = request.static_sigma2 + independent_debye(paths[-1], 298, 350)
+            applied = result["paths"][len(paths) - 1]["values"]["sigma2"]
+            assert applied == pytest.approx(expected, rel=1e-8)
+            paths[-1].sigma2 = applied
+    if disorder:
+        assert len(set(path.sigma2 for path in paths)) > 1
+        assert {path.nleg for path in paths} >= {2, 3}
     native = Group()
     ff2chi(paths, group=native, k=np.array(result["k"]["x"]))
     np.testing.assert_allclose(result["k"]["chi"], native.chi, atol=1e-12)
@@ -57,14 +67,37 @@ def test_native_sum_and_fourier_parity_with_explicit_disorder(job, tmp_path):
     assert result["source"]["provenance"] == job["provenance"]
 
 
-def test_all_paths_can_exceed_fit_limit_and_scale_linearly(job):
+@pytest.mark.parametrize("disorder", [{}, {"disorder_model": "debye", "debye_temperature": 350}])
+def test_all_paths_can_exceed_fit_limit_and_scale_linearly(job, disorder):
     job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(101)]
     job["total_paths"] = 101
-    result = simulate_job(job, SimulationRequest())
-    single = simulate_job(job, SimulationRequest(path_ids=["p0"], s02=0.5))
+    result = simulate_job(job, SimulationRequest(**disorder))
+    single = simulate_job(job, SimulationRequest(path_ids=["p0"], s02=0.5, **disorder))
     assert len(result["paths"]) == 101
     np.testing.assert_allclose(result["k"]["chi"], np.array(single["k"]["chi"]) * (101 * 0.85 / 0.5), atol=1e-12)
     assert "Only 1 of 101" in single["warnings"][0]
+
+
+def test_temperature_and_static_disorder_are_applied_per_path(job):
+    def calculate(temperature, static=0):
+        return simulate_job(job, SimulationRequest(disorder_model="debye", temperature=temperature,
+                                                  debye_temperature=350, static_sigma2=static))
+    cold, warm, static = calculate(0), calculate(298), calculate(298, 0.001)
+    for zero, thermal, offset in zip(cold["paths"], warm["paths"], static["paths"]):
+        assert 0 < zero["values"]["sigma2"] < thermal["values"]["sigma2"]
+        assert offset["values"]["sigma2"] == pytest.approx(thermal["values"]["sigma2"] + 0.001)
+        # Native FEFF uses complex momentum (including phase corrections), so
+        # test high-k damping rather than assuming a purely real exp(-2k²σ²).
+        high_k = np.array(warm["k"]["x"]) >= 10
+        assert np.linalg.norm(np.array(offset["k"]["chi"])[high_k]) < np.linalg.norm(np.array(thermal["k"]["chi"])[high_k])
+
+
+@pytest.mark.parametrize("body", [{"disorder_model": "debye"}, {"disorder_model": "unknown"},
+    {"debye_temperature": 0}, {"debye_temperature": -1}, {"debye_temperature": float("inf")},
+    {"temperature": -1}, {"temperature": float("nan")}, {"static_sigma2": -0.001}])
+def test_invalid_disorder_requests(body):
+    with pytest.raises(ValidationError):
+        SimulationRequest(**body)
 
 
 @pytest.mark.parametrize("body", [{"path_ids": []}, {"path_ids": ["a", "a"]}, {"s02": -1}, {"sigma2": -0.001},
@@ -78,6 +111,8 @@ def test_invalid_requests(body):
 def test_partial_transform_keeps_simulation_defaults():
     request = SimulationRequest(transform={"kmax": 14})
     assert request.s02 == 0.85
+    assert request.disorder_model == "fixed" and request.sigma2 == 0.003
+    assert request.temperature == 298 and request.debye_temperature is None and request.static_sigma2 == 0
     assert request.transform.kweight == [2]
     assert request.transform.kmin == 3
 
@@ -191,11 +226,12 @@ def test_addition_uses_current_cif_name_unless_spectrum_name_is_explicit(owned_s
 
 
 @pytest.mark.parametrize("format", ["json", "prj"])
-def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation, format):
+@pytest.mark.parametrize("disorder", [{}, {"disorder_model": "debye", "temperature": 298, "debye_temperature": 350, "static_sigma2": 0.001}])
+def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation, format, disorder):
     store, jobs, original, job = owned_simulation
     job["paths"] = [dict(job["paths"][0], id=f"p{i}") for i in range(200)]
     job["total_paths"] = 200
-    saved = add_simulation(store, jobs, original["id"], addition(original, job))
+    saved = add_simulation(store, jobs, original["id"], addition(original, job, **disorder))
     group = saved["groups"][0]
     payload = json.dumps(saved).encode() if format == "json" else store.export_project(saved["id"], format="prj")
     if format == "prj":
@@ -213,6 +249,25 @@ def test_theory_tag_and_exact_sources_survive_project_exchange(owned_simulation,
     np.testing.assert_allclose(replay["k"]["chi"], group["mu"], atol=1e-12)
     assert len(replay["paths"]) == 200
     assert replay["simulation"]["request"] == group["source"]["simulation"]["request"]
+
+
+def test_legacy_fixed_sources_and_addition_receipts_still_replay(owned_simulation):
+    store, jobs, original, job = owned_simulation
+    request = addition(original, job, sigma2=0.006)
+    saved = add_simulation(store, jobs, original["id"], request, idempotency_key="legacy")
+    group = copy.deepcopy(saved["groups"][0])
+    legacy_body = request.model_dump(exclude={"version"})
+    for key in ("disorder_model", "temperature", "debye_temperature", "static_sigma2"):
+        del group["source"]["simulation"]["request"][key]
+        del legacy_body["simulation"][key]
+    legacy_hash = hashlib.sha256(json.dumps(legacy_body, sort_keys=True, separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+    assert saved["groups"][0]["source"]["simulation_addition"]["body_sha256"] == legacy_hash
+    jobs.get = lambda ident: pytest.fail("Idempotent replay must not require the old job")
+    replay = add_simulation(store, jobs, original["id"], request, idempotency_key="legacy")
+    assert replay["last_operation"]["idempotent_replay"]["action"] == "simulation"
+    result = view_simulation(group)
+    np.testing.assert_allclose(result["k"]["chi"], group["mu"], atol=1e-12)
+    assert all(path["values"]["sigma2"] == 0.006 for path in result["paths"])
 
 
 def test_addition_is_undoable_and_redoable(owned_simulation):

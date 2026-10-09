@@ -8,12 +8,16 @@ import styles from "./artemis-fit-report.module.css"
 export function ArtemisTheorySummary({ result }: { result: ArtemisTheoryResult }) {
   const { request, available_paths, total_paths, assumptions } = result.simulation
   const transform = request.transform
+  const disorder: [string, string][] = request.disorder_model === "debye"
+    ? [["Disorder model", "Correlated Debye"], ["Temperature (K)", format(request.temperature ?? 298)],
+      ["Debye temperature ΘD (K)", format(request.debye_temperature ?? undefined)], ["Static σ² (Å²)", format(request.static_sigma2 ?? 0)]]
+    : [["Disorder model", "Fixed σ²"], ["σ² (Å²)", format(request.sigma2)]]
   return <section className={styles.report} aria-label="Theory calculation details">
     <header className={styles.header}><div className={styles.heading}><h4>Theory calculation</h4></div><span className={styles.status}>No fit performed</span></header>
     <p className={styles.note}>Saved simulation · {result.paths.length} of {available_paths} available paths ({total_paths} generated). Uses the original simulation parameters and Fourier settings.</p>
     <dl className={styles.settings}>
       {([
-        ["S₀²", format(request.s02)], ["σ² (Å²)", format(request.sigma2)],
+        ["S₀²", format(request.s02)], ...disorder,
         ["ΔE₀ (eV)", format(request.e0)], ["ΔR (Å)", format(request.deltar)],
         ["Fourier k range", `${format(transform.kmin)}–${format(transform.kmax)} Å⁻¹`],
         ["Fourier window", `${transform.window} · dk ${format(transform.dk)} Å⁻¹`],

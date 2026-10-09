@@ -113,7 +113,11 @@ conventions, supported expressions, and current limitations.
 **Simulate EXAFS from CIF** is in **Crystal structures**. Each attached CIF also
 has a **Simulate EXAFS** button that opens the calculation with that structure selected.
 No measured spectrum is required. Choose an absorbing site, edge and maximum R,
-enter S₀², σ², ΔE₀ and ΔR, then run the simulation. FEFF runs automatically and
+enter S₀², disorder, ΔE₀ and ΔR, then run the simulation. Correlated Debye is the
+default disorder model: sample temperature starts at 298 K, and the material's
+Debye temperature ΘD must be supplied. It computes σ² separately for each path;
+an optional shared static σ² starts at zero. Fixed σ² remains available.
+FEFF runs automatically and
 sums every generated path within the requested effective half-path length,
 including single and multiple scattering through four legs. Simulation has no
 path selection or returned-path count limit; fitting retains its separate path
@@ -123,7 +127,7 @@ S₀² defaults to 0.85. After simulation, **Add to data list** saves χ(k) with
 **theory** tag, its Fourier parameters, and the exact CIF/FEFF sources in the
 project. Simulated spectra use the CIF's custom name or uploaded filename before
 falling back to its chemical formula, followed by the element, edge, and **theory**.
-The shared σ² is an assumption; inequivalent sites are not averaged automatically.
+Disorder-model inputs are assumptions; inequivalent sites are not averaged automatically.
 
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.
