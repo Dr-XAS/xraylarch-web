@@ -156,7 +156,8 @@ def test_background_window_and_fractional_weight_match_direct_autobk(xas_arrays,
     effective = actual["effective"]
     direct = Group()
     autobk(x, y, group=direct, ek0=8980, edge_step=effective["edge_step"],
-           kmax=effective["bkg_kmax"], win=window, dk=1.2, kweight=1.25, nclamp=6)
+           kmax=effective["bkg_kmax"], win=window, dk=1.2, kweight=1.25, nclamp=6,
+           clamp_lo=effective["clamp_lo"], clamp_hi=effective["clamp_hi"])
     np.testing.assert_allclose(actual["arrays"]["bkg"], direct.bkg, atol=1e-12)
     np.testing.assert_allclose(actual["arrays"]["chi"], direct.chi, atol=1e-12)
     assert {key: effective[key] for key in params} == params
@@ -543,7 +544,8 @@ def test_norm_preserves_normalized_signal_and_unit_edge_step(xas_arrays):
     direct = Group()
     e = result["effective"]
     autobk(x, np.asarray(normalized), group=direct, ek0=e["e0"], edge_step=1,
-           kweight=2, kmax=e["bkg_kmax"], dk=1, win="hanning", nclamp=5)
+           kweight=2, kmax=e["bkg_kmax"], dk=1, win="hanning", nclamp=5,
+           clamp_lo=e["clamp_lo"], clamp_hi=e["clamp_hi"])
     np.testing.assert_allclose(result["arrays"]["chi"], direct.chi)
 
 

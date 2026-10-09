@@ -13,6 +13,13 @@
 .ath-bulk-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ath-app .ath-bulk-actions button { border: 1px solid var(--ath-line); }
 .ath-e0-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.ath-spline-group { min-width: 0; margin: 0 0 10px; padding: 0; border: 0; }
+.ath-spline-group > legend { padding: 0 0 6px; font-size: var(--text-label); color: var(--ath-ink); }
+.ath-spline-group > .ath-fields { padding-bottom: 0; }
+.ath-spline-clamps { border: 1px solid var(--ath-line); border-radius: 5px; padding: 4px 8px 8px; }
+.ath-spline-clamps > legend { padding: 0 4px; }
+.ath-app details.ath-spline-advanced { padding: 0; border-bottom: 0; }
+.ath-spline-advanced > summary { font-size: var(--text-label); font-weight: 400; }
 .ath-e0-report { margin-block: 16px; border-top: 1px solid var(--ath-line); padding-top: 12px; }
 .ath-e0-report ul { padding-left: 20px; }
 .ath-e0-report li { margin-block: 8px; }

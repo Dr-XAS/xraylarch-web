@@ -55,8 +55,9 @@ class AthenaParameters(BaseModel):
     AUTOBK spline objective. Taper widths are in inverse angstroms, weights are
     finite real exponents from 0 through 3. nclamp (0..100) counts samples at
     each end of AUTOBK's uniform k grid; zero disables its endpoint clamps.
-    Missing saved fields use Athena defaults bkg_dk=1, bkg_window=hanning,
-    nclamp=5, overriding this checkout's lower-level Larch defaults.
+    New recipes use Athena defaults bkg_dk=1, bkg_window=hanning,
+    nclamp=5 and None/Strong clamps (0/24), overriding this checkout's
+    lower-level Larch defaults. Saved web projects retain their old clamps.
     FFTs are limited to powers of two from 128 through 65536.
     fnorm=False preserves scalar edge-step normalization. With fnorm=True,
     raw mu(E) is corrected before a separate normalization/AUTOBK calculation;
@@ -84,7 +85,7 @@ class AthenaParameters(BaseModel):
     nknots: int = Field(default=0, ge=0, le=128, description="0 selects automatic knots; explicit counts must be 5 through 128.")
     nclamp: int = Field(default=5, ge=0, le=100)
     clamp_lo: float = Field(default=0, ge=0, le=1000)
-    clamp_hi: float = Field(default=1, ge=0, le=1000)
+    clamp_hi: float = Field(default=24, ge=0, le=1000)
     kmin: float = Field(default=3, ge=0, le=100)
     kmax: float | None = Field(default=None, gt=0, le=100)
     kweight: Weight = 2.0

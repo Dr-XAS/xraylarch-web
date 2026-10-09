@@ -18,7 +18,7 @@ are reported separately. Explicit spline/FT bounds remain validated.
 The web recipe uses eV relative to E0, positive k bounds in inverse angstroms,
 and Larch polynomial degree. It does not accept Demeter's signed end-relative
 or implicit-keV preference syntax, read personal INI files, or replace existing
-web numeric defaults with every Perl preference (e.g. clamp2=24, bkg.dk=0).
+web numeric defaults with every Perl preference (e.g. bkg.dk=0).
 Main-resource nnorm=3 maps to Larch degree 2. The source resolve_defaults does
 not invoke the separate to_default(nnorm) XANES-order reset. Native three-
 decimal range rounding is retained except where it would exceed support;

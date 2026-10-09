@@ -16,7 +16,7 @@ range values can still be cleared to let Larch resolve them.
 | Spline and FT k intervals | Nonnegative lower limit, positive upper limit, lower < upper, in Å⁻¹. Use the spectrum's reliable post-edge support. |
 | Reverse-transform and fit R intervals | Nonnegative lower limit, positive upper limit, lower < upper, in Å. Limited by the FFT grid; uncorrected R is not a bond distance. |
 | Window widths | Nonnegative; Gaussian windows require positive widths. The selected window determines the meaning of its shape/taper parameter. |
-| Clamp strengths and point counts | Nonnegative strengths; whole-number counts. Zero disables clamping. Default low/high strengths are 0/1 and the point count is 5. |
+| Clamp strengths and point counts | Athena presets None/Slight/Weak/Medium/Strong/Rigid map to 0/3/6/12/24/96. New spectra default to low None and high Strong; saved custom weights are preserved. The API accepts nonnegative strengths up to 1000. Clamp points is a whole-number count, default 5, under Advanced spline settings; zero disables both clamps. |
 | Athena FFT grid | Power-of-two point count 128–65536, default 2048; k step 0.001–1 Å⁻¹, default 0.05. Zero padding does not add information. The classic workspace retains its existing larger FFT limit of 262144 and its output-radius/Nyquist validation. |
 | Explicit spline knots | Zero for automatic selection, or 5–128 whole knots, matching AUTOBK's effective range. |
 | Peak and broadening widths | Positive, in the selected coordinate's units. The peak model requires positive areas, and peak widths cannot exceed the fit interval. General fit expressions can retain signed coefficients. |

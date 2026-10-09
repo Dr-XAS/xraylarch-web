@@ -3452,6 +3452,62 @@ describe("AthenaWorkbench plot picking", () => {
 })
 
 describe("AthenaWorkbench background science controls", () => {
+  it("shows native spline clamp names in order and selects the saved None and Strong values", async () => {
+    const project = projectFixture()
+    project.groups[0].parameters.clamp_hi = 24
+    await openSaved(project)
+    const clamps = within(screen.getByRole("group", { name: "Spline clamps" }))
+    const low = clamps.getByRole("combobox", { name: "Low clamp" })
+    const high = clamps.getByRole("combobox", { name: "High clamp" })
+    for (const control of [low, high]) {
+      expect(within(control).getAllByRole("option").map(option => option.textContent)).toEqual([
+        "None", "Slight", "Weak", "Medium", "Strong", "Rigid",
+      ])
+    }
+    expect(low).toHaveValue("0")
+    expect(within(low).getByRole("option", { selected: true })).toHaveTextContent(/^None$/)
+    expect(high).toHaveValue("24")
+    expect(within(high).getByRole("option", { selected: true })).toHaveTextContent(/^Strong$/)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it("automatically submits only changed numeric spline clamp strengths", async () => {
+    const project = await openSaved()
+    fireEvent.change(screen.getByRole("combobox", { name: "Low clamp" }), { target: { value: "6" } })
+    fireEvent.change(screen.getByRole("combobox", { name: "High clamp" }), { target: { value: "24" } })
+    expect(api).toHaveBeenCalledTimes(1)
+    await finishParameterDrafts(project, [{ groupId: "foil", options: { clamp_lo: 6, clamp_hi: 24 } }])
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(screen.getByRole("combobox", { name: "Low clamp" })).toHaveValue("6")
+    expect(screen.getByRole("combobox", { name: "High clamp" })).toHaveValue("24")
+    expect(plotProps().active!.parameters).toMatchObject({ clamp_lo: 6, clamp_hi: 24 })
+  })
+
+  it("preserves an existing custom spline clamp during rendering and unrelated parameter changes", async () => {
+    const project = await openSaved()
+    const high = screen.getByRole("combobox", { name: "High clamp" })
+    const custom = within(high).getByRole("option", { name: "Custom (1)" })
+    expect(high).toHaveValue("1")
+    expect(custom).toBeDisabled()
+    expect(within(high).getByRole("option", { selected: true })).toBe(custom)
+    expect(api).toHaveBeenCalledTimes(1)
+    editNumber(/^Rbkg/, 1.7)
+    await finishParameterDrafts(project, [{ groupId: "foil", options: { rbkg: 1.7 } }])
+    expect(api).toHaveBeenCalledTimes(2)
+    expect(high).toHaveValue("1")
+    expect(plotProps().active!.parameters.clamp_hi).toBe(1)
+  })
+
+  it.each(["frozen", "xanes", "chi", "detector"] as const)("disables spline clamp choices for %s groups", async condition => {
+    const project = projectFixture()
+    if (condition === "frozen") project.groups[0].frozen = true
+    else project.groups[0].data_type = condition
+    await openSaved(project)
+    expect(screen.getByRole("combobox", { name: "Low clamp" })).toBeDisabled()
+    expect(screen.getByRole("combobox", { name: "High clamp" })).toBeDisabled()
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
   it("defaults energy-dependent normalization off and automatically submits only its changed flag", async () => {
     const project = await openSaved()
     const control = screen.getByRole("checkbox", { name: "Energy-dependent normalization" })
@@ -4736,6 +4792,7 @@ describe("AthenaWorkbench group selection and drafts", () => {
     [/^FT k min/, 13, /FT k max must be greater than FT k min/],
   ])("blocks invalid processing values for %s", async (label, value, message) => {
     await openSaved()
+    if (label.test("Clamp points")) fireEvent.click(screen.getByText("Advanced spline settings"))
     editNumber(label, value)
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(message))
     expect(api).toHaveBeenCalledTimes(1)

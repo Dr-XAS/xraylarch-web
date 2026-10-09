@@ -64,6 +64,7 @@ def test_default_import_resolves_pinned_ranges_at_table_seed(copper):
     assert resolved["norm1"] == 150 and resolved["norm2"] == x[-1] - seed - 100
     assert resolved["nnorm"] == 2  # source bkg.nnorm=3; template subtracts one
     assert resolved["bkg_kmin"] == 0 and resolved["kmin"] == 3
+    assert result["parameters"]["clamp_lo"] == 0 and result["parameters"]["clamp_hi"] == 24
     assert resolved["bkg_kmax"] == min(round(k_end, 3), k_end)
     assert resolved["kmax"] == round(k_end - 2, 3)  # actual fft.kmax default
     assert result["defaults"]["automatic_fields"] == sorted([

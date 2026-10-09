@@ -1168,6 +1168,115 @@ def test_old_web_exchange_preserves_effective_background_defaults(store, two_gro
         assert g["result"]["effective"]["nclamp"] == 3
 
 
+@pytest.mark.parametrize("action,options", [
+    ("reset_parameters", {"parameters": ["clamp_lo", "clamp_hi"]}),
+    ("context_parameters", {"mode": "reset", "section": "background"}),
+])
+def test_new_groups_and_resets_use_native_none_strong_clamps(store, xas_arrays, action, options):
+    p = import_mu(store, store.create(), *xas_arrays)
+    g = p["groups"][0]
+    assert g["parameters"]["clamp_lo"] == g["result"]["effective"]["clamp_lo"] == 0
+    assert g["parameters"]["clamp_hi"] == g["result"]["effective"]["clamp_hi"] == 24
+    p = command(store, p, "parameters", [g["id"]], clamp_lo=3, clamp_hi=1)
+    p = command(store, p, action, [g["id"]], **options)
+    assert p["groups"][0]["parameters"]["clamp_lo"] == 0
+    assert p["groups"][0]["parameters"]["clamp_hi"] == 24
+
+
+@pytest.mark.parametrize("format", ["json", "prj"])
+@pytest.mark.parametrize("clamps", [(0, 1), (0.1, 2.5)])
+def test_saved_numeric_clamps_survive_exchange_and_unrelated_edits(store, xas_arrays, format, clamps):
+    p = import_mu(store, store.create(), *xas_arrays)
+    p = command(store, p, "parameters", [p["groups"][0]["id"]],
+                clamp_lo=clamps[0], clamp_hi=clamps[1])
+    before = p["groups"][0]
+    data = store.export_prj(p) if format == "prj" else json.dumps(p).encode()
+    target = store.create()
+    restored = store.restore(target["id"], 0, data, f"saved.{format}")
+    restored = command(store, restored, "parameters", [restored["groups"][0]["id"]], kweight=3)
+    g = store.load(restored["id"])["groups"][0]
+    assert (g["parameters"]["clamp_lo"], g["parameters"]["clamp_hi"]) == clamps
+    assert (g["result"]["effective"]["clamp_lo"], g["result"]["effective"]["clamp_hi"]) == clamps
+    np.testing.assert_array_equal(g["result"]["arrays"]["chi"], before["result"]["arrays"]["chi"])
+
+
+@pytest.mark.parametrize("cached", [None, (3, 12)])
+def test_missing_saved_web_clamps_use_cached_values_or_historical_defaults(store, xas_arrays, cached):
+    p = import_mu(store, store.create(), *xas_arrays)
+    g = p["groups"][0]
+    for key in ("clamp_lo", "clamp_hi"):
+        g["parameters"].pop(key)
+        g["result"]["effective"].pop(key)
+    if cached:
+        g["result"]["effective"].update(clamp_lo=cached[0], clamp_hi=cached[1])
+    expected = cached or (0, 1)
+    store.storage.write_json(p["id"], "project.json", p)
+    loaded = store.load(p["id"])["groups"][0]
+    assert (loaded["parameters"]["clamp_lo"], loaded["parameters"]["clamp_hi"]) == expected
+    target = store.create()
+    restored = store.restore(target["id"], 0, json.dumps(p).encode(), "historical.json")["groups"][0]
+    assert (restored["parameters"]["clamp_lo"], restored["parameters"]["clamp_hi"]) == expected
+    assert (restored["result"]["effective"]["clamp_lo"], restored["result"]["effective"]["clamp_hi"]) == expected
+
+
+def test_missing_web_sidecar_clamps_keep_historical_values(store, xas_arrays):
+    p = import_mu(store, store.create(), *xas_arrays)
+    lines = gzip.decompress(store.export_prj(p)).decode().splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("# Athena-Web "):
+            sidecar = json.loads(line.removeprefix("# Athena-Web "))
+            for meta in sidecar["groups"]:
+                meta["parameters"].pop("clamp_lo")
+                meta["parameters"].pop("clamp_hi")
+            lines[index] = "# Athena-Web " + json.dumps(sidecar)
+    target = store.create()
+    restored = store.restore(target["id"], 0, "\n".join(lines).encode(), "historical.prj")["groups"][0]
+    assert restored["parameters"]["clamp_lo"] == 0
+    assert restored["parameters"]["clamp_hi"] == 1
+
+
+@pytest.mark.parametrize("action", ["undo", "redo"])
+@pytest.mark.parametrize("cached", [None, (3, 12)])
+def test_historical_undo_redo_returns_preserved_clamps(store, xas_arrays, action, cached):
+    expected = cached or (0, 1)
+    p = import_mu(store, store.create(), *xas_arrays)
+    gid = p["groups"][0]["id"]
+    p = command(store, p, "parameters", [gid], clamp_lo=expected[0], clamp_hi=expected[1])
+    p = command(store, p, "parameters", [gid], kweight=3)
+    if action == "redo":
+        p = command(store, p, "undo")
+    snapshot_name = p[action][-1]
+    snapshot = store.storage.read_json(p["id"], snapshot_name)
+    historical = snapshot["groups"][0]
+    for key in ("clamp_lo", "clamp_hi"):
+        historical["parameters"].pop(key)
+        if cached is None:
+            historical["result"]["effective"].pop(key)
+    store.storage.write_json(p["id"], snapshot_name, snapshot)
+    g = command(store, p, action)["groups"][0]
+    assert (g["parameters"]["clamp_lo"], g["parameters"]["clamp_hi"]) == expected
+    assert g["result"]["arrays"] == historical["result"]["arrays"]
+    assert store.load(p["id"])["groups"][0]["parameters"] == g["parameters"]
+
+
+@pytest.mark.parametrize("low,high,expected", [
+    ("None", "Strong", (0, 24)),
+    ("Slight", "Rigid", (3, 96)),
+    ("Weak", "Medium", (6, 12)),
+    (None, None, (0, 24)),
+])
+def test_native_named_and_missing_clamps_use_native_presets(store, xas_arrays, low, high, expected):
+    x, y = xas_arrays
+    document = {"_____header": "# Athena project file -- Demeter version 0.9.26",
+                "_____order": ["sample"], "sample": {"args": {
+                    "label": "Native clamps", "is_xmu": 1,
+                    "bkg_clamp1": low, "bkg_clamp2": high}, "x": x.tolist(), "y": y.tolist()}}
+    target = store.create()
+    g = store.restore(target["id"], 0, json.dumps(document).encode(), "native.prj")["groups"][0]
+    assert (g["parameters"]["clamp_lo"], g["parameters"]["clamp_hi"]) == expected
+    assert (g["result"]["effective"]["clamp_lo"], g["result"]["effective"]["clamp_hi"]) == expected
+
+
 @pytest.fixture
 def native_reference_project(store, xas_arrays):
     x, y = xas_arrays

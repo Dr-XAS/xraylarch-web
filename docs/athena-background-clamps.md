@@ -1,5 +1,13 @@
 # Spline ranges and endpoint clamps
 
+The background panel follows Athena's Rbkg, k-weight, **Spline range in k**,
+**Spline range in E**, **Spline clamps**, **Standard**, and
+**Energy-dependent normalization** controls. Rbkg defaults to 1 Å and spline
+k-weight to 2; energy-dependent normalization starts off. The ranges stay
+linked, with energy measured relative to E₀. Range maxima depend on the
+spectrum and the selected parameters, not on the values in a reference screenshot.
+**Advanced spline settings** contains spline dk, window, and clamp points.
+
 **Spline energy max** is the end of the AUTOBK background-extraction range,
 measured above E₀. It is the same setting as **Spline k max**, using
 `E − E₀ = 3.8099821109685847 k²`. A maximum of 100 eV therefore permits
@@ -50,19 +58,41 @@ not a restraint exactly at the selected spline minimum.
 
 ## Practical settings
 
+The low and high dropdowns use the native Athena preset names and weights:
+
+| Preset | AUTOBK weight |
+| --- | ---: |
+| None | 0 |
+| Slight | 3 |
+| Weak | 6 |
+| Medium | 12 |
+| Strong | 24 |
+| Rigid | 96 |
+
+These are the [Athena clamp presets](https://bruceravel.github.io/demeter/documents/Athena/bkg/kweight.html).
+The pinned [Demeter Larch template](https://github.com/bruceravel/demeter/blob/06afc8da08a5a7d5a26ee14992170fcf5dc67406/lib/Demeter/templates/process/larch/autobk.tmpl)
+passes these weights directly as `clamp_lo` and `clamp_hi`, with `nclamp=5`.
+
 | Control | Starting value | How to adjust |
 | --- | --- | --- |
-| Low clamp | 0 | Leave disabled unless the low-k endpoint needs restraint. |
-| High clamp | 1 | Compare 0, 1, 2, 5, 10, and 20; use the smallest value that controls an unphysical endpoint excursion. |
+| low | None | Leave disabled unless the low-k endpoint needs restraint. |
+| high | Strong | Compare weaker presets if the endpoint EXAFS is suppressed; use the smallest restraint that controls an unphysical endpoint excursion. |
 | Clamp points | 5 | Start within 1–5 uniform k-grid samples. Zero disables both clamps. |
 
-The 0–20 interval is a practical initial exploration range, not a physical
-bound or a guarantee of a good background. Inspect χ(k), low-R leakage, and
+These presets are not physical bounds or a guarantee of a good background.
+Inspect χ(k), low-R leakage, and
 the stability of fitted results as well as μ(E). In particular, placing the
 cutoff at only +100 eV can restrain a genuine oscillation near that cutoff.
 
-The web API accepts finite clamp weights from 0 through 1000. Larger values
-remain available for advanced use and saved-project compatibility. The
+The web API accepts finite clamp weights from 0 through 1000. A saved value
+outside the native preset table appears as **Custom (value)** and remains
+unchanged until a preset is selected. In particular, existing web projects
+with the earlier high weight of 1 retain it; opening the panel does not
+reprocess them. Older web files missing clamp parameters recover the saved
+effective values when available, otherwise the historical defaults 0/1.
+New spectra and an explicit reset use the native defaults None/Strong.
+
+The
 [Larch guide](https://xraypy.github.io/xraylarch/xafs_autobk.html#end-point-clamps-for-the-spline)
 describes values around 1 as ordinary and 10–20 as very strong, but its examples
 also use 50 and 200. Current native Larix offers values including 0, 1, 2, 5,
@@ -71,8 +101,7 @@ not calibrated physical categories. The local algorithm also depends on the
 absolute scale of μ through `scale`, so the same number need not have the same
 effect for differently scaled inputs.
 
-The web defaults above come from `AthenaParameters`; the native `autobk()`
-function defaults to 3 clamp points. The implementation is authoritative
-where older documentation defaults differ. Demeter's named clamp presets
-use a different numeric convention and should not be treated as equivalent
-strength categories for this implementation.
+The web defaults above come from `AthenaParameters`; the lower-level `autobk()`
+function retains its own defaults (high weight 1 and 3 clamp points).
+The controls match Athena's Larch adapter. This does not establish identical
+numerical results between the Larch and Ifeffit background algorithms.

@@ -441,12 +441,19 @@ def _journal(value):
 
 
 def _exchange_recipe(parameters, result=None):
-    """Preserve known historical AUTOBK defaults in pre-extension web files."""
+    """Preserve historical AUTOBK settings when loading saved web groups."""
     parameters = copy.deepcopy(parameters)
     effective = (result or {}).get("effective", {})
     for key in ("bkg_dk", "bkg_window", "nclamp"):
         if key not in parameters and effective.get(key) is not None:
             parameters[key] = effective[key]
+    # Old web groups used 0/1. Do not silently reprocess an incomplete saved
+    # recipe with the newer native None/Strong default; a cached result is
+    # stronger evidence than the historical fallback. Native projects without
+    # a web sidecar and newly created groups never take this migration path.
+    for key, historical in (("clamp_lo", 0), ("clamp_hi", 1)):
+        if key not in parameters:
+            parameters[key] = effective.get(key) if effective.get(key) is not None else historical
     return parameters
 
 
@@ -1084,6 +1091,7 @@ class AthenaStore:
                 group['can_reimport_columns'] = _can_reimport_columns(group)
                 group["is_difference"] = _is_difference(group)
                 effective = (group.get("result") or {}).get("effective", {})
+                group["parameters"] = _exchange_recipe(group["parameters"], group.get("result"))
                 for key, default in defaults.items():
                     if key not in group["parameters"]:
                         group["parameters"][key] = effective.get(key) if effective.get(key) is not None else default
@@ -3463,6 +3471,7 @@ class AthenaStore:
                 for group in restore["groups"]:
                     group["is_difference"] = _is_difference(group)
                     group['can_reimport_columns'] = _can_reimport_columns(group)
+                    group["parameters"] = _exchange_recipe(group["parameters"], group.get("result"))
                     _ensure_edge_identity(group)
                 inverse = "redo" if action == "undo" else "undo"
                 name = f"{inverse}-{old['version']}.json"
@@ -4503,6 +4512,8 @@ class AthenaStore:
                     params = _native_parameters(args, larch_writer=larch_writer)
                     if larch_writer:
                         source["native"]["producer"] = "larch"
+                elif isinstance(params, dict):
+                    params = _exchange_recipe(params, meta.get("result"))
                 dtype = next((kind for kind, key in (("xmudat", "is_xmudat"), ("chi", "is_chi"), ("xanes", "is_xanes"), ("norm", "is_nor"))
                               if _native_flag(args.get(key))), {"chi": "chi", "xanes": "xanes", "xmudat": "xmudat"}.get(args.get("datatype"), "mu"))
                 if args.get('datatype') == 'xmudat':
