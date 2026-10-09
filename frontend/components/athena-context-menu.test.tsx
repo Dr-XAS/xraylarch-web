@@ -144,10 +144,13 @@ describe("AthenaContextMenu", () => {
     expect(outside).toHaveFocus()
   })
 
-  it("allows scrolling inside a tall menu but closes on page scrolling", () => {
+  it("ignores queued scrolling at the same position but closes when page scrolling moves the trigger", () => {
     const { menu, trigger } = openMenu()
     fireEvent.scroll(menu)
     expect(menu).toBeInTheDocument()
+    fireEvent.scroll(document)
+    expect(menu).toBeInTheDocument()
+    vi.spyOn(trigger, "getBoundingClientRect").mockReturnValue({ left: 0, top: -50 } as DOMRect)
     fireEvent.scroll(document)
     expect(screen.queryByRole("menu")).not.toBeInTheDocument()
     expect(trigger).toHaveFocus()

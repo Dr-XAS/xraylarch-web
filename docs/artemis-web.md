@@ -57,6 +57,19 @@ Copies save automatically, and the current group and unmarked groups are
 unchanged. An invalid resulting range prevents the entire copy. Copying model
 settings does not run a fit; saved fits indicate when their model differs.
 
+Right-click a path's **S₀²**, **ΔE₀**, **ΔR**, or **σ²** field (or press
+**Shift+F10** with the input focused) to copy that field's expression:
+
+- **Apply to the same-shell FEFF paths** copies to the other paths in the
+  current displayed radial shell, including excluded paths. It is unavailable
+  for unmatched paths, multiple scattering, or a shell with no other paths.
+- **Apply to all selected FEFF paths** copies to the other paths checked for
+  inclusion in the current spectrum's model, across shells.
+
+Only the chosen field changes; path inclusion and named parameter definitions
+stay as they are. Expressions are copied verbatim, so `reff` and `degen` retain
+each target path's own values. These edits save automatically without running a fit.
+
 The bundled calculation used FEFF8L with a 5 Å atomic cluster, 4 Å path radius,
 and up to four legs. The first four files in FEFF order are:
 

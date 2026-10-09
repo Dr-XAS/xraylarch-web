@@ -23,7 +23,7 @@ import { ArtemisCoordinationControl } from "./artemis-coordination"
 import { ArtemisModelAutosave, type ArtemisSaveStatus } from "@/lib/artemis-model-autosave"
 import { parseFeffCluster } from "@/lib/feff-cluster"
 import { isFirstShellPath, type FirstShellSelection } from "@/lib/first-shell"
-import { radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
+import { groupRadialPaths, radialPathNeighbor, type RadialShellContext } from "@/lib/radial-shells"
 import { useRadialShells } from "@/lib/use-radial-shells"
 import { RadialShellPanel } from "./radial-shell-panel"
 import { RadialPathGroups } from "./radial-path-groups"
@@ -48,6 +48,9 @@ const transformLabels: Record<TransformField, string> = {
   dk: "k taper dk (Å⁻¹)", dr: "R taper dr (Å)", window: "k window", kweight: "Fit k-weight",
 }
 type ContextEvent = MouseEvent<HTMLElement> | KeyboardEvent<HTMLElement>
+const pathFieldLabels = { s02: "S₀²", e0: "ΔE₀", deltar: "ΔR", sigma2: "σ²" } as const
+type PathField = keyof typeof pathFieldLabels
+type PathScope = "shell" | "selected"
 export type ArtemisModelActions = {
   flush: () => Promise<void>
   importModel: () => void
@@ -332,6 +335,7 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
   const [error, setError] = useState("")
   const [notice, setNotice] = useState("")
   const [transformMenu, setTransformMenu] = useState<{ field?: TransformField; anchor: { x: number; y: number }; trigger: HTMLElement } | null>(null)
+  const [pathMenu, setPathMenu] = useState<{ pathId: string; field: PathField; anchor: { x: number; y: number }; trigger: HTMLElement } | null>(null)
   const pathDetailsId = useId()
   // New paths open once; saved models start compact and this session's choices survive spectrum switches.
   const [collapsedPathIds, setCollapsedPathIds] = useState<Set<string>>(() => initial?.collapsedPathIds ?? new Set(group?.artemis ? draft.paths.map(path => path.id) : []))
@@ -418,8 +422,41 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
     const field = target.closest<HTMLElement>("[data-transform-field]")?.dataset.transformField as TransformField | undefined
     const trigger = target.closest<HTMLElement>("input, select, button, summary") ?? event.currentTarget.querySelector<HTMLElement>("summary") ?? event.currentTarget
     const rect = trigger.getBoundingClientRect()
+    setPathMenu(null)
     setTransformMenu({ field, trigger, anchor: "clientX" in event && (event.clientX || event.clientY)
       ? { x: event.clientX, y: event.clientY } : { x: rect.left, y: rect.bottom } })
+  }
+  function openPathMenu(event: ContextEvent, pathId: string) {
+    const fieldElement = (event.target as HTMLElement).closest<HTMLElement>("[data-path-field]")
+    const field = fieldElement?.dataset.pathField as PathField | undefined
+    if (!field || !Object.hasOwn(pathFieldLabels, field)) return
+    event.preventDefault()
+    event.stopPropagation()
+    if (busy || pending) return
+    const trigger = fieldElement!.querySelector<HTMLInputElement>("input")!
+    const rect = trigger.getBoundingClientRect()
+    setTransformMenu(null)
+    setPathMenu({ pathId, field, trigger, anchor: "clientX" in event && (event.clientX || event.clientY)
+      ? { x: event.clientX, y: event.clientY } : { x: rect.left, y: rect.bottom } })
+  }
+  function pathTargets(pathId: string, scope: PathScope) {
+    const candidates = scope === "selected" ? draft.paths.filter(path => path.enabled)
+      : groupRadialPaths(draft.paths, radialContext?.structure ?? null, radialState.data)
+        .find(group => group.shell && group.paths.some(path => path.id === pathId))?.paths ?? []
+    return candidates.filter(path => path.id !== pathId)
+  }
+  function applyPathField(scope: PathScope) {
+    if (!pathMenu || busy || pending) return
+    const source = draft.paths.find(path => path.id === pathMenu.pathId)
+    if (!source) return
+    const { field } = pathMenu
+    const targets = pathTargets(source.id, scope)
+    const changed = new Set(targets.filter(path => path[field] !== source[field]).map(path => path.id))
+    if (changed.size) edit(previous => ({ ...previous,
+      paths: previous.paths.map(path => changed.has(path.id) ? { ...path, [field]: source[field] } : path),
+    }))
+    setNotice(changed.size ? `Applied ${pathFieldLabels[field]} to ${changed.size} ${scope === "shell" ? "same-shell" : "selected"} FEFF path${changed.size === 1 ? "" : "s"}.`
+      : `The ${scope === "shell" ? "same-shell" : "selected"} FEFF paths already have this ${pathFieldLabels[field]} expression.`)
   }
   function applyTransform(field?: TransformField) {
     if (busy || pending) return
@@ -722,13 +759,14 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         {path.metadata.nleg === 2 && <ArtemisCoordinationControl index={i + 1} path={path} parameters={draft.parameters}
           onPreview={options => planCoordinationInsertion(draft, path.id, options)} onApply={options => insertCoordination(path.id, options)} />}
         {/* Keep the inputs mounted so folding a path preserves edits and native undo. */}
-        <div id={detailsId} className={styles.pathDetails} hidden={!expanded}>
+        <div id={detailsId} className={styles.pathDetails} hidden={!expanded} onContextMenu={event => openPathMenu(event, path.id)}
+          onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) openPathMenu(event, path.id) }}>
         <label className={styles.fullField}><span>Path label<SectionHelp label={`Path ${i + 1} label`}>A readable name for this path in the model and results. Renaming leaves the FEFF file and scattering calculation unchanged.</SectionHelp></span><input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
         <div className={styles.grid}>
           {([
             ["s02", "S₀²", "Amplitude expression; FEFF N is already included. Use Set / fit coordination number above to create a CN parameter."],
             ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Craft edge energy."],
-          ] as const).map(([field, label, title]) => <label key={field}><span>{label}<SectionHelp label={`Path ${i + 1} ${label}`}>{title} Enter a number, parameter name or expression; use the same name to share a parameter across paths.</SectionHelp></span><input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
+          ] as const).map(([field, label, title]) => <label key={field} data-path-field={field}><span>{label}<SectionHelp label={`Path ${i + 1} ${label}`}>{title} Enter a number, parameter name or expression; use the same name to share a parameter across paths. Right-click or press Shift+F10 to apply this expression to the same-shell or selected FEFF paths.</SectionHelp></span><input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
         </div>
         <ArtemisPathModelField index={i + 1} quantity="ΔR" unit="Å" value={path.deltar} onChange={value => editPath(path.id, "deltar", value)}
           help="Change in the FEFF effective half-path length. The fitted distance is R_eff + ΔR; ΔR often correlates with ΔE₀.">
@@ -782,6 +820,11 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         <button type="button" className={styles.fitButton} onClick={fit} disabled={!!reason || version === undefined || !!busy || !draft.paths.some(path => path.enabled)}>{busy === "fit" ? "Fitting…" : error ? "Retry fit" : "Run EXAFS fit"}</button>
       </div>
     </FittingSection>
+    {pathMenu && <AthenaContextMenu key={`${pathMenu.pathId}:${pathMenu.field}`} label={`${pathFieldLabels[pathMenu.field]} FEFF path actions`} anchor={pathMenu.anchor} returnFocus={pathMenu.trigger} onClose={() => setPathMenu(null)}
+      items={[
+        { id: "shell", label: "Apply to the same-shell FEFF paths", disabled: disabled || !pathTargets(pathMenu.pathId, "shell").length, onSelect: () => applyPathField("shell") },
+        { id: "selected", label: "Apply to all selected FEFF paths", disabled: disabled || !pathTargets(pathMenu.pathId, "selected").length, onSelect: () => applyPathField("selected") },
+      ]} />}
     {transformMenu && <AthenaContextMenu label="Fit range & transform actions" anchor={transformMenu.anchor} returnFocus={transformMenu.trigger} onClose={() => setTransformMenu(null)}
       items={[
         ...(transformMenu.field ? [{ id: "field", label: `Apply ${transformLabels[transformMenu.field]} to marked groups`,

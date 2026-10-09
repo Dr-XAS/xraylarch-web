@@ -28,6 +28,7 @@ export function AthenaContextMenu({ label, items, anchor, onClose, returnFocus }
   const buttons = useRef(new Map<string, HTMLButtonElement>())
   const closed = useRef(false)
   const initializedFocus = useRef(false)
+  const triggerPosition = useRef<{ left: number; top: number } | null>(null)
   const [activeId, setActiveId] = useState(() => items.find(item => !item.disabled)?.id)
   const [position, setPosition] = useState({ left: anchor.x, top: anchor.y })
   const enabled = items.filter(item => !item.disabled)
@@ -53,6 +54,10 @@ export function AthenaContextMenu({ label, items, anchor, onClose, returnFocus }
     close(true)
     item.onSelect()
   }
+
+  useLayoutEffect(() => {
+    triggerPosition.current = returnFocus?.getBoundingClientRect() ?? null
+  }, [returnFocus])
 
   useLayoutEffect(() => {
     const menu = menuRef.current
@@ -91,6 +96,11 @@ export function AthenaContextMenu({ label, items, anchor, onClose, returnFocus }
     }
     const scroll = (event: Event) => {
       if (event.target instanceof Node && menuRef.current?.contains(event.target)) return
+      // A scroll queued before opening can arrive after focus enters the menu.
+      // Dismiss only when that scroll actually moved the menu's source control.
+      const origin = triggerPosition.current
+      const current = returnFocus?.isConnected ? returnFocus.getBoundingClientRect() : null
+      if (origin && current && current.left === origin.left && current.top === origin.top) return
       close(true)
     }
     document.addEventListener("pointerdown", outside, true)

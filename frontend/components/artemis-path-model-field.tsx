@@ -13,7 +13,7 @@ export function ArtemisPathModelField({ index, quantity, unit, help, value, onCh
   const panelId = useId()
   const label = `Path ${index} ${quantity} (${unit})`
   return <div className={styles.modelField}>
-    <label className={styles.fullField}><span>{quantity} ({unit})<SectionHelp label={label}>{help} Enter a number, parameter name or expression; use the same name to share a parameter across paths.</SectionHelp></span>
+    <label className={styles.fullField} data-path-field={quantity === "ΔR" ? "deltar" : "sigma2"}><span>{quantity} ({unit})<SectionHelp label={label}>{help} Enter a number, parameter name or expression; use the same name to share a parameter across paths. Right-click or press Shift+F10 to apply this expression to the same-shell or selected FEFF paths.</SectionHelp></span>
       <input value={value} aria-label={label} onChange={event => onChange(event.target.value)} spellCheck={false} />
     </label>
     <button type="button" className={styles.insertModel} aria-label={`Insert ${quantity} model for path ${index}`} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(previous => !previous)}>
