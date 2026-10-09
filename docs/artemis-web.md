@@ -107,7 +107,7 @@ before **Show paths** is available.
 
 An empty project is sufficient. Open **EXAFS fitting → Crystal structures →
 Upload CIF**, then **Simulate EXAFS from this CIF**. Each attached CIF has a
-**Simulate EXAFS** action, and **Simulate EXAFS from CIF** opens the same form.
+**Simulate EXAFS** action that opens the form with that structure selected.
 Choose the absorbing element, absorption edge, inequivalent site and **Maximum R**
 (default 5 Å, supported range 2–6 Å), enter the simulation values and click
 **Run EXAFS simulation** once. The scattering calculation and path sum run automatically.

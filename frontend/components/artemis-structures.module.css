@@ -61,7 +61,6 @@
 .toolbar { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
 .structureToolbar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; }
 .panel .structureToolbar > button { width: 100%; min-width: 0; min-height: 32px; white-space: normal; }
-.structureToolbar .simulationButton { grid-column: 1 / -1; }
 .textDetails { margin: 9px 0; font-size: var(--text-label); }
 .textDetails summary { cursor: pointer; margin: 6px 0; font-size: var(--text-label); }
 .textDetails pre { padding: 9px; background: var(--ath-canvas, #f5f8f5); max-height: 200px; overflow: auto; white-space: pre; font-size: var(--text-label); line-height: var(--leading-body); }

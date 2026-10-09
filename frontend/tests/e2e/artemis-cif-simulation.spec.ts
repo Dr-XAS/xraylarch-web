@@ -10,7 +10,7 @@ test("an uploaded CIF simulates, exports, and adds theory EXAFS to an empty proj
   await page.getByRole("tab", { name: "EXAFS fitting", exact: true }).click()
   const region = page.getByRole("region", { name: "Project CIF structures", exact: true })
   await expect(region.getByRole("button", { name: "Upload CIF", exact: true })).toBeEnabled()
-  await expect(region.getByRole("button", { name: "Simulate EXAFS from CIF", exact: true })).toBeVisible()
+  await expect(region.getByRole("button", { name: "Simulate EXAFS from CIF", exact: true })).toHaveCount(0)
   const source = await page.request.get("/api/backend/api/artemis/structures/13088")
   expect(source.ok()).toBe(true)
   const { cif } = await source.json() as { cif: string }

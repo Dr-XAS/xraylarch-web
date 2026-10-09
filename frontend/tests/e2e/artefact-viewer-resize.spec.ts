@@ -189,6 +189,7 @@ test("standalone CIF and simulated EXAFS use the same drag control and retain se
   const science = scientificRequests(page)
   const project = await loadCopper(page)
   const attachment = project.artemis_structures![0]
+  const structureName = attachment.label || attachment.structure.mineral || attachment.structure.formula
   let job: ArtemisFeffJob | undefined
   // This is a viewer test. The existing synthetic fixture supplies curves;
   // the browser still configures the attached CIF through the real dialogs.
@@ -212,7 +213,7 @@ test("standalone CIF and simulated EXAFS use the same drag control and retain se
   async function simulate() {
     await page.locator(".ath-group-select").filter({ hasText: "Cu₂O · room temperature" }).last().click()
     await page.getByRole("tab", { name: "EXAFS fitting", exact: true }).click()
-    await page.getByRole("button", { name: "Simulate EXAFS from CIF", exact: true }).click()
+    await page.getByRole("region", { name: "Project CIF structures", exact: true }).getByRole("button", { name: `Simulate EXAFS from ${structureName} CIF`, exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Simulate EXAFS", exact: true })
     await dialog.getByLabel("Simulation disorder model", { exact: true }).selectOption("fixed")
     await dialog.getByRole("button", { name: "Run EXAFS simulation", exact: true }).click()

@@ -115,8 +115,8 @@ automatically; the exported filename does not rename the saved project.
 See the [Artemis Web guide](docs/artemis-web.md) for the workflow, scientific
 conventions, supported expressions, and current limitations.
 
-**Simulate EXAFS from CIF** is in **Crystal structures**. Each attached CIF also
-has a **Simulate EXAFS** button that opens the calculation with that structure selected.
+In **Crystal structures**, each attached CIF has a **Simulate EXAFS** button
+that opens the calculation with that structure selected.
 No measured spectrum is required. Choose an absorbing site, edge and maximum R,
 enter S₀², disorder, ΔE₀ and ΔR, then run the simulation. Correlated Debye is the
 default disorder model: sample temperature starts at 298 K, and the material's

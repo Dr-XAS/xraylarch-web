@@ -241,7 +241,7 @@ describe("ArtemisStructures", () => {
     render(<Harness contextKey="p:cu" availableSlots={24} onAddPaths={addPathsMock()} onProjectChange={onProjectChange}
       prepareMutation={vi.fn().mockResolvedValueOnce({ version: 1, finish: () => {} }).mockImplementationOnce(() => preparation.promise)} />)
     fireEvent.click(screen.getByRole("button", { name: "Search / attach CIF" }))
-    await findAndSelect(); await click("Close FEFF paths"); await click("Simulate EXAFS from CIF"); fireEvent.click(screen.getByRole("radio", { name: "Absorber site 3" }))
+    await findAndSelect(); await click("Close FEFF paths"); await click("Simulate EXAFS from Copper CIF"); fireEvent.click(screen.getByRole("radio", { name: "Absorber site 3" }))
     fireEvent.change(screen.getByLabelText("Simulation disorder model"), { target: { value: "fixed" } })
     await click("Run EXAFS simulation")
     await screen.findByTestId("simulation-result")
