@@ -2334,7 +2334,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
 
     ...analysisMenu.map(tool => ({ id: `analysis-${tool}`, menu: "Analysis" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: !active || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
 
-    { id: "help-learn", menu: "Help", label: "Learn Craft", keywords: "documentation guide tutorial", disabled: false, icon: <BookOpen size={15} />, action: () => openTool("learn") },
+    { id: "help-learn", menu: "Help", label: "Learn Craft", keywords: "documentation guide tutorial", disabled: false, visible: false, icon: <BookOpen size={15} />, action: () => openTool("learn") },
     { id: "help-report", menu: "Help", label: "Report a bug or feedback…", keywords: "bug feedback feature request problem issue", disabled: false, icon: <Bug size={15} />, action: () => { setMenu(""); setReportOpen(true) } },
   ]
   const visibleMenuCommands = menuCommands.filter(command => command.visible !== false)

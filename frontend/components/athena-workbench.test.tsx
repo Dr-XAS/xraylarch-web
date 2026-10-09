@@ -964,10 +964,13 @@ describe("AthenaWorkbench menu command search", () => {
     expect(within(dialog).queryByText("Type a keyword to find a menu command.")).not.toBeInTheDocument()
   })
 
-  it("shows the Craft guide in the empty Search menu", async () => {
-    const { dialog } = await openMenuSearch()
-    fireEvent.click(within(dialog).getByRole("button", { name: "Help › Learn Craft" }))
-    expect(await screen.findByRole("dialog", { name: "Learn Craft" })).toBeVisible()
+  it("hides the Craft guide from the empty Search menu and keyword matches", async () => {
+    const { dialog, searchbox } = await openMenuSearch()
+    expect(within(dialog).queryByRole("button", { name: "Help › Learn Craft" })).not.toBeInTheDocument()
+    expect(within(dialog).getByRole("button", { name: "Help › Report a bug or feedback…" })).toBeEnabled()
+
+    fireEvent.change(searchbox, { target: { value: "learn" } })
+    expect(within(dialog).queryByRole("button", { name: "Help › Learn Craft" })).not.toBeInTheDocument()
   })
 
   it("moves from search to a result and opens the command with the keyboard", async () => {
