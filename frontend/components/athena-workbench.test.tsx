@@ -835,10 +835,10 @@ describe("AthenaWorkbench viewer selection", () => {
 })
 
 describe("AthenaWorkbench branding", () => {
-  it("identifies Larch-Web and links its Xraylarch and Demeter credits", async () => {
+  it("identifies XAScraft and links its Xraylarch and Demeter credits", async () => {
     await openSaved()
 
-    expect(screen.getByRole("heading", { level: 1, name: "Larch-Web" })).toBeVisible()
+    expect(screen.getByRole("heading", { level: 1, name: "XAScraft" })).toBeVisible()
     expect(screen.getByRole("checkbox", { name: "Show instruction" })).not.toBeChecked()
     const xraylarch = screen.getByRole("link", { name: "Xraylarch" })
     const demeter = screen.getByRole("link", { name: "Demeter" })
@@ -849,7 +849,7 @@ describe("AthenaWorkbench branding", () => {
     expect(xraylarch).toBeVisible()
     expect(demeter).toBeVisible()
     expect(document.querySelector(".ath-brand-credits")).toHaveTextContent("powered by Xraylarch, inspired by Demeter, and developed by the Dr. XAS team.")
-    expect(xraylarch.closest(".ath-brand")).toContainElement(screen.getByRole("heading", { level: 1, name: "Larch-Web" }))
+    expect(xraylarch.closest(".ath-brand")).toContainElement(screen.getByRole("heading", { level: 1, name: "XAScraft" }))
   })
 
   it("omits the extra workspace copy while keeping the example loader and viewer controls", async () => {

@@ -31,6 +31,8 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 
 ## Athena Web branch
 
+The web application is named **XAScraft**.
+
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 **Save project** defaults to the complete web project (`.json`), with a file-name
 confirmation before download. Native Athena (`.prj`) exports remain in **File**.
@@ -40,7 +42,7 @@ analysis, EXAFS fitting, CIF/FEFF setup, simulation, and viewer controls. Hover,
 focus, or tap an icon for its meaning, units, and relevant constraints; press
 Escape to dismiss it. Help stays out of the form layout and does not change data.
 
-The Xraylarch, Demeter, and Dr. XAS team credits stay visible below the Larch-Web
+The Xraylarch, Demeter, and Dr. XAS team credits stay visible below the XAScraft
 title, independently of **Show instruction**.
 
 For standalone development, open [http://localhost:3004](http://localhost:3004)
@@ -386,9 +388,9 @@ marked groups. Source detector columns remain aligned, and Undo/Redo restores
 the edit. See the [point-edit contract](docs/athena-point-edit-reference.md)
 for native boundary rules, measured CLS examples and verification limits.
 
-## XrayLarch Web V1
+## XAScraft classic interface (V1)
 
-XrayLarch Web is a local browser workbench for one XAS spectrum at a time. It
+XAScraft's classic interface is a local browser workbench for one XAS spectrum at a time. It
 keeps parsing, processing, revisions, and stored arrays in the FastAPI backend;
 the frontend only sends validated choices and renders server-produced traces.
 
