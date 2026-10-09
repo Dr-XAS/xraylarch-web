@@ -1,7 +1,7 @@
 .logo {
   display: block;
-  flex: 0 0 44px;
-  width: 44px;
+  flex: 0 0 176px;
+  width: 176px;
 }
 
 .logo img {
@@ -20,4 +20,11 @@
 
 :global(html[data-theme="dark"]) .logo .dark {
   display: block;
+}
+
+@media (max-width: 620px) {
+  .logo {
+    flex-basis: 144px;
+    width: 144px;
+  }
 }
