@@ -437,9 +437,14 @@ Parameters heading. It adds missing names from included paths and their Def
 dependencies, removes parameters unused by that model, and keeps the values,
 types, and bounds of retained parameters. Excluded paths do not keep parameters
 in the table. Invalid or incomplete expressions leave the table unchanged.
-New parameters use Guess: a bare path symbol starts with that field's defaults;
-symbols within composite expressions start at 1 without bounds. Review these
-starting values and bounds before fitting.
+New parameters use Guess: a bare path symbol starts with that field's defaults.
+For a ΔR expression of `alpha * reff` or `reff * alpha`, the new fractional
+expansion parameter starts at 0 without bounds, regardless of its name; parentheses
+and whitespace are accepted. Here `R = (1 + alpha) * reff`, so 0 preserves the
+FEFF distance and 0.01 means 1% expansion. Other composite expressions start at 1
+without bounds. Existing parameters keep their saved values, so previously saved
+expansion starts of 1 must be corrected manually. Review starting values and
+bounds before fitting.
 
 Expressions support `+`, `-`, `*`, `/`, parentheses, and integer powers `**`
 with exponents from -8 to 8. Supported one-argument functions are `sqrt`, `exp`,

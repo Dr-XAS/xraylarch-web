@@ -48,6 +48,45 @@ describe("planArtemisParameterSync", () => {
     expect(planArtemisParameterSync(synchronized, paths)).toEqual({ added: [], removed: [] })
   })
 
+  it.each(["alpha * reff", "reff * alpha", "((alpha) * (reff))", " ( reff * (alpha) ) "])(
+    "starts fractional expansion at zero for ΔR = %s", deltar => {
+      const result = planArtemisParameterSync([], [path({ s02: "0.85", e0: "0", deltar, sigma2: "0.003" })])
+
+      expect(result.added).toEqual([parameter("alpha")])
+    },
+  )
+
+  it("recognizes expansion by its role regardless of its name or discovery order", () => {
+    const expansion = path({ s02: "0.85", e0: "0", deltar: "strain_1 * reff", sigma2: "0.003" })
+    const composite = path({ s02: "1 + strain_1", e0: "0", deltar: "0", sigma2: "0.003" })
+    for (const paths of [[composite, expansion], [expansion, composite]]) {
+      expect(planArtemisParameterSync([], paths).added).toEqual([parameter("strain_1")])
+    }
+  })
+
+  it("preserves existing expansion parameters, including saved nonzero starts", () => {
+    const parameters = [parameter("alpha", { value: 1, min: -0.5, max: 2 })]
+    const before = structuredClone(parameters)
+    const paths = [path({ s02: "0.85", e0: "0", deltar: "alpha * reff", sigma2: "0.003" })]
+
+    expect(planArtemisParameterSync(parameters, paths)).toEqual({ added: [], removed: [] })
+    expect(parameters).toEqual(before)
+  })
+
+  it.each(["(alpha - 1) * reff", "alpha * reff + 0.01", "2 * alpha * reff", "alpha / reff", "alpha * reff ** 2"])(
+    "keeps the generic start for other distance expressions: %s", deltar => {
+      const result = planArtemisParameterSync([], [path({ s02: "0.85", e0: "0", deltar, sigma2: "0.003" })])
+
+      expect(result.added).toEqual([parameter("alpha", { value: 1 })])
+    },
+  )
+
+  it("does not infer expansion from the same expression in another path field", () => {
+    const result = planArtemisParameterSync([], [path({ s02: "alpha * reff", e0: "0", deltar: "0", sigma2: "0.003" })])
+
+    expect(result.added).toEqual([parameter("alpha", { value: 1 })])
+  })
+
   it("retains recursive Def dependencies and discovers missing symbols inside them", () => {
     const parameters = [
       parameter("amplitude", { kind: "def", expression: "shared * fraction" }),

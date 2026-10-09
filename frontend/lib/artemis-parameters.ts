@@ -3,6 +3,7 @@ import type { ArtemisParameter, ArtemisPath } from "./artemis"
 type Definition = Pick<ArtemisParameter, "name" | "kind" | "expression">
 type PathExpressions = Pick<ArtemisPath, "enabled" | "s02" | "e0" | "deltar" | "sigma2">
 type PathField = "s02" | "e0" | "deltar" | "sigma2"
+type ParameterRole = PathField | "expansion"
 const fields: PathField[] = ["s02", "e0", "deltar", "sigma2"]
 // Match the numerical grammar in backend/xraylarch_web/artemis.py. This only
 // discovers references; expression evaluation remains in the Larch backend.
@@ -78,14 +79,15 @@ function references(expression: string, allowPathNames: boolean, allowDisorder =
   return [...names]
 }
 
-function startingParameter(name: string, field?: PathField): ArtemisParameter {
+function startingParameter(name: string, role?: ParameterRole): ArtemisParameter {
   const defaults = {
     s02: { value: 1, min: 0, max: 2 },
     e0: { value: 0, min: -20, max: 20 },
     deltar: { value: 0, min: -0.2, max: 0.2 },
     sigma2: { value: 0.003, min: 0, max: 0.1 },
+    expansion: { value: 0, min: null, max: null },
   }
-  return { name, kind: "guess", expression: "", ...(field ? defaults[field] : { value: 1, min: null, max: null }) }
+  return { name, kind: "guess", expression: "", ...(role ? defaults[role] : { value: 1, min: null, max: null }) }
 }
 
 /** Plan a complete sync before changing the editable draft, so errors are atomic. */
@@ -101,17 +103,17 @@ export function planArtemisParameterSync(parameters: Definition[], paths: PathEx
   const required = new Set<string>()
   const visiting = new Set<string>()
   const added = new Map<string, ArtemisParameter>()
-  function visit(name: string, field?: PathField) {
+  function visit(name: string, role?: ParameterRole) {
     if (visiting.has(name)) throw new Error(`Def parameter “${name}” has a circular dependency. Correct it before syncing.`)
     if (required.has(name)) {
-      // A direct path reference provides physical defaults even when the name
+      // A known path role provides physical defaults even when the name
       // was first discovered in a composite expression or Def dependency.
-      if (field && added.has(name)) added.set(name, startingParameter(name, field))
+      if (role && added.has(name)) added.set(name, startingParameter(name, role))
       return
     }
     required.add(name)
     const existing = definitions.get(name)
-    if (!existing) added.set(name, startingParameter(name, field))
+    if (!existing) added.set(name, startingParameter(name, role))
     else if (existing.kind === "def") {
       visiting.add(name)
       for (const dependency of references(existing.expression, false)) visit(dependency)
@@ -120,7 +122,14 @@ export function planArtemisParameterSync(parameters: Definition[], paths: PathEx
   }
   for (const path of included) {
     for (const field of fields) {
-      for (const name of references(path[field], true, field === "sigma2")) visit(name, path[field].trim() === name ? field : undefined)
+      const names = references(path[field], true, field === "sigma2")
+      // Only recognize a validated, plain product of a parameter and Reff.
+      // ΔR = alpha * Reff means R = (1 + alpha) * Reff, so start alpha at zero.
+      const product = path[field].replace(/[\s()]/g, "")
+      for (const name of names) {
+        const expansion = field === "deltar" && (product === `${name}*reff` || product === `reff*${name}`)
+        visit(name, path[field].trim() === name ? field : expansion ? "expansion" : undefined)
+      }
     }
   }
   if (required.size > 32) throw new Error(`This model needs ${required.size} parameters; the limit is 32. Simplify the path expressions before syncing.`)
