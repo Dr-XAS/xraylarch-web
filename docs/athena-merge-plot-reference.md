@@ -1,6 +1,6 @@
 # Saved merge spread: persistent inspection and original plotting rules
 
-**Plot → Saved merge spread…** displays the current merged spectrum with
+**Process → Saved merge spread…** displays the current merged spectrum with
 its saved standard deviation. The group selector can switch to another
 merge in the project. The viewer remains available after closing the merge
 tool, restarting the backend, refreshing the page, and importing a historical

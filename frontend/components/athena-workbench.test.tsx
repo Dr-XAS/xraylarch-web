@@ -206,7 +206,7 @@ describe("integration mode", () => {
     expect(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Undo" })).toBeDisabled()
     expect(within(screen.getByRole("navigation", { name: /main menu/i })).getByRole("button", { name: "Redo" })).toBeDisabled()
     expect(screen.getByRole("button", { name: /excel report on all groups/i })).toBeDisabled()
-    fireEvent.click(screen.getByRole("button", { name: "Plot" }))
+    fireEvent.click(screen.getByRole("button", { name: "Process" }))
     expect(screen.getByRole("button", { name: /plot shortcuts/i })).toBeDisabled()
     expect(screen.getByRole("button", { name: /diagnostic plots/i })).toBeDisabled()
     expect(screen.queryByRole("button", { name: "Energy" })).not.toBeInTheDocument()
@@ -926,13 +926,13 @@ describe("AthenaWorkbench menu command search", () => {
     expect(screen.queryByRole("dialog", { name: "Search menu commands" })).not.toBeInTheDocument()
   })
 
-  it("moves plot shortcuts into the Plot menu and opens the existing dialog", async () => {
+  it("opens plot shortcuts from the Process menu and opens the existing dialog", async () => {
     await openSaved()
     const navigation = screen.getByRole("navigation", { name: /main menu/i })
     const plotTop = multipleViewer().getByRole("tablist", { name: "Plot space" }).closest(".ath-plot-top") as HTMLElement
 
     expect(within(plotTop).queryByRole("button", { name: "Plot shortcuts…" })).not.toBeInTheDocument()
-    fireEvent.click(within(navigation).getByRole("button", { name: "Plot" }))
+    fireEvent.click(within(navigation).getByRole("button", { name: "Process" }))
     const shortcut = within(navigation).getByRole("button", { name: "Plot shortcuts…" })
     expect(shortcut).toBeEnabled()
     fireEvent.click(shortcut)
@@ -941,11 +941,11 @@ describe("AthenaWorkbench menu command search", () => {
     expect(within(navigation).queryByRole("button", { name: "Plot shortcuts…" })).not.toBeInTheDocument()
   })
 
-  it("finds plot shortcuts by its Plot menu path", async () => {
+  it("finds plot shortcuts by its Process menu path", async () => {
     const { dialog, searchbox } = await openMenuSearch()
     fireEvent.change(searchbox, { target: { value: "shortcut" } })
 
-    const result = within(dialog).getByRole("button", { name: "Plot › Plot shortcuts…" })
+    const result = within(dialog).getByRole("button", { name: "Process › Plot shortcuts…" })
     expect(result).toBeEnabled()
     fireEvent.click(result)
 

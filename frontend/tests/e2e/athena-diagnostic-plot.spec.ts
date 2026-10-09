@@ -41,7 +41,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} origi
     expect(response.ok()).toBe(true); project = await response.json()
   }
   await page.reload()
-  await page.getByRole('button', { name: 'Plot', exact: true }).click()
+  await page.getByRole('button', { name: 'Process', exact: true }).click()
   await page.getByRole('button', { name: 'Diagnostic plots…', exact: true }).click()
   let dialog = page.getByRole('dialog', { name: 'Diagnostic plots', exact: true })
   await dialog.getByLabel('Diagnostic spectrum', { exact: true }).selectOption(ids[0])
@@ -70,7 +70,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} origi
   expect(await (await page.request.get(`/api/backend/api/athena/projects/${project.id}`)).json()).toEqual(project)
   await page.reload()
   const menu = page.getByRole('navigation', { name: 'Main menu', exact: true })
-  await menu.getByRole('button', { name: 'Plot', exact: true }).click()
+  await menu.getByRole('button', { name: 'Process', exact: true }).click()
   await menu.getByRole('button', { name: 'Plot shortcuts…', exact: true }).click()
   dialog = page.getByRole('dialog', { name: 'Athena plot shortcuts', exact: true })
   await dialog.getByLabel('Plot shortcut', { exact: true }).selectOption('biquad')

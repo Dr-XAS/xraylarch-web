@@ -24,7 +24,7 @@ async function review(page: Page, dialog: Locator, kind: string) {
 }
 async function open(page: Page) {
   const menu = page.getByRole('navigation', { name: 'Main menu', exact: true })
-  await menu.getByRole('button', { name: 'Plot', exact: true }).click()
+  await menu.getByRole('button', { name: 'Process', exact: true }).click()
   await menu.getByRole('button', { name: 'Plot shortcuts…', exact: true }).click()
   return page.getByRole('dialog', { name: 'Athena plot shortcuts', exact: true })
 }

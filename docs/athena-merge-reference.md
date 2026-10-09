@@ -105,7 +105,7 @@ The web project retains provenance, contributors, coefficients, exclusions
 and `source.raw_arrays.stddev`. Native PRJ export writes the actual `stddev`
 array and `is_merge=e/n/k`; these arrays and reference links survive a bare
 native round trip with all `# Athena-Web` sidecar lines removed. Native
-`is_merge` now enables **Plot → Saved merge spread…** when its aligned scatter
+`is_merge` now enables **Process → Saved merge spread…** when its aligned scatter
 is available; it does not reconstruct missing web contributor provenance.
 The [saved-spread reference](athena-merge-plot-reference.md) covers persistent
 viewing, current norm/flat curves, native scale/offset and k weights. The existing

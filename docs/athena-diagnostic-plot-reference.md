@@ -1,6 +1,6 @@
 # Quad, Bi-Quad and k/q diagnostic plots
 
-`Plot → Diagnostic plots…` opens a read-only view of the saved processing.
+`Process → Diagnostic plots…` opens a read-only view of the saved processing.
 Choose the current spectrum for Quad or k/q; Bi-Quad uses exactly two marked
 groups in project order. The Quad and Bi-Quad entries in **Plot shortcuts…**
 use the same backend and rendering component, including the marked-q

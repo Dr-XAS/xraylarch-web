@@ -3078,7 +3078,7 @@ was edited as part of verification. The local application is available at
 
 ## 2026-09-13 — Persistent merge spread and native plot transformations
 
-**Plot → Saved merge spread…** now reopens stored scatter for native/web
+**Process → Saved merge spread…** now reopens stored scatter for native/web
 merged groups, including after closing the merge panel, restarting the
 backend, refreshing the page or importing an original Athena PRJ. The
 [saved-spread contract](athena-merge-plot-reference.md) records implementation
@@ -3159,7 +3159,7 @@ project was edited for these checks.
 
 ### Quad, Bi-Quad and k/q diagnostics — 2026-09-14
 
-`Plot → Diagnostic plots…` now displays backend-produced native Quad,
+`Process → Diagnostic plots…` now displays backend-produced native Quad,
 Bi-Quad and k/q curves with a common, optionally fractional plot weight.
 Quad/Bi-Quad shortcuts use the same implementation. Quad contains the raw
 energy/background/pre/post curves, weighted χ(k), both R magnitude and real

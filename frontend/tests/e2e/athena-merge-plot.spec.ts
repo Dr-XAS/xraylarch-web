@@ -12,7 +12,7 @@ async function curves(plot:Locator){
   return plot.locator('.js-plotly-plot').evaluate(el=>(el as HTMLElement&{data:{x:number[];y:number[];name:string}[]}).data.map(t=>({x:[...t.x],y:[...t.y],name:t.name})))
 }
 async function open(page:Page){
-  await page.getByRole('button',{name:'Plot',exact:true}).click();await page.getByRole('button',{name:'Saved merge spread…',exact:true}).click()
+  await page.getByRole('button',{name:'Process',exact:true}).click();await page.getByRole('button',{name:'Saved merge spread…',exact:true}).click()
   const dialog=page.getByRole('dialog',{name:'Saved merge spread',exact:true})
   await expect(dialog.getByText(/saved points · project revision/)).toBeVisible();return dialog
 }

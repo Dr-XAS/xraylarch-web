@@ -180,7 +180,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
 type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "xrf_xas" | "xrf_view" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | null
-const mainMenuNames = ["File", "Edit", "Group", "Plot", "Process", "Analysis"] as const
+const mainMenuNames = ["File", "Edit", "Group", "Process", "Analysis"] as const
 type MainMenuName = typeof mainMenuNames[number]
 type MenuCommand = {
   id: string
@@ -2327,11 +2327,11 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     { id: "group-tie-reference", menu: "Group", label: "Tie marked sample and reference", keywords: "link pair", disabled: !!busy || parameterUpdatePending || marked.length !== 2 || !canCommand("tie_reference"), section: 1, action: () => act("tie_reference", marked.map(group => group.id)) },
     { id: "group-untie-reference", menu: "Group", label: "Untie current reference", keywords: "unlink pair", disabled: !active || !!busy || parameterUpdatePending || !canCommand("untie_reference"), section: 1, action: () => act("untie_reference") },
 
-    { id: "plot-shortcuts", menu: "Plot", label: "Plot shortcuts…", keywords: "shortcut native comparison detector derivative i0 e0 k r", disabled: !active || !!busy || parameterUpdatePending || !canOpen("special_plot"), action: () => openTool("special_plot") },
-    { id: "plot-diagnostic", menu: "Plot", label: "Diagnostic plots…", keywords: "chart inspect", disabled: !active || !!busy || parameterUpdatePending || !canOpen("diagnostic_plot"), action: () => openTool("diagnostic_plot") },
-    { id: "plot-merge-spread", menu: "Plot", label: "Saved merge spread…", keywords: "chart standard deviation", disabled: !active || !hasSavedMerge(active) || !!busy || parameterUpdatePending || !canOpen("merge_plot"), action: () => openTool("merge_plot") },
-
     ...toolsMenu.map(tool => ({ id: `process-${tool}`, menu: "Process" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: (tool === "dispersive" || tool === "xrf_xas" || tool === "xrf_view" ? !project : !active) || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
+    { id: "plot-shortcuts", menu: "Process", label: "Plot shortcuts…", keywords: "shortcut native comparison detector derivative i0 e0 k r", section: 1, disabled: !active || !!busy || parameterUpdatePending || !canOpen("special_plot"), action: () => openTool("special_plot") },
+    { id: "plot-diagnostic", menu: "Process", label: "Diagnostic plots…", keywords: "chart inspect", section: 1, disabled: !active || !!busy || parameterUpdatePending || !canOpen("diagnostic_plot"), action: () => openTool("diagnostic_plot") },
+    { id: "plot-merge-spread", menu: "Process", label: "Saved merge spread…", keywords: "plot chart standard deviation", section: 1, disabled: !active || !hasSavedMerge(active) || !!busy || parameterUpdatePending || !canOpen("merge_plot"), action: () => openTool("merge_plot") },
+
     ...analysisMenu.map(tool => ({ id: `analysis-${tool}`, menu: "Analysis" as const, label: toolTitles[tool], keywords: tool.replaceAll("_", " "), disabled: !active || !!busy || parameterUpdatePending || !canOpenTool(tool), action: () => openTool(tool) })),
 
     { id: "help-learn", menu: "Help", label: "Learn Athena", keywords: "documentation guide tutorial", disabled: false, icon: <BookOpen size={15} />, action: () => openTool("learn") },
