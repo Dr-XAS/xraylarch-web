@@ -711,7 +711,7 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
     {({ structures, feff }) => <>
     <FittingSection title="Crystal structures" icon={CrystalLatticeIcon} summary="CIF">{structures}</FittingSection>
     <FittingSection title="FEFF paths" icon={FeffScatteringIcon} summary={`${draft.paths.filter(path => path.enabled).length} included`} disabled={disabled}
-      help={<><p>FEFF N is the path degeneracy from the file. Use Set / fit coordination number on a single-scattering path to define CN with fixed S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
+      help={<><p>FEFF N is the path degeneracy from the file. Use CN beside S₀² on a single-scattering path to define coordination with fixed S₀². Shared parameter names couple paths. Give distinct shells their own ΔR and σ² parameters when needed.</p>
         {radialContext && <p>Groups are geometric candidates for {radialContext.structure.mineral || radialContext.structure.formula}, {radialState.data?.absorber ?? "absorber"} site {radialContext.siteIndex}. Confirm the CIF and site used to calculate imported paths. Group selection changes inclusion only; path expressions and fit bounds stay under your control.</p>}</>}>
       {feff}
       {radialContext ? <>
@@ -756,18 +756,16 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         <p className={styles.metadata}>{path.metadata.absorber} {path.metadata.edge} · R<sub>eff</sub> {format(path.metadata.reff)} Å · FEFF N {format(path.metadata.degen)} · {path.metadata.nleg} legs</p>
         {shellPathIds.includes(path.id) && <p className={styles.metadata}><strong>CrystalNN first-shell candidate</strong></p>}
         {member && <p className={styles.metadata}>{member.element} pair {member.group_id}</p>}
-        {path.metadata.nleg === 2 && <ArtemisCoordinationControl index={i + 1} path={path} parameters={draft.parameters}
-          onPreview={options => planCoordinationInsertion(draft, path.id, options)} onApply={options => insertCoordination(path.id, options)} />}
         {/* Keep the inputs mounted so folding a path preserves edits and native undo. */}
         <div id={detailsId} className={styles.pathDetails} hidden={!expanded} onContextMenu={event => openPathMenu(event, path.id)}
           onKeyDown={event => { if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) openPathMenu(event, path.id) }}>
         <label className={styles.fullField}><span>Path label<SectionHelp label={`Path ${i + 1} label`}>A readable name for this path in the model and results. Renaming leaves the FEFF file and scattering calculation unchanged.</SectionHelp></span><input value={path.label} aria-label={`Path ${i + 1} label`} onChange={event => editPath(path.id, "label", event.target.value)} /></label>
-        <div className={styles.grid}>
-          {([
-            ["s02", "S₀²", "Amplitude expression; FEFF N is already included. Use Set / fit coordination number above to create a CN parameter."],
-            ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Craft edge energy."],
-          ] as const).map(([field, label, title]) => <label key={field} data-path-field={field}><span>{label}<SectionHelp label={`Path ${i + 1} ${label}`}>{title} Enter a number, parameter name or expression; use the same name to share a parameter across paths. Right-click or press Shift+F10 to apply this expression to the same-shell or selected FEFF paths.</SectionHelp></span><input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
+        <div className={styles.amplitudeRow} data-amplitude-row>
+          <label className={styles.fullField} data-path-field="s02"><span>S₀²<SectionHelp label={`Path ${i + 1} S₀²`}>Amplitude expression; FEFF N is already included. Use the CN controls beside this field for a coordination parameter with fixed S₀². Enter a number, parameter name or expression; use the same name to share a parameter across paths. Right-click or press Shift+F10 to apply this expression to the same-shell or selected FEFF paths.</SectionHelp></span><input value={path.s02} aria-label={`Path ${i + 1} S₀²`} onChange={event => editPath(path.id, "s02", event.target.value)} spellCheck={false} /></label>
+          {path.metadata.nleg === 2 && <ArtemisCoordinationControl index={i + 1} path={path} parameters={draft.parameters}
+            onPreview={options => planCoordinationInsertion(draft, path.id, options)} onApply={options => insertCoordination(path.id, options)} />}
         </div>
+        <label className={styles.fullField} data-path-field="e0"><span>ΔE₀ (eV)<SectionHelp label={`Path ${i + 1} ΔE₀ (eV)`}>Fitted energy correction, separate from the Craft edge energy. Enter a number, parameter name or expression; use the same name to share a parameter across paths. Right-click or press Shift+F10 to apply this expression to the same-shell or selected FEFF paths.</SectionHelp></span><input value={path.e0} aria-label={`Path ${i + 1} ΔE₀ (eV)`} onChange={event => editPath(path.id, "e0", event.target.value)} spellCheck={false} /></label>
         <ArtemisPathModelField index={i + 1} quantity="ΔR" unit="Å" value={path.deltar} onChange={value => editPath(path.id, "deltar", value)}
           help="Change in the FEFF effective half-path length. The fitted distance is R_eff + ΔR; ΔR often correlates with ΔE₀.">
           <ArtemisExpansionControl index={i + 1} enabled={path.enabled} reff={path.metadata.reff} onPreview={options => planExpansionInsertion(draft, path.id, options)} onApply={options => insertExpansion(path.id, options)} />

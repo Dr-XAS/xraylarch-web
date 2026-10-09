@@ -327,13 +327,15 @@ describe("ArtemisFittingPanel", () => {
     await waitFor(() => expect(result.mock.calls.at(-1)?.[0]).toMatchObject({ ...fitResult(), request: { transform: { kweight: [1, 2] } } }))
   })
 
-  it("offers CN while paths are collapsed and saves a normalized CN model without changing other paths", async () => {
+  it("keeps CN beside the amplitude, preserves folded edits, and saves a normalized CN model without changing other paths", async () => {
     render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
+    const control = screen.getByRole("group", { name: "Path 1 coordination number controls" })
+    expect(screen.getByLabelText("Path 1 S₀²").closest("[data-amplitude-row]")).toContainElement(control)
     fireEvent.click(screen.getByRole("button", { name: "Collapse path 1 details" }))
     expect(screen.getByLabelText("Path 1 S₀²")).not.toBeVisible()
-    const control = screen.getAllByText("Set / fit coordination number", { exact: true })[0]
+    expect(control).not.toBeVisible()
+    fireEvent.click(screen.getByRole("button", { name: "Expand path 1 details" }))
     expect(control).toBeVisible()
-    fireEvent.click(control)
     expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue(12)
     expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue(null)
     fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
@@ -347,7 +349,14 @@ describe("ArtemisFittingPanel", () => {
     expect(screen.getByLabelText("Path 1 coordination number")).toBeDisabled()
     expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue(10)
     fireEvent.change(screen.getByLabelText("Path 1 fixed S₀²"), { target: { value: "0.85" } })
+    fireEvent.click(screen.getByLabelText("Path 1 coordination options").querySelector("summary")!)
     fireEvent.change(screen.getByLabelText("Path 1 coordination maximum"), { target: { value: "12" } })
+    fireEvent.click(screen.getByRole("button", { name: "Collapse path 1 details" }))
+    fireEvent.click(screen.getByRole("button", { name: "Expand path 1 details" }))
+    expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue(10)
+    expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue(0.85)
+    expect(screen.getByLabelText("Path 1 coordination maximum")).toHaveValue(12)
+    expect(screen.getByLabelText("Path 1 fit coordination number")).toBeChecked()
     fireEvent.click(screen.getByRole("button", { name: "Apply coordination number for path 1" }))
     expect(screen.getByLabelText("Path 1 S₀²")).toHaveValue("s02_1 * cn_1 / degen")
     expect(screen.getByLabelText("Path 2 S₀²")).toHaveValue("amp")
@@ -369,7 +378,6 @@ describe("ArtemisFittingPanel", () => {
 
   it("can hold CN fixed, requires path inclusion, and restores CN controls from the saved model", async () => {
     const first = render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={preparedExample()} onProjectChange={acceptProject} />)
-    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
     fireEvent.click(screen.getByLabelText("Path 1 fit coordination number"))
     fireEvent.change(screen.getByLabelText("Path 1 coordination number"), { target: { value: "8" } })
     fireEvent.change(screen.getByLabelText("Path 1 fixed S₀²"), { target: { value: "0.9" } })
@@ -383,7 +391,7 @@ describe("ArtemisFittingPanel", () => {
     expect(model.parameters.find(parameter => parameter.name === "cn_1")).toMatchObject({ kind: "set", value: "8" })
     first.unmount()
     render(<ArtemisFittingPanel projectId="reopened" version={4} group={{ ...group(), artemis: { schema_version: 1, model, history: [], current_input_sha256: null } }} onProjectChange={acceptProject} />)
-    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
+    fireEvent.click(screen.getByRole("button", { name: "Expand path 1 details" }))
     expect(screen.getByLabelText("Path 1 coordination number")).toHaveValue(8)
     expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue(0.9)
     expect(screen.getByLabelText("Path 1 fit coordination number")).not.toBeChecked()
@@ -394,9 +402,8 @@ describe("ArtemisFittingPanel", () => {
     setup.example.paths[1].metadata.nleg = 3
     setup.example.parameters[0] = { ...setup.example.parameters[0], kind: "set", value: 0.82 }
     render(<ArtemisFittingPanel projectId="p" version={4} group={group()} exampleSetup={setup} onProjectChange={acceptProject} />)
-    expect(screen.getAllByText("Set / fit coordination number", { exact: true })).toHaveLength(3)
+    expect(screen.getAllByRole("group", { name: /Path \d+ coordination number controls/ })).toHaveLength(3)
     expect(screen.queryByLabelText("Path 2 coordination number")).not.toBeInTheDocument()
-    fireEvent.click(screen.getAllByText("Set / fit coordination number", { exact: true })[0])
     expect(screen.getByLabelText("Path 1 fixed S₀²")).toHaveValue(0.82)
   })
 

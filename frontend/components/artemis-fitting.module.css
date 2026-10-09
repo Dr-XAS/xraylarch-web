@@ -52,10 +52,18 @@
 .modelPanel[hidden] { display: none; }
 .modelPanel > .check, .modelPanel > .fullField { margin-bottom: 8px; }
 .disorderExpression { overflow-wrap: anywhere; }
-.coordination { margin-top: 6px; }
-.coordination > summary { cursor: pointer; color: var(--ath-primary, #268553); font-size: var(--text-label); overflow-wrap: anywhere; }
-.coordination > summary:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
-.coordination > .fullField { margin-top: 8px; }
+.amplitudeRow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin: 8px 0; }
+.amplitudeRow > .fullField { flex: 1 1 150px; }
+.coordination { flex: 1 1 240px; min-width: 0; }
+.coordinationInputs { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 6px; }
+.coordinationHeading { display: flex; align-items: center; gap: 6px; }
+.coordinationHeading label, .coordinationInputs .fullField > span { white-space: nowrap; }
+.coordinationHeading .check { gap: 3px; }
+.coordinationInputs > button { min-height: 30px; }
+.coordinationOptions { margin-top: 4px; }
+.coordinationOptions > summary { cursor: pointer; color: var(--ath-muted, #647669); font-size: var(--text-caption); }
+.coordinationOptions > summary:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+.coordinationOptions > .fullField { margin-top: 6px; }
 .editor .coordination input:not([type=checkbox]):disabled { color: var(--ath-muted, #647669); background: var(--ath-surface-muted, #f3f4f6); cursor: not-allowed; opacity: 1; }
 .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin: 8px 0; }
 .grid label, .parameterValues label, .fullField { display: flex; flex-direction: column; gap: 4px; font-size: var(--text-label); color: var(--ath-muted, #647669); min-width: 0; }

@@ -534,17 +534,18 @@ the measured energy axis. For a single-scattering path, `reff + deltar` is the
 fitted interatomic distance. For multiple scattering it is the effective
 half-path length; it must not be labeled as an individual bond distance.
 
-Each single-scattering path offers **Set / fit coordination number**, visible
-even when its path details are collapsed. Enter CN (initially the FEFF degeneracy)
-and a calibrated **Fixed S₀²**, choose **Fit CN** or uncheck it to hold CN fixed,
-and optionally set a CN maximum. **Apply CN and sync** creates a `cn_*` Guess/Set
+Expand a single-scattering path to find its compact **CN** controls beside the
+**S₀²** expression. Enter CN (initially the FEFF degeneracy) and a calibrated
+**Fixed S₀²**, choose **Fit** or uncheck it to hold CN fixed, and open
+**Options** to set an optional CN maximum. **Apply** creates a `cn_*` Guess/Set
 parameter, a fixed `s02_*` parameter, and the normalized amplitude expression
 `s02_* * cn_* / degen`. A fitted CN has a lower bound of zero; its maximum is
 unbounded unless specified. Review values and bounds in **Parameters**. Reapplying
 after changing helper values creates fresh parameters and resets a fitted CN's
 minimum to zero; edit existing constraints directly in **Parameters**.
-The helper replaces this path's amplitude expression and previews unused
-parameters that sync will remove. Other included paths keep their expressions
+The helper replaces this path's amplitude expression. **Options** shows the
+current CN parameter and replacement expression; unused parameters that sync
+will remove appear below the controls. Other included paths keep their expressions
 and shared parameters. It creates distinct names, so separate shells are not
 silently coupled. Existing fixed or numeric S₀² is prefilled; a free amplitude
 is not treated as calibrated. Multiple-scattering degeneracy is not a neighbor
@@ -715,7 +716,7 @@ edited model or trigger a fit. Missing geometry and unavailable WebGL show
 explicit placeholders. Narrow panels stack each path above its three numeric
 columns.
 
-For the **Set / fit coordination number** model with fixed S₀², the CN column
+For the **CN** control's model with fixed S₀², the CN column
 shows the saved CN parameter and its uncertainty. Otherwise a single-scattering
 path shows structural degeneracy labeled **FEFF N**, which is not a fitted CN;
 multiple-scattering paths show no neighbor CN. The evaluated amplitude expression
