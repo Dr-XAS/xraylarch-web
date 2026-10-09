@@ -5816,13 +5816,13 @@ describe("AthenaWorkbench tools and analysis dialogs", () => {
     fireEvent.click(singleViewer().getByRole("checkbox", { name: "Show legend" }))
     expect(plotProps("current").showLegend).toBe(false)
     fireEvent.click(singleViewer().getByRole("tab", { name: /Fourier/ }))
-    expect(singleViewer().getByRole("combobox", { name: "Complex component" })).toBeVisible()
+    expect(singleViewer().getByRole("group", { name: "Complex components" })).toBeVisible()
     const dialog = await openTool("Analysis", /linear combination fitting/i)
     api.mockResolvedValueOnce(fitResult(project))
     fireEvent.click(within(dialog).getByRole("button", { name: /run analysis/i }))
     await waitFor(() => expect(plotProps("current").analysisVisible).toBe(true))
     expect(plotProps("current").showLegend).toBe(true)
-    expect(singleViewer().queryByRole("combobox", { name: "Complex component" })).not.toBeInTheDocument()
+    expect(singleViewer().queryByRole("group", { name: "Complex components" })).not.toBeInTheDocument()
     expect(singleViewer().queryByRole("checkbox", { name: "Window" })).not.toBeInTheDocument()
     fireEvent.click(singleViewer().getByRole("checkbox", { name: "Show legend" }))
     expect(plotProps("current").showLegend).toBe(false)
@@ -6138,30 +6138,112 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     expect(api).toHaveBeenCalledTimes(1)
   })
 
-  it('defaults the q comparison to real while retaining independent R and q component choices', async () => {
+  it.each([
+    ['single', singleViewer, 'current'],
+    ['multiple', multipleViewer, 'selected'],
+  ] as const)('overlays Magnitude and Real in the %s viewer while keeping R and q choices independent', async (_name, viewer, scope) => {
+    const project = await openSaved()
+    const original = JSON.stringify(project)
+    const chooseSpace = (name: RegExp) => fireEvent.click(viewer().getByRole('tab', { name }))
+    const component = (name: string) => within(viewer().getByRole('group', { name: 'Complex components' }))
+      .getByRole('checkbox', { name })
+
+    chooseSpace(/Fourier/)
+    expect(component('Magnitude')).toBeChecked()
+    expect(component('Real')).not.toBeChecked()
+    fireEvent.click(component('Real'))
+    expect(component('Magnitude')).toBeChecked()
+    expect(component('Real')).toBeChecked()
+    expect(plotProps(scope)).toMatchObject({ space: 'R', components: ['mag', 're'] })
+
+    chooseSpace(/Back transform/)
+    expect(component('Magnitude')).not.toBeChecked()
+    expect(component('Real + χ(k)')).toBeChecked()
+    expect(plotProps(scope)).toMatchObject({ space: 'q', components: ['re'] })
+    fireEvent.click(component('Imaginary'))
+    expect(plotProps(scope).components).toEqual(['re', 'im'])
+
+    chooseSpace(/Fourier/)
+    expect(component('Magnitude')).toBeChecked()
+    expect(component('Real')).toBeChecked()
+    expect(component('Imaginary')).not.toBeChecked()
+    fireEvent.click(component('Magnitude'))
+    fireEvent.click(component('Real'))
+    expect(plotProps(scope).components).toEqual([])
+    expect(component('Magnitude')).not.toBeChecked()
+    expect(component('Real')).not.toBeChecked()
+    fireEvent.click(component('Phase'))
+    expect(plotProps(scope)).toMatchObject({ component: 'pha', components: ['pha'] })
+
+    chooseSpace(/Back transform/)
+    expect(component('Real + χ(k)')).toBeChecked()
+    expect(component('Imaginary')).toBeChecked()
+    expect(plotProps(scope).components).toEqual(['re', 'im'])
+    chooseSpace(/Fourier/)
+    expect(component('Phase')).toBeChecked()
+    expect(JSON.stringify(project)).toBe(original)
+    expect(api).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps component selections independent between the single and multiple viewers', async () => {
     await openSaved()
-    const chooseSpace = (name: RegExp) => fireEvent.click(within(multipleViewer().getByRole('tablist', { name: 'Plot space' })).getByRole('tab', { name }))
-    const component = () => multipleViewer().getByRole('combobox', { name: 'Complex component' })
+    for (const viewer of [singleViewer, multipleViewer]) fireEvent.click(viewer().getByRole('tab', { name: /Fourier/ }))
+    fireEvent.click(singleViewer().getByRole('checkbox', { name: 'Real' }))
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Imaginary' }))
+    expect(plotProps('current').components).toEqual(['mag', 're'])
+    expect(plotProps('selected').components).toEqual(['mag', 'im'])
+    expect(multipleViewer().getByRole('checkbox', { name: 'Real' })).not.toBeChecked()
+    expect(singleViewer().getByRole('checkbox', { name: 'Imaginary' })).not.toBeChecked()
 
-    chooseSpace(/Fourier/)
-    expect(component()).toHaveValue('mag')
-    expect(plotProps()).toMatchObject({ space: 'R', component: 'mag' })
+    for (const viewer of [singleViewer, multipleViewer]) fireEvent.click(viewer().getByRole('tab', { name: /Back transform/ }))
+    fireEvent.click(singleViewer().getByRole('checkbox', { name: 'Imaginary' }))
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Phase' }))
+    expect(plotProps('current').components).toEqual(['re', 'im'])
+    expect(plotProps('selected').components).toEqual(['re', 'pha'])
 
-    chooseSpace(/Back transform/)
-    expect(component()).toHaveValue('re')
-    expect(within(component()).getByRole('option', { name: 'Real part + χ(k)' })).toHaveProperty('selected', true)
-    expect(plotProps()).toMatchObject({ space: 'q', component: 're' })
-    fireEvent.change(component(), { target: { value: 'im' } })
+    for (const viewer of [singleViewer, multipleViewer]) fireEvent.click(viewer().getByRole('tab', { name: /Fourier/ }))
+    expect(plotProps('current').components).toEqual(['mag', 're'])
+    expect(plotProps('selected').components).toEqual(['mag', 'im'])
+    expect(api).toHaveBeenCalledTimes(1)
+  })
 
-    chooseSpace(/Fourier/)
-    expect(component()).toHaveValue('mag')
-    fireEvent.change(component(), { target: { value: 'pha' } })
-    chooseSpace(/Back transform/)
-    expect(component()).toHaveValue('im')
-    expect(plotProps()).toMatchObject({ space: 'q', component: 'im' })
-    fireEvent.change(component(), { target: { value: 're' } })
-    chooseSpace(/Fourier/)
-    expect(component()).toHaveValue('pha')
+  it('keeps sidebar colors for any visible component and restores E and k ranges after clearing them all', async () => {
+    const realOnly = group('real-only', 'Real only', true)
+    const magnitudeOnly = group('magnitude-only', 'Magnitude only', true)
+    for (const spectrum of [realOnly, magnitudeOnly]) Object.assign(spectrum.result!.arrays, {
+      k: [0, 4, 8], weighted_chi: [0, 1, -1], r: [0, 1, 2],
+    })
+    realOnly.result!.arrays.chir_re = [0, -0.8, 0.2]
+    magnitudeOnly.result!.arrays.chir_mag = [0, 0.8, 0.2]
+    await openSaved(projectFixture({ groups: [realOnly, magnitudeOnly] }))
+    const swatch = (label: string) => screen.getByRole('checkbox', { name: `Mark ${label}` })
+      .closest('.ath-group')!.querySelector<HTMLElement>('.ath-swatch')!.style.background
+    const colors = [swatch('Real only'), swatch('Magnitude only')]
+    expect(colors.every(color => color !== 'var(--ath-line)')).toBe(true)
+
+    fireEvent.click(multipleViewer().getByRole('tab', { name: /Fourier/ }))
+    expect(swatch('Real only')).toBe('var(--ath-line)')
+    expect(swatch('Magnitude only')).toBe(colors[1])
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Real' }))
+    expect(plotProps().components).toEqual(['mag', 're'])
+    expect(swatch('Real only')).toBe(colors[0])
+    expect(swatch('Magnitude only')).toBe(colors[1])
+
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Magnitude' }))
+    expect(swatch('Real only')).toBe(colors[0])
+    expect(swatch('Magnitude only')).toBe('var(--ath-line)')
+    fireEvent.click(multipleViewer().getByRole('checkbox', { name: 'Real' }))
+    expect(plotProps().components).toEqual([])
+    expect(swatch('Real only')).toBe('var(--ath-line)')
+    expect(swatch('Magnitude only')).toBe('var(--ath-line)')
+
+    for (const [space, minimum, maximum] of [[/Energy/, -19, 21], [/EXAFS/, 0, 8]] as const) {
+      fireEvent.click(multipleViewer().getByRole('tab', { name: space }))
+      expect(swatch('Real only')).toBe(colors[0])
+      expect(swatch('Magnitude only')).toBe(colors[1])
+      expect(multipleViewer().getByRole('spinbutton', { name: 'Plot minimum' })).toHaveValue(minimum)
+      expect(multipleViewer().getByRole('spinbutton', { name: 'Plot maximum' })).toHaveValue(maximum)
+    }
     expect(api).toHaveBeenCalledTimes(1)
   })
 
@@ -6175,16 +6257,20 @@ describe('AthenaWorkbench plot scope and processing lines', () => {
     fireEvent.click(multipleViewer().getByRole('tab', { name: /Back transform/ }))
     const minimum = () => multipleViewer().getByRole('spinbutton', { name: 'Plot minimum' })
     const maximum = () => multipleViewer().getByRole('spinbutton', { name: 'Plot maximum' })
-    const component = multipleViewer().getByRole('combobox', { name: 'Complex component' })
+    const real = multipleViewer().getByRole('checkbox', { name: 'Real + χ(k)' })
+    const imaginary = multipleViewer().getByRole('checkbox', { name: 'Imaginary' })
 
     expect(minimum()).toHaveValue(0)
     expect(maximum()).toHaveValue(14)
     expect(plotProps().range).toEqual([null, null])
 
-    fireEvent.change(component, { target: { value: 'im' } })
+    fireEvent.click(imaginary)
+    expect(minimum()).toHaveValue(0)
+    expect(maximum()).toHaveValue(14)
+    fireEvent.click(real)
     expect(minimum()).toHaveValue(2)
     expect(maximum()).toHaveValue(8)
-    fireEvent.change(component, { target: { value: 're' } })
+    fireEvent.click(real)
     expect(maximum()).toHaveValue(14)
 
     fireEvent.change(maximum(), { target: { value: '11' } })

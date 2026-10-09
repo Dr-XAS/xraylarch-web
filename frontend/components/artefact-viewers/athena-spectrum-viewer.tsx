@@ -11,6 +11,7 @@ import { automaticPlotRange } from "./athena-plot-range"
 import { ResizablePlotCard } from "./athena-plot-card"
 import { ViewerPanel } from "./viewer-panel"
 import { ViewerKWeightControl } from "./viewer-kweight-control"
+import { ViewerComplexComponents } from "./viewer-complex-components"
 import { ViewerControlField, ViewerControlGroup, ViewerDisplayControls, ViewerToggle } from "./viewer-display-controls"
 import type { useAthenaPlotWeight } from "./athena-plot-weight"
 import type { useSpectrumViewerState } from "./athena-spectrum-viewer-state"
@@ -65,7 +66,7 @@ interface Props {
 export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, analysis,
   analysisVisible: showingAnalysis, seriesTarget, savedKWeight, canChangeKWeight, draftE0, pickPrompt,
   onChangeSpace, onSpecialPlot, onOptionsMenuOpen, onPickX, onExport }: Props) {
-  const { space, kWeight: viewerKWeight, setKWeight, energyMode, setEnergyMode, component, setComponent, plotScope,
+  const { space, kWeight: viewerKWeight, setKWeight, energyMode, setEnergyMode, component, components, setComponents, plotScope,
     background, setBackground, preEdge, setPreEdge, postEdge, setPostEdge,
     showWindow, setShowWindow, showGrid, setShowGrid,
     showDataPoints, setShowDataPoints, plotColors, setPlotColors, offset, setOffset,
@@ -80,7 +81,7 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
   const hasOverlay = (key: string) => !!overlayArrays?.energy?.length &&
     overlayArrays.mu?.length === overlayArrays.energy.length && overlayArrays[key]?.length === overlayArrays.energy.length
   const canShowPreEdge = hasOverlay("pre_edge"), canShowPostEdge = hasOverlay("post_edge"), canShowBackground = hasOverlay("bkg")
-  const automaticRange = automaticPlotRange(weightedPlot.groups, space, plotEnergyMode, component, analysis, showingAnalysis, viewerKWeight)
+  const automaticRange = automaticPlotRange(weightedPlot.groups, space, plotEnergyMode, components, analysis, showingAnalysis, viewerKWeight)
   const relativeRange = space === "E" && !showingAnalysis && rangeRelativeToE0 && draftE0 !== null
   const displayedRange = range.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
   const displayedAutomaticRange = automaticRange.map(value => energyRangeValue(value, draftE0, relativeRange, -1)) as [number | null, number | null]
@@ -93,7 +94,7 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
           <label className="ath-check" title="Show the current spectrum’s fitted background in μ(E)"><input type="checkbox" aria-label="Background" checked={background && canShowBackground} disabled={!canShowBackground} onChange={e => setBackground(e.target.checked)} />Background<SectionHelp label="Background">Overlay the fitted μ₀(E) background on the current raw μ(E) curve. It is available after background processing; showing it does not refit the spectrum.</SectionHelp></label>
           <label className="ath-check" title="Show the fitted pre-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" aria-label="Pre-edge line" checked={preEdge && canShowPreEdge} disabled={!canShowPreEdge} onChange={e => setPreEdge(e.target.checked)} />Pre-edge line<SectionHelp label="Pre-edge line">Overlay the fitted pre-edge normalization line and markers at its interval endpoints. Hover the markers for energies and offsets from E₀.</SectionHelp></label>
           <label className="ath-check" title="Show the fitted post-edge line and its start/end points for Current spectrum in μ(E)"><input type="checkbox" aria-label="Post-edge line" checked={postEdge && canShowPostEdge} disabled={!canShowPostEdge} onChange={e => setPostEdge(e.target.checked)} />Post-edge line<SectionHelp label="Post-edge line">Overlay the fitted post-edge normalization line and its interval endpoints on raw μ(E). Edit the normalization parameters to change the fit.</SectionHelp></label>
-        </> : !showingAnalysis && <>{space !== "k" && <><select aria-label="Complex component" value={component} onChange={e => setComponent(e.target.value)}><option value="mag">Magnitude</option><option value="re">{space === "q" ? "Real part + χ(k)" : "Real part"}</option><option value="im">Imaginary part</option><option value="pha">Phase</option></select><SectionHelp label="Complex component">Choose magnitude, real part, imaginary part, or phase of the complex transform. In q space, Real part also overlays χ(k) for comparison with the back transform.</SectionHelp></>}<label className="ath-check"><input type="checkbox" aria-label="Window" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window<SectionHelp label="Window">Overlay the taper used for the transform in this space. This makes the fitted or transformed interval visible without editing its limits.</SectionHelp></label></>}
+        </> : !showingAnalysis && <>{space !== "k" && <ViewerComplexComponents value={components} onChange={setComponents} compareK={space === "q"} />}<label className="ath-check"><input type="checkbox" aria-label="Window" checked={showWindow} onChange={e => setShowWindow(e.target.checked)} />Window<SectionHelp label="Window">Overlay the taper used for the transform in this space. This makes the fitted or transformed interval visible without editing its limits.</SectionHelp></label></>}
         {space === "E" && plotScope === "current" && plotEnergyMode !== "mu" && <SectionHelp label="Pre-edge and post-edge lines">For pre-/post-edge lines, choose μ(E) · raw.</SectionHelp>}
         <AthenaColorLegend storageKey={viewer === "single" ? "athena.plot-colors.single" : "athena.plot-colors"} value={plotColors} onChange={setPlotColors} disabled={showingAnalysis} />
         </div>
@@ -105,7 +106,7 @@ export function AthenaSpectrumViewer({ viewer, state, weightedPlot, active, anal
         {plotScope === "current" && <div className="ath-plot-current-spectrum"><div className="ath-plot-current-spectrum-name" title={active?.label}><span>{showingAnalysis && seriesTarget ? "Fitted target" : "Current spectrum"}</span><strong>{(showingAnalysis && seriesTarget?.label) || (active?.label ?? "None selected")}</strong></div></div>}
         {weightedPlot.loading ? <div className="ath-no-plot" role="status">Updating Fourier transform…</div>
           : weightedPlot.error ? <div className="ath-no-plot" role="alert"><p>{weightedPlot.error}</p><button type="button" onClick={weightedPlot.retry}>Try again</button></div>
-          : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={onOptionsMenuOpen} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={showingAnalysis} seriesTarget={seriesTarget?.id} range={range} picking={!!onPickX} onPickX={onPickX} />}
+          : <AthenaPlot groups={weightedPlot.groups} active={active} space={space} energyMode={plotEnergyMode} component={component} components={components} plotScope={plotScope} background={background && canShowBackground} preEdge={preEdge && canShowPreEdge} postEdge={postEdge && canShowPostEdge} window={showWindow} showLegend={showLegend} showGrid={showGrid} showDataPoints={showDataPoints} onShowGridChange={setShowGrid} onShowDataPointsChange={setShowDataPoints} onOptionsMenuOpen={onOptionsMenuOpen} colorSettings={plotColors} kWeight={viewerKWeight} offset={offset} analysis={analysis} analysisVisible={showingAnalysis} seriesTarget={seriesTarget?.id} range={range} picking={!!onPickX} onPickX={onPickX} />}
         <ViewerDisplayControls label="Spectrum plot display options">
           <ViewerControlGroup label="Spectrum display" className="ath-plot-display-controls">
             <ViewerToggle label="Offset plot" checked={offset !== 0} disabled={plotScope === "current"}

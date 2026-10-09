@@ -128,7 +128,12 @@ The shared σ² is an assumption; inequivalent sites are not averaged automatica
 The **Single spectrum viewer** plots the highlighted group, independently of
 its checkbox. The **Multiple spectra viewer** plots the checked data groups.
 Both panels can stay open together and keep independent plot spaces, ranges,
-colors, legends, and heights. For an individual **μ(E)** plot, use
+colors, legends, and heights. In **R** and **q**, use the component checkboxes to
+overlay **Magnitude**, **Real**, **Imaginary**, and **Phase**. Components share
+each spectrum’s color and use distinct line styles; phase has its own radians
+axis when overlaid with amplitude. R and q keep separate selections. In q,
+**Real + χ(k)** also shows the original weighted χ(k) for comparison.
+For an individual **μ(E)** plot, use
 **Pre-edge line** and **Post-edge line** to show either fitted normalization line. **Background**
 separately shows the fitted μ₀(E) background within the selected spline range.
 **Spline clamps** uses Athena's None, Slight, Weak, Medium, Strong, and Rigid

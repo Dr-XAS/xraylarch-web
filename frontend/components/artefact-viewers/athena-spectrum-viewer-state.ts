@@ -2,17 +2,21 @@
 
 import { useRef, useState } from "react"
 import { defaultPlotColors, type PlotColorSettings } from "@/lib/athena-plot-colors"
-import type { Space } from "./athena-plot"
+import type { ComplexComponent, Space } from "./athena-plot"
 
 export function useSpectrumViewerState(scope: "current" | "selected") {
   const current = scope === "current"
   const [space, setSpace] = useState<Space>("E")
   const [kWeight, setKWeight] = useState<number | null>(null)
   const [energyMode, setEnergyMode] = useState(current ? "mu" : "flat")
-  const [rComponent, setRComponent] = useState("mag")
-  const [qComponent, setQComponent] = useState("re")
+  const [rComponents, setRComponents] = useState<ComplexComponent[]>(["mag"])
+  const [qComponents, setQComponents] = useState<ComplexComponent[]>(["re"])
+  const components = space === "q" ? qComponents : rComponents
+  const setComponents = space === "q" ? setQComponents : setRComponents
+  // Athena's comparison shortcuts still take one component.
+  const rComponent = rComponents[0] ?? "mag"
+  const qComponent = qComponents[0] ?? "re"
   const component = space === "q" ? qComponent : rComponent
-  const setComponent = space === "q" ? setQComponent : setRComponent
   const [background, setBackground] = useState(current)
   const [preEdge, setPreEdge] = useState(current)
   const [postEdge, setPostEdge] = useState(current)
@@ -32,9 +36,8 @@ export function useSpectrumViewerState(scope: "current" | "selected") {
     space, setSpace,
     kWeight, setKWeight,
     energyMode, setEnergyMode,
-    rComponent, setRComponent,
-    qComponent, setQComponent,
-    component, setComponent,
+    rComponent, qComponent, component,
+    components, setComponents,
     background, setBackground,
     preEdge, setPreEdge,
     postEdge, setPostEdge,

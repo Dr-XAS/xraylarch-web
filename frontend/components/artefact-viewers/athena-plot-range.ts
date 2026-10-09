@@ -45,17 +45,18 @@ function outwardRange(values: unknown[]): PlotRange {
 }
 
 export function automaticPlotRange(
-  groups: AthenaGroup[], space: PlotSpace, energyMode: string, component: string,
+  groups: AthenaGroup[], space: PlotSpace, energyMode: string, component: string | readonly string[],
   analysis: Analysis | null = null, analysisVisible = false, kWeight: number | null = null,
 ): PlotRange {
   if (analysisVisible) return outwardRange(analysisXValues(analysis))
-  if (space === "R" && groups.some(group => spectrumTraceCoordinates(group, space, energyMode, component, kWeight))) {
+  const components = space === "R" || space === "q" ? typeof component === "string" ? [component] : component : ["mag"]
+  if (space === "R" && groups.some(group => components.some(value => spectrumTraceCoordinates(group, space, energyMode, value, kWeight)))) {
     return [...DEFAULT_R_PLOT_RANGE]
   }
-  return outwardRange(groups.flatMap(group => {
-    const coordinates = spectrumTraceCoordinates(group, space, energyMode, component, kWeight)
+  return outwardRange(groups.flatMap(group => components.flatMap(value => {
+    const coordinates = spectrumTraceCoordinates(group, space, energyMode, value, kWeight)
     if (!coordinates) return []
-    const k = space === "q" && component === "re" ? spectrumTraceCoordinates(group, "k", energyMode)?.x ?? [] : []
+    const k = space === "q" && value === "re" ? spectrumTraceCoordinates(group, "k", energyMode)?.x ?? [] : []
     return [...coordinates.x, ...k]
-  }))
+  })))
 }

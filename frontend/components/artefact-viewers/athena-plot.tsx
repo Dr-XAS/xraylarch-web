@@ -9,9 +9,14 @@ import { AthenaContextMenu } from "../athena-context-menu"
 import { DEFAULT_R_PLOT_RANGE, spectrumTraceCoordinates, type PlotSpace } from "./athena-plot-range"
 
 export type Space = PlotSpace
+export type ComplexComponent = "mag" | "re" | "im" | "pha"
+const componentDashes: Record<ComplexComponent, string> = { mag: "solid", re: "dash", im: "dot", pha: "dashdot" }
+function complexComponentTitle(component: string, space: Space) {
+  return component === "mag" ? `|χ(${space})|` : component === "pha" ? `Phase χ(${space}) (rad)` : `${component === "re" ? "Re" : "Im"}[χ(${space})]`
+}
 interface Props {
   groups: AthenaGroup[]; active?: AthenaGroup; space: Space; energyMode: string
-  background: boolean; window: boolean; component: string; offset: number
+  background: boolean; window: boolean; component?: string; components?: readonly ComplexComponent[]; offset: number
   plotScope?: "selected" | "current"; preEdge?: boolean; postEdge?: boolean; showLegend?: boolean; kWeight?: number | null
   showGrid?: boolean; showDataPoints?: boolean
   onShowGridChange?: (show: boolean) => void; onShowDataPointsChange?: (show: boolean) => void; onOptionsMenuOpen?: () => void
@@ -79,16 +84,20 @@ function backgroundInSplineRange(group: AthenaGroup, energy: number[], backgroun
   return { x: [first.x, ...energy.slice(start, end), last.x], y: [first.y, ...background.slice(start, end), last.y] }
 }
 
-export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colorSettings = defaultPlotColors, analysis, analysisVisible, range, picking = false, onPickX, seriesTarget }: Props) {
+export function AthenaPlot({ groups, active, space, energyMode, background, window: showWindow, component = "mag", components, offset, plotScope = "selected", preEdge = false, postEdge = false, showLegend = true, showGrid = true, showDataPoints = false, onShowGridChange, onShowDataPointsChange, onOptionsMenuOpen, kWeight = null, colorSettings = defaultPlotColors, analysis, analysisVisible, range, picking = false, onPickX, seriesTarget }: Props) {
   const plotRef = useRef<HTMLDivElement>(null)
   const [plotWidth, setPlotWidth] = useState(0)
   const [optionsMenu, setOptionsMenu] = useState<PlotOptionsMenu | null>(null)
   const activeId = active?.id
   const { palette, reversed, vmin, vmax } = colorSettings
+  const complexSpace = space === "R" || space === "q"
+  // Primitive dependencies keep equivalent selections from redrawing Plotly.
+  const componentKey = complexSpace ? [...new Set(components ?? [component])].join(",") : component
   // Plotly uses data/layout identities to decide whether to redraw. Keep the
   // spectrum transforms stable during unrelated workbench and menu updates.
-  const { data, xTitle, yTitle, e0 } = useMemo(() => {
-    const compareK = space === "q" && component === "re"
+  const { data, xTitle, yTitle, y2Title, e0 } = useMemo(() => {
+    const selectedComponents = componentKey ? componentKey.split(",") : []
+    const multipleComponents = complexSpace && selectedComponents.length > 1
     const data: Record<string, unknown>[] = []
     // Assign before filtering by plot space so a group keeps its color across E/k/R/q.
     const colors = spectrumColors(groups.length, { palette, reversed, vmin, vmax })
@@ -99,15 +108,18 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       data.push(trace)
       return trace
     }
-    const displayed = groups.flatMap((g, index) => {
-      const coordinates = spectrumTraceCoordinates(g, space, energyMode, component, kWeight)
+    const displayed = groups.flatMap((g, index) => selectedComponents.flatMap(selectedComponent => {
+      const coordinates = spectrumTraceCoordinates(g, space, energyMode, selectedComponent, kWeight)
       if (!coordinates) return []
       const { arrays, rawChi, x, y } = coordinates
       const effectiveWeight = g.result?.effective.kweight
       const weight = space === "k" && kWeight !== null ? kWeight : rawChi ? 0 : typeof effectiveWeight === "number" ? effectiveWeight : g.parameters.kweight
       const transform = (values: number[]) => values.map(v => v * g.multiplier + g.offset + index * offset)
-      return [{ g, index, arrays, x, y, weight, rawChi, transform }]
-    })
+      return [{ g, index, arrays, x, y, weight, rawChi, transform, component: selectedComponent }]
+    }))
+    const visibleComponents = selectedComponents.filter(value => displayed.some(trace => trace.component === value))
+    const compareK = space === "q" && visibleComponents.includes("re")
+    const separatePhase = complexSpace && displayed.some(trace => trace.component === "pha") && displayed.some(trace => trace.component !== "pha")
     const weights = [...new Set(displayed.map(trace => trace.weight))]
     const mixedWeights = space !== "E" && weights.length > 1
     const energyTitle = ({ mu: "μ(E)", norm: "Normalized μ(E)", flat: "Flattened μ(E)", dmude: "dμ/dE (eV⁻¹)", d2mude: "d²μ/dE² (eV⁻²)" } as Record<string, string>)[energyMode]
@@ -126,13 +138,16 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       // R/q products already include the forward k-weight. Apply display
       // multiplier/offset only, never another k- or q-dependent weighting.
       const color = colors[trace.index]
-      add(x, transform(y), compareK ? `Re[χ(q)] · ${name}` : name, color, "solid", !compareK)
-      if (compareK) {
+      const labelComponent = multipleComponents || (compareK && trace.component === "re")
+      const plotted = add(x, transform(y), labelComponent ? `${complexComponentTitle(trace.component, space)} · ${name}` : name, color,
+        multipleComponents ? componentDashes[trace.component as ComplexComponent] : "solid", !compareK)
+      if (plotted && separatePhase && trace.component === "pha") plotted.yaxis = "y2"
+      if (compareK && trace.component === "re") {
         // Compare with the unwindowed input on its own full k grid, including
         // data beyond the FT cutoff. Both curves use the transform's k-weight
         // and identical display scaling; q is already weighted by the FFT.
         const kTrace = spectrumTraceCoordinates(g, "k", energyMode)
-        if (kTrace) add(kTrace.x, transform(kTrace.y), `χ(k) · ${name}`, color, "dash", true)
+        if (kTrace) add(kTrace.x, transform(kTrace.y), `χ(k) · ${name}`, color, multipleComponents ? "longdash" : "dash", true)
       }
     }
     const current = displayed.find(trace => trace.g.id === activeId)
@@ -196,10 +211,13 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     }
     let xTitle = { E: "Energy (eV)", k: "k (Å⁻¹)", R: "R (Å)", q: compareK ? "k, q (Å⁻¹)" : "q (Å⁻¹)" }[space]
     const kTitle = mixedWeights ? "k-weighted χ(k) (weights in legend)" : weights[0] === 0 ? "χ(k)" : `k<sup>${weights[0] ?? 2}</sup> χ(k)`
-    let yTitle = { E: mixedEnergyForms ? "Signal (forms in legend)" : energyForms[0] ?? energyTitle, k: kTitle, R: component === "mag" ? "|χ(R)|" : component === "pha" ? "Phase χ(R) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(R)]`, q: component === "mag" ? "|χ(q)|" : component === "pha" ? "Phase χ(q) (rad)" : `${component === "re" ? "Re" : "Im"}[χ(q)]` }[space]
-    if (compareK) yTitle = `${kTitle}, Re[χ(q)]`
+    const complexTitle = visibleComponents.filter(value => !separatePhase || value !== "pha").map(value => complexComponentTitle(value, space)).join(", ")
+    let yTitle = { E: mixedEnergyForms ? "Signal (forms in legend)" : energyForms[0] ?? energyTitle, k: kTitle, R: complexTitle, q: complexTitle }[space]
+    let y2Title: string | null = separatePhase ? complexComponentTitle("pha", space) : null
+    if (compareK) yTitle = `${kTitle}, ${complexTitle}`
     if (analysis && analysisVisible) {
       data.length = 0
+      y2Title = null
       // A combination search keeps the winning fit's arrays under `best`.
       const result = (analysis.kind === "lcf_search" ? analysis.result.best ?? {} : analysis.result) as Record<string, unknown>
       if (analysis.kind === "pca") {
@@ -238,6 +256,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
         add(result.k as number[], result.log_amplitude_ratio as number[], "ln(A target / A reference)", "#16736b")
         const phase = add(result.k as number[], result.phase_difference as number[], "Phase difference (rad)", "#c37b38")
         if (phase) phase.yaxis = "y2"
+        y2Title = "Phase difference (rad)"
         xTitle = "k (Å⁻¹)"; yTitle = "Log amplitude ratio"
       } else {
         const x = (result.x ?? []) as number[]
@@ -248,8 +267,8 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
         yTitle = "Signal / fit"
       }
     }
-    return { data, xTitle, yTitle, e0 }
-  }, [groups, activeId, space, energyMode, background, showWindow, component, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, vmin, vmax, analysis, analysisVisible, seriesTarget])
+    return { data, xTitle, yTitle, y2Title, e0 }
+  }, [groups, activeId, space, energyMode, background, showWindow, componentKey, complexSpace, offset, plotScope, preEdge, postEdge, showDataPoints, kWeight, palette, reversed, vmin, vmax, analysis, analysisVisible, seriesTarget])
   const hasData = data.some(d => (d.x as number[])?.length)
   useEffect(() => {
     const element = plotRef.current
@@ -274,6 +293,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       hovertemplate: typeof trace.hovertemplate === "string" ? trace.hovertemplate.replace("%{fullData.name}", "%{meta.legendLabel}") : undefined }
   }), [data, showLegend, plotWidth, legendLineLength])
   const noSelection = !groups.length && active && plotScope === "selected" && !analysisVisible
+  const noComponents = complexSpace && !componentKey && !analysisVisible && groups.length > 0
   function openOptionsMenu(event: PlotOptionsEvent) {
     event.preventDefault()
     event.stopPropagation()
@@ -314,16 +334,16 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
         line: { color: "#64748b", width: 1.5, dash: "dot" }, layer: "below" }] : [],
       annotations: showE0 ? [{ x: e0, xref: "x", y: 1, yref: "paper", text: `E₀ = ${e0.toFixed(3)} eV`,
         showarrow: false, xanchor: "auto", yanchor: "bottom", yshift: 3, font: { size: 12, color: "#64748b" } }] : [],
-      autosize: true, margin: { l: 72, r: 25, t: 24, b: 60 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
+      autosize: true, margin: { l: 72, r: y2Title ? 72 : 25, t: 24, b: 60 }, paper_bgcolor: "#ffffff", plot_bgcolor: "#ffffff",
       font: { color: "#586661" },
       hoverlabel: { namelength: -1 },
       xaxis: { title: { text: xTitle, standoff: 16 }, showgrid: showGrid, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", ...xRange },
       yaxis: { title: { text: yTitle, standoff: 15 }, showgrid: showGrid, gridcolor: "#edf0ed", zerolinecolor: "#d8ded8", showline: true, linecolor: "#bdc8c0", ticks: "outside", automargin: true },
-      ...(analysisVisible && analysis?.kind === "log_ratio" ? { yaxis2: { title: {text: "Phase difference (rad)"}, overlaying: "y", tickmode: "auto", side: "right", showgrid: false, automargin: true } } : {}),
+      ...(y2Title ? { yaxis2: { title: { text: y2Title, standoff: 15 }, overlaying: "y", tickmode: "auto", side: "right", showgrid: false, automargin: true } } : {}),
       showlegend: showLegend, legend: { orientation: "v", x: 0.99, xanchor: "right", y: 0.99, yanchor: "top", maxheight: 1, bgcolor: "rgba(0,0,0,0)" },
-      hovermode: "closest", uirevision: `${space}-${energyMode}-${component}-${analysisVisible}-${[rangeStart, rangeEnd].join()}-${plotScope}-${plotScope === "current" ? activeId ?? "" : ""}-${kWeight ?? "auto"}`,
+      hovermode: "closest", uirevision: `${space}-${energyMode}-${componentKey}-${analysisVisible}-${[rangeStart, rangeEnd].join()}-${plotScope}-${plotScope === "current" ? activeId ?? "" : ""}-${kWeight ?? "auto"}`,
     }
-  }, [xTitle, yTitle, e0, showGrid, analysisVisible, analysis?.kind, showLegend, space, energyMode, component, rangeStart, rangeEnd, plotScope, activeId, kWeight])
+  }, [xTitle, yTitle, y2Title, e0, showGrid, analysisVisible, showLegend, space, energyMode, componentKey, rangeStart, rangeEnd, plotScope, activeId, kWeight])
   const config = useMemo(() => ({ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }), [])
   const canPick = picking && !analysisVisible && space !== "q"
   // react-plotly.js only refreshes listeners when the figure changes. Arming a
@@ -337,6 +357,6 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
     if (current.data !== plotData || current.space !== space) return
     if (current.canPick && typeof x === "number" && Number.isFinite(x)) current.onPickX?.(x, space)
   }, [plotData, space])
-  if (!hasData) return <><div ref={plotRef} className="ath-no-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><span>{space}</span><h3>{noSelection ? "No spectra selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}<SectionHelp label="Spectrum plot">{noSelection ? "Check data groups to compare spectra. The Single spectrum viewer shows the highlighted group." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or load the copper examples to begin."}</SectionHelp></h3></div>{options}</>
+  if (!hasData) return <><div ref={plotRef} className="ath-no-plot" data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><span>{space}</span><h3>{noSelection ? "No spectra selected" : noComponents ? "No components selected" : groups.length ? "No data in this plot space" : "Your spectra, in perspective."}<SectionHelp label="Spectrum plot">{noSelection ? "Check data groups to compare spectra. The Single spectrum viewer shows the highlighted group." : noComponents ? "Select Magnitude, Real, Imaginary, or Phase above to display the spectrum." : groups.length ? "Check the data type and processing parameters, or select another plot space." : "Import a spectrum or load the copper examples to begin."}</SectionHelp></h3></div>{options}</>
   return <><div ref={plotRef} className={`ath-plot${canPick ? " ath-picking" : ""}`} data-testid="athena-plot" aria-label={`${space}-space spectrum plot`} {...plotInteraction}><Plot data={plotData} onClick={onPlotClick} layout={layout} config={config} useResizeHandler style={{ width: "100%", height: "100%" }} /></div>{options}</>
 }

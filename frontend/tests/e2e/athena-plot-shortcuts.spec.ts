@@ -118,7 +118,9 @@ for (const mobile of [false, true]) test((mobile ? 'mobile' : 'desktop') + ' ori
   await close(dialog)
 
   await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('tab', { name: /^R(?: Fourier)?$/ }).click()
-  await page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel('Complex component', { exact: true }).selectOption('pha')
+  const components = page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByRole('group', { name: 'Complex components', exact: true })
+  await components.getByRole('checkbox', { name: 'Magnitude', exact: true }).uncheck()
+  await components.getByRole('checkbox', { name: 'Phase', exact: true }).check()
   dialog = await open(page)
   const phase = await review(page, dialog, 'r123')
   expect(phase.options.component).toBe('pha')

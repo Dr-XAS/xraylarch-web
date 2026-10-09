@@ -718,7 +718,8 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   const multipleEnergyMode = multipleDetectorOnly ? "mu" : multipleSpectra.energyMode
   const displayedSpectrumGroups = multipleWeightedPlot.loading || multipleWeightedPlot.error ? []
     : multipleWeightedPlot.groups.map((group, index) => ({ group, index }))
-      .filter(({ group }) => spectrumTraceCoordinates(group, multipleSpectra.space, multipleEnergyMode, multipleSpectra.component, multipleSpectra.kWeight))
+      .filter(({ group }) => (multipleSpectra.space === "R" || multipleSpectra.space === "q" ? multipleSpectra.components : [multipleSpectra.component])
+        .some(component => spectrumTraceCoordinates(group, multipleSpectra.space, multipleEnergyMode, component, multipleSpectra.kWeight)))
   // Sidebar swatches follow the comparison viewer, including unavailable traces.
   const displayedColors = plotSpectrumColors(multipleWeightedPlot.groups.length, multipleSpectra.plotColors)
   const spectrumColors = new Map(displayedSpectrumGroups.map(({ group, index }) =>

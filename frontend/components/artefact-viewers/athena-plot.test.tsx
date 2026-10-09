@@ -835,6 +835,104 @@ describe("AthenaPlot k and q comparison", () => {
   })
 })
 
+describe("AthenaPlot simultaneous complex components", () => {
+  it.each(["R", "q"] as const)("draws magnitude and real in %s with shared spectrum colors and one offset per group", space => {
+    const first = group("First"), second = group("Second")
+    second.multiplier = 2
+    second.offset = 3
+    const groups = freeze([first, second])
+    show({ groups, active: second, space, components: ["mag", "re"], offset: 10, window: true })
+    const traces = handoff().data
+    const prefix = space === "R" ? "chir" : "chiq"
+    for (const [index, sample] of groups.entries()) {
+      const name = sample.label
+      const magnitude = traces.find(trace => trace.name === `|χ(${space})| · ${name}`)!
+      const real = traces.find(trace => trace.name === `Re[χ(${space})] · ${name}`)!
+      const scale = (values: number[]) => values.map(value => value * sample.multiplier + sample.offset + index * 10)
+      expect(magnitude.y).toEqual(scale(sample.result!.arrays[`${prefix}_mag`]))
+      expect(real.y).toEqual(scale(sample.result!.arrays[`${prefix}_re`]))
+      expect(real.line?.color).toBe(magnitude.line?.color)
+      expect(real.line?.dash).not.toBe(magnitude.line?.dash)
+      expect(real.yaxis).toBeUndefined()
+      if (space === "q") {
+        const inputs = traces.filter(trace => trace.name === `χ(k) · ${name}`)
+        expect(inputs).toHaveLength(1)
+        expect(inputs[0].y).toEqual(scale(sample.result!.arrays.weighted_chi))
+        expect(inputs[0].line?.dash).not.toBe(real.line?.dash)
+        expect(inputs[0].line?.dash).not.toBe(magnitude.line?.dash)
+      }
+    }
+    const windows = traces.filter(trace => trace.name.includes("window"))
+    expect(windows).toHaveLength(1)
+    expect(windows[0].name).toContain("Second")
+    expect(windows[0].y).toEqual(space === "R" ? [0, 1, 0] : [0.5, 0.75, 0.75, 0.5])
+    expect(traces[0].line?.color).not.toBe(traces.find(trace => trace.name.endsWith("Second"))?.line?.color)
+    expect(handoff().layout.yaxis.title.text).toContain(`|χ(${space})|, Re[χ(${space})]`)
+    expect(handoff().layout.yaxis2).toBeUndefined()
+  })
+
+  it.each(["R", "q"] as const)("places phase on a separate radian axis when combined with %s amplitudes", space => {
+    const sample = freeze(group("Complex"))
+    show({ groups: [sample], active: sample, space, components: ["mag", "re", "im", "pha"] })
+    const phase = handoff().data.find(trace => trace.name === `Phase χ(${space}) (rad) · Complex`)!
+    expect(phase).toMatchObject({ yaxis: "y2", y: sample.result!.arrays[`${space === "R" ? "chir" : "chiq"}_pha`] })
+    expect(handoff().layout.yaxis2).toMatchObject({ title: { text: `Phase χ(${space}) (rad)` }, overlaying: "y", side: "right", showgrid: false })
+    expect(handoff().layout.yaxis.title.text).not.toContain("Phase")
+    const components = handoff().data.filter(trace => !trace.name.startsWith("χ(k)"))
+    expect(new Set(components.map(trace => trace.line?.dash)).size).toBe(4)
+    expect(new Set(components.map(trace => trace.line?.color)).size).toBe(1)
+  })
+
+  it("keeps available components visible when another selection is missing", () => {
+    const sample = group()
+    delete sample.result!.arrays.chiq_re
+    delete sample.result!.arrays.chiq_mag
+    show({ groups: [sample], active: sample, space: "q", components: ["mag", "re", "pha"] })
+    expect(handoff().data).toHaveLength(1)
+    expect(handoff().data[0]).toMatchObject({ y: sample.result!.arrays.chiq_pha })
+    expect(handoff().data[0].yaxis).toBeUndefined()
+    expect(handoff().layout.yaxis.title.text).toBe("Phase χ(q) (rad)")
+    expect(handoff().layout.yaxis2).toBeUndefined()
+    expect(handoff().layout.xaxis.title.text).toBe("q (Å⁻¹)")
+  })
+
+  it("shows a useful empty state when every component is unchecked", () => {
+    show({ space: "R", components: [], window: true })
+    expect(screen.getByText("No components selected")).toBeVisible()
+    expect(plotly).not.toHaveBeenCalled()
+  })
+
+  it.each(["E", "k"] as const)("does not hide or duplicate %s curves when complex selections change", space => {
+    const sample = group()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space, energyMode: "mu", background: false, window: false,
+      offset: 0, analysis: null, analysisVisible: false, range: [null, null],
+    }
+    const view = render(<AthenaPlot {...props} components={[]} />)
+    const original = handoff()
+    expect(original.data).toHaveLength(1)
+    view.rerender(<AthenaPlot {...props} components={["mag", "re"]} />)
+    expect(handoff().data).toBe(original.data)
+    expect(handoff().layout).toBe(original.layout)
+  })
+
+  it("reuses Plotly inputs for equivalent selections and resets zoom when they change", () => {
+    const sample = group()
+    const props: ComponentProps<typeof AthenaPlot> = {
+      groups: [sample], active: sample, space: "R", energyMode: "mu", background: false, window: false,
+      offset: 0, analysis: null, analysisVisible: false, range: [null, null],
+    }
+    const view = render(<AthenaPlot {...props} components={["mag", "re"]} />)
+    const original = handoff()
+    view.rerender(<AthenaPlot {...props} components={["mag", "re", "re"]} />)
+    expect(handoff().data).toBe(original.data)
+    expect(handoff().layout).toBe(original.layout)
+    view.rerender(<AthenaPlot {...props} components={["re", "pha"]} />)
+    expect(handoff().data).not.toBe(original.data)
+    expect(handoff().layout.uirevision).not.toBe(original.layout.uirevision)
+  })
+})
+
 describe("AthenaPlot transform windows", () => {
   it.each(["k", "R"] as const)("pairs the %s window with its own axis and identifies its plotted owner", space => {
     const sample = group("Window owner")
