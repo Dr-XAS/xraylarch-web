@@ -11,7 +11,7 @@ test("inserts, saves, reopens and fits Einstein and Debye path models", async ({
   await expect(page.getByLabel("Path 1 σ² (Å²)", { exact: true })).toBeVisible()
   for (const index of [2, 3, 4]) await page.getByLabel(`Include path ${index}`, { exact: true }).uncheck()
   await page.getByLabel("R max (Å)", { exact: true }).fill("2.5")
-  await page.getByText("Insert Debye–Waller factor", { exact: true }).first().click()
+  await page.getByRole("button", { name: "Insert σ² model for path 1", exact: true }).click()
   await page.getByRole("button", { name: "Apply σ² model and sync", exact: true }).first().click()
   await expect(page.getByRole("region", { name: "Artemis EXAFS fitting setup", exact: true }).getByRole("alert")).toContainText("Sample temperature")
   // The Cu₂O example gives its Cu–O first shell its own disorder parameter.
@@ -25,7 +25,7 @@ test("inserts, saves, reopens and fits Einstein and Debye path models", async ({
   expect((await saved).ok()).toBe(true)
   const expression = "sig2_static_1 + sigma2_eins(temperature_1, theta_e_1)"
   await expect(page.getByLabel("Path 1 σ² (Å²)", { exact: true })).toHaveValue(expression)
-  const insertion = page.getByLabel("Path 1 disorder model", { exact: true }).locator("xpath=ancestor::details[1]")
+  const insertion = page.getByRole("region", { name: "Path 1 σ² model", exact: true })
   await insertion.screenshot({ path: info.outputPath("einstein-insertion.png") })
   await page.reload()
   await page.locator(".ath-group-select").filter({ hasText: "Cu₂O · room temperature" }).last().click()
@@ -40,7 +40,7 @@ test("inserts, saves, reopens and fits Einstein and Debye path models", async ({
   expect(result.paths[0].sigma2_expression).toBe(expression)
   expect(result.paths[0].values.sigma2).toBeGreaterThan(0)
   await expect(page.getByRole("table", { name: "Fitted path summary", exact: true })).toBeVisible()
-  await page.getByText("Insert Debye–Waller factor", { exact: true }).first().click()
+  await page.getByRole("button", { name: "Insert σ² model for path 1", exact: true }).click()
   await page.getByLabel("Path 1 disorder model", { exact: true }).selectOption("debye")
   await page.getByLabel("Path 1 sample temperature (K)", { exact: true }).fill("300")
   await page.getByLabel("Path 1 characteristic temperature (K)", { exact: true }).fill("350")

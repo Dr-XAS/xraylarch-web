@@ -439,9 +439,33 @@ Both arguments are in K and the result is in Å². These functions use the
 current FEFF path and must appear directly in its σ² expression, rather than
 inside a global Def parameter or another path field.
 
-### Insert a Debye–Waller factor
+### Insert a path-length model
 
-Open **Insert Debye–Waller factor** below a path's expressions. Choose
+ΔR and σ² each have their own expression row, with **Insert model** on the
+right. Open the control beside **ΔR** and choose **Isotropic expansion** to
+insert `alpha_1 * reff`. This creates a Guess parameter for the dimensionless
+expansion factor α, initially zero, while `reff` comes from each FEFF path:
+`ΔR = α * Reff` and `R = (1 + α) * Reff`. Positive α expands the path, negative
+α contracts it, and α = 0.01 means 1% expansion. α must exceed −1 to keep R
+positive; the helper sets only that physical lower bound.
+
+**Apply ΔR model and sync** changes only this path and creates a fresh parameter
+name. To constrain several paths to the same fractional expansion, use that
+same `alpha_1 * reff` expression in their ΔR fields. Each path retains its own
+FEFF Reff. Review which paths should share this isotropic scaling assumption;
+it is not a model of independent bond distortions. Existing parameters still
+used by the model retain their values and bounds, and the edit uses normal
+autosave and project Undo/Redo.
+
+The name follows the [Artemis geometric parametrization guide](https://bruceravel.github.io/demeter/documents/Artemis/extended/delr.html)
+and the [Larch multi-path fitting example](https://xraypy.github.io/xraylarch/xafs_feffit.html#example-2-fit-1-dataset-with-3-paths).
+[Smerigan et al. (2024)](https://doi.org/10.1107/S1600576724010240)
+call the corresponding cubic-crystal constraint “cubic lattice expansion”.
+Here α is a fractional length change, not a thermal expansion coefficient in K⁻¹.
+
+### Insert a Debye–Waller model
+
+Open **Insert model** beside the path's **σ²** expression. Choose
 **Independent σ² · Guess**, **Fixed σ² · Set**, **Einstein**, or
 **Correlated Debye**. Enter the measured sample temperature explicitly;
 the initial characteristic temperature of 300 K is an editable fitting start,

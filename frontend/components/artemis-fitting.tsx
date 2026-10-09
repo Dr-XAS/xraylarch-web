@@ -15,6 +15,9 @@ import { planArtemisParameterSync } from "@/lib/artemis-parameters"
 import { artemisTransformLimits, validateArtemisTransform } from "@/lib/artemis-transform-limits"
 import { planDisorderInsertion, type DisorderOptions } from "@/lib/artemis-disorder"
 import { ArtemisDisorderControl } from "./artemis-disorder"
+import { planExpansionInsertion, type ExpansionOptions } from "@/lib/artemis-expansion"
+import { ArtemisExpansionControl } from "./artemis-expansion"
+import { ArtemisPathModelField } from "./artemis-path-model-field"
 import { planCoordinationInsertion, type CoordinationOptions } from "@/lib/artemis-coordination"
 import { ArtemisCoordinationControl } from "./artemis-coordination"
 import { ArtemisModelAutosave, type ArtemisSaveStatus } from "@/lib/artemis-model-autosave"
@@ -443,6 +446,15 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
       setNotice(`Coordination number: ${insertion.coordinationName} (${options.refine ? "Guess" : "Set"}); ${insertion.amplitudeName} is fixed. Values and bounds are editable in Parameters.`)
     } catch (error) { setError(errorText(error)) }
   }
+  function insertExpansion(pathId: string, options: ExpansionOptions) {
+    try {
+      const insertion = planExpansionInsertion(draft, pathId, options)
+      const removed = new Set(insertion.removed)
+      edit(previous => ({ ...previous, paths: insertion.paths,
+        parameters: [...previous.parameters.filter(parameter => !removed.has(parameter.name.trim())), ...insertion.added.map(parameterDraft)] }))
+      setNotice(`Isotropic expansion inserted: ${insertion.expression}. ${insertion.alphaName} is a dimensionless Guess parameter.`)
+    } catch (error) { setError(errorText(error)) }
+  }
   function insertDisorder(pathId: string, options: DisorderOptions) {
     try {
       const insertion = planDisorderInsertion(draft, pathId, options)
@@ -716,11 +728,16 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
           {([
             ["s02", "S₀²", "Amplitude expression; FEFF N is already included. Use Set / fit coordination number above to create a CN parameter."],
             ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Craft edge energy."],
-            ["deltar", "ΔR (Å)", "Change in the FEFF effective half-path length. The fitted distance is R_eff + ΔR; ΔR often correlates with ΔE₀."],
-            ["sigma2", "σ² (Å²)", "Mean-square relative displacement in Å², damping the path by exp(−2k²σ²). Use separate values for distinct environments when justified."],
           ] as const).map(([field, label, title]) => <label key={field}><span>{label}<SectionHelp label={`Path ${i + 1} ${label}`}>{title} Enter a number, parameter name or expression; use the same name to share a parameter across paths.</SectionHelp></span><input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}
         </div>
-        <ArtemisDisorderControl index={i + 1} enabled={path.enabled} onPreview={options => planDisorderInsertion(draft, path.id, options)} onApply={options => insertDisorder(path.id, options)} />
+        <ArtemisPathModelField index={i + 1} quantity="ΔR" unit="Å" value={path.deltar} onChange={value => editPath(path.id, "deltar", value)}
+          help="Change in the FEFF effective half-path length. The fitted distance is R_eff + ΔR; ΔR often correlates with ΔE₀.">
+          <ArtemisExpansionControl index={i + 1} enabled={path.enabled} reff={path.metadata.reff} onPreview={options => planExpansionInsertion(draft, path.id, options)} onApply={options => insertExpansion(path.id, options)} />
+        </ArtemisPathModelField>
+        <ArtemisPathModelField index={i + 1} quantity="σ²" unit="Å²" value={path.sigma2} onChange={value => editPath(path.id, "sigma2", value)}
+          help="Mean-square relative displacement in Å², damping the path by exp(−2k²σ²). Use separate values for distinct environments when justified.">
+          <ArtemisDisorderControl index={i + 1} enabled={path.enabled} onPreview={options => planDisorderInsertion(draft, path.id, options)} onApply={options => insertDisorder(path.id, options)} />
+        </ArtemisPathModelField>
         </div>
       </div>}} />
     </FittingSection>

@@ -45,10 +45,12 @@
 .editor input[type=checkbox] { accent-color: var(--ath-primary, #268553); margin: 0; width: 13px; height: 13px; flex-shrink: 0; }
 .pathHeader button, .parameterHeader button { flex-shrink: 0; padding: 5px; }
 .metadata { margin: 5px 0 8px; color: var(--ath-muted, #647669); font-size: var(--text-caption); }
-.disorder { margin-top: 8px; border-top: 1px solid var(--ath-line, #dce5dc); padding-top: 8px; }
-.disorder > summary { cursor: pointer; font-size: var(--text-label); color: var(--ath-primary, #268553); }
-.disorder > .check, .disorder > .fullField { margin-top: 8px; }
-.disorder > summary:focus-visible { outline: 2px solid var(--ath-primary, #268553); outline-offset: 2px; }
+.modelField { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; margin: 8px 0; }
+.editor button.insertModel { min-height: 30px; color: var(--ath-primary, #268553); white-space: nowrap; }
+.insertModel[aria-expanded=true] svg { transform: rotate(180deg); }
+.modelPanel { grid-column: 1 / -1; min-width: 0; padding: 8px; border: 1px solid var(--ath-line, #dce5dc); border-radius: 4px; }
+.modelPanel[hidden] { display: none; }
+.modelPanel > .check, .modelPanel > .fullField { margin-bottom: 8px; }
 .disorderExpression { overflow-wrap: anywhere; }
 .coordination { margin-top: 6px; }
 .coordination > summary { cursor: pointer; color: var(--ath-primary, #268553); font-size: var(--text-label); overflow-wrap: anywhere; }

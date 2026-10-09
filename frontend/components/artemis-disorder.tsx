@@ -15,8 +15,7 @@ export function ArtemisDisorderControl({ index, enabled, onApply, onPreview }: {
   const label = (name: string) => `Path ${index} ${name}`
   let preview: { expression: string; removed: string[] } | undefined
   try { preview = onPreview(options) } catch { /* Apply reports incomplete input. */ }
-  return <details className={styles.disorder}>
-    <summary>Insert Debye–Waller factor<SectionHelp label="Debye–Waller factor">σ² is the mean-square relative displacement (Å²), used in exp(−2k²σ²).</SectionHelp></summary>
+  return <>
     <label className={styles.fullField}><span>σ² model<SectionHelp label={label("disorder model")}>Guess fits an independent σ²; Set holds it fixed. Einstein and correlated Debye calculate thermal disorder from sample and characteristic temperatures.{thermal && <> Uses this FEFF path’s masses{options.model === "debye" ? ", geometry and Norman radius. The Debye approximation is best suited to simple, nearly isotropic solids" : "; single-scattering paths use the pair’s reduced mass"}. Includes zero-point motion.</>}</SectionHelp></span><select aria-label={label("disorder model")} value={options.model}
       onChange={event => setOptions(previous => ({ ...previous, model: event.target.value as DisorderModel }))}>
       <option value="guess">Independent σ² · Guess</option><option value="set">Fixed σ² · Set</option>
@@ -45,5 +44,5 @@ export function ArtemisDisorderControl({ index, enabled, onApply, onPreview }: {
     </div>}
     <button type="button" disabled={!enabled} onClick={() => onApply(options)}>Apply σ² model and sync</button>
     <SectionHelp label="Apply σ² model">Apply replaces this path’s σ² expression and syncs parameters for included paths. Share names in the σ² fields to couple paths, or enter a justified constraint such as 2 * sig2_1.</SectionHelp>
-  </details>
+  </>
 }
