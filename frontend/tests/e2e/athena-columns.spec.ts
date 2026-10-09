@@ -124,7 +124,7 @@ test('official MRCAT quick scan compares original and rebinned data and imports 
   await panel.getByRole('button', { name: 'Clear denominator', exact: true }).click()
   await panel.getByLabel('Denominator mcs4', { exact: true }).check()
   await panel.getByText('Rebin quick scans', { exact: true }).click()
-  await panel.getByRole('button', { name: 'Use Athena default grid' }).click()
+  await panel.getByRole('button', { name: 'Use Craft default grid' }).click()
   await panel.getByLabel('Perform rebinning', { exact: true }).check()
   await expect.poll(async () => (await curves(panel)).length).toBe(2)
   const plotted = await curves(panel)

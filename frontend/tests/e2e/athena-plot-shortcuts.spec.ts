@@ -19,14 +19,14 @@ async function review(page: Page, dialog: Locator, kind: string) {
   expect(response.ok()).toBe(true)
   const value = await response.json() as ShortcutPlot
   await expect(dialog.getByRole('status')).toHaveText(value.result.curves.length + ' shortcut curves · project revision ' + value.version + '.')
-  await expect.poll(() => curves(dialog.getByLabel('Athena shortcut figure', { exact: true }))).toEqual(value.result.curves.map(({ name, x, y }) => ({ name, x, y })))
+  await expect.poll(() => curves(dialog.getByLabel('Craft shortcut figure', { exact: true }))).toEqual(value.result.curves.map(({ name, x, y }) => ({ name, x, y })))
   return value
 }
 async function open(page: Page) {
   const menu = page.getByRole('navigation', { name: 'Main menu', exact: true })
   await menu.getByRole('button', { name: 'Process', exact: true }).click()
   await menu.getByRole('button', { name: 'Plot shortcuts…', exact: true }).click()
-  return page.getByRole('dialog', { name: 'Athena plot shortcuts', exact: true })
+  return page.getByRole('dialog', { name: 'Craft plot shortcuts', exact: true })
 }
 async function close(dialog: Locator) {
   await dialog.getByRole('button', { name: 'Close plot shortcuts', exact: true }).click()
@@ -137,7 +137,7 @@ for (const mobile of [false, true]) test((mobile ? 'mobile' : 'desktop') + ' ori
   expect(await (await page.request.get('/api/backend/api/athena/projects/' + project.id)).json()).toEqual(project)
 
   const downloading = page.waitForEvent('download')
-  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath('shortcuts.prj'); await (await downloading).saveAs(path)
   await page.getByRole('button', { name: 'Open project', exact: true }).click()
   await page.getByLabel('Open project file', { exact: true }).setInputFiles(path)

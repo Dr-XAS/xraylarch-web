@@ -5,5 +5,5 @@ export const rebinInstructions = {
   "pre": "Energy spacing in eV before the edge region. A larger positive step reduces the number of pre-edge points.",
   "xanes": "Energy spacing in eV across the edge region. Choose a positive step fine enough to retain the edge and near-edge structure.",
   "exafs": "Wavenumber spacing in Å⁻¹ after the edge region. A positive uniform k step becomes a progressively wider energy step as energy increases.",
-  "width": "Number of original samples averaged before interpolation, from 1 to 11. Use 1 for no smoothing; broad kernels can mix scan endpoints under Athena’s periodic boundary convention."
+  "width": "Number of original samples averaged before interpolation, from 1 to 11. Use 1 for no smoothing; broad kernels can mix scan endpoints under Craft’s periodic boundary convention."
 } as const

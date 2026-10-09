@@ -88,7 +88,7 @@ test("real Cu2O model and fit survive reload, PRJ exchange and input changes", a
   expect(fits).toHaveLength(1)
 
   const downloading = page.waitForEvent("download")
-  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath("cuprite-with-fit.prj")
   await (await downloading).saveAs(path)
   await page.getByRole("button", { name: "File", exact: true }).click()

@@ -538,7 +538,7 @@ def _multi_electron(x, y, options):
         "width_definition": "Lorentzian derivative HWHM in eV",
         "amplitude_definition": "secondary step / primary edge_step",
         "equation": "mu_corrected = mu - amplitude*edge_step*(0.5 + atan((energy-e0-shift)/width)/pi)",
-        "assumptions": "User-specified weak additive secondary edge; phenomenological arctangent approximation from Athena 9.11. Full arctangent tails retained; input mu units preserved. No automatic identification, fitting, or renormalization. Recompute normalization/AUTOBK after subtraction. Reflected-spectrum method is not implemented.",
+        "assumptions": "User-specified weak additive secondary edge; phenomenological arctangent approximation from Demeter processing manual section 9.11. Full arctangent tails retained; input mu units preserved. No automatic identification, fitting, or renormalization. Recompute normalization/AUTOBK after subtraction. Reflected-spectrum method is not implemented.",
     }
 
 
@@ -1108,7 +1108,7 @@ def log_ratio(k, chi_complex_reference, chi_complex_target, options: dict | None
         output["cumulant_fit"] = {"parameters": amp_params | phase_params,
             "log_amplitude": amp_fit, "phase": phase_fit, "max_cumulant": order, "details": {
                 "method": "scaled SVD unweighted least squares",
-                "convention": "target minus reference; delta_c2 is minus the c2 printed in Athena manual 10.4",
+                "convention": "target minus reference; delta_c2 is minus the c2 printed in Demeter analysis manual section 10.4",
                 "amplitude_equation": "c0 - 2*delta_c2*k**2 + (2/3)*delta_c4*k**4",
                 "phase_equation": "2*delta_c1*k - (4/3)*delta_c3*k**3",
                 "omitted_terms": [f"delta_c{i}" for i in range(order + 1, 5)],

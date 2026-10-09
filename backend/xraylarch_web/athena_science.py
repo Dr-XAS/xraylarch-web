@@ -486,7 +486,7 @@ def process_spectrum(energy, mu, parameters: AthenaParameters | Mapping | None, 
         p = AthenaParameters.model_validate(parameters.model_dump(exclude_unset=True)
             if isinstance(parameters, AthenaParameters) else ({} if parameters is None else parameters))
     except ValidationError as exc:
-        raise ScientificError(f"Invalid Athena parameters: {exc}") from exc
+        raise ScientificError(f"Invalid Craft parameters: {exc}") from exc
     if data_type not in ("mu", "xanes", "norm", "chi", "xmudat", "detector"):
         raise ScientificError("data_type must be mu, xanes, norm, chi, xmudat, or detector.")
     standard = _background_standard(background_standard)

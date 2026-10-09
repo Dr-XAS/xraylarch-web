@@ -60,7 +60,7 @@ function Figure({label,traces,xlabel,ylabel,revision,log,empty}: {
     layout={{autosize:true,margin:{l:62,r:15,t:48,b:45},xaxis:{title:{text:xlabel}},
       yaxis:{title:{text:ylabel},type:log?'log':'linear'},
       legend:{orientation:'h',y:1.05,yanchor:'bottom'},uirevision:revision}}
-    config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'athena-xrf-view'}}}
+    config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'craft-xrf-view'}}}
     style={{width:'100%',height:'100%'}} useResizeHandler /> : <p>{empty}</p>}</div>
 }
 
@@ -76,7 +76,7 @@ function MapFigure({image,revision,log}:{image:MapImage;revision:string;log:bool
       // The two stage axes are the same quantity in the same units, so the
       // image is drawn with square pixels and a feature keeps its shape.
       yaxis:{title:{text:image.slow},scaleanchor:'x'},uirevision:revision}}
-    config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'athena-xrf-map'}}}
+    config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'craft-xrf-map'}}}
     style={{width:'100%',height:'100%'}} useResizeHandler /></div>
 }
 

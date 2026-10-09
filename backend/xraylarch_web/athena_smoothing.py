@@ -33,9 +33,9 @@ def smooth(energy, signal, choice: SmoothOptions):
         size = choice.window if choice.window >= 1 else 11
         size += int(size % 2 == 0)
         if size != choice.window:
-            warnings.append(f'Kernel size was adjusted to {size} points, as in Athena.')
+            warnings.append(f'Kernel size was adjusted to {size} points.')
         if len(x) - size < 10:
-            raise ValueError('Choose a smaller smoothing kernel; at least ten output points must remain after Athena’s endpoint trimming.')
+            raise ValueError('Choose a smaller smoothing kernel; at least ten output points must remain after endpoint trimming.')
         if len(x) * size > MAX_WORK:
             raise ValueError('Smoothing work limit exceeded; reduce the kernel size or explicitly rebin the source.')
         if choice.method == 'boxcar':
@@ -43,7 +43,7 @@ def smooth(energy, signal, choice: SmoothOptions):
         else:
             sigma = choice.sigma if choice.sigma >= 1 else 4.
             if sigma != choice.sigma:
-                warnings.append('Gaussian width was reset to 4 samples, as in Athena.')
+                warnings.append('Gaussian width was reset to 4 samples.')
             # Although the native constructor starts with float zeroes,
             # PDL's xvals produces doubles. Actual PDL execution verifies this
             # promotion; a float32 kernel changes the measured results.
@@ -81,7 +81,7 @@ def smooth(energy, signal, choice: SmoothOptions):
     else:
         repetitions = max(1, choice.repetitions)
         if repetitions != choice.repetitions:
-            warnings.append('Three-point smoothing uses at least one repetition, as in Athena.')
+            warnings.append('Three-point smoothing uses at least one repetition.')
         if len(x) * repetitions > MAX_WORK:
             raise ValueError('Smoothing work limit exceeded; reduce the repetition count or number of points.')
         out = y.copy()

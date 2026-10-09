@@ -119,7 +119,7 @@ function Figure({label,traces,xlabel,ylabel,revision,log,range,shapes,annotation
       yaxis:{title:{text:ylabel},automargin:true,type:log?'log':'linear',...(range?{range,autorange:false}:{})},
       shapes:shapes??[],annotations:annotations??[],
       legend:{orientation:'h',y:1.05,yanchor:'bottom'},uirevision:revision}}
-    config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'athena-xrf-xas'}}}
+    config={{responsive:true,displaylogo:false,toImageButtonOptions:{format:'svg',filename:'craft-xrf-xas'}}}
     style={{width:'100%',height:'100%'}} useResizeHandler /> : <p>Choose a scan file, name the target element, then fit a preview.</p>}</div>
 }
 

@@ -80,7 +80,7 @@ export function SmoothingDefaults({preferences: p, disabled}: {preferences: Retu
       <button disabled={disabled || p.pending || !p.state || !p.valid} onClick={() => { void p.apply(true) }}>Apply and Save</button>
       <button disabled={disabled || p.pending || !p.state} onClick={() => p.use('values')}>Use current values</button>
       <button disabled={disabled || p.pending || !p.state} onClick={() => p.use('saved')}>Use saved values</button>
-      <button disabled={disabled || p.pending || !p.state} onClick={() => p.use('defaults')}>Use Athena defaults</button>
+      <button disabled={disabled || p.pending || !p.state} onClick={() => p.use('defaults')}>Use Craft defaults</button>
       <button disabled={disabled || p.pending} onClick={p.load}>Reload preferences</button>
     </div>
     {p.pending && <p role="status">Loading or applying smoothing preferences…</p>}

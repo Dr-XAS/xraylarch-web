@@ -24,7 +24,7 @@ it('loads shared defaults and saves only the grid, separately from E0 and enable
   change('7'); fireEvent.click(screen.getByRole('button', { name: 'Save grid as defaults' }))
   await screen.findByText('Grid defaults saved for future sessions.')
   expect(save).toHaveBeenCalledWith({ version: 4, grid: { ...initial().grid, pre: 7 } })
-  fireEvent.click(screen.getByRole('button', { name: 'Use Athena default grid' }))
+  fireEvent.click(screen.getByRole('button', { name: 'Use Craft default grid' }))
   expect(screen.getByLabelText('grid pre')).toHaveValue(10)
   expect(save).toHaveBeenCalledTimes(1)
 })

@@ -66,7 +66,7 @@ for (const width of [1500, 390]) {
     await page.getByRole('button', { name: 'Redo', exact: true }).click()
     await expect(page.getByRole('heading', { name: /^Data groups 2\b/ })).toBeVisible()
     const downloading = page.waitForEvent('download')
-    await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+    await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
     const path = info.outputPath('derived-native.prj'); await (await downloading).saveAs(path)
     writeFileSync(path, gunzipSync(readFileSync(path)).toString('utf8').split('\n').filter(line => !line.startsWith('# Athena-Web ')).join('\n'))
     await page.getByRole('button', { name: 'File', exact: true }).click()

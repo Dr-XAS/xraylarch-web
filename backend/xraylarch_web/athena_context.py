@@ -125,7 +125,7 @@ def context_parameters(store, project, groups, options):
         identity = deepcopy(source['source'].get('edge_identity'))
         native = source['source'].get('native', {}).get('args', {})
         if ('forward' in sections) and native.get('fft_pc') not in (None, False, 0, '0', ''):
-            warnings.append('Native phase correction is retained as source metadata but is not applied by Athena Web.')
+            warnings.append('Native phase correction is retained as source metadata but is not applied by Craft.')
     explicit_metadata = choice.metadata.model_dump(exclude_none=True)
     if explicit_metadata.get('element'):
         entry = atomic_edge(explicit_metadata['element'], explicit_metadata['edge'])

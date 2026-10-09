@@ -71,7 +71,7 @@ def saved_merge_plot(group, options):
     # Data::points uses `scale ||= 1`, including the spread template's scale.
     scale = multiplier or 1.
     if multiplier == 0:
-        notes.append('Native Athena plotting treats a zero plot scale as one.')
+        notes.append('A zero plot scale is treated as one.')
     factor = np.power(x, weight) if weight is not None else np.ones(len(x))
     curves = [dict(name=group['label'], x=x.tolist(), y=(scale * factor * y + offset).tolist())]
     spread_scale = None
@@ -98,7 +98,7 @@ def saved_merge_plot(group, options):
     if origin == 'legacy-population':
         notes.append('This older web merge stores population scatter; no native N/(N−1) correction has been inferred or recomputed.')
     if suffix in ('norm', 'flat'):
-        notes.append('The saved scatter is added directly to the current normalized display, following Athena; normalization does not recalculate the stored scatter.')
+        notes.append('The saved scatter is added directly to the current normalized display; normalization does not recalculate the stored scatter.')
     notes.append('Saved scatter describes differences between scans; it is not propagated measurement uncertainty.')
     return dict(group_id=group['id'], label=group['label'], merge_space=space, origin=origin,
                 display=suffix, kweight=weight, multiplier=multiplier, offset=offset,

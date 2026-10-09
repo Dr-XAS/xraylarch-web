@@ -216,5 +216,5 @@ def identify(data, *, enabled=True, bl8_crystal=None):
         else: name, spacing = 'Ge(220)', 4.001/2
         set_item('mono', 'name', name); set_item('mono', 'd_spacing', spacing)
         result['mono_inference'] = {'element': element, 'XDIBL8': crystal,
-                                    'description': 'Crystal inferred from Athena’s rule and the XrayDB edge table; the header does not name the crystal.'}
+                                    'description': 'Crystal inferred from the native rule and the XrayDB edge table; the header does not name the crystal.'}
     return result

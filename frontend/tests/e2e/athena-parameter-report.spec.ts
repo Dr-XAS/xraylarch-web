@@ -65,7 +65,7 @@ test('mobile marked report uses list order and recovers from another-window revi
   await expect(dialog.getByRole('alert')).toContainText('changed in another tab');expect(downloads).toBe(0)
   await page.reload();({dialog,report}=await openReport(page,'marked'))
   const file=await download(page,info,'marked.xls')
-  expect(file.name).toBe('athena-parameters-marked.xls')
+  expect(file.name).toBe('craft-parameters-marked.xls')
   report.rows.forEach((r:{values:(string|number|null)[]},i:number)=>report.columns.forEach((c:{index:number})=>expect(file.rows[7+i][c.index]).toBe(r.values[c.index] ?? 'n.a.')))
   expect(downloads).toBe(1)
 })

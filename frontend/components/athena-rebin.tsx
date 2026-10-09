@@ -108,7 +108,7 @@ export function AthenaRebin({ project, activeId, selectGroup, grid, setGrid, sav
             type: 'line', x0: value.results[0].details.e0 + offset, x1: value.results[0].details.e0 + offset,
             y0: 0, y1: 1, yref: 'paper', line: { dash: 'dot', color: '#a2aaa0', width: 1 },
           })) : [],
-        }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { format: 'svg', filename: 'athena-rebin' } }}
+        }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { format: 'svg', filename: 'craft-rebin' } }}
           style={{ width: '100%', height: '100%' }} useResizeHandler />
           : <p>{previewError ? 'Correct the grid or choose another source.' : !groupIds.length ? 'Select a source group.' : value ? 'No k-space curves are available. The energy preview is still available.' : 'Updating preview…'}</p>}
       </div>

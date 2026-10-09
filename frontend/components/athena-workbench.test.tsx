@@ -937,7 +937,7 @@ describe("AthenaWorkbench menu command search", () => {
     expect(shortcut).toBeEnabled()
     fireEvent.click(shortcut)
 
-    expect(await screen.findByRole("dialog", { name: "Athena plot shortcuts" })).toBeVisible()
+    expect(await screen.findByRole("dialog", { name: "Craft plot shortcuts" })).toBeVisible()
     expect(within(navigation).queryByRole("button", { name: "Plot shortcuts…" })).not.toBeInTheDocument()
   })
 
@@ -949,7 +949,7 @@ describe("AthenaWorkbench menu command search", () => {
     expect(result).toBeEnabled()
     fireEvent.click(result)
 
-    expect(await screen.findByRole("dialog", { name: "Athena plot shortcuts" })).toBeVisible()
+    expect(await screen.findByRole("dialog", { name: "Craft plot shortcuts" })).toBeVisible()
   })
 
   it("opens from Search menu, focuses search, and shows menu paths for keyword matches", async () => {
@@ -964,10 +964,10 @@ describe("AthenaWorkbench menu command search", () => {
     expect(within(dialog).queryByText("Type a keyword to find a menu command.")).not.toBeInTheDocument()
   })
 
-  it("shows the Athena guide in the empty Search menu", async () => {
+  it("shows the Craft guide in the empty Search menu", async () => {
     const { dialog } = await openMenuSearch()
-    fireEvent.click(within(dialog).getByRole("button", { name: "Help › Learn Athena" }))
-    expect(await screen.findByRole("dialog", { name: "Learn Athena" })).toBeVisible()
+    fireEvent.click(within(dialog).getByRole("button", { name: "Help › Learn Craft" }))
+    expect(await screen.findByRole("dialog", { name: "Learn Craft" })).toBeVisible()
   })
 
   it("moves from search to a result and opens the command with the keyboard", async () => {
@@ -2292,7 +2292,7 @@ describe("AthenaWorkbench native context actions", () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Search groups' }), { target: { value: 'Foil' } })
     expect(screen.queryByRole('button', { name: /^Sample scan/ })).toBeNull()
     const next = nextProject(foilApplied, { sample: { parameters: { ...parameters, rbkg: 2.5 } } })
-    const warning = 'Native phase correction is retained as source metadata but is not applied by Athena Web.'
+    const warning = 'Native phase correction is retained as source metadata but is not applied by Craft.'
     next.last_operation = { action: 'context_parameters', skipped_group_ids: ['oxide'], warnings: [warning] }
     api.mockResolvedValueOnce(next)
     fireEvent.click(within(groupContext()).getByRole('menuitem', { name: 'Set marked groups’ values to the current' }))
@@ -6749,7 +6749,7 @@ describe("EXAFS model File menu", () => {
     await act(async () => { vi.mocked(ArtemisFittingPanel).mock.calls.at(-1)![0].onActionsChange?.(actions) })
   }
 
-  it.each(["Save project", "Save Athena project (.prj)", "Save complete web project", "Save marked project (.prj)"])("waits for all model saves before %s", async label => {
+  it.each(["Save project", "Save Craft project (.prj)", "Save complete web project", "Save marked project (.prj)"])("waits for all model saves before %s", async label => {
     const fetcher = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("Download reached"))
     await openSaved()
     let complete!: () => void

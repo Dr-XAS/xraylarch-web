@@ -279,7 +279,7 @@ def _ssrl_ascii(data, max_points, max_columns, *, micro=False):
     output_labels = [labels[i].replace('SCA', 'S') if micro else labels[i] for i in order]
     metadata = {'id': name, 'version': '0.1' if micro else '0.2',
         'description': 'SSRL MicroEXAFS Data Collector' if micro else 'SSRL XAFS Data Collector · ASCII',
-        'summary': ('Moved energy before the clock and detector columns, retained SCA channels, and omitted ICR channels as Athena does. '
+        'summary': ('Moved energy before the clock and detector columns, retained SCA channels, and omitted ICR channels. '
                     'Choose fluorescence columns if no transmission detector was recorded.' if micro else
                     'Moved achieved energy to the first column, followed by requested energy and the clock. Detector offsets are not subtracted.'),
         'conversion': {'source_columns': raw_labels, 'source_column_indices': order,
@@ -287,7 +287,7 @@ def _ssrl_ascii(data, max_points, max_columns, *, micro=False):
                        'omitted_column_indices': [i for i in range(len(labels)) if i not in order],
                        'omitted_energy_rows': dropped, 'offsets_applied': False}}
     if dropped:
-        metadata['summary'] += f' Omitted {len(dropped)} rows below 0.001 eV using Athena’s achieved-energy rule.'
+        metadata['summary'] += f' Omitted {len(dropped)} rows with achieved energy below 0.001 eV.'
     n, d, fluo = (2, 3, (5, 2)) if micro else (3, 4, (5, 3))
     headers = lines[:start - 1]
     for i, line in enumerate(headers[:-1]):
@@ -449,7 +449,7 @@ _PLUGINS = (
         re.compile(rb'^\s*NPTS\s+NS\s+CUEDGE\s+CUHITE'), _lytle),
     FilePlugin('PFBL12C', '0.3', 'Photon Factory / SPring-8 / SAGA / Aichi',
         'Reads 9809 beamline files. Converts requested and attained angles with the monochromator D spacing '
-        'from the header and Athena’s conversion constant and precision. Transmission uses attained energy '
+        'from the header and native conversion constant and precision. Transmission uses attained energy '
         'and ln(abs(I0 / I1)); offsets are preserved without subtraction.',
         re.compile(rb'^.*9809\s+(?:KEK-PF|SPring-8|SAGA-LS|AichiSR)\s+(?:BL\d+|NW\d+|\d+\w+\d*)'), _pfbl12c),
     FilePlugin('SLRIBL4', '0.1', 'Dispersive pixel/stripe data',
@@ -472,7 +472,7 @@ _PLUGINS = (
     FilePlugin('SSRLA', '0.2', 'SSRL XAFS Data Collector · ASCII',
         'Reads SSRL and ROBL ASCII collector files. Moves achieved energy before requested energy and the clock. '
         'Retains detector counts without subtracting offsets, emits four decimal places, and removes rows with '
-        'achieved energy below 0.001 eV as Athena does. Transmission uses columns 4 / 5; fluorescence uses 6 / 4.',
+        'achieved energy below 0.001 eV. Transmission uses columns 4 / 5; fluorescence uses 6 / 4.',
         re.compile(rb'^\s*SSRL\s+EXAFS Data Collector'), _ssrla,
         lambda data: b'\0' not in data.split(b'\n', 2)[1] if b'\n' in data else True),
     FilePlugin('SSRLB', '0.2', 'SSRL XAFS Data Collector · binary',
@@ -508,7 +508,7 @@ _PLUGINS = (
     FilePlugin('X23A2MED', '0.2', 'NIST Vortex · X23A2 / BMM',
         'Corrects one through four Vortex detector channels using configured ROI, fast/slow labels, '
         'deadtimes and integration times. Keeps both ROI edges in multiedge files. A zero slow count '
-        'omits that whole detector channel, as in Athena; omitted channels are reported. The live preview '
+        'omits that whole detector channel; omitted channels are reported. The live preview '
         'uses the converted counts, and source bytes plus the applied configuration are retained.',
         re.compile(rb'.*'), _x23a2med,
         lambda data: b'BMM' in data.split(b'\n',1)[0] or (len(data.splitlines()) > 1 and b'X-23A2' in data.splitlines()[1]),

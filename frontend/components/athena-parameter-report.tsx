@@ -16,7 +16,7 @@ type Report = { project_id: string; version: number; scope: Scope; filename: str
 function confirmed(data: Report, project: AthenaProject, scope: Scope) {
   const ids = project.groups.filter(g => scope === 'all' || g.marked).map(g => g.id)
   return data?.project_id === project.id && data.version === project.version && data.scope === scope
-    && data.filename === `athena-parameters-${scope}.xls` && Array.isArray(data.columns) && data.columns.length === 28
+    && data.filename === `craft-parameters-${scope}.xls` && Array.isArray(data.columns) && data.columns.length === 28
     && new Set(data.columns.map(c => c.index)).size === 28 && data.columns.every(c => Number.isInteger(c.index) && c.index >= 0 && c.index < 32
       && [c.key, c.label, c.unit, c.section].every(v => typeof v === 'string'))
     && Array.isArray(data.sections) && data.sections.length === 5 && data.sections.every(s => typeof s.key === 'string' && typeof s.label === 'string')

@@ -19,7 +19,7 @@ it('loads native unchecked defaults, documentation, and exchange controls', asyn
   fireEvent.click(screen.getByText('X10C documentation'))
   expect(screen.getByText('Transmission uses columns 4 and 6.')).toBeVisible()
   expect(screen.getByRole('link', { name: 'Original X10C documentation' })).toHaveAttribute('target', '_blank')
-  expect(screen.getByRole('link', { name: 'Export Athena registry' })).toHaveAttribute('href', '/api/backend/api/athena/preferences/plugins/export')
+  expect(screen.getByRole('link', { name: 'Export plugin registry' })).toHaveAttribute('href', '/api/backend/api/athena/preferences/plugins/export')
 })
 
 it('opens native plugin actions by right click without enabling the reader and shows its local documentation', async () => {
@@ -112,28 +112,28 @@ it('imports a native file and applies only the returned saved registry', async (
   render(<AthenaPluginRegistry />)
   const toggle = await screen.findByRole('checkbox', { name: 'Enable X10C' })
   const file = new File(['---\nDemeter::Plugins::X10C: 1'], 'athena.plugin_registry')
-  fireEvent.change(screen.getByLabelText('Import Athena plugin registry file'), { target: { files: [file] } })
+  fireEvent.change(screen.getByLabelText('Import plugin registry file'), { target: { files: [file] } })
   await waitFor(() => expect(toggle).toBeChecked())
   expect(importPluginRegistry).toHaveBeenCalledWith(0, file)
   expect(screen.getByText('Settings for 1 unavailable plugins')).toBeInTheDocument()
-  expect(screen.getByLabelText('Import Athena plugin registry file')).toHaveValue('')
+  expect(screen.getByLabelText('Import plugin registry file')).toHaveValue('')
 })
 
 it('retains saved registry and allows retry after a failed file import', async () => {
   vi.mocked(importPluginRegistry).mockRejectedValue(new Error('Invalid Athena YAML mapping.'))
   render(<AthenaPluginRegistry />); await screen.findByRole('checkbox', { name: 'Enable X10C' })
   const file = new File(['bad: value'], 'registry')
-  fireEvent.change(screen.getByLabelText('Import Athena plugin registry file'), { target: { files: [file] } })
+  fireEvent.change(screen.getByLabelText('Import plugin registry file'), { target: { files: [file] } })
   expect(await screen.findByRole('alert')).toHaveTextContent('Invalid Athena YAML')
   expect(screen.getByRole('checkbox', { name: 'Enable X10C' })).not.toBeChecked()
-  expect(screen.getByRole('button', { name: 'Import Athena registry…' })).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Import plugin registry…' })).toBeEnabled()
 })
 
 it('recovers an initial loading error without enabling writes against unknown state', async () => {
   vi.mocked(loadPluginRegistry).mockRejectedValueOnce(new Error('Backend unavailable'))
   render(<AthenaPluginRegistry />)
   expect(await screen.findByRole('alert')).toHaveTextContent('Backend unavailable')
-  expect(screen.getByRole('button', { name: 'Import Athena registry…' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Import plugin registry…' })).toBeDisabled()
   fireEvent.click(screen.getByRole('button', { name: 'Reload plugin settings' }))
   expect(await screen.findByRole('checkbox', { name: 'Enable X10C' })).toBeEnabled()
 })
@@ -142,7 +142,7 @@ it.each([null, { ...blank, version: -1 }, { ...blank, enabled: { [id]: 1 } }, { 
   vi.mocked(loadPluginRegistry).mockResolvedValue(value as unknown as PluginRegistry)
   render(<AthenaPluginRegistry />)
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not read the plugin registry')
-  expect(screen.getByRole('button', { name: 'Import Athena registry…' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Import plugin registry…' })).toBeDisabled()
 })
 
 it('ignores a stale initial response after StrictMode remount', async () => {
@@ -173,7 +173,7 @@ it('configures a real reader and locks registry actions until its apply finishes
   expect(screen.getByRole('checkbox', { name: 'Enable X10C' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Configure X15B' })).toBeDisabled()
   expect(screen.getByRole('button', { name: 'Reload plugin settings' })).toBeDisabled()
-  expect(screen.queryByRole('link', { name: 'Export Athena registry' })).not.toBeInTheDocument()
+  expect(screen.queryByRole('link', { name: 'Export plugin registry' })).not.toBeInTheDocument()
   await act(async () => finish({ ...config, version: 1 }))
   expect(pending).toHaveBeenLastCalledWith(false)
   expect(screen.getByRole('checkbox', { name: 'Enable X10C' })).toBeEnabled()

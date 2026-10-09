@@ -105,10 +105,10 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
     </details>}
     <div className="ath-modal-actions">
       <button type="button" disabled={locked} onClick={() => { void perform(() => loadPluginRegistry(), 'Plugin settings reloaded.') }}>Reload plugin settings</button>
-      <button type="button" disabled={locked || !state} onClick={() => upload.current?.click()}>Import Athena registry…</button>
-      {state && !locked && <a className="ath-button" href={`${apiBase}/preferences/plugins/export`} download>Export Athena registry</a>}
+      <button type="button" disabled={locked || !state} onClick={() => upload.current?.click()}>Import plugin registry…</button>
+      {state && !locked && <a className="ath-button" href={`${apiBase}/preferences/plugins/export`} download>Export plugin registry</a>}
     </div>
-    <input ref={upload} type="file" aria-label="Import Athena plugin registry file" hidden disabled={locked || !state} onChange={event => {
+    <input ref={upload} type="file" aria-label="Import plugin registry file" hidden disabled={locked || !state} onChange={event => {
       const file = event.target.files?.[0]; event.target.value = ''
       if (file && current.current) {
         const version = current.current.version
@@ -116,10 +116,10 @@ export function AthenaPluginRegistry({ onPendingChange }: { onPendingChange?: (p
           const saved = checked(await importPluginRegistry(version, file))
           if (saved.version !== version + 1) throw new Error('The imported registry could not be confirmed. Reload plugin settings.')
           return saved
-        }, 'Athena registry imported. Review the saved switches below.')
+        }, 'Plugin registry imported. Review the saved switches below.')
       }
     }} />
-    <p><a href="https://bruceravel.github.io/demeter/documents/Athena/other/plugin.html" target="_blank" rel="noreferrer">Athena guide: file type plugins</a></p>
+    <p><a href="https://bruceravel.github.io/demeter/documents/Athena/other/plugin.html" target="_blank" rel="noreferrer">Guide: file type plugins</a></p>
     {context && contextPlugin && !locked && <AthenaContextMenu key={context.id} label={`${contextPlugin.name} plugin actions`}
       anchor={context.anchor} returnFocus={context.returnFocus} onClose={() => setContext(null)} items={[
         { id: 'documentation', label: `Show documentation for the ${contextPlugin.name} plugin`, onSelect: () => {

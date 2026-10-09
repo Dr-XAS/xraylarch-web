@@ -628,7 +628,7 @@ def test_all_float_fields_reject_nan(field):
 
 
 def test_process_converts_pydantic_errors_and_revalidates_constructed_models(xas_arrays):
-    with pytest.raises(ScientificError, match="Invalid Athena parameters"):
+    with pytest.raises(ScientificError, match="Invalid Craft parameters"):
         process_spectrum(*xas_arrays, {"window": "garbage"})
     p = AthenaParameters.model_construct(nfft=1_048_576)
     with pytest.raises(ScientificError, match="nfft"):

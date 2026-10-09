@@ -93,7 +93,7 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
       const url = await Plotly.toImage({ data: plotDataForTheme(traces, theme), layout: plotLayoutForTheme(plotLayoutWithTypography({ ...graph.layout, autosize: false, width: 1400, height,
         margin: { l: 85, r: 440, t: 40, b: 65 }, showlegend: true, legend: { x: 1.02, y: 1, yanchor: 'top', orientation: 'v' } }), theme) }, { format: 'svg', width: 1400, height })
       if (currentKey.current !== requestedKey) return
-      const link = document.createElement('a'); link.href = url; link.download = `athena-${kind}.svg`
+      const link = document.createElement('a'); link.href = url; link.download = `craft-${kind}.svg`
       document.body.appendChild(link); link.click(); link.remove()
     } catch (e) {
       if (currentKey.current === requestedKey) setError(e instanceof Error ? e.message : 'Could not export this plot.')
@@ -101,20 +101,20 @@ export function AthenaSpecialPlot({ kind, groups, active, projectId, version, en
   }
 
   if (!ids.length) return <p role="status">{marked ? 'Mark groups to use this plot shortcut.' : 'Select a current group to use this plot shortcut.'}</p>
-  if (kind === 'biquad' && ids.length !== 2) return <p role="status">Mark exactly two groups for Athena’s bi-quad plot.</p>
+  if (kind === 'biquad' && ids.length !== 2) return <p role="status">Mark exactly two groups for Craft’s bi-quad plot.</p>
   if (!projectId || version === undefined) return <p role="status">Open a saved project to prepare this diagnostic plot.</p>
   if (quad) return <AthenaDiagnosticPlot key={kind} initialView={kind} project={{ id: projectId, version, groups }} groupId={active?.id ?? ids[0]} selectGroup={selectGroup ?? (() => {})} />
   const r = current?.result
   return <section className={styles.viewer} aria-label={athenaSpecialPlotLabels[kind]}>
     <div className={styles.toolbar}>
-      <p role="status">{r ? `${r.curves.length} shortcut curves · project revision ${current.version}.` : loading ? 'Preparing Athena shortcut curves…' : 'Shortcut plot unavailable.'}</p>
+      <p role="status">{r ? `${r.curves.length} shortcut curves · project revision ${current.version}.` : loading ? 'Preparing Craft shortcut curves…' : 'Shortcut plot unavailable.'}</p>
       <div className={styles.actions}>
         <button disabled={loading} onClick={() => { setRemote(null); setError(''); setRetry(n => n + 1) }}>Replot shortcut</button>
         {!!r?.curves.length && <button disabled={exporting || hidden.length === r.curves.length} onClick={() => { void download() }}>{exporting ? 'Exporting plot…' : 'Download shortcut SVG'}</button>}
       </div>
     </div>
     {error && <p role="alert" className="ath-error">{error}</p>}
-    {r && r.curves.length > 0 && <div ref={figure} className={styles.plot} aria-label="Athena shortcut figure"><Plot data={r.curves.map((c, i) => ({ x: c.x, y: c.y, name: c.name, visible: !hidden.includes(i), type: 'scatter', mode: 'lines', line: { color: colors[i % colors.length], width: 1.8 } }))}
+    {r && r.curves.length > 0 && <div ref={figure} className={styles.plot} aria-label="Craft shortcut figure"><Plot data={r.curves.map((c, i) => ({ x: c.x, y: c.y, name: c.name, visible: !hidden.includes(i), type: 'scatter', mode: 'lines', line: { color: colors[i % colors.length], width: 1.8 } }))}
       layout={{ autosize: true, margin: { l: 75, r: 25, t: 20, b: 60 }, font: { color: '#586661' },
         xaxis: { title: { text: r.x_label }, automargin: true, ...(r.x_range ? { range: r.x_range } : {}) }, yaxis: { title: { text: r.y_label }, automargin: true },
         paper_bgcolor: '#fff', plot_bgcolor: '#fff', showlegend: false, hovermode: 'closest', uirevision: key }}

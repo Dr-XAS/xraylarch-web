@@ -51,7 +51,7 @@ test("measured spectrum survives processing, project reopen, and raw/EXAFS expor
   expect(before.result?.arrays.chi).not.toEqual(original.result?.arrays.chi)
 
   const saving = page.waitForEvent("download")
-  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+  await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const savedPath = info.outputPath("processed-copper.prj")
   await (await saving).saveAs(savedPath)
 

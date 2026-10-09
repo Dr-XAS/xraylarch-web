@@ -460,7 +460,7 @@ def _exchange_recipe(parameters, result=None):
 def _native_json_document(document):
     headers = {k: v for k, v in document.items() if k.startswith("_____head")}
     if not any(isinstance(v, str) and "Athena project file -- " in v for v in headers.values()):
-        fail("This JSON is neither an Athena Web project nor a native Athena JSON project.")
+        fail("This JSON is neither a Craft project nor a native Athena JSON project.")
     order = document.get("_____order")
     if not isinstance(order, list) or not 1 <= len(order) <= 100 or not all(isinstance(k, str) for k in order):
         fail("Native Athena JSON needs an ordered list of 1–100 group IDs.")
@@ -4450,7 +4450,7 @@ class AthenaStore:
             web = document.get("format") == "athena-web"
             if web:
                 if document.get("schema_version") != 1:
-                    fail("Unsupported Athena Web project schema version.")
+                    fail("Unsupported Craft project schema version.")
                 records = document.get("groups", [])
                 sidecar = document
                 journal, name = _journal(document.get("journal", "")), str(document.get("name", name))
@@ -4460,14 +4460,14 @@ class AthenaStore:
         else:
             records, journal, sidecar, metadata = _native_perl_document(text)
             if not isinstance(sidecar, dict):
-                fail("Athena Web sidecar must be an object.")
+                fail("Craft sidecar must be an object.")
             if not sidecar:
                 native_project = {"filename": filename, "format": "athena-perl", "metadata": metadata}
             name = sidecar.get("name", name)
         if not isinstance(records, list) or len(records) > 100:
             fail("A project can contain at most 100 groups.")
         if not isinstance(sidecar, dict):
-            fail("Athena Web sidecar must be an object.")
+            fail("Craft sidecar must be an object.")
         meta_records = sidecar.get("groups", [])
         if not isinstance(meta_records, list) or len(meta_records) > 100:
             fail("Invalid sidecar group list.")
@@ -5652,7 +5652,7 @@ def build_athena_router(
         integration_draft(ident, capability, "export", group_ids=group_ids or (), allow_terminal=True)
         content = guarded(lambda: store.export_project(ident, format, group_ids, marked_only))
         return Response(content, media_type="application/octet-stream" if format == "prj" else "application/json",
-                        headers={"Content-Disposition": f'attachment; filename="athena-project.{format}"'})
+                        headers={"Content-Disposition": f'attachment; filename="craft-project.{format}"'})
 
     @router.post('/projects/{ident}/parameter-report/preview')
     def parameter_report_preview(ident: str, request: ParameterReport):
@@ -5716,6 +5716,6 @@ def build_athena_router(
         writer = csv.writer(output)
         writer.writerow(["detector_signal" if key == "mu" and g["data_type"] == "detector" else key for key in columns])
         writer.writerows(zip(*(a[key] for key in columns), strict=True))
-        return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="athena-{space}.csv"'})
+        return Response(output.getvalue(), media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="craft-{space}.csv"'})
 
     return router

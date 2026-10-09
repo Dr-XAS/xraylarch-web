@@ -104,6 +104,6 @@ export function AthenaDiagnosticPlot({ project, groupId, selectGroup, close, ini
     {error && <p role="alert" className="ath-error">{error}</p>}
     {current && <div className={view === 'kq' ? styles.single : styles.grid}>{current.result.panels.map(p => <DiagnosticPanel key={`${key}:${p.id}`} panel={p} context={key} groupIds={ids} />)}</div>}
     {current?.result.notes.map((note, i) => <p className="ath-hint" key={i}>{note}</p>)}
-    <div className="ath-modal-actions"><a href="https://bruceravel.github.io/demeter/documents/Athena/plot/etc.html" target="_blank" rel="noreferrer">Athena plotting guide</a>{close && <button onClick={close}>Close diagnostic plots</button>}</div>
+    <div className="ath-modal-actions"><a href="https://bruceravel.github.io/demeter/documents/Athena/plot/etc.html" target="_blank" rel="noreferrer">Plotting guide</a>{close && <button onClick={close}>Close diagnostic plots</button>}</div>
   </div>
 }

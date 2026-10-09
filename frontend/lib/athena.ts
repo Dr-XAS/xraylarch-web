@@ -154,10 +154,10 @@ export function athenaApi<T>(path: string, body?: unknown, method?: string, sign
 export function athenaTransport() { return createAthenaTransport({ mode: "legacy" }) }
 export function athenaDownload(path: string, filename?: string) { return athenaTransport().download(`/api/athena${path}`, filename) }
 export const resources = [
-  { title: "Athena users’ guide", author: "Bruce Ravel", kind: "Manual", url: "https://bruceravel.github.io/demeter/documents/Athena/index.html", description: "The reference for Athena’s processing, plotting, and analysis tools." },
+  { title: "Processing users’ guide", author: "Bruce Ravel", kind: "Manual", url: "https://bruceravel.github.io/demeter/documents/Athena/index.html", description: "The desktop reference for processing, plotting, and analysis tools." },
   { title: "Basic data processing", author: "Bruce Ravel", kind: "Tutorial", url: "https://bruceravel.github.io/demeter/documents/Athena/examples/data.html", description: "Follow an iron-foil example through calibration, alignment, merging, and EXAFS." },
-  { title: "EXAFS & XANES with Athena", author: "Bruce Ravel · IXAS video collection", kind: "YouTube course", url: "https://www.youtube.com/playlist?list=PLyzX_pouV65vbohf_puwlg9fGNjJGpKpd", description: "A collection of lectures and demonstrations linked by the International X-ray Absorption Society." },
-  { title: "Athena: Fe–S dataset, part 1", author: "Shelly Kelly", kind: "YouTube", url: "https://www.youtube.com/watch?v=xWq-8OCxXEE", description: "A practical Athena demonstration using iron–sulfur data." },
-  { title: "Athena: Fe–S dataset, part 2", author: "Shelly Kelly", kind: "YouTube", url: "https://www.youtube.com/watch?v=nBm19RncBu0", description: "Continue the Fe–S analysis demonstration." },
+  { title: "EXAFS & XANES tutorials", author: "Bruce Ravel · IXAS video collection", kind: "YouTube course", url: "https://www.youtube.com/playlist?list=PLyzX_pouV65vbohf_puwlg9fGNjJGpKpd", description: "A collection of lectures and demonstrations linked by the International X-ray Absorption Society." },
+  { title: "Fe–S dataset, part 1", author: "Shelly Kelly", kind: "YouTube", url: "https://www.youtube.com/watch?v=xWq-8OCxXEE", description: "A practical desktop demonstration using iron–sulfur data." },
+  { title: "Fe–S dataset, part 2", author: "Shelly Kelly", kind: "YouTube", url: "https://www.youtube.com/watch?v=nBm19RncBu0", description: "Continue the Fe–S analysis demonstration." },
   { title: "XAS education & example data", author: "Bruce Ravel", kind: "Examples", url: "https://bruceravel.github.io/XAS-Education/", description: "Teaching materials and datasets to practice with." },
 ]

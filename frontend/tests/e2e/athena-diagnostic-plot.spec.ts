@@ -72,7 +72,7 @@ for (const mobile of [false, true]) test(`${mobile ? 'mobile' : 'desktop'} origi
   const menu = page.getByRole('navigation', { name: 'Main menu', exact: true })
   await menu.getByRole('button', { name: 'Process', exact: true }).click()
   await menu.getByRole('button', { name: 'Plot shortcuts…', exact: true }).click()
-  dialog = page.getByRole('dialog', { name: 'Athena plot shortcuts', exact: true })
+  dialog = page.getByRole('dialog', { name: 'Craft plot shortcuts', exact: true })
   await dialog.getByLabel('Plot shortcut', { exact: true }).selectOption('biquad')
   value = await review(page, dialog)
   expect(value.result.panels.map(p => p.curves.length)).toEqual([2, 2, 2, 2])

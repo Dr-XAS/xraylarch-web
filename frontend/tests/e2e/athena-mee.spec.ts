@@ -68,7 +68,7 @@ test('official LaCoO3 PRJ, native reflection, E/k/R plots, curve picking, save a
   await expect(dialog).toHaveCount(0)
   await page.getByRole('button',{name:'Undo',exact:true}).click();await expect(page.getByRole('heading',{ name: /^Data groups 2\b/ })).toBeVisible()
   await page.getByRole('button',{name:'Redo',exact:true}).click();await expect(page.getByRole('heading',{ name: /^Data groups 3\b/ })).toBeVisible()
-  const download=page.waitForEvent('download');await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+  const download=page.waitForEvent('download');await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   await (await download).saveAs(info.outputPath('LaCoO3-corrected.prj'))
   expect(errors).toEqual([])
 })

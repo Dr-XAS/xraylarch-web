@@ -129,6 +129,6 @@ export function IntegrationLaunch() {
   }, [session])
 
   if (session) return <AthenaWorkbench session={session} onAuthorizationFailure={() => { clearIntegrationSession(); clearIntegrationReturnSelection(); setSession(null); setFailed(true) }} />
-  if (failed) return <main><h1>Launch again from Dr.XAS</h1><p>This Athena session is missing, expired, or already used.</p></main>
-  return <main><p>Opening Athena…</p></main>
+  if (failed) return <main><h1>Launch again from Dr.XAS</h1><p>This Craft session is missing, expired, or already used.</p></main>
+  return <main><p>Opening Craft…</p></main>
 }

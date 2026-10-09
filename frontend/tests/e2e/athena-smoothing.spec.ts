@@ -59,7 +59,7 @@ test('measured Cu live columns, four smoothing algorithms, E/k/R, history, undo 
     await dialog.getByLabel('Source group', {exact: true}).selectOption(initial.groups[0].id)
     const preview = await configure(page, dialog, options), row = preview.results[0]
     expect(row.smoothed_mu.length).toBe(options.method === 'boxcar' ? 399 : options.method === 'gaussian' ? 397 : 408)
-    if (options.method === 'boxcar') await expect(dialog.getByText('Kernel size was adjusted to 9 points, as in Athena.', {exact: true})).toBeVisible()
+    if (options.method === 'boxcar') await expect(dialog.getByText('Kernel size was adjusted to 9 points.', {exact: true})).toBeVisible()
     for (const space of ['E','k','R'] as const) {
       await dialog.getByRole('button', {name: space === 'E' ? 'Plot in energy' : `Plot in ${space}`, exact: true}).click()
       await expect(dialog.getByRole('button', {name: space === 'E' ? 'Plot in energy' : `Plot in ${space}`, exact: true})).toHaveAttribute('aria-pressed', 'true')
@@ -85,7 +85,7 @@ test('measured Cu live columns, four smoothing algorithms, E/k/R, history, undo 
   await metadata.getByRole('button', {name: 'Close metadata', exact: true}).click()
   await page.getByRole('button', {name: 'Undo', exact: true}).click(); await expect(page.getByRole('heading', { name: /^Data groups 4\b/ })).toBeVisible()
   await page.getByRole('button', {name: 'Redo', exact: true}).click(); await expect(page.getByRole('heading', { name: /^Data groups 5\b/ })).toBeVisible()
-  const downloading = page.waitForEvent('download'); await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+  const downloading = page.waitForEvent('download'); await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
   const path = info.outputPath('Cu-smoothed-native.prj'); await (await downloading).saveAs(path)
   writeFileSync(path, gunzipSync(readFileSync(path)).toString('utf8').split('\n').filter(line => !line.startsWith('# Athena-Web ')).join('\n'))
   await page.getByRole('button', {name: 'File', exact: true}).click(); await page.getByRole('button', {name: 'Open project…', exact: true}).click()
@@ -105,7 +105,7 @@ test('mobile Gaussian preview, native width reset and stale-save recovery preser
   test.setTimeout(90000); await page.setViewportSize({width: 390, height: 844})
   const initial = await load(page), dialog = await open(page)
   await configure(page, dialog, {method: 'gaussian', window: 8, sigma: 0})
-  await expect(dialog.getByText('Gaussian width was reset to 4 samples, as in Athena.', {exact: true})).toBeVisible()
+  await expect(dialog.getByText('Gaussian width was reset to 4 samples.', {exact: true})).toBeVisible()
   expect(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth + 1)).toBe(true)
   const bounds = await dialog.boundingBox()
   for (const name of ['Close smoothing tool', 'Plot data and smoothed', 'Make smoothed group']) {
@@ -140,7 +140,7 @@ for (const width of [1500, 390]) {
     await dialog.getByText('Session and saved SG preferences', {exact: true}).click()
     const preferences = dialog.getByRole('region', {name: 'Savitzky–Golay preferences', exact: true})
     await expect(preferences.getByRole('button', {name: 'Apply', exact: true})).toBeEnabled()
-    await preferences.getByRole('button', {name: 'Use Athena defaults', exact: true}).click()
+    await preferences.getByRole('button', {name: 'Use Craft defaults', exact: true}).click()
     await expect(dialog.getByLabel('Polynomial order', {exact: true})).toHaveValue('9')
     const resetting = page.waitForResponse(r => r.url().endsWith('/preferences/smoothing') && r.request().method() === 'PUT')
     await preferences.getByRole('button', {name: 'Apply and Save', exact: true}).click(); expect((await resetting).ok()).toBe(true)

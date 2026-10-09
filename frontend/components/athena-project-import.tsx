@@ -201,7 +201,7 @@ export function AthenaProjectImport({ getProject, onImported, onComplete, onBusy
   }
 
   return <section aria-label="Project file import" className={styles.panel}>
-    {!preview && <label className="ath-upload-zone"><FolderOpen size={26} /><strong>Open an Athena project</strong><span>.prj, .json or .gz · multiple projects supported</span><input type="file" aria-label="Open project file" multiple disabled={locked} accept=".prj,.json,.gz" onChange={event => { void choose(Array.from(event.target.files ?? [])); event.target.value = "" }} /></label>}
+    {!preview && <label className="ath-upload-zone"><FolderOpen size={26} /><strong>Open a project</strong><span>Athena .prj, Craft .json or .gz · multiple projects supported</span><input type="file" aria-label="Open project file" multiple disabled={locked} accept=".prj,.json,.gz" onChange={event => { void choose(Array.from(event.target.files ?? [])); event.target.value = "" }} /></label>}
     {files.length > 0 && <p className={styles.progress} role="status">{busy || `Reviewing ${files[0].name}`} · {files.length} project file{files.length === 1 ? "" : "s"} remaining</p>}
     {preview && <>
       {preview.file_plugin && <section aria-label="Project file conversion">

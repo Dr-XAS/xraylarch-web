@@ -59,7 +59,7 @@ for (const name of ['X15B', 'X23A2MED']) {
       await toggle.click(); expect((await enabled).ok()).toBe(true); await expect(toggle).toBeChecked()
     }
     let editor = await configure(panel, name)
-    await editor.getByRole('button', { name: 'Use Athena defaults' }).click(); await apply(page, editor, true)
+    await editor.getByRole('button', { name: 'Use Craft defaults' }).click(); await apply(page, editor, true)
     await panel.getByRole('button', { name: 'Close registry', exact: true }).click()
     await page.getByRole('button', { name: 'Import data', exact: true }).click()
     const inspected = page.waitForResponse(r => r.url().endsWith('/inspect'))
@@ -123,7 +123,7 @@ for (const name of ['X15B', 'X23A2MED']) {
       await expect.poll(() => curve(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`, { exact: true })))
         .toEqual({ x: group.result.arrays[xkey], y: group.result.arrays[ykey].map((v: number) => v === 0 ? 0 : v) })
     }
-    const download = page.waitForEvent('download'); await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+    const download = page.waitForEvent('download'); await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
     const prj = info.outputPath('configured.prj'); await (await download).saveAs(prj)
     await page.getByRole('button', { name: 'Open project', exact: true }).click()
     await page.getByLabel('Open project file', { exact: true }).setInputFiles(prj)
@@ -155,7 +155,7 @@ test('configuration detects another window, reloads saved values, and restores n
   await expect(second.getByRole('alert')).toContainText('Reader configuration changed')
   await second.getByRole('button', { name: 'Reload configuration' }).click()
   await expect(second.getByRole('spinbutton', { name: 'I0 column', exact: true })).toHaveValue('8')
-  await second.getByRole('button', { name: 'Use Athena defaults' }).click()
+  await second.getByRole('button', { name: 'Use Craft defaults' }).click()
   const stillSaved = await (await other.request.get('/api/backend/api/athena/preferences/plugins/X15B/configuration')).json()
   expect(stillSaved.values).toEqual(saved.values)
   const restored = await apply(other, second, true)

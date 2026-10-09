@@ -119,7 +119,7 @@ def cmc(data, max_points, max_columns):
     if uncorrected_case:
         summary += ' Native case-sensitive correction leaves ' + ', '.join(uncorrected_case) + ' unchanged.'
     if replacements['count']:
-        summary += f' Replaced {replacements["count"]} NaN detector values with zero, as in Athena. Review the preview.'
+        summary += f' Replaced {replacements["count"]} NaN detector values with zero. Review the preview.'
     return _prepared(data, ['CMC converted scalar table', *notes], [labels[i] for i in keep], rows,
         {'id':'CMC','version':'0.1','description':'APS 9BM · CMC-XOR','summary':summary,
          'conversion': {'source_columns': labels, 'source_column_indices': keep,

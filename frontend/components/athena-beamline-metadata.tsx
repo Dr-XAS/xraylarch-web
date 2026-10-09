@@ -76,7 +76,7 @@ export function AthenaBeamlinePreferences({ close }: { close: () => void }) {
     {error && <p role="alert" className="ath-error">{error}</p>}
     {notice && <p role="status">{notice}</p>}
     <label className="ath-check"><input type="checkbox" disabled={pending || !saved} checked={enabled}
-      onChange={e => { setEnabled(e.target.checked); setNotice('') }} />Identify beamline metadata on import <SectionHelp label="Applying beamline settings">Enabled by default, as in Athena. Saved changes apply when inspecting a file again; existing groups keep their metadata.<br /><br />Identify BL8, MRCAT MX, X11A EDC and XDAC headers and keep their beamline, detector and acquisition information with imported groups.</SectionHelp></label>
+      onChange={e => { setEnabled(e.target.checked); setNotice('') }} />Identify beamline metadata on import <SectionHelp label="Applying beamline settings">Enabled by default in Craft. Saved changes apply when inspecting a file again; existing groups keep their metadata.<br /><br />Identify BL8, MRCAT MX, X11A EDC and XDAC headers and keep their beamline, detector and acquisition information with imported groups.</SectionHelp></label>
     <div className="ath-modal-actions">
       <button type="button" disabled={pending} onClick={() => { void perform(() => athenaApi('/preferences/beamline'), 'Settings reloaded.') }}>Reload settings</button>
       <button type="button" disabled={pending || !saved} onClick={() => { if (saved) void perform(async () => {

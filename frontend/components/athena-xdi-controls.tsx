@@ -141,7 +141,7 @@ export function AthenaXDIControls({ projectId, groupId, onSaved, onBusyChange, c
         {report.results.some(r => !r.valid) && <ul>{report.results.filter(r => !r.valid).map(r =>
           <li key={`${r.family}.${r.tag}`}><strong>{r.family}.{r.tag}</strong>: {r.message}</li>)}</ul>}
       </section>}
-      <label className="ath-field"><span>XDI comments <SectionHelp label="XDI comments">These comments are saved with XDI metadata and Athena projects. Group notes are edited in Group information.</SectionHelp></span><textarea aria-label="XDI comments" rows={7} maxLength={50000} value={comments} disabled={pending}
+      <label className="ath-field"><span>XDI comments <SectionHelp label="XDI comments">These comments are saved with XDI metadata and Craft projects. Group notes are edited in Group information.</SectionHelp></span><textarea aria-label="XDI comments" rows={7} maxLength={50000} value={comments} disabled={pending}
         onChange={e => { setComments(e.target.value); setNotice('') }} /></label>
       {comments !== saved.comments && <p role="status">Unsaved XDI comments</p>}
     </>}

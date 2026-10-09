@@ -344,7 +344,7 @@ export function AthenaPlot({ groups, active, space, energyMode, background, wind
       hovermode: "closest", uirevision: `${space}-${energyMode}-${componentKey}-${analysisVisible}-${[rangeStart, rangeEnd].join()}-${plotScope}-${plotScope === "current" ? activeId ?? "" : ""}-${kWeight ?? "auto"}`,
     }
   }, [xTitle, yTitle, y2Title, e0, showGrid, analysisVisible, showLegend, space, energyMode, componentKey, rangeStart, rangeEnd, plotScope, activeId, kWeight])
-  const config = useMemo(() => ({ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "athena-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }), [])
+  const config = useMemo(() => ({ displaylogo: false, responsive: true, toImageButtonOptions: { format: "svg", filename: "craft-spectrum" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }), [])
   const canPick = picking && !analysisVisible && space !== "q"
   // react-plotly.js only refreshes listeners when the figure changes. Arming a
   // picker need not redraw it, so the retained listener reads committed state.

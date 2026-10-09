@@ -59,7 +59,7 @@ for (const [file, element, count, width] of [['cu_metal_rt', 'Cu', 408, 1500], [
     await groupInfo.getByRole('button', { name: 'Cancel', exact: true }).click()
     await page.getByRole('button', { name: 'File', exact: true }).click()
     const downloading = page.waitForEvent('download')
-    await page.getByRole('button', { name: 'Save Athena project (.prj)', exact: true }).click(); await confirmProjectSave(page)
+    await page.getByRole('button', { name: 'Save Craft project (.prj)', exact: true }).click(); await confirmProjectSave(page)
     const downloaded = await downloading, path = info.outputPath('xdi.prj'); await downloaded.saveAs(path)
     const text = gunzipSync(readFileSync(path)).toString('utf8').split('\n').filter(l => !l.startsWith('# Athena-Web ')).join('\n')
     expect(text).toContain("'Xray::XDI'"); writeFileSync(path, text)

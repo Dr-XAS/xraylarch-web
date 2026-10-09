@@ -88,7 +88,7 @@ export function RebinDefaultsControls({ state, disabled = false }: {
     <div className="ath-modal-actions"> <SectionHelp label="Rebin grid defaults">Import and processing share this grid. Save defaults to keep it for future sessions on this local server. Grid E₀ and the import checkbox are separate.</SectionHelp>
       <button type="button" disabled={disabled || state.pending || !state.ready || !!state.problem} onClick={() => { void state.save() }}>Save grid as defaults</button>
       <button type="button" disabled={disabled || state.pending} onClick={state.load}>Load saved grid</button>
-      <button type="button" disabled={disabled || state.pending} onClick={state.reset}>Use Athena default grid</button>
+      <button type="button" disabled={disabled || state.pending} onClick={state.reset}>Use Craft default grid</button>
     </div>
     {state.pending && <p role="status">Loading or saving grid defaults…</p>}
     {state.error && <p role="alert" className="ath-error">{state.error}</p>}

@@ -77,7 +77,7 @@ def special_plot(groups, options):
                     raise ScientificError('The group needs finite plot scale and offset values.')
                 y = (multiplier or 1.) * y + offset
                 if multiplier == 0 and not notes:
-                    notes.append('Native Athena plotting treats a zero plot scale as one.')
+                    notes.append('A zero plot scale is treated as one.')
             if not np.isfinite(y).all():
                 raise ScientificError('Plot scaling overflowed. Reduce the group multiplier or plot k weight.')
             curves.append(dict(group_id=g['id'], name=f'{g["label"]} · {label}', x=x.tolist(), y=y.tolist()))
@@ -109,6 +109,6 @@ def special_plot(groups, options):
               ([] if biquad else [(0, 'r', 'chir_re', 'Re[χ(R)]')]))
         panel('q', 'Back-transform', 'q (Å⁻¹)', 'Re[χ(q)]',
               [(i, 'q', 'chiq_re', 'Re[χ(q)]') for i in range(len(groups))])
-        notes.append('Quad and Bi-Quad use unscaled spectra without group plot offsets, following Athena’s templates.')
+        notes.append('Quad and Bi-Quad use unscaled spectra without group plot offsets.')
     notes.append('Plot k weight applies to every displayed group. Larch recalculates the transforms when this differs from the saved weight; saved processing and project data stay unchanged.')
     return dict(group_ids=options.group_ids, kweight=weight, panels=panels, notes=notes)

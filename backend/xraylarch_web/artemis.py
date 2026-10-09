@@ -475,7 +475,7 @@ def _processed_data(group: dict, options: FitTransform):
     # transform that fabricated plateau as if it were data.
     chi_out = np.where(k_out < k[0], 0.0, np.interp(k_out, k, chi))
     return Group(k=k_out, chi=chi_out,
-                 filename=group.get("label", "Athena group"), groupname=group.get("label", "Athena group"))
+                 filename=group.get("label", "Craft group"), groupname=group.get("label", "Craft group"))
 
 
 def _finite_array(values, field):

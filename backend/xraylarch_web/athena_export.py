@@ -257,7 +257,7 @@ def single(group, options):
         labels = ['r', 'chir_re', 'chir_im', 'chir_mag', 'chir_pha', 'window', 'deriv_phase']
         units = ['Angstrom', '', '', '', 'rad', '', '']
         data = [_axis(arrays['r'], 'R')] + [_array(arrays[k], k) for k in labels[1:5]] + [_array(arrays['rwin'], 'Reverse window'), _phase_derivative(arrays)]
-        notes.append('Phase derivative is scaled to maximum chi(R) magnitude, following Athena dphase.')
+        notes.append('Phase derivative is scaled to maximum chi(R) magnitude.')
     else:
         q = _axis(arrays['q'], 'q'); k = _axis(arrays['k'], 'k')
         labels = ['q', 'chiq_re', 'chiq_im', 'chiq_mag', 'chiq_pha', 'window', 'chik']

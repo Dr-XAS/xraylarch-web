@@ -442,7 +442,7 @@ describe("Athena Difference dialog", () => {
     expect(JSON.parse(await read(blobs[0]))).toEqual({ project_id: "difference-project", group_ids: ["data"], ...response })
     expect(await read(blobs[1])).toContain('"diff ""foil"", one\nminus standard"')
     expect(await read(blobs[1])).toContain("8950,0.2,0.5,0.3,-0.25,8979")
-    expect(click.mock.instances.map(link => (link as HTMLAnchorElement).download)).toEqual(["athena-difference-preview.json", "athena-difference-preview.csv"])
+    expect(click.mock.instances.map(link => (link as HTMLAnchorElement).download)).toEqual(["craft-difference-preview.json", "craft-difference-preview.csv"])
     expect(api).toHaveBeenCalledTimes(1)
   })
 })

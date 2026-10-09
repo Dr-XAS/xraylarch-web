@@ -20,7 +20,7 @@ class PluginRegistry(BaseModel):
     @classmethod
     def names(cls, value):
         if any(not _NAME.fullmatch(name) or name.endswith('::FileType') for name in value):
-            raise ValueError('Use Athena file-plugin names such as Demeter::Plugins::X10C.')
+            raise ValueError('Use file-plugin names such as Demeter::Plugins::X10C.')
         return value
 
 
@@ -30,7 +30,7 @@ def registry_view(state):
 
 def decode_registry(data):
     """Only a flat scalar mapping is meaningful in Athena's registry file."""
-    def invalid(message='Supply an Athena plugin registry containing plugin names and 0/1 or true/false values.'):
+    def invalid(message='Supply a plugin registry containing plugin names and 0/1 or true/false values.'):
         raise WebInputError('plugin_registry_invalid', message, ('file',),
                             'Choose an athena.plugin_registry file or correct its entries, then retry.')
     if len(data) > MAX_REGISTRY_BYTES:
@@ -56,7 +56,7 @@ def decode_registry(data):
         return PluginRegistry(enabled=flags).enabled
     except (UnicodeError, yaml.YAMLError, ValueError, RecursionError) as exc:
         invalid(str(exc) if isinstance(exc, ValueError) and not isinstance(exc, yaml.YAMLError) else
-                'The plugin registry is not a valid flat Athena YAML mapping.')
+                'The plugin registry is not a valid flat YAML mapping.')
 
 
 def encode_registry(state):

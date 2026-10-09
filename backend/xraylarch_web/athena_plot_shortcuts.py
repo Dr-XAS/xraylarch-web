@@ -76,7 +76,7 @@ def shortcut_plot(groups, options):
         if not np.isfinite(y).all():
             raise ScientificError('Shortcut scaling overflowed. Reduce the input amplitudes or group offset.')
         if scale == 0 and coalesce_zero:
-            notes.append('Native Athena plotting treats a zero plot scale as one.')
+            notes.append('A zero plot scale is treated as one.')
         curves.append(dict(group_id=group['id'], name=f'{group["label"]} · {name}', x=x.tolist(), y=y.tolist(),
                            scale=scale, effective_scale=effective_scale, offset=offset, **extra))
 
@@ -103,11 +103,11 @@ def shortcut_plot(groups, options):
             y_label = {'mag': '|χ(R)|', 're': 'Re[χ(R)]', 'im': 'Im[χ(R)]', 'pha': 'Phase χ(R) (rad)'}[options.component]
         for i, (x, y) in enumerate(data):
             if i != 1 and maxima[i] == 0:
-                raise ScientificError(f'Weight {i+1} has a zero maximum; Athena comparison scaling is undefined.')
+                raise ScientificError(f'Weight {i+1} has a zero maximum; comparison scaling is undefined.')
             scale = 1. if i == 1 else float(f'{maxima[1] / maxima[i]:.3f}')
             add(g, x, y, f'k-weight {i+1}' + (' · unscaled' if i == 1 else f' · scaled by {scale:.3f}'),
                 scale, (1-i) * spacing, coalesce_zero=False, kweight=i+1)
-        notes.append('Weights 1 and 3 use Athena’s three-decimal comparison scales; saved group plot multipliers and offsets are replaced for this view.')
+        notes.append('Weights 1 and 3 use three-decimal comparison scales; saved group plot multipliers and offsets are replaced for this view.')
     else:
         y_label = {'normderiv': 'Normalized μ(E) and scaled derivative', 'normscaled': 'Normalized μ(E) × edge step',
                    'i0sig': 'μ(E) and scaled detector signals', 'i0': 'I₀ (source units)', 'e00': 'μ(E) · forms in legend'}[options.kind]
@@ -143,7 +143,7 @@ def shortcut_plot(groups, options):
                     raise ScientificError('Choose an absorption spectrum with valid normalization.')
                 if options.kind == 'normderiv':
                     derivative = processed('dmude'); maximum = float(np.max(np.abs(derivative)))
-                    if maximum == 0: raise ScientificError('A zero derivative prevents Athena comparison scaling.')
+                    if maximum == 0: raise ScientificError('A zero derivative prevents comparison scaling.')
                     e0 = _number(effective.get('e0'), 'E₀')
                     x_range = [e0-30, e0+70]
                     add(g, x, processed(suffix), f'{suffix} μ(E)', g['multiplier'], offset)
@@ -164,7 +164,7 @@ def shortcut_plot(groups, options):
         if options.kind in ('normderiv', 'normscaled', 'e00'):
             notes.append('Normalized displays follow each group’s Flatten setting. The normalized derivative always comes from the unflattened spectrum.')
         if options.kind == 'e00':
-            notes.append('Athena’s E₀-at-zero shortcut displays μ(E), with energy derivatives switched off.')
+            notes.append('The E₀-at-zero shortcut displays μ(E), with energy derivatives switched off.')
         if options.kind == 'i0sig':
             notes.append('Detector factors are retained from import. New columns use |max μ(E)| / max channel; legacy PRJ import uses signed max μ(E), following Athena’s project reader.')
     return dict(group_ids=options.group_ids, curves=curves, notes=list(dict.fromkeys(notes)), skipped=skipped,

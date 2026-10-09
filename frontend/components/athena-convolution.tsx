@@ -124,7 +124,7 @@ export function AthenaConvolution({ project, activeId, selectGroup, setBusy, sav
             xaxis: { title: { text: space === 'E' ? 'Energy (eV)' : space === 'k' ? 'k (Å⁻¹)' : 'R (Å)' } },
             yaxis: { title: { text: space === 'E' ? group?.data_type === 'detector' ? 'Counts' : group?.is_normalized ? 'Normalized μ(E)' : 'μ(E)' : space === 'k' ? `k^${group?.parameters.kweight} χ(k)` : '|χ(R)|' }, automargin: true },
             uirevision: `${project.id}:${activeId}:${space}` }}
-          config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'], toImageButtonOptions: { format: 'svg', filename: 'athena-convolution' } }}
+          config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'], toImageButtonOptions: { format: 'svg', filename: 'craft-convolution' } }}
           style={{ width: '100%', height: '100%' }} useResizeHandler /> : <p>{result?.errors[space] ?? 'No curve is available in this plot space.'}</p>}</div>
         <p role="status">{!eligible ? 'Choose a spectrum with at least ten points.' : !numeric ? 'Enter a width from 0 to 1000 eV and noise from 0 to 100.' : loading ? 'Calculating convolution preview…' : current ? `Preview at project revision ${current.version}` : 'Waiting for a current convolution preview…'}</p>
         {result && <p>{result.details.output_points} of {result.details.input_points} points remain. {options.noise > 0 && `Added noise σ = ${result.details.noise_sigma.toPrecision(5)}${chi ? ' in χ(k) units.' : ' in input signal units.'}`}</p>}

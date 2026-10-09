@@ -40,7 +40,7 @@ def read_archive(data, max_bytes, member_index=None):
             # Athena IO.pm calls Files::is_zipproj('guess') before plugins.
             # These root members identify fitting projects, outside Athena.
             if any(item.filename in ('order', 'gds.yaml', 'HORAE') for item in entries):
-                invalid('This ZIP is an Artemis project or fit serialization, which Athena cannot import.',
+                invalid('This ZIP is an Artemis project or fit serialization, which Craft cannot import.',
                         'archive_project_unsupported')
             if len(entries) > 1000:
                 invalid('ZIP contains more than 1,000 entries.', 'archive_too_many_entries')

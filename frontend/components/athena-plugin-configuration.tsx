@@ -100,7 +100,7 @@ export function AthenaPluginConfiguration({ reader, onPendingChange }: {
         <button type="button" disabled={!!problem} onClick={() => apply(true)}>Apply and Save</button>
         <button type="button" onClick={() => { if (state) setDraft(asDraft(state.values)); setNotice('Current values copied into the form.') }}>Use current values</button>
         <button type="button" onClick={() => { if (state) setDraft(asDraft(state.saved)); setNotice('Saved values copied into the form. Apply to use them.') }}>Use saved values</button>
-        <button type="button" onClick={() => { if (state) setDraft(asDraft(state.defaults)); setNotice('Athena defaults copied into the form. Apply to use them.') }}>Use Athena defaults</button>
+        <button type="button" onClick={() => { if (state) setDraft(asDraft(state.defaults)); setNotice('Craft defaults copied into the form. Apply to use them.') }}>Use Craft defaults</button>
       </div>
     </fieldset>
     <button type="button" disabled={pending} onClick={() => { void perform(() => loadPluginConfiguration(reader), 'Configuration reloaded.') }}>Reload configuration</button>

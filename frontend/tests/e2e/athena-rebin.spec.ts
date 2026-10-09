@@ -136,7 +136,7 @@ test('saved rebin grid is shared with import, survives a new browser session, an
     await expect(panel.getByLabel('Rebin pre-edge step · eV', { exact: true })).toHaveValue('7')
     await panel.getByRole('button', { name: 'Load saved grid' }).click()
     await expect(panel.getByLabel('Rebin pre-edge step · eV', { exact: true })).toHaveValue('8')
-    await panel.getByRole('button', { name: 'Use Athena default grid' }).click()
+    await panel.getByRole('button', { name: 'Use Craft default grid' }).click()
     await expect(panel.getByLabel('Rebin pre-edge step · eV', { exact: true })).toHaveValue('10')
     expect((await (await page.request.get(url)).json()).grid.pre).toBe(8)
     await expect(panel.getByLabel('Imported signal preview plot')).toHaveAttribute('aria-busy', 'false')

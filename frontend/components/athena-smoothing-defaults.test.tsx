@@ -35,7 +35,7 @@ it('copies current/saved/default values without applying and explicitly persists
   render(<Harness/>); await ready(); fireEvent.click(button('Use saved values'))
   expect(screen.getByLabelText('Window')).toHaveValue('31'); expect(screen.getByLabelText('Order')).toHaveValue('9')
   fireEvent.click(button('Use current values')); expect(screen.getByLabelText('Window')).toHaveValue('21')
-  fireEvent.click(button('Use Athena defaults')); expect(screen.getByLabelText('Order')).toHaveValue('9'); expect(apply).not.toHaveBeenCalled()
+  fireEvent.click(button('Use Craft defaults')); expect(screen.getByLabelText('Order')).toHaveValue('9'); expect(apply).not.toHaveBeenCalled()
   change('Window', '17'); change('Order', '12'); fireEvent.click(button('Apply and Save'))
   expect(await screen.findByText('Smoothing preferences applied and saved for future starts.')).toBeVisible()
   expect(apply).toHaveBeenCalledWith({version: 0, session_id: 'session', values: {window: 17, order: 12}, save: true})

@@ -46,8 +46,8 @@ function projectId(path: string): string | null {
 
 function safePath(session: AthenaSession, path: string) {
   const decoded = decodedPath(path)
-  if (!decoded || !decoded.startsWith("/api/athena/")) throw new Error("Invalid Athena path")
-  if (session.mode === "integration" && projectId(path) !== session.projectId) throw new Error("Athena project does not match this integration session")
+  if (!decoded || !decoded.startsWith("/api/athena/")) throw new Error("Invalid Craft path")
+  if (session.mode === "integration" && projectId(path) !== session.projectId) throw new Error("Craft project does not match this integration session")
   return path
 }
 

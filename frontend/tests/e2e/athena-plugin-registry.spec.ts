@@ -72,7 +72,7 @@ test('plugin switches recover a blocked import, persist across windows, and exch
     await expect(otherPanel.getByRole('checkbox', { name: 'Enable X10C' })).toBeChecked()
   } finally { await context.close() }
   const imported = page.waitForResponse(r => r.url().includes('/preferences/plugins/import?'))
-  await panel.getByLabel('Import Athena plugin registry file').setInputFiles({ name: 'athena.plugin_registry', mimeType: 'application/x-yaml',
+  await panel.getByLabel('Import plugin registry file').setInputFiles({ name: 'athena.plugin_registry', mimeType: 'application/x-yaml',
     buffer: Buffer.from('---\nDemeter::Plugins::X10C: 0\nDemeter::Plugins::Lytle: 1\nDemeter::Plugins::B18: 1\nDemeter::Plugins::UserReaderFixture: 1\n') })
   expect((await imported).ok()).toBe(true)
   await expect(panel.getByRole('checkbox', { name: 'Enable X10C' })).not.toBeChecked()
@@ -81,7 +81,7 @@ test('plugin switches recover a blocked import, persist across windows, and exch
   await panel.getByText('Settings for 1 unavailable plugins', { exact: true }).click()
   await expect(panel.getByText('UserReaderFixture · saved as enabled')).toBeVisible()
   const download = page.waitForEvent('download')
-  await panel.getByRole('link', { name: 'Export Athena registry', exact: true }).click()
+  await panel.getByRole('link', { name: 'Export plugin registry', exact: true }).click()
   const savedPath = info.outputPath('athena.plugin_registry'); await (await download).saveAs(savedPath)
   const yaml = readFileSync(savedPath, 'utf8')
   expect(yaml).toContain('Demeter::Plugins::X10C: 0')

@@ -114,9 +114,9 @@ class RebinPlan:
         if np.any(np.diff(x) == 0):
             self.details['warnings'].append('Repeated energy readings are retained during smoothing and saved in the original data. At a repeated energy, interpolation uses the last smoothed reading.')
         if choice.emin > choice.emax:
-            self.details['warnings'].append('Reversed edge-region boundaries were exchanged, as in Athena.')
+            self.details['warnings'].append('Reversed edge-region boundaries were exchanged.')
         if choice.width > 3:
-            self.details['warnings'].append('Athena’s smoothing uses periodic endpoints. A wide kernel can mix values from opposite ends of the scan near its boundaries.')
+            self.details['warnings'].append('Smoothing uses periodic endpoints. A wide kernel can mix values from opposite ends of the scan near its boundaries.')
 
     def apply(self, values):
         values = np.asarray(values, dtype=float)

@@ -31,7 +31,9 @@ The best citable reference for Larch is https://doi.org/10.1088/1742-6596/430/1/
 
 ## Athena Web branch
 
-The web application is named **XAScraft**.
+The web application is named **XAScraft**. Interface labels use **Craft**;
+Athena `.prj` imports retain the native format name. The Xraylarch, Demeter,
+and Dr. XAS team credit line remains unchanged.
 
 The `Athena` branch adds a browser implementation of Athena's XAS workflows.
 **Save project** defaults to the complete web project (`.json`), with a file-name

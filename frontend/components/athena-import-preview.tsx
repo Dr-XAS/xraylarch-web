@@ -62,7 +62,7 @@ export function AthenaImportPreview({ projectId, version, uploadId, mapping, dis
           yaxis2: { title: { text: "Reference" }, overlaying: "y", tickmode: "auto", side: "right", showgrid: false, zeroline: false },
           showlegend: traces.length > 1, legend: { orientation: "h", x: 0, y: 1.12, xanchor: "left", yanchor: "bottom" },
           uirevision: state?.key, hovermode: "closest" }}
-        config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ["select2d", "lasso2d"], toImageButtonOptions: { filename: "athena-column-preview" } }}
+        config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ["select2d", "lasso2d"], toImageButtonOptions: { filename: "craft-column-preview" } }}
         style={{ width: "100%", height: "100%" }} useResizeHandler />
         : <p>{error ? "Correct the selection or use Replot to retry." : paused ? "Choose Replot to display the selected columns." : "Updating preview…"}</p>}
     </div>

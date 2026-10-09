@@ -62,6 +62,6 @@ export function AthenaDifferencePlot({ preview, view, labels, standardLabel, pic
       yaxis: { title: { text: yTitle }, automargin: true, zeroline: true }, hovermode: "closest",
       legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24 }, shapes: bounds ? [bounds.lower, bounds.upper].map(x => ({ type: "line", x0: x, x1: x, y0: 0, y1: 1, yref: "paper", line: { color: "#8c938b", dash: "dot", width: 1 } })) : [],
       uirevision: `${preview.version}:${view}:${results.map(result => result.group_id).join()}:${JSON.stringify(preview.options)}`,
-    }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { format: "svg", filename: "athena-difference" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }} useResizeHandler style={{ width: "100%", height: "100%" }} />}
+    }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { format: "svg", filename: "craft-difference" }, modeBarButtonsToRemove: ["lasso2d", "select2d"] }} useResizeHandler style={{ width: "100%", height: "100%" }} />}
   </div>
 }

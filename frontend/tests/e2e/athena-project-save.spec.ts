@@ -72,7 +72,7 @@ test("project saves confirm the filename and cancel without exporting", async ({
   await completeDownload.saveAs(info.outputPath("copper beamtime.json"))
 
   await page.getByRole("button", { name: "File", exact: true }).click()
-  await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click()
+  await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click()
   await expect(filename).toHaveValue(`${imported.name}.prj`)
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click()
   await expect(dialog).toHaveCount(0)

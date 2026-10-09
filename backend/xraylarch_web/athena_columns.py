@@ -201,11 +201,11 @@ def map_columns(arrays, request, names=None):
                     # ln|ratio| through a change of sign passes through zero:
                     # there the curve is the detector's offset, not absorption.
                     warnings.append(f'{who}: the detector ratio changes sign ({len(negative)} of {len(out)} points are negative, '
-                                    f'plotted rows {_rows(negative)}). Athena takes the log of its absolute value, which has '
+                                    f'plotted rows {_rows(negative)}). Craft takes the log of its absolute value, which has '
                                     'no meaning as absorption near those points; check that these channels saw the beam.')
                 elif len(negative):
                     warnings.append(f'{who}: every detector ratio is negative, so the natural log of its absolute value is used, '
-                                    'as in Athena. A detector with inverted polarity does this; so does a dead channel '
+                                    'as in native processing. A detector with inverted polarity does this; so does a dead channel '
                                     'reading only its offset. Check the plotted curve before using it.')
                 # Native Athena explicitly evaluates ln(abs(numerator/denominator)).
                 out = np.log(np.abs(out))

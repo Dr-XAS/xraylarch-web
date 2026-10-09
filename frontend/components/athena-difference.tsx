@@ -56,7 +56,7 @@ function downloadReport(snapshot: Snapshot, format: "json" | "csv") {
   const text = format === "json" ? JSON.stringify({ project_id: snapshot.projectId, group_ids: snapshot.groupIds, ...response }, null, 2) : rows.map(row => row.map(csv).join(",")).join("\r\n")
   const url = URL.createObjectURL(new Blob([text], { type: format === "json" ? "application/json" : "text/csv;charset=utf-8" }))
   const link = document.createElement("a")
-  link.href = url; link.download = `athena-difference-preview.${format}`; link.click()
+  link.href = url; link.download = `craft-difference-preview.${format}`; link.click()
   setTimeout(() => URL.revokeObjectURL(url), 0)
 }
 

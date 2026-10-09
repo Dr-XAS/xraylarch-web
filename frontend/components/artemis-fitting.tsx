@@ -715,7 +715,7 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         <div className={styles.grid}>
           {([
             ["s02", "S₀²", "Amplitude expression; FEFF N is already included. Use Set / fit coordination number above to create a CN parameter."],
-            ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Athena edge energy."],
+            ["e0", "ΔE₀ (eV)", "Fitted energy correction, separate from the Craft edge energy."],
             ["deltar", "ΔR (Å)", "Change in the FEFF effective half-path length. The fitted distance is R_eff + ΔR; ΔR often correlates with ΔE₀."],
             ["sigma2", "σ² (Å²)", "Mean-square relative displacement in Å², damping the path by exp(−2k²σ²). Use separate values for distinct environments when justified."],
           ] as const).map(([field, label, title]) => <label key={field}><span>{label}<SectionHelp label={`Path ${i + 1} ${label}`}>{title} Enter a number, parameter name or expression; use the same name to share a parameter across paths.</SectionHelp></span><input value={path[field]} aria-label={`Path ${i + 1} ${label}`} onChange={event => editPath(path.id, field, event.target.value)} spellCheck={false} /></label>)}

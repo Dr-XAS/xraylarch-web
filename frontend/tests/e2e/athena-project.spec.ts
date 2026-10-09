@@ -36,7 +36,7 @@ for (const example of examples) {
       await expect(page.getByRole('region', { name: 'Single spectrum viewer', exact: true }).getByLabel(`${space}-space spectrum plot`, { exact: true }).locator(".js-line").first()).toBeVisible()
     }
     const downloadPromise = page.waitForEvent("download")
-    await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Athena project (.prj)", exact: true }).click(); await confirmProjectSave(page)
+    await page.getByRole("button", { name: "File", exact: true }).click(); await page.getByRole("button", { name: "Save Craft project (.prj)", exact: true }).click(); await confirmProjectSave(page)
     const downloaded = await downloadPromise
     const saved = info.outputPath("roundtrip.prj")
     await downloaded.saveAs(saved)

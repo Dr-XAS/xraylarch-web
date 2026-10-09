@@ -162,7 +162,7 @@ def prepare_report(project, request):
     if not groups:
         raise ValueError('No groups are selected for the parameter report. Choose all groups or mark at least one group.')
     return dict(project_id=project['id'], version=project['version'], scope=request.scope,
-                filename=f'athena-parameters-{request.scope}.xls', project_name=project['name'], columns=COLUMNS,
+                filename=f'craft-parameters-{request.scope}.xls', project_name=project['name'], columns=COLUMNS,
                 sections=[dict(key=key, label=label) for key, label, _, _ in SECTIONS],
                 rows=[report_row(g, project) for g in groups])
 
@@ -176,7 +176,7 @@ def encode_report(report):
     styles = {fmt: xlwt.easyxf('font: name Arial, height 200; align: horiz center, vert centre, wrap on;', num_format_str=fmt)
               for fmt in ('General', '0.000', '0.00E+00')}
     label_style = xlwt.easyxf('font: name Arial, height 200; align: vert centre, wrap on;')
-    sheet.write_merge(1, 1, 0, 31, f"Athena parameter report — {report['project_name']}", title)
+    sheet.write_merge(1, 1, 0, 31, f"Craft parameter report — {report['project_name']}", title)
     sheet.write_merge(2, 2, 0, 31, f"Created {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}; {report['scope']} groups; project revision {report['version']}", label_style)
     sheet.write_merge(3, 3, 0, 31, f'XrayLarch/0.1.0, Larch/{larch_version}, xlwt/{xlwt.__VERSION__}', label_style)
     sheet.write_merge(4, 4, 0, 31, 'Energy: eV relative to E0 except E0/shift. k: Å⁻¹. R: Å. Normalization order: terms. n.a.: unavailable. See applicability notes below.', label_style)

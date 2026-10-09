@@ -13,7 +13,7 @@ const api = vi.mocked(athenaApi)
 const project = { id:'p', version:4, groups:[{id:'a',label:'Cu',marked:true},{id:'b',label:'Fe',marked:false}] } as AthenaProject
 const positions = Array.from({length:32},(_,i)=>i).filter(i=>![5,19,25,29].includes(i))
 function report(scope='all') {
-  return {project_id:'p',version:4,scope,filename:`athena-parameters-${scope}.xls`,
+  return {project_id:'p',version:4,scope,filename:`craft-parameters-${scope}.xls`,
     columns:positions.map(index=>({index,key:`c${index}`,label:index===0?'Group':`Field ${index}`,unit:'',section:index<6?'identity':'background'})),
     sections:['identity','background','forward','reverse','plotting'].map(key=>({key,label:key})),
     rows:project.groups.filter(g=>scope==='all'||g.marked).map(g=>({group_id:g.id,label:g.label,values:Array.from({length:32},(_,i)=>i===0?g.label:i),notes:['Applied settings']}))}
@@ -83,7 +83,7 @@ it.each([
 it('requires XLS attachment bytes and releases the busy guard on failure',async()=>{
   api.mockResolvedValue(report());const p=props()
   const blob={slice:()=>({arrayBuffer:async()=>new Uint8Array([1,2,3]).buffer})}
-  vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,headers:new Headers({'X-Athena-Project-Version':'4','Content-Disposition':'attachment; filename="athena-parameters-all.xls"'}),blob:async()=>blob}))
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,headers:new Headers({'X-Athena-Project-Version':'4','Content-Disposition':'attachment; filename="craft-parameters-all.xls"'}),blob:async()=>blob}))
   render(<AthenaParameterReport {...p}/>);await ready()
   fireEvent.click(screen.getByRole('button',{name:'Download Excel report'}))
   expect(await screen.findByRole('alert')).toHaveTextContent('valid XLS workbook')

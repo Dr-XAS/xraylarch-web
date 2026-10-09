@@ -44,7 +44,7 @@ it('shows selected pixel columns before guessing and updates the server preview 
   expect(screen.getAllByTestId('plot')).toHaveLength(1)
   expect(screen.getByTestId('plot')).toHaveTextContent('"x":[0,1,2]')
   expect(requests('/columns').at(-1)![1].columns).toMatchObject({pixel_column:'c0',numerator:['c1'],denominator:[],logarithm:false})
-  await click('Use Athena SLRI I₀/Iₜ columns')
+  await click('Use Craft SLRI I₀/Iₜ columns')
   expect(requests('/columns').at(-1)![1].columns).toMatchObject({numerator:['c1'],denominator:['c2'],logarithm:true})
   fireEvent.click(screen.getByLabelText('Pixel numerator it'));fireEvent.click(screen.getByLabelText('Invert pixel signal'));await tick()
   expect(requests('/columns').at(-1)![1].columns).toMatchObject({numerator:['c1','c2'],invert:true})
@@ -134,10 +134,10 @@ it('locks controls during creation, keeps a failed request retryable and adopts 
 
 it('imports and exports native calibration without requiring a pixel file',async()=>{
   render(<Harness/>);await tick()
-  fireEvent.change(screen.getByLabelText('Import athena.dxas calibration'),{target:{files:[new File(['---'],'athena.dxas')]}});await tick()
+  fireEvent.change(screen.getByLabelText('Import calibration'),{target:{files:[new File(['---'],'athena.dxas')]}});await tick()
   expect(api.mock.calls.find(c=>c[0].includes('/import?'))![0]).toBe('/preferences/dispersive/import?version=0')
   expect(screen.getByLabelText('Offset coefficient')).toHaveValue(8952)
-  expect(screen.getByRole('link',{name:'Export saved athena.dxas'})).toHaveAttribute('href','/api/backend/api/athena/preferences/dispersive/file')
+  expect(screen.getByRole('link',{name:'Export saved calibration'})).toHaveAttribute('href','/api/backend/api/athena/preferences/dispersive/file')
   expect(screen.getByRole('button',{name:'Make calibrated data group'})).toBeDisabled()
 })
 
@@ -150,5 +150,5 @@ it('a delayed initial preference lookup cannot replace a newer explicit load',as
   await act(async()=>finish({version:0,coefficients:null}))
   await click('Save calibration')
   expect(api.mock.calls.findLast(c=>c[2]==='PUT')![1].version).toBe(8)
-  expect(screen.getByRole('link',{name:'Export saved athena.dxas'})).toBeInTheDocument()
+  expect(screen.getByRole('link',{name:'Export saved calibration'})).toBeInTheDocument()
 })

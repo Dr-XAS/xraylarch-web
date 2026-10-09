@@ -17,7 +17,7 @@ export function AthenaArchiveSelection({ archive, projectId, busy, onContinue, o
 }) {
   const [selected, setSelected] = useState(() => archive.members.map(member => member.index))
   return <section className={styles.archive} aria-label="ZIP file selection">
-    <h3>Files in {archive.display_name} <SectionHelp label="Import archive files">Choose data files, then choose shared import parameters or review each file separately. Athena projects open with a group selection. Files are reviewed in archive order.</SectionHelp></h3>
+    <h3>Files in {archive.display_name} <SectionHelp label="Import archive files">Choose data files, then choose shared import parameters or review each file separately. Athena .prj projects open with a group selection. Files are reviewed in archive order.</SectionHelp></h3>
     <p>{archive.members.length} files · {archive.file_plugin.expanded_bytes.toLocaleString()} bytes expanded.</p>
     <fieldset disabled={busy}>
       <div className="ath-modal-actions">

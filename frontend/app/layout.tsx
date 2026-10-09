@@ -9,7 +9,7 @@ import "./athena.css"
 
 export const metadata: Metadata = {
   title: "XAScraft",
-  description: "Athena workflows for X-ray absorption spectroscopy, powered by Larch.",
+  description: "Craft workflows for X-ray absorption spectroscopy, powered by Larch.",
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

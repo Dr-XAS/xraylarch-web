@@ -119,7 +119,7 @@ export function AthenaMEE({ project, activeId, selectGroup, setBusy, saved, clos
             yaxis: { title: { text: space === 'E' ? 'Normalized μ(E)' : space === 'k' ? `k^${group?.parameters.kweight} χ(k)` : '|χ(R)|' }, automargin: true },
             shapes: center === null ? [] : [{ type: 'line', x0: center, x1: center, y0: 0, y1: 1, yref: 'paper', line: { color: '#9b8355', dash: 'dot' } }],
             uirevision: `${project.id}:${activeId}:${space}` }}
-          config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'], toImageButtonOptions: { format: 'svg', filename: 'athena-mee' } }}
+          config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'], toImageButtonOptions: { format: 'svg', filename: 'craft-mee' } }}
           style={{ width: '100%', height: '100%' }} useResizeHandler /> : <p>{result?.errors[space] ?? 'No curve is available in this plot space.'}</p>}</div>
         {!eligible ? <p role="status">Choose a processed absorption spectrum with a saved E₀.</p> : !numeric ? <p role="status">Enter finite values for all three parameters.</p> : options.shift <= 0 ? <p role="status">Set a positive energy shift to preview the correction.</p> : !canCalculate ? <p role="status">Use a nonnegative amplitude and broadening of at least 0.01 eV.</p> : <p role="status">{loading ? 'Calculating MEE preview…' : current ? `Preview at project revision ${current.version}` : 'Waiting for a current MEE preview…'}</p>}
         {result?.details.warnings.map(w => <p className="ath-warning" key={w}>{w}</p>)}

@@ -49,7 +49,7 @@ def importance(group):
 
 def signal(group, array):
     if group['data_type']=='detector' or group.get('is_difference'):
-        raise ScientificError('Choose absorption spectra for an Athena merge.')
+        raise ScientificError('Choose absorption spectra for a Craft merge.')
     if array=='mu':
         if group['data_type']=='chi': raise ScientificError('χ(k) groups cannot supply μ(E).')
         return _pair(group['energy'],group['mu'],minimum=8)

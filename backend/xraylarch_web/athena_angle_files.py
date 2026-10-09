@@ -155,9 +155,9 @@ def pfbl12c(data, max_points, max_columns):
     # the original header so ordinary Larch reading uses the new energy labels.
     return _prepared(data, ['PFBL12C converted energy table (eV)', *lines[:start+1]], labels, rows,
         {'id': 'PFBL12C', 'version': '0.3', 'description': 'Photon Factory / SPring-8 / SAGA / Aichi',
-         'summary': ('Converted requested and attained Bragg angles. The preview uses attained energy. Detector offsets remain unapplied, as in Athena. '
+         'summary': ('Converted requested and attained Bragg angles. The preview uses attained energy. Detector offsets remain unapplied. '
                      + ('Used the last D spacing from the header.' if spacings else
-                        'Mono spacing is absent: Athena’s fallback 2d = 1 Å was used. Check the energy axis before importing.')),
+                        'Mono spacing is absent: fallback 2d = 1 Å was used. Check the energy axis before importing.')),
          'mono': {'d_spacing': d},
          'conversion': {'source_axis': 'degrees', 'd_spacing': d, 'd_spacing_origin': 'header' if spacings else 'native_default',
              'header_d_spacings': spacings, 'hc': 12398.52, 'energy_decimal_places': 3,

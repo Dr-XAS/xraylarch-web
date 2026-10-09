@@ -184,7 +184,7 @@ test("shortcut SVG export uses the live renderer's curves and omits hidden legen
   const menu = page.getByRole("navigation", { name: "Main menu", exact: true })
   await menu.getByRole("button", { name: "Process", exact: true }).click()
   await menu.getByRole("button", { name: "Plot shortcuts…", exact: true }).click()
-  const dialog = page.getByRole("dialog", { name: "Athena plot shortcuts", exact: true })
+  const dialog = page.getByRole("dialog", { name: "Craft plot shortcuts", exact: true })
   await dialog.getByLabel("Plot shortcut", { exact: true }).selectOption("normderiv")
   const replot = dialog.getByRole("button", { name: "Replot shortcut", exact: true })
   await expect(replot).toBeEnabled()
@@ -195,7 +195,7 @@ test("shortcut SVG export uses the live renderer's curves and omits hidden legen
   expect(calculated.ok()).toBe(true)
   const value = await calculated.json() as ShortcutPlot
   expect(value.result.curves).toHaveLength(2)
-  const figure = dialog.getByLabel("Athena shortcut figure", { exact: true })
+  const figure = dialog.getByLabel("Craft shortcut figure", { exact: true })
   await expect(figure.locator(".js-line")).toHaveCount(2)
   await expect(dialog.getByRole("alert")).toHaveCount(0)
   await expect(dialog.locator('.modebar-btn[data-title="Share chart..."]')).toHaveCount(0)

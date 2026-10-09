@@ -191,7 +191,7 @@ export function AthenaSelfAbsorption({ project, activeId, selectGroup, setBusy, 
             annotations: slab === undefined ? [] : [{ xref: 'paper', x: 1, xanchor: 'right', yref: 'y', y: slab, yanchor: 'bottom',
               text: `sample thickness ${slab} µm`, showarrow: false }],
             uirevision: `${project.id}:${activeId}:${view}` }}
-          config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'], toImageButtonOptions: { format: 'svg', filename: 'athena-self-absorption' } }}
+          config={{ responsive: true, displaylogo: false, modeBarButtonsToRemove: ['lasso2d', 'select2d'], toImageButtonOptions: { format: 'svg', filename: 'craft-self-absorption' } }}
           style={{ width: '100%', height: '100%' }} useResizeHandler /> : <p>No curve is available for this group.</p>}</div>
         {!eligible ? <p role="status">Choose a processed absorption spectrum.</p>
           : !composed ? <p role="status">Enter the sample formula, absorbing element and edge.</p>
