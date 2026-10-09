@@ -190,8 +190,8 @@ describe("Artemis fit report", () => {
     const original = structuredClone(result)
     render(<ArtemisFitReport result={result} />)
 
-    fireEvent.click(screen.getByText("Larch fit report", { exact: true }))
-    expect(screen.getByLabelText("Original Larch fit report").textContent).toBe(result.report)
+    expect(screen.queryByText("Larch fit report", { exact: true })).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Original Larch fit report")).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole("button", { name: "Download report" }))
     expect(download).toHaveBeenNthCalledWith(1, "artemis-fit-report.txt", result.report, "text/plain")
     fireEvent.click(screen.getByRole("button", { name: "Download fit + model JSON" }))

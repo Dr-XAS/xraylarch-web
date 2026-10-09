@@ -665,7 +665,7 @@ describe("ArtemisFitResultViewer", () => {
     fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "3" } })
     expect(await screen.findByRole("alert")).toHaveTextContent("does not match this saved result")
     expect(screen.queryByTestId("fit-plot")).not.toBeInTheDocument()
-    expect(screen.getByText("Larch fit report")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled()
     api.mockRejectedValueOnce(new Error("This saved fit does not retain unweighted χ(0)."))
     fireEvent.change(screen.getByLabelText("EXAFS fit k-weight"), { target: { value: "0" } })
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("does not retain unweighted χ(0)"))
@@ -838,7 +838,7 @@ describe("ArtemisFitResultViewer", () => {
     view.rerender(<ArtemisFitResultViewer result={result} group={group()} />)
     act(() => { plot.mock.calls.at(-1)![0].onError() })
     expect(screen.getByRole("alert")).toHaveTextContent("Could not render")
-    expect(screen.getByText("Larch fit report")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Download report" })).toBeEnabled()
   })
 })
 

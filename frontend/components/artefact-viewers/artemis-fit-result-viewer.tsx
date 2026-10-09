@@ -78,9 +78,9 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
   const offsetText = offsetDraft && offsetDraft.result === plotted && offsetDraft.space === space && offsetDraft.component === component ? offsetDraft.value : String(automaticSpacing)
   const validSpacing = offsetText.trim() !== "" && Number.isFinite(Number(offsetText)) && Number(offsetText) >= 0 && Number(offsetText) <= Number.MAX_VALUE / Math.max(curves.length, 1)
   const spacing = validSpacing ? Number(offsetText) : automaticSpacing
-  // Leave room for plot margins and the legend swatch. Plotly measures each
-  // wrapped label instead of placing long names in fixed half-width columns.
-  const legendLineLength = Math.max(10, Math.floor((plotWidth - 150) / 8))
+  // Match the spectrum viewers' right-side legend and label wrapping.
+  // Only display names wrap; hover labels retain the original full name.
+  const legendLineLength = Math.max(10, Math.floor((plotWidth * 0.4 - 48) / 7))
   const traces = series ? curves.map(curve => {
     const offset = offsetPlot ? -curve.tier * spacing : 0
     const characters = Array.from(curve.name)
@@ -128,7 +128,7 @@ export function ArtemisFitResultViewer({ result, group, projectId, version, pend
                 font: { color: "#52665b" },
                 xaxis: { title: { text: space === "k" ? "k (Å⁻¹)" : "R (Å, not phase corrected)" }, gridcolor: "#e6ece4", ...(space === "r" ? { range: [0, Math.max(6, visible.transform.rmax + 1)] } : {}) },
                 yaxis: { title: { text: (space === "k" ? `k<sup>${plottedWeight}</sup>χ(k) (Å<sup>−${plottedWeight}</sup>)` : `${component === "mag" ? "|χ(R)|" : component === "re" ? "Re χ(R)" : "Im χ(R)"} (Å<sup>−${plottedWeight + 1}</sup>)`) + (offsetPlot ? " + display offset" : "") }, gridcolor: "#e6ece4", zerolinecolor: "#cbd7cf" },
-                legend: { orientation: "h", x: 0, y: 1.02, yanchor: "bottom", maxheight: 0.24 }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
+                legend: { orientation: "v", x: 0.99, xanchor: "right", y: 0.99, yanchor: "top", maxheight: 1, bgcolor: "rgba(0,0,0,0)" }, uirevision: `${visible.project_id}:${visible.group_id}:${visible.version}:${space}:${component}:${pathsShown}:${offsetPlot}:${offsetPlot ? spacing : 0}:${plottedWeight}`,
                 shapes: isTheory && space === "r" ? [] : [{ type: "rect", xref: "x", yref: "paper", x0: space === "k" ? visible.transform.kmin : visible.transform.rmin,
                   x1: space === "k" ? visible.transform.kmax : visible.transform.rmax, y0: 0, y1: 1, fillcolor: "#25844c", opacity: 0.06, line: { width: 0 }, layer: "below" }],
               }} config={{ responsive: true, displaylogo: false, toImageButtonOptions: { filename: `artemis-${isTheory ? "theory" : "fit"}-${space}-k${plottedWeight}`, scale: 2 } }} useResizeHandler style={{ width: "100%", height: "100%" }} onError={() => setPlotError(true)} />}

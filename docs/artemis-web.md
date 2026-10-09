@@ -24,7 +24,8 @@ and [GDS reference](https://bruceravel.github.io/demeter/documents/Artemis/gds.h
    in each path's parameter fields.
 5. Choose the fit space, usable k range, k weights, Fourier window, and R range.
    Run the fit and inspect data/model plots, parameter uncertainties,
-   correlations, and the Larch fit report.
+   correlations, and the fit report. **Download report** retains the complete
+   original Larch text.
 
 An included path contributes its calculated chi(k) to the model sum. Excluding
 a path removes it from that sum. The fit concerns the current spectrum;
@@ -574,8 +575,9 @@ parameter uncertainties are reported as unavailable rather than as zero.
 Convergence alone does not establish that the structural model is adequate;
 check the residuals, correlations, bounds, and parameter meaning.
 
-The fit report uses the viewer palette for compact status badges and includes an
-always-visible **Status color guide**, even when **Show instruction** is off.
+The fit report uses the viewer palette for compact status badges and includes a
+**Status color guide** that is collapsed by default. Its heading remains
+available even when **Show instruction** is off; expand it to see the legend.
 Olive green means **In range**, gold **Borderline**, coral **Out of range**, slate
 **S₀² at bound**, and gray **Not assessed**. Each badge includes text and an icon;
 numeric values retain a neutral background. The gold report heading and R-factor
@@ -651,13 +653,18 @@ tab is open. The FEFF viewer shows the current model's path metadata and atom
 geometry; add or edit paths in the EXAFS fitting tab. The fit plot compares
 data, model, and residual in k or R space. **Show paths** is checked by default
 when the saved fit includes individual path curves; uncheck it to hide them.
-Long legend labels wrap to fit the plot width without overlapping neighboring entries.
+The legend uses a transparent, vertical column at the upper right, matching the
+Single and Multiple spectrum viewers. Long labels wrap within that column;
+hover labels retain their complete names.
 R plots offer
 magnitude, real, and imaginary components. The magnitude residual is
 `abs(FT(data - model))`, not the difference between the data and model magnitudes.
 Plots use the first selected fit k weight; the optimizer uses all selected
 weights. Statistics, fitted parameter values, uncertainties, correlations,
-and the complete Larch report appear below the plot. **Fit summary** combines
+and fit settings appear below the plot. The complete original Larch text is
+available through **Download report**, including per-k-weight noise estimates,
+ε(R), and propagated path-expression uncertainties not shown in the summary.
+The page omits the duplicate raw-text panel. **Fit summary** combines
 FEFF path thumbnails with fitted R, CN and σ², followed by the parameter values,
 uncertainties, initial values and treatment in the same card. Thumbnails use the same 3D atoms, bonds and path arrows as the FEFF viewer,
 rendered from the original saved geometry (before fitted ΔR), with verified FEFF

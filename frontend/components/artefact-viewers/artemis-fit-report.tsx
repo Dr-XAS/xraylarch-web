@@ -88,8 +88,9 @@ export function ArtemisFitReport({ result, savedPaths = NO_PATHS }: { result: Ar
       <div><dt>Noise ε(k)<SectionHelp label="Noise estimate">χ² and the uncertainties are measured against this noise ε(k), estimated from the high-R part of the transform. Two fits are only comparable on χ² when they share that scale.</SectionHelp></dt><dd>{format(stats.epsilon_k)}</dd><span className={styles.metricHint}>Scale of χ² and uncertainties</span></div>
     </dl>
 
-    <aside className={styles.legend} aria-label="Fit color guide">
-      <div className={styles.legendHeading}><h5>Status color guide</h5><span>Reference checks</span></div>
+    <details className={styles.legend} aria-label="Fit color guide">
+      <summary>Status color guide<span className={styles.summaryHint}>Reference checks</span></summary>
+      <div className={styles.legendBody}>
       <ul className={styles.legendItems}>{healthLegend.map(({ state, description }) => <li key={state}>
         <HealthBadge health={{ state, reason: description }} /><span>{description}</span>
       </li>)}</ul>
@@ -103,7 +104,8 @@ export function ArtemisFitReport({ result, savedPaths = NO_PATHS }: { result: Ar
           {assessedParameters.map(({ parameter, health }) => <div key={parameter.name}><dt><code>{parameter.name}</code></dt><dd>{health.reason}</dd></div>)}
         </dl>
       </details>
-    </aside>
+      </div>
+    </details>
 
     {reviewNotes.length > 0 && <aside className={styles.review} aria-label="Fit review notes">
       <strong><TriangleAlert size={15} aria-hidden="true" /> Review before interpreting</strong>
@@ -111,7 +113,7 @@ export function ArtemisFitReport({ result, savedPaths = NO_PATHS }: { result: Ar
     </aside>}
 
     <FeffPathPreviews paths={previewPaths}><section className={styles.fitSummary} aria-label="Fit summary">
-      <header className={styles.summaryHeading}><div><span className={styles.summaryEyebrow}>EXAFS MODEL</span><h5>Fit summary</h5></div><span>{result.paths.length} paths · {result.parameters.length} parameters</span></header>
+      <header className={styles.summaryHeading}><h5>Fit summary</h5><span>{result.paths.length} {result.paths.length === 1 ? "path" : "paths"} · {result.parameters.length} parameters</span></header>
     {result.paths.length > 0 && <section className={styles.summarySection} aria-label="Fitted paths">
       <div className={styles.sectionHeading}><h5>Fitted paths<SectionHelp label="Fitted path lengths">R = Rₑff + ΔR. For multiple scattering, R is half the total path length. For single scattering, R is the absorber–scatterer distance with the scattering phase accounted for. It is different from an uncorrected peak position in |χ(R)|. Thumbnails show the saved FEFF geometry, before fitted ΔR. An em dash means the saved fit does not include this value.</SectionHelp></h5><span>Saved FEFF geometry</span></div>
       <div className={styles.tableScroll} role="region" aria-label="Fitted path lengths and disorder" tabIndex={0}><table className={styles.pathTable} aria-label="Fitted path summary">
@@ -194,12 +196,8 @@ export function ArtemisFitReport({ result, savedPaths = NO_PATHS }: { result: Ar
       <ul className={styles.backendNotes}>{result.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul>
     </details>}
 
-    <details className={`${styles.section} ${styles.raw}`}>
-      <summary><span>Larch fit report</span><span className={styles.summaryHint}>Original text</span></summary>
-      <pre tabIndex={0} aria-label="Original Larch fit report">{result.report}</pre>
-    </details>
     <footer className={styles.downloads}>
-      <button type="button" onClick={() => download("artemis-fit-report.txt", result.report, "text/plain")}><Download size={14} aria-hidden="true" />Download report</button>
+      <button type="button" title="Download the complete original fit report" onClick={() => download("artemis-fit-report.txt", result.report, "text/plain")}><Download size={14} aria-hidden="true" />Download report</button>
       {result.request && <button type="button" onClick={() => download("artemis-fit.json", exportBundle(result.request!, result, { project_id: result.project_id, group_id: result.group_id, group_label: result.group_label }))}><FileJson size={14} aria-hidden="true" />Download fit + model JSON</button>}
     </footer>
   </section>
