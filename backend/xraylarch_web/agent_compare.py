@@ -30,25 +30,38 @@ NOTE = (
     "reference E0 -20 to +50 eV on the current axes, so an unaligned pair reads "
     "high. chi_amplitude is rms(k^kweight chi) of the group over the "
     "reference's, per k window over the support both share, at the reference's "
-    "kweight; below 1 is weaker oscillation. same_data_as names every group in "
-    "the project, selected or not, whose raw energy and mu arrays are identical "
-    "to this one's: the same measurement under two labels."
+    "kweight; below 1 is lower weighted RMS amplitude. same_data_as names "
+    "absorption groups in the project, selected or not, with identical raw "
+    "energy and mu arrays, excluding calculated and difference signals. "
+    "Identical input arrays can be copies or have different "
+    "processing roles; check acquisition records before treating them as independent scans."
 )
 
 
 def _fingerprint(group) -> str | None:
     from .athena_alignment import signature
+    from .athena_quality import _duplicate_eligible
 
     # A chi group keeps k in the energy slot, so its arrays are not a scan.
-    return None if group["data_type"] == "chi" else signature(group)
+    return None if group["data_type"] == "chi" or not _duplicate_eligible(group) else signature(group)
 
 
 def _arrays(group) -> dict:
+    if group.get("processing_error"):
+        return {}
     return (group.get("result") or {}).get("arrays") or {}
 
 
 def _absorption(group) -> bool:
-    return group["data_type"] not in ("chi", "detector") and not group.get("is_difference")
+    from .athena_quality import _difference
+    return group["data_type"] not in ("chi", "detector") and not _difference(group)
+
+
+def _summary(group):
+    summary = group_summary(group)
+    if group.get("processing_error") or not group.get("result"):
+        summary.update(e0=None, edge_step=None, available_kmax=None, exafs=False)
+    return summary
 
 
 def _overlap(lower: list[float] | None, upper: list[float] | None) -> list[float] | None:
@@ -59,8 +72,16 @@ def _overlap(lower: list[float] | None, upper: list[float] | None) -> list[float
 
 
 def _shift(group, reference, preferences) -> dict:
+    detail = _shift_details(group, reference, preferences)
+    return detail if "unavailable" in detail else {key: detail[key] for key in ("value", "stderr")}
+
+
+def _shift_details(group, reference, preferences) -> dict:
     from .athena_alignment import fit_alignment
 
+    for spectrum in (reference, group):
+        if spectrum.get("processing_error") or not spectrum.get("result"):
+            return {"unavailable": "Process both spectra successfully before comparing their edges."}
     try:
         fit = fit_alignment(group, reference, smoothed=True, **preferences)
     except (ScientificError, ValueError, KeyError) as exc:
@@ -69,35 +90,82 @@ def _shift(group, reference, preferences) -> dict:
     return {
         "value": round(summary["fitted_shift"] - group["parameters"]["energy_shift"], 3),
         "stderr": summary["native_shift_stderr"],
+        "range": [fit["curve"]["x"][0], fit["curve"]["x"][-1]],
+        "nominal_range": [summary["xmin"], summary["xmax"]],
+        "smoothing_window": summary["smoothing_window"],
+        "smoothing_order": summary["smoothing_order"],
     }
 
 
 def _xanes(group, reference) -> float | None:
+    details = _xanes_details(group, reference)
+    return details["max_difference"] if details else None
+
+
+def _xanes_details(group, reference) -> dict | None:
     mine, theirs = _arrays(group), _arrays(reference)
     e0 = ((reference.get("result") or {}).get("effective") or {}).get("e0")
     x, y = np.asarray(mine.get("energy") or [], float), np.asarray(mine.get("norm") or [], float)
     rx, ry = np.asarray(theirs.get("energy") or [], float), np.asarray(theirs.get("norm") or [], float)
-    if e0 is None or x.size < 2 or rx.size < 2 or x.size != y.size or rx.size != ry.size:
+    if (e0 is None or x.size < 2 or rx.size < 2 or x.size != y.size or rx.size != ry.size
+            or not all(np.isfinite(a).all() for a in (x, y, rx, ry))
+            or np.any(np.diff(x) <= 0) or np.any(np.diff(rx) <= 0)):
         return None
     start, stop = max(e0 - _EDGE_BELOW, x[0], rx[0]), min(e0 + _EDGE_ABOVE, x[-1], rx[-1])
     inside = (rx >= start) & (rx < stop)
     if int(inside.sum()) < _MIN_BIN_POINTS:
         return None
     grid = rx[inside]
-    return round(float(np.max(np.abs(np.interp(grid, x, y) - ry[inside]))), 4)
+    difference = float(np.max(np.abs(np.interp(grid, x, y) - ry[inside])))
+    if not np.isfinite(difference):
+        return None
+    return {"max_difference": round(difference, 4), "range": [float(start), float(stop)],
+            "points": int(inside.sum())}
+
+
+def _chi_support(group, k):
+    """Processed support restricted to measured chi input, excluding zero padding."""
+    low, high = float(k[0]), float(k[-1])
+    if group.get("data_type") == "chi":
+        measured = np.asarray(group.get("energy") or [], float)
+        if measured.size < 2 or not np.isfinite(measured).all() or np.any(np.diff(measured) <= 0):
+            return None
+        low, high = max(low, float(measured[0])), min(high, float(measured[-1]))
+    elif group.get("energy"):
+        from .athena_science import ETOK
+        effective = (group.get("result") or {}).get("effective") or {}
+        e0 = effective.get("e0")
+        if e0 is not None:
+            measured = np.asarray(group["energy"], float)
+            shift = group.get("parameters", {}).get("energy_shift", 0.)
+            if (measured.size < 2 or not np.isfinite(measured).all()
+                    or np.any(np.diff(measured) <= 0) or not np.isfinite([e0, shift]).all()):
+                return None
+            support = np.sqrt(ETOK * np.maximum(0., measured[[0, -1]] + shift - e0))
+            low, high = max(low, float(support[0])), min(high, float(support[1]))
+    return low, high
 
 
 def _chi_amplitude(group, reference) -> dict | None:
     mine, theirs = _arrays(group), _arrays(reference)
     k, chi = np.asarray(mine.get("k") or [], float), np.asarray(mine.get("chi") or [], float)
     rk, rchi = np.asarray(theirs.get("k") or [], float), np.asarray(theirs.get("chi") or [], float)
-    if k.size < 2 or rk.size < 2 or k.size != chi.size or rk.size != rchi.size:
+    if (k.size < 2 or rk.size < 2 or k.size != chi.size or rk.size != rchi.size
+            or not all(np.isfinite(a).all() for a in (k, chi, rk, rchi))
+            or k[0] < 0 or rk[0] < 0 or np.any(np.diff(k) <= 0) or np.any(np.diff(rk) <= 0)):
         return None
     effective = (reference.get("result") or {}).get("effective") or {}
     saved_weight = effective.get("kweight")
     kweight = float(2.0 if saved_weight is None else saved_weight)
-    start = float(effective.get("kmin") or 0.0)
-    stop = min(float(k[-1]), float(rk[-1]))
+    if not np.isfinite(kweight) or not 0 <= kweight <= 3:
+        return None
+    mine_support, reference_support = _chi_support(group, k), _chi_support(reference, rk)
+    if mine_support is None or reference_support is None:
+        return None
+    start = max(float(effective.get("kmin") or 0.0), mine_support[0], reference_support[0])
+    stop = min(mine_support[1], reference_support[1])
+    if start >= stop:
+        return None
     on_grid = np.interp(rk, k, chi)
     edges = [float(lower) for lower in np.arange(start, stop, _K_BIN)]
     # A sliver of a window at the end of the support says more about where the
@@ -113,10 +181,12 @@ def _chi_amplitude(group, reference) -> dict | None:
         weight = rk[inside] ** kweight
         theirs_rms = float(np.sqrt(np.mean((rchi[inside] * weight) ** 2)))
         mine_rms = float(np.sqrt(np.mean((on_grid[inside] * weight) ** 2)))
-        if theirs_rms <= 0:
+        if theirs_rms <= 0 or not np.isfinite([mine_rms, theirs_rms]).all():
             continue
-        bins.append({"k": [round(lower, 2), round(upper, 2)], "ratio": round(mine_rms / theirs_rms, 3)})
-    return {"kweight": kweight, "bins": bins} if bins else None
+        ratio = mine_rms / theirs_rms
+        if np.isfinite(ratio):
+            bins.append({"k": [lower, upper], "ratio": round(ratio, 3)})
+    return {"kweight": kweight, "range": [start, stop], "bins": bins} if bins else None
 
 
 def compare(groups: list[dict], preferences: dict, project_groups: list[dict] | None = None) -> dict:
@@ -127,7 +197,7 @@ def compare(groups: list[dict], preferences: dict, project_groups: list[dict] | 
     about, such as a reference channel that is a copy of a sample scan.
     """
     reference, rest = groups[0], groups[1:]
-    summaries = {group["id"]: group_summary(group) for group in groups}
+    summaries = {group["id"]: _summary(group) for group in groups}
     base = summaries[reference["id"]]
     pool = {group["id"]: group for group in [*groups, *(project_groups or ())]}
     prints = {ident: _fingerprint(group) for ident, group in pool.items()}

@@ -10,16 +10,16 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
-  it("forwards a spectrum review snapshot and rejects unsupported methods", async () => {
-    const path = ["api", "athena", "projects", "cu", "quality-report"]
+  it.each(["quality-report", "comparison-report"])("forwards a %s snapshot and rejects unsupported methods", async (report) => {
+    const path = ["api", "athena", "projects", "cu", report]
     const url = `http://localhost/api/backend/${path.join("/")}`
     const fetcher = vi.fn().mockResolvedValue(new Response('{"version":7,"groups":[]}', {
       headers: { "content-type": "application/json" },
     }))
     vi.stubGlobal("fetch", fetcher)
-    const request = new Request(url, { method: "POST", body: '{"version":7,"scope":"marked"}' })
+    const request = new Request(url, { method: "POST", body: JSON.stringify({ version: 7, scope: "marked", ...(report === "comparison-report" ? { reference_id: "foil" } : {}) }) })
     const response = await POST(request, { params: Promise.resolve({ path }) })
-    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/athena/projects/cu/quality-report")
+    expect(fetcher.mock.calls[0][0].pathname).toBe(`/api/athena/projects/cu/${report}`)
     expect(fetcher.mock.calls[0][1].body).toBe(request.body)
     expect(await response.json()).toEqual({ version: 7, groups: [] })
     fetcher.mockClear()

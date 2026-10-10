@@ -76,6 +76,9 @@ spectra, desktop/mobile layouts and revision recovery through the real proxy.
 
 ## Possible follow-up work
 
+**Edit → Compare spectra…** now supplies a numerical comparison against a
+reference you choose. See the [comparison guide](athena-spectrum-comparison.md).
+
 Acquisition-order drift review would help identify changes across a scan series,
 but needs reliable timestamps and a user-chosen reference. A separate EXAFS fit
 sensitivity report could compare distances across k ranges and fixed E0 values.

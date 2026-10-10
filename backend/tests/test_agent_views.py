@@ -75,6 +75,15 @@ def test_summary_tags_cannot_leak_imported_arrays_or_arbitrary_metadata(example)
     assert not [path for path, length in numeric_runs(compact) if length > 2]
 
 
+@pytest.mark.parametrize("identity", ["legacy unknown metadata", ["Cu", "K"], True, 7112])
+def test_summary_ignores_inert_nonobject_edge_identity(example, identity):
+    group = copy.deepcopy(example["groups"][0])
+    group["source"]["edge_identity"] = identity
+    summary = group_summary(group)
+    assert summary["element"] is summary["edge"] is summary["edge_origin"] is None
+    assert group["source"]["edge_identity"] == identity
+
+
 def test_summary_reports_what_processing_resolved(client, example):
     summary = view(client, example, "summary")
     assert summary["counts"] == {

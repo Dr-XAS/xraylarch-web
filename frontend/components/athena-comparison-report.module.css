@@ -1,0 +1,34 @@
+.comparison { min-width: 0; overflow-wrap: anywhere; }
+.comparison p { line-height: var(--leading-body); }
+.controls { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 8px; }
+.controls select { max-width: 100%; }
+.revision { font-weight: 600; }
+.reference { border: 1px solid var(--ath-line); border-radius: 6px; padding: 12px; background: var(--ath-surface-muted); }
+.reference h3 { margin: 0; font-size: var(--text-section); }
+.reference p:last-child { margin-bottom: 0; }
+.notes { margin: 12px 0; border: 1px solid var(--ath-line); border-radius: 6px; padding: 8px 12px; }
+.comparison .notes > summary { padding: 0; }
+.notes ul { padding-left: 20px; margin: 8px 0; }
+.notes li + li { margin-top: 4px; }
+.groups { display: grid; gap: 8px; }
+.group { min-width: 0; border: 1px solid var(--ath-line); border-radius: 6px; }
+.comparison .group > summary { display: block; padding: 12px; line-height: 1.6; }
+.comparison .group > summary::before { margin-right: 8px; }
+.group summary > span { display: block; margin-left: 16px; color: var(--ath-muted); font-size: var(--text-label); font-weight: 400; }
+.group summary:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 2px; }
+.body { padding: 0 12px 12px; border-top: 1px solid var(--ath-line); }
+.body h4 { margin: 12px 0 4px; font-size: var(--text-section); }
+.body ul { padding-left: 20px; }
+.metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+.metrics dt { color: var(--ath-muted); font-size: var(--text-label); }
+.metrics dd { margin: 4px 0; font-size: var(--text-section); font-weight: 600; font-variant-numeric: tabular-nums; }
+.metrics p { margin: 4px 0 0; font-size: var(--text-label); }
+.bins { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.bins > div { border: 1px solid var(--ath-line); border-radius: 4px; background: var(--ath-surface-muted); padding: 8px; }
+.bins dt { font-size: var(--text-caption); color: var(--ath-muted); }
+.bins dd { margin: 4px 0 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.actions { flex-wrap: wrap; }
+@media (max-width: 500px) {
+  .controls, .metrics { grid-template-columns: minmax(0, 1fr); }
+  .bins { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

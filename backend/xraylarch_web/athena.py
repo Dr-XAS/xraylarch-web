@@ -44,6 +44,7 @@ from .athena_beamline_metadata import BeamlineDefaults
 from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
 from .athena_quality import QualityReport
+from .athena_comparison import ComparisonReport
 from .athena_export import DataExport
 from .athena_context import ContextReport, ContextPlot
 from .agent_views import applied_parameters, preview_view, project_view
@@ -3372,6 +3373,16 @@ class AthenaStore:
         self.check(self.load(ident), request.version)
         return report
 
+    def comparison_report(self, ident, request: ComparisonReport):
+        from .athena_comparison import comparison_report
+        project = self.load(ident)
+        self.check(project, request.version)
+        prefs = self.smoothing_preferences.read()['values']
+        report = comparison_report(project, request.reference_id, request.scope,
+                                   {'sg_window': prefs['window'], 'sg_order': prefs['order']})
+        self.check(self.load(ident), request.version)
+        return report
+
     def validate_xdi(self, ident, group_id, request: XDIValidation):
         from .athena_xdi_controls import effective_metadata, validate_fields
         project = self.load(ident)
@@ -5670,6 +5681,10 @@ def build_athena_router(
     @router.post('/projects/{ident}/quality-report')
     def quality_report(ident: str, request: QualityReport):
         return guarded(lambda: store.quality_report(ident, request))
+
+    @router.post('/projects/{ident}/comparison-report')
+    def comparison_report(ident: str, request: ComparisonReport):
+        return guarded(lambda: store.comparison_report(ident, request))
 
     @router.post('/projects/{ident}/parameter-report')
     def parameter_report(ident: str, request: ParameterReport):

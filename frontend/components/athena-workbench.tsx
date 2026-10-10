@@ -62,6 +62,7 @@ import { AthenaXDIControls } from './athena-xdi-controls'
 import { AthenaDataExport } from './athena-data-export'
 import { AthenaParameterReport } from './athena-parameter-report'
 import { AthenaQualityReport } from './athena-quality-report'
+import { AthenaComparisonReport } from './athena-comparison-report'
 import { AthenaContextMenu, type ContextMenuItem } from './athena-context-menu'
 import { AthenaContextReport } from './athena-context-report'
 import { AthenaSpecialPlot, athenaSpecialPlotLabels, type AthenaSpecialPlotKind } from './athena-special-plot'
@@ -180,7 +181,7 @@ function hasCommonChi(groups: AthenaGroup[]) {
   }
   return groups.length >= 2 && Number.isFinite(minimum) && Number.isFinite(maximum) && minimum < maximum
 }
-type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "xrf_xas" | "xrf_view" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | "quality_report" | null
+type ModalName = "reference" | "reimport" | "special_plot" | "context_report" | "rename" | "import" | "open" | "journal" | "save_project" | "learn" | "calibrate" | "align" | "merge" | "merge_plot" | "diagnostic_plot" | "sum" | "difference" | "smooth" | "deglitch" | "truncate" | "rebin" | "convolve" | "deconvolve" | "self_absorption" | "dispersive" | "xrf_xas" | "xrf_view" | "lcf" | "pca" | "peaks" | "metadata" | "multi_electron" | "log_ratio" | "copy_series" | "parameters" | "groups" | "group_folder" | "e0" | "datatype" | "plugins" | "beamline" | "xdi" | "data_export" | "parameter_report" | "quality_report" | "comparison_report" | null
 const mainMenuNames = ["File", "Edit", "Group", "Process", "Analysis"] as const
 type MainMenuName = typeof mainMenuNames[number]
 type MenuCommand = {
@@ -1189,6 +1190,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
   }
   function openTool(name: ModalName) {
     if (name === "quality_report" && (integrated || busy || !project?.groups.length)) return
+    if (name === "comparison_report" && (integrated || busy || (project?.groups.length ?? 0) < 2)) return
     if (!canOpen(name) || (name !== "learn" && parameterActionBlocked())) return
     cancelPick()
     if (name === "merge") setMergeInitialArray(undefined)
@@ -2316,6 +2318,7 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     { id: "edit-undo", menu: "Edit", label: "Undo", keywords: "revert restore previous last project change", disabled: undoDisabled, icon: <Undo2 size={15} />, action: () => act("undo", []) },
     { id: "edit-redo", menu: "Edit", label: "Redo", keywords: "restore reapply undone project change", disabled: redoDisabled, icon: <Redo2 size={15} />, action: () => act("redo", []) },
     { id: "edit-review-spectra", menu: "Edit", label: "Review spectra…", keywords: "quality duplicate warnings ranges processing effective parameters", visible: !integrated, disabled: !project?.groups.length || !!busy || parameterUpdatePending, section: 1, icon: <FileText size={15} />, action: () => openTool("quality_report") },
+    { id: "edit-compare-spectra", menu: "Edit", label: "Compare spectra…", keywords: "reference batch comparison energy shift xanes amplitude ratio shared range", visible: !integrated, disabled: (project?.groups.length ?? 0) < 2 || !!busy || parameterUpdatePending, section: 1, icon: <FileText size={15} />, action: () => openTool("comparison_report") },
     ...(["all", "marked"] as const).map(scope => ({ id: `edit-report-${scope}`, menu: "Edit" as const, label: `Excel report on ${scope} groups…`, keywords: "spreadsheet parameters export xlsx", disabled: !project?.groups.length || !!busy || parameterUpdatePending || !canOpen("parameter_report"), section: 1, icon: <Download size={15} />, action: () => { setReportScope(scope); openTool("parameter_report") } })),
 
     { id: "group-mark-freeze", menu: "Group", label: "Mark / freeze groups…", keywords: "select lock unfreeze batch", disabled: !project?.groups.length || !!busy || parameterUpdatePending || !canOpen("groups"), action: () => openTool("groups") },
@@ -2620,6 +2623,10 @@ function AthenaWorkbenchContent({ session }: { session: AthenaSession }) {
     </Modal>}
     {modal === 'quality_report' && project && !integrated && <Modal title="Review spectra" wide close={() => setModal(null)}>
       <div className="ath-modal-body"><AthenaQualityReport key={project.id} project={project} close={() => setModal(null)} reloadProject={reloadChangedProject}
+        inspect={id => { setModal(null); setActiveId(id); setAnalysisVisible(false); setShownViewers(previous => new Set([...previous, 'single'])) }} /></div>
+    </Modal>}
+    {modal === 'comparison_report' && project && !integrated && <Modal title="Compare spectra" wide close={() => setModal(null)}>
+      <div className="ath-modal-body"><AthenaComparisonReport key={project.id} project={project} activeId={activeId} close={() => setModal(null)} reloadProject={reloadChangedProject}
         inspect={id => { setModal(null); setActiveId(id); setAnalysisVisible(false); setShownViewers(previous => new Set([...previous, 'single'])) }} /></div>
     </Modal>}
     {modal === "data_export" && project && active && <Modal title="Export column data" close={() => { if (!busy) setModal(null) }}>

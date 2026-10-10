@@ -134,7 +134,9 @@ def group_summary(group: dict) -> dict:
     """One group without its arrays: identity, state, and what processing resolved."""
     result = group.get("result") or {}
     effective = result.get("effective") or {}
-    identity = group["source"].get("edge_identity") or {}
+    identity = group["source"].get("edge_identity")
+    if not isinstance(identity, dict):
+        identity = {}
     # Source metadata from imported projects is unrestricted JSON. Only the
     # supported tag belongs in this compact view; arbitrary tags can be arrays.
     source_tags = group["source"].get("tags")

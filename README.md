@@ -454,6 +454,12 @@ Merge previews also warn about identical inputs among contributing groups.
 These checks preserve scientific parameters and merge weights. See the
 [spectrum-review guide](docs/athena-spectrum-review.md) for interpretation and limits.
 
+**Edit → Compare spectra…** compares all or marked groups against a reference
+you choose. It reports additional fitted energy shifts, E0 differences, edge-step
+ratios, XANES differences over the actual overlap, and χ(k) amplitude ratios.
+The report leaves spectra unchanged and exports the displayed JSON snapshot.
+See the [comparison guide](docs/athena-spectrum-comparison.md) for units and limits.
+
 **Process → Multi-electron excitation** compares reflection and arctangent
 removal on normalized spectra. Adjust shift, amplitude and broadening with
 live E/k/R previews, pick the shift from a curve, then save a corrected group.
