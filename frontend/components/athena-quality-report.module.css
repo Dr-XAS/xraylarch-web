@@ -1,0 +1,37 @@
+.review { min-width: 0; overflow-wrap: anywhere; }
+.review p { line-height: var(--leading-body); }
+.controls { display: flex; align-items: end; flex-wrap: wrap; gap: 8px 20px; }
+.controls :global(.ath-field) { min-width: 180px; }
+.controls :global(.ath-check) { min-height: 32px; }
+.revision { font-weight: 600; }
+.counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(115px, 1fr)); gap: 8px; margin: 12px 0; }
+.counts > div { padding: 8px 12px; border: 1px solid var(--ath-line); border-radius: 6px; background: var(--ath-surface-muted); }
+.counts dt { font-size: var(--text-caption); }
+.counts dd { margin: 4px 0 0; font-size: var(--text-section); font-weight: 600; font-variant-numeric: tabular-nums; }
+.notes { padding-left: 20px; }
+.notes li + li { margin-top: 4px; }
+.groups { display: grid; gap: 8px; }
+.group { border: 1px solid var(--ath-line); border-radius: 6px; min-width: 0; }
+.review .group > summary { display: block; padding: 12px; cursor: pointer; line-height: 1.6; }
+.review .group > summary::before { margin-right: 8px; }
+.group summary:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 2px; }
+.group summary strong { margin-right: 12px; }
+.status { color: var(--ath-muted); font-size: var(--text-caption); }
+.status[data-failed="true"] { color: var(--ath-error-ink, #7b2f20); font-weight: 600; }
+.findings { display: block; margin-left: 16px; font-size: var(--text-label); }
+.body { padding: 0 12px 12px; border-top: 1px solid var(--ath-line); }
+.body h4 { font-size: var(--text-label); margin: 12px 0 4px; }
+.body ul { padding-left: 20px; margin: 4px 0 12px; }
+.body li + li { margin-top: 4px; }
+.identity { color: var(--ath-muted); }
+.values { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 20px; margin: 12px 0; }
+.values dt { color: var(--ath-muted); font-size: var(--text-caption); }
+.values dd { margin: 2px 0 0; font-variant-numeric: tabular-nums; }
+.actions { flex-wrap: wrap; }
+.exportNote { font-size: var(--text-caption); color: var(--ath-muted); }
+@media (max-width: 500px) {
+  .controls { align-items: stretch; flex-direction: column; }
+  .counts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .values { grid-template-columns: minmax(0, 1fr); }
+  .status { display: block; margin-left: 16px; }
+}

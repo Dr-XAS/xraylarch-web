@@ -447,6 +447,13 @@ names are retained. Notes identify unused settings and missing values. See
 the [parameter-report contract](docs/athena-parameter-report-reference.md)
 for comparisons with the original Athena XLS writer.
 
+**Edit → Review spectra…** lists processing failures, saved warnings, explicit
+requested/effective range changes and identical input arrays across all or
+marked groups. Download the review as a JSON snapshot with its project revision.
+Merge previews also warn about identical inputs among contributing groups.
+These checks preserve scientific parameters and merge weights. See the
+[spectrum-review guide](docs/athena-spectrum-review.md) for interpretation and limits.
+
 **Process → Multi-electron excitation** compares reflection and arctangent
 removal on normalized spectra. Adjust shift, amplitude and broadening with
 live E/k/R previews, pick the shift from a curve, then save a corrected group.

@@ -871,6 +871,66 @@ describe("AthenaWorkbench branding", () => {
   })
 })
 
+describe("AthenaWorkbench spectrum review", () => {
+  it("opens a saved snapshot from Edit and inspects a group without a scientific command", async () => {
+    const project = await openSaved()
+    api.mockResolvedValueOnce({ project_id: project.id, project_name: project.name, version: project.version, scope: 'all',
+      counts: { groups: 4, processed: 4, failed: 0, unprocessed: 0, with_warnings: 0, with_adjustments: 0, with_duplicate_inputs: 0 },
+      groups: project.groups.map(group => ({ id: group.id, label: group.label, data_type: group.data_type,
+        marked: group.marked, frozen: group.frozen, axis: 'energy', range: [8960, 9000], points: 3,
+        e0: 8979, edge_step: 1, exafs: false, available_kmax: null, status: 'processed', processing_error: null,
+        warnings: [], adjustments: [], duplicate_inputs: [], notes: [] })), notes: [] })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Review spectra…' }))
+    const dialog = await screen.findByRole('dialog', { name: 'Review spectra' })
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Download review JSON' })).toBeEnabled())
+    const summary = within(dialog).getByText('Sample scan', { selector: 'summary strong' }).closest('summary')!
+    fireEvent.click(summary)
+    fireEvent.click(within(summary.closest('details')!).getByRole('button', { name: 'View spectrum' }))
+    expect(screen.queryByRole('dialog', { name: 'Review spectra' })).not.toBeInTheDocument()
+    expect(plotProps('current').active?.id).toBe('sample')
+    expect(api.mock.calls.map(call => call[0])).toEqual([`/projects/${project.id}`, `/projects/${project.id}/quality-report`])
+  })
+
+  it('finds Review spectra by scientific review keywords', async () => {
+    await openSaved()
+    fireEvent.click(screen.getByRole('button', { name: 'Search menu' }))
+    const dialog = screen.getByRole('dialog', { name: 'Search menu commands' })
+    for (const keyword of ['quality', 'duplicate', 'warnings', 'ranges']) {
+      fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: keyword } })
+      expect(within(dialog).getByRole('button', { name: 'Edit › Review spectra…' })).toBeEnabled()
+    }
+  })
+
+  it('disables spectrum review for an empty project', async () => {
+    await openSaved(projectFixture({ groups: [] }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByRole('button', { name: 'Review spectra…' })).toBeDisabled()
+  })
+
+  it.each([2.2, -1])('disables spectrum review while a parameter draft (%s) remains unsaved', async value => {
+    await openSaved()
+    vi.useFakeTimers()
+    editNumber(/^Rbkg/, value)
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.getByRole('button', { name: 'Review spectra…' })).toBeDisabled()
+    expect(api).toHaveBeenCalledOnce()
+  })
+
+  it('keeps spectrum review out of integrated mode even when reports are allowed', async () => {
+    api.mockResolvedValueOnce(projectFixture({ id: 'integrated-project' }))
+    render(<AthenaWorkbench session={{ ...integrationSession, allowedOperations: ['read_project', 'report'] }} />)
+    await waitForIntegratedProject()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }))
+    expect(screen.queryByRole('button', { name: 'Review spectra…' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Search menu' }))
+    const dialog = screen.getByRole('dialog', { name: 'Search menu commands' })
+    fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'quality' } })
+    expect(within(dialog).queryByRole('button', { name: 'Edit › Review spectra…' })).not.toBeInTheDocument()
+    expect(api).toHaveBeenCalledOnce()
+  })
+})
+
 describe("AthenaWorkbench menu command search", () => {
   async function openMenuSearch(project = projectFixture()) {
     await openSaved(project)

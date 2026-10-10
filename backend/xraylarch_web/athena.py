@@ -43,6 +43,7 @@ from .athena_xrf_xas import XrfXasOptions
 from .athena_beamline_metadata import BeamlineDefaults
 from .athena_xdi_controls import XDIValidation
 from .athena_report import ParameterReport
+from .athena_quality import QualityReport
 from .athena_export import DataExport
 from .athena_context import ContextReport, ContextPlot
 from .agent_views import applied_parameters, preview_view, project_view
@@ -3363,6 +3364,14 @@ class AthenaStore:
         self.check(self.load(ident), request.version)
         return result
 
+    def quality_report(self, ident, request: QualityReport):
+        from .athena_quality import prepare_quality_report
+        project = self.load(ident)
+        self.check(project, request.version)
+        report = prepare_quality_report(project, request)
+        self.check(self.load(ident), request.version)
+        return report
+
     def validate_xdi(self, ident, group_id, request: XDIValidation):
         from .athena_xdi_controls import effective_metadata, validate_fields
         project = self.load(ident)
@@ -5657,6 +5666,10 @@ def build_athena_router(
     @router.post('/projects/{ident}/parameter-report/preview')
     def parameter_report_preview(ident: str, request: ParameterReport):
         return guarded(lambda: store.parameter_report(ident, request))
+
+    @router.post('/projects/{ident}/quality-report')
+    def quality_report(ident: str, request: QualityReport):
+        return guarded(lambda: store.quality_report(ident, request))
 
     @router.post('/projects/{ident}/parameter-report')
     def parameter_report(ident: str, request: ParameterReport):

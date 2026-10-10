@@ -10,6 +10,25 @@ afterEach(() => {
 })
 
 describe("backend proxy", () => {
+  it("forwards a spectrum review snapshot and rejects unsupported methods", async () => {
+    const path = ["api", "athena", "projects", "cu", "quality-report"]
+    const url = `http://localhost/api/backend/${path.join("/")}`
+    const fetcher = vi.fn().mockResolvedValue(new Response('{"version":7,"groups":[]}', {
+      headers: { "content-type": "application/json" },
+    }))
+    vi.stubGlobal("fetch", fetcher)
+    const request = new Request(url, { method: "POST", body: '{"version":7,"scope":"marked"}' })
+    const response = await POST(request, { params: Promise.resolve({ path }) })
+    expect(fetcher.mock.calls[0][0].pathname).toBe("/api/athena/projects/cu/quality-report")
+    expect(fetcher.mock.calls[0][1].body).toBe(request.body)
+    expect(await response.json()).toEqual({ version: 7, groups: [] })
+    fetcher.mockClear()
+    for (const handler of [GET, PUT, PATCH, DELETE]) {
+      const method = handler === GET ? "GET" : handler === PUT ? "PUT" : handler === PATCH ? "PATCH" : "DELETE"
+      expect((await handler(new Request(url, { method }), { params: Promise.resolve({ path }) })).status).toBe(404)
+    }
+    expect(fetcher).not.toHaveBeenCalled()
+  })
   it.each([['GET', 'columns'], ['POST', 'reimport']])('forwards %s group %s with project authorization and preserves the response', async (method, action) => {
     const fetcher = vi.fn().mockResolvedValue(new Response('{"version":8}', { headers: { 'content-type': 'application/json' } }))
     vi.stubGlobal('fetch', fetcher)
