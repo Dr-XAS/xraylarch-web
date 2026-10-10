@@ -9,7 +9,7 @@ const [backend, standalone, mounted] = base.webServer
 
 export default defineConfig({
   ...base,
-  testMatch: ["**/athena-scientific-workflow.spec.ts", "**/athena-quality-report.spec.ts", "**/athena-comparison-report.spec.ts", "**/artemis-project-persistence.spec.ts", "**/integration-mounted.spec.ts"],
+  testMatch: ["**/athena-scientific-workflow.spec.ts", "**/athena-quality-report.spec.ts", "**/athena-comparison-report.spec.ts", "**/artemis-project-persistence.spec.ts", "**/artemis-fit-history-comparison.spec.ts", "**/integration-mounted.spec.ts"],
   forbidOnly: true,
   use: { ...base.use, channel: process.env.XRAYLARCH_E2E_BROWSER_CHANNEL },
   webServer: [

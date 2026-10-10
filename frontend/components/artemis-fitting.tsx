@@ -30,6 +30,7 @@ import { RadialPathGroups } from "./radial-path-groups"
 import { FeffPathShellLabel } from "./feff-path-shell-label"
 import { ArtemisStructures } from "./artemis-structures"
 import { ArtemisFastFitComparison } from "./artemis-fast-fit"
+import { ArtemisFitHistoryComparison } from "./artefact-viewers/artemis-fit-history-comparison"
 import { currentEdgeIdentity } from "./athena-edge-identity"
 import { CrystalLatticeIcon, FeffScatteringIcon, FitCurvesIcon } from "./athena-viewer-icons"
 import { FitRangeIcon } from "./athena-parameter-icons"
@@ -65,6 +66,7 @@ type ModelMutation = { version: number; finish: () => void }
 interface PanelProps {
   exampleSetup?: ArtemisExampleSetup
   projectId?: string
+  projectName?: string
   version?: number
   group?: AthenaGroup
   groups?: AthenaGroup[]
@@ -316,7 +318,7 @@ export function ArtemisFittingPanel(props: PanelProps) {
     }} />
 }
 
-function FittingEditor({ projectId, version, group, groups, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft, onCopyTransform }: PanelProps & {
+function FittingEditor({ projectId, projectName, version, group, groups, pending = false, onFitResult, onPathsChange, onProjectChange, onViewStructure, onDirtyChange, initial, onSave, actions, onEditorActions, onMutationPending, prepareMutation, preserveDraft, onCopyTransform }: PanelProps & {
   initial?: SavedDraft; onSave: (saved: SavedDraft, dirty: boolean) => void
   actions: ArtemisModelActions; onEditorActions: (actions: EditorActions) => void
   onMutationPending: (busy: boolean) => void; prepareMutation: () => Promise<ModelMutation>
@@ -837,6 +839,9 @@ function FittingEditor({ projectId, version, group, groups, pending = false, onF
         </select></label>
         <div className={styles.toolbar}><button type="button" disabled={disabled || !archive} onClick={() => { if (archive) edit(() => archive.model) }}>Use this fit’s model</button>
           <button type="button" disabled={disabled || !archive} onClick={() => { if (archive) void removeSavedFit(archive.id) }}>Remove saved fit</button></div>
+        {projectId && version !== undefined && group && <ArtemisFitHistoryComparison
+          context={{ projectId, projectName: projectName ?? '', version, groupId: group.id, groupLabel: group.label, currentInputSha256: persisted.current_input_sha256 }}
+          history={persisted.history} initialReferenceId={archive?.id} pending={disabled || actions.status !== 'saved'} />}
     </FittingSection>}
   </section>
 }
