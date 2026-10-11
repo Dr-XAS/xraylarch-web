@@ -126,7 +126,8 @@ fit-model limit. Existing calculation time and byte limits still apply; exceedin
 one reports an error rather than silently dropping paths.
 
 The default shared parameters are S₀² = 0.85, ΔE₀ = 0 eV and ΔR = 0 Å.
-The form defaults to **Correlated Debye**, with sample temperature **298 K**.
+The form defaults to **Fixed σ²**, initially **0.003 Å²** for every path.
+**Correlated Debye** remains available, with sample temperature **298 K**.
 Supply the material's **Debye temperature ΘD** from a suitable reference or
 calibration; temperature alone is insufficient, and ΘD is not inferred from an
 ordinary CIF. Each path uses `static_sigma2 + sigma2_debye(T, ΘD)`, evaluated
@@ -136,8 +137,7 @@ solids; many paths do not by themselves make it accurate for a complex material.
 Changing temperature changes disorder, without automatically expanding the CIF
 geometry, and reuses the existing scattering calculation.
 
-**Fixed σ²** remains available, initially 0.003 Å² for every path. Neither model
-converts CIF displacement factors to EXAFS disorder. Native FEFF degeneracies are
+Neither model converts CIF displacement factors to EXAFS disorder. Native FEFF degeneracies are
 retained. The result is for one selected absorbing site; crystallographic
 multiplicity is not applied again, and inequivalent sites are not population
 averaged. Use the fitting model for arbitrary path-specific expressions.

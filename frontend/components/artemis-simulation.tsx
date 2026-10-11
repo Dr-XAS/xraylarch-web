@@ -27,7 +27,7 @@ export function ArtemisSimulation({ feffRequest, disabled, onAddToDataList }: {
   onAddToDataList?: (result: SimulationResult, idempotencyKey: string) => Promise<void>
 }) {
   const [values, setValues] = useState({ ...simulationDefaults })
-  const [model, setModel] = useState<"fixed" | "debye">("debye")
+  const [model, setModel] = useState<"fixed" | "debye">("fixed")
   const [weight, setWeight] = useState(2)
   const [window, setWindow] = useState<ArtemisTransform["window"]>("hanning")
   const [state, setState] = useState<{ key: string; result?: SimulationResult; error?: string; loading?: boolean; progress?: string; addKey?: string } | null>(null)
@@ -114,10 +114,10 @@ export function ArtemisSimulation({ feffRequest, disabled, onAddToDataList }: {
     } finally { adding.current = false }
   }
   return <section className={styles.simulation} aria-label="EXAFS simulation from CIF">
-    <h4>Simulate EXAFS<SectionHelp label="EXAFS simulation assumptions">No measured spectrum is required. One absorbing site is simulated, with FEFF degeneracies and shared S₀², ΔE₀ and ΔR. Correlated Debye calculates σ² for each path using sample temperature and an explicit material ΘD; it is an isotropic approximation best suited to simple solids. Fixed σ² is also available. Inequivalent sites are not averaged.</SectionHelp></h4>
+    <h4>Simulate EXAFS<SectionHelp label="EXAFS simulation assumptions">No measured spectrum is required. One absorbing site is simulated, with FEFF degeneracies and shared S₀², ΔE₀ and ΔR. Fixed σ² is the default, initially 0.003 Å² for every path. Correlated Debye is also available and calculates σ² for each path using sample temperature and an explicit material ΘD; it is an isotropic approximation best suited to simple solids. Inequivalent sites are not averaged.</SectionHelp></h4>
     <p className={styles.help}>All generated paths within the maximum R are included automatically, with single and multiple scattering up to four legs.</p>
     <div className={styles.grid}>
-      <label><span>Disorder model</span><select aria-label="Simulation disorder model" value={model} disabled={controlsDisabled} onChange={event => setModel(event.target.value as typeof model)}><option value="debye">Correlated Debye</option><option value="fixed">Fixed σ²</option></select></label>
+      <label><span>Disorder model</span><select aria-label="Simulation disorder model" value={model} disabled={controlsDisabled} onChange={event => setModel(event.target.value as typeof model)}><option value="fixed">Fixed σ²</option><option value="debye">Correlated Debye</option></select></label>
       {fields.filter(([key]) => key === "sigma2" ? model === "fixed" : ["temperature", "debye_temperature", "static_sigma2"].includes(key) ? model === "debye" : true).map(([key, label, help]) => <label key={key}><span>{label}<SectionHelp label={`Simulation ${label}`}>{help}</SectionHelp></span><input aria-label={`Simulation ${label}`} type="number" {...simulationLimits[key]} inputMode="decimal" value={values[key]} disabled={controlsDisabled} onChange={event => setValues(previous => ({ ...previous, [key]: event.target.value }))} /></label>)}
       <label><span>FT k-weight<SectionHelp label="Simulation k-weight">Power of k multiplying χ(k) before Fourier transformation and in the weighted k plot. Higher powers emphasize high-k oscillations.</SectionHelp></span><select aria-label="Simulation k-weight" value={weight} disabled={controlsDisabled} onChange={event => setWeight(Number(event.target.value))}>{[0, 1, 2, 3].map(item => <option key={item}>{item}</option>)}</select></label>
       <label><span>FT window<SectionHelp label="Simulation window">Taper shape used over the chosen k interval. Window shape affects Fourier peak width and ringing, not the underlying FEFF paths.</SectionHelp></span><select aria-label="Simulation window" value={window} disabled={controlsDisabled} onChange={event => setWindow(event.target.value as ArtemisTransform["window"])}>{["hanning", "kaiser", "parzen", "welch"].map(item => <option key={item}>{item}</option>)}</select></label>

@@ -118,10 +118,11 @@ conventions, supported expressions, and current limitations.
 In **Crystal structures**, each attached CIF has a **Simulate EXAFS** button
 that opens the calculation with that structure selected.
 No measured spectrum is required. Choose an absorbing site, edge and maximum R,
-enter S₀², disorder, ΔE₀ and ΔR, then run the simulation. Correlated Debye is the
-default disorder model: sample temperature starts at 298 K, and the material's
-Debye temperature ΘD must be supplied. It computes σ² separately for each path;
-an optional shared static σ² starts at zero. Fixed σ² remains available.
+enter S₀², disorder, ΔE₀ and ΔR, then run the simulation. Fixed σ² is the
+default disorder model, initially 0.003 Å² for every path. Correlated Debye remains
+available: sample temperature starts at 298 K, and the material's Debye temperature
+ΘD must be supplied. It computes σ² separately for each path; an optional shared
+static σ² starts at zero.
 FEFF runs automatically and
 sums every generated path within the requested effective half-path length,
 including single and multiple scattering through four legs. Simulation has no

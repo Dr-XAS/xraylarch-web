@@ -21,13 +21,12 @@ function SimulationHarness({ onAddToDataList }: { onAddToDataList?: (result: Ret
 const selectFixed = () => fireEvent.change(screen.getByLabelText("Simulation disorder model"), { target: { value: "fixed" } })
 const renderSimulation = (onAddToDataList?: (result: ReturnType<typeof simulationFixture>, idempotencyKey: string) => Promise<void>) => {
   const view = render(<SimulationHarness onAddToDataList={onAddToDataList} />)
-  selectFixed()
   return view
 }
 const run = () => fireEvent.click(screen.getByRole("button", { name: "Run EXAFS simulation" }))
 
 describe("CIF simulation controls", () => {
-  it("defaults to Debye at 298 K, requires material ΘD, and reuses FEFF when temperature changes", async () => {
+  it("supports Debye at 298 K, requires material ΘD, and reuses FEFF when temperature changes", async () => {
     api.mockImplementation(async (url, body) => {
       if (!url.endsWith("/simulate")) return simulationJob
       const result = simulationFixture()
@@ -36,6 +35,7 @@ describe("CIF simulation controls", () => {
       return result
     })
     render(<SimulationHarness />)
+    fireEvent.change(screen.getByLabelText("Simulation disorder model"), { target: { value: "debye" } })
     expect(screen.getByLabelText("Simulation disorder model")).toHaveValue("debye")
     expect(screen.getByLabelText("Simulation Temperature (K)")).toHaveValue(298)
     expect(screen.getByLabelText("Simulation Debye temperature ΘD (K)")).toHaveValue(null)
@@ -71,7 +71,6 @@ describe("CIF simulation controls", () => {
       <ArtemisSimulation feffRequest={simulationJob.request} disabled={false} />
     </InstructionVisibility.Provider>
     const view = render(panel(false))
-    selectFixed()
     expect(screen.queryByRole("button", { name: /^About / })).not.toBeInTheDocument()
     view.rerender(panel(true))
     for (const name of ["Simulation S₀²", "Simulation σ² (Å²)", "Simulation ΔE₀ (eV)", "Simulation ΔR (Å)", "Simulation FT k min (Å⁻¹)", "Simulation FT k max (Å⁻¹)", "Simulation FT dk (Å⁻¹)", "Simulation k-weight", "Simulation window"])
@@ -85,11 +84,16 @@ describe("CIF simulation controls", () => {
   })
   it("simulates all paths without a measured group, then switches views and exports without recalculation", async () => {
     renderSimulation()
+    expect(screen.getByLabelText("Simulation disorder model")).toHaveValue("fixed")
+    expect(screen.getByLabelText("Simulation σ² (Å²)")).toHaveValue(0.003)
+    expect(screen.queryByLabelText("Simulation Temperature (K)")).not.toBeInTheDocument()
+    expect(screen.queryByLabelText("Simulation Debye temperature ΘD (K)")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Run EXAFS simulation" })).toBeEnabled()
     expect(api).not.toHaveBeenCalled()
     run()
     await screen.findByTestId("simulation-plot")
     expect(screen.getByLabelText("Simulation S₀²")).toHaveValue(0.85)
-    expect(api).toHaveBeenCalledWith(`/feff/jobs/${simulationJob.id}/simulate`, expect.objectContaining({ path_ids: null, s02: 0.85, sigma2: 0.003 }), expect.any(AbortSignal))
+    expect(api).toHaveBeenCalledWith(`/feff/jobs/${simulationJob.id}/simulate`, expect.objectContaining({ path_ids: null, s02: 0.85, disorder_model: "fixed", sigma2: 0.003 }), expect.any(AbortSignal))
     fireEvent.click(screen.getByRole("button", { name: "Download χ(k) CSV" }))
     expect(downloadArtemisText).toHaveBeenCalledWith(expect.stringContaining("simulation-k.csv"), expect.stringContaining("0,0.125,0\n"), "text/csv")
     fireEvent.click(screen.getByRole("button", { name: "|χ(R)|" }))
