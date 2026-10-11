@@ -8,6 +8,7 @@ from larch.xafs import estimate_noise
 from pydantic import BaseModel, ConfigDict, Field
 
 from .athena_science import ScientificError, _pair, MAX_MATRIX_VALUES
+from .athena_quality import duplicate_inputs
 
 
 class MergeSettings(BaseModel):
@@ -116,6 +117,18 @@ def merge(groups, choice, *, weights=None):
     values=[];mean=np.zeros(len(grid));warnings=[]
     if choice.weightby=='noise':
         warnings.append('Native noise weighting is proportional to εk: larger noise receives more weight. The manual describes the opposite; this mode follows the executable Demeter source.')
+    contributing = [group for (group, _), coefficient in zip(used, coefficients) if coefficient > 0]
+    duplicates = duplicate_inputs(contributing)
+    reported = set()
+    for group in contributing:
+        if group['id'] in reported or not duplicates[group['id']]:
+            continue
+        matches = duplicates[group['id']]
+        labels = [group['label'], *(match['label'] for match in matches)]
+        reported.update([group['id'], *(match['id'] for match in matches)])
+        warnings.append('These contributing groups have identical input arrays: ' + ', '.join(labels)
+                        + '. Check that they represent independent acquisitions before treating them as repeat scans. '
+                        'All listed groups retain their merge weights.')
     for member,c,x,(g,(_,y)) in zip(members,coefficients,shifted,used):
         v=interp(x,y,grid,fill_value=0.)
         count=int(np.sum((grid<x[0])|(grid>x[-1])))

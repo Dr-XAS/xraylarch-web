@@ -109,6 +109,10 @@ curves, uncertainties, correlations, and the fit report. Save model drafts in
 the project; each explicit fit also saves its model and result. Athena `.prj`
 and web JSON downloads retain FEFF files and up to 10 fits per spectrum.
 Changed scientific inputs and imported archives are clearly labeled.
+**Saved fit history → Compare saved fits** shows two archived fits side by side,
+including fitting conditions, parameter changes, and distances for matching FEFF
+paths. Download a compact JSON snapshot without running another fit or changing
+the project. See the [saved-fit comparison guide](docs/artemis-fit-comparison.md).
 Project Save actions open a confirmation dialog where you can edit the download
 filename or cancel. The selected format's `.prj` or `.json` extension is added
 automatically; the exported filename does not rename the saved project.
@@ -446,6 +450,19 @@ columns. Group order, frozen groups, numeric precision and background-standard
 names are retained. Notes identify unused settings and missing values. See
 the [parameter-report contract](docs/athena-parameter-report-reference.md)
 for comparisons with the original Athena XLS writer.
+
+**Edit → Review spectra…** lists processing failures, saved warnings, explicit
+requested/effective range changes and identical input arrays across all or
+marked groups. Download the review as a JSON snapshot with its project revision.
+Merge previews also warn about identical inputs among contributing groups.
+These checks preserve scientific parameters and merge weights. See the
+[spectrum-review guide](docs/athena-spectrum-review.md) for interpretation and limits.
+
+**Edit → Compare spectra…** compares all or marked groups against a reference
+you choose. It reports additional fitted energy shifts, E0 differences, edge-step
+ratios, XANES differences over the actual overlap, and χ(k) amplitude ratios.
+The report leaves spectra unchanged and exports the displayed JSON snapshot.
+See the [comparison guide](docs/athena-spectrum-comparison.md) for units and limits.
 
 **Process → Multi-electron excitation** compares reflection and arctangent
 removal on normalized spectra. Adjust shift, amplitude and broadening with

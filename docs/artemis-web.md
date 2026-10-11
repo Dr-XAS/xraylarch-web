@@ -761,6 +761,15 @@ At 10 fits, the next fit is rejected until one is removed. History is never prun
 silently. Models and history share a 20 MB project budget; each model can contain
 up to 24 FEFF files, 500 KB per file and 4 MB total UTF-8 text.
 
+**Compare saved fits** in the history section compares two archives without
+changing the model or running another fit. It shows input provenance, fitting
+conditions, parameter values, and path-distance differences where saved FEFF
+identities agree. Each fit keeps its own statistics and standard errors; the
+view does not rank fits or treat between-fit changes as uncertainty. Download
+the displayed comparison as compact JSON. See the
+[saved-fit comparison guide](artemis-fit-comparison.md) for matching rules and
+interpretation.
+
 Input staleness is determined from the actual processed k/chi arrays, data type,
 Larch processing version and effective Rbkg. Changing labels, selection or display
 settings does not invalidate a fit. Changed scientific input or a processing

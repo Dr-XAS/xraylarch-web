@@ -1,0 +1,43 @@
+.comparison { min-width: 0; overflow-wrap: anywhere; container-type: inline-size; }
+.comparison > section { margin-top: 8px; border: 1px solid var(--ath-line); border-radius: 6px; padding: 12px; background: var(--ath-surface); }
+.comparison p { line-height: var(--leading-body); }
+.comparison h4 { margin: 16px 0 8px; font-size: var(--text-section); }
+.comparison h5 { margin: 0 0 6px; font-size: var(--text-label); }
+.comparison h6 { margin: 0 0 6px; font-size: var(--text-caption); color: var(--ath-muted); }
+.selectors { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.comparison .selectors label { display: flex; flex-direction: column; min-width: 0; gap: 4px; }
+.comparison .selectors select { width: 100%; min-width: 0; max-width: 100%; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pair > * { min-width: 0; }
+.pair p { margin: 4px 0; }
+.identity { border: 1px solid var(--ath-line); border-radius: 5px; background: var(--ath-surface-muted); padding: 8px; font-size: var(--text-caption); }
+.context, .input { font-weight: 600; }
+.comparison table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.comparison th, .comparison td { padding: 6px; border-bottom: 1px solid var(--ath-line); text-align: right; vertical-align: top; white-space: normal; overflow-wrap: anywhere; }
+.comparison th:first-child { text-align: left; font-weight: 500; }
+.comparison thead th { background: var(--ath-surface-muted); font-weight: 500; }
+.comparison th small { display: block; font-weight: 400; }
+.comparison .notes { padding: 8px 0; margin-top: 8px; }
+.comparison .notes > summary { padding: 0; font-size: var(--text-label); }
+.comparison ul { padding-left: 18px; }
+.comparison li + li { margin-top: 4px; }
+.comparison .record { padding: 0; margin-top: 6px; border: 1px solid var(--ath-line); border-radius: 5px; }
+.comparison .record > summary { display: block; padding: 8px; line-height: 1.6; }
+.record summary > span { display: block; margin-left: 16px; color: var(--ath-muted); font-size: var(--text-caption); font-weight: 400; }
+.comparison summary:focus-visible { outline: 2px solid var(--ath-primary); outline-offset: 2px; }
+.recordBody { border-top: 1px solid var(--ath-line); padding: 8px; font-size: var(--text-caption); }
+.value { font-size: var(--text-body); font-weight: 600; font-variant-numeric: tabular-nums; }
+.expression { font-family: var(--font-mono, monospace); }
+.pathValues, .provenance { margin: 8px 0; }
+.pathValues dt, .provenance dt { color: var(--ath-muted); font-size: var(--text-caption); }
+.pathValues dd, .provenance dd { margin: 2px 0 8px; font-variant-numeric: tabular-nums; }
+.provenance { font-size: var(--text-caption); }
+.actions { display: flex; flex-wrap: wrap; margin-top: 12px; gap: 8px; }
+.hint { font-size: var(--text-caption); color: var(--ath-muted); }
+@container (max-width: 460px) {
+  .selectors { grid-template-columns: minmax(0, 1fr); }
+}
+@container (max-width: 260px) {
+  .pair { grid-template-columns: minmax(0, 1fr); }
+  .comparison th, .comparison td { padding: 4px 2px; }
+}
